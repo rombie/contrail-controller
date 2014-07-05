@@ -11,9 +11,11 @@ import json
 import re
 
 import cfgm_common
+from vnc_quota import *
 from gen.resource_xsd import *
 from gen.resource_common import *
 from gen.resource_server import *
+from pprint import pformat
 
 
 class FloatingIpServer(FloatingIpServerGen):
@@ -21,6 +23,24 @@ class FloatingIpServer(FloatingIpServerGen):
 
     @classmethod
     def http_post_collection(cls, tenant_name, obj_dict, db_conn):
+        proj_dict = obj_dict['project_refs'][0]
+        if 'uuid' in proj_dict:
+            proj_uuid = proj_dict['uuid']
+        else:
+            proj_uuid = db_conn.fq_name_to_uuid('project', proj_dict['to'])
+        (ok, proj_dict) = QuotaHelper.get_project_dict(proj_uuid, db_conn)
+        if not ok:
+            return (False, (500, 'Internal error : ' + pformat(proj_dict)))
+
+        obj_type = 'floating-ip'
+        QuotaHelper.ensure_quota_project_present(obj_type, proj_uuid, proj_dict, db_conn)
+
+        if 'floating_ip_back_refs' in proj_dict:
+            quota_count = len(proj_dict['floating_ip_back_refs'])
+            (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+            if not ok:
+                return (False, (403, pformat(obj_dict['fq_name']) + ' : ' + quota_limit))
+
         vn_fq_name = obj_dict['fq_name'][:-2]
         req_ip = obj_dict.get("floating_ip_address", None)
         try:
@@ -174,13 +194,68 @@ class InstanceIpServer(InstanceIpServerGen):
 # end class InstanceIpServer
 
 
+class LogicalRouterServer(LogicalRouterServerGen):
+    generate_default_instance = False
+
+    @classmethod
+    def http_post_collection(cls, tenant_name, obj_dict, db_conn):
+        try:
+            fq_name = obj_dict['fq_name']
+            proj_uuid = db_conn.fq_name_to_uuid('project', fq_name[0:2])
+        except NoIdError:
+            return (False, (500, 'No Project ID error : ' + proj_uuid))
+
+        (ok, proj_dict) = QuotaHelper.get_project_dict(proj_uuid, db_conn)
+        if not ok:
+            return (False, (500, 'Internal error : ' + pformat(proj_dict)))
+
+        obj_type = 'logical-router'
+        QuotaHelper.ensure_quota_project_present(obj_type, proj_uuid, proj_dict, db_conn)
+        if 'logical_routers' in proj_dict:
+            quota_count = len(proj_dict['logical_routers'])
+            (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+            if not ok:
+                return (False, (403, pformat(obj_dict['fq_name']) + ' : ' + quota_limit))
+        return True, ""
+    # end http_post_collection
+
+# end class LogicalRouterServer
+
+
 class VirtualMachineInterfaceServer(VirtualMachineInterfaceServerGen):
     generate_default_instance = False
 
     @classmethod
     def http_post_collection(cls, tenant_name, obj_dict, db_conn):
-        mac_addr = cls.addr_mgmt.mac_alloc(obj_dict)
-        mac_addrs_obj = MacAddressesType([mac_addr])
+        vn_dict = obj_dict['virtual_network_refs'][0]
+        vn_uuid = vn_dict['uuid']
+        (ok, vn_dict) = QuotaHelper.get_objtype_dict(vn_uuid, 'virtual-network', db_conn)
+        if not ok:
+            return (False, (500, 'Internal error : ' + pformat(vn_dict)))
+
+        if vn_dict['parent_type'] == 'project':
+            proj_uuid = vn_dict['parent_uuid']
+            (ok, proj_dict) = QuotaHelper.get_project_dict(proj_uuid, db_conn)
+            if not ok:
+                return (False, (500, 'Internal error : ' + pformat(proj_dict)))
+
+            obj_type = 'virtual-machine-interface'
+            QuotaHelper.ensure_quota_project_present(obj_type, proj_uuid, proj_dict, db_conn)
+            if 'virtual_machine_interfaces' in proj_dict:
+                quota_count = len(proj_dict['virtual_machine_interfaces'])
+                (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+                if not ok:
+                    return (False, (403, pformat(obj_dict['fq_name']) + ' : ' + quota_limit))
+
+        recv_mac = None
+        if 'virtual_machine_interface_mac_addresses' in obj_dict:
+            addr_list = obj_dict['virtual_machine_interface_mac_addresses']
+            recv_mac = addr_list.get('mac_address')
+        if recv_mac != None:
+            mac_addrs_obj = MacAddressesType([recv_mac])
+        else:
+            mac_addr = cls.addr_mgmt.mac_alloc(obj_dict)
+            mac_addrs_obj = MacAddressesType([mac_addr])
         mac_addrs_json = json.dumps(
             mac_addrs_obj,
             default=lambda o: dict((k, v)
@@ -197,6 +272,24 @@ class VirtualNetworkServer(VirtualNetworkServerGen):
 
     @classmethod
     def http_post_collection(cls, tenant_name, obj_dict, db_conn):
+        try:
+            fq_name = obj_dict['fq_name']
+            proj_uuid = db_conn.fq_name_to_uuid('project', fq_name[0:2])
+        except NoIdError:
+            return (False, (500, 'No Project ID error : ' + proj_uuid))
+
+        (ok, proj_dict) = QuotaHelper.get_project_dict(proj_uuid, db_conn)
+        if not ok:
+            return (False, (500, 'Internal error : ' + pformat(proj_dict)))
+
+        obj_type = 'virtual-network'
+        QuotaHelper.ensure_quota_project_present(obj_type, proj_uuid, proj_dict, db_conn)
+        if 'virtual_networks' in proj_dict:
+            quota_count = len(proj_dict['virtual_networks'])
+            (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+            if not ok:
+                return (False, (403, pformat(obj_dict['fq_name']) + ' : ' + quota_limit))
+
         try:
             cls.addr_mgmt.net_create_req(obj_dict)
         except Exception as e:
@@ -218,8 +311,7 @@ class VirtualNetworkServer(VirtualNetworkServerGen):
             # Ignore ip-fabric subnet updates
             return True,  ""
 
-        ipam_refs = obj_dict.get('network_ipam_refs', None)
-        if not ipam_refs:
+        if 'network_ipam_refs' not in obj_dict:
             # NOP for addr-mgmt module
             return True,  ""
 
@@ -227,6 +319,11 @@ class VirtualNetworkServer(VirtualNetworkServerGen):
         (read_ok, read_result) = db_conn.dbe_read('virtual-network', vn_id)
         if not read_ok:
             return (False, (500, read_result))
+
+        (ok, result) = cls.addr_mgmt.net_check_subnet_quota(read_result,
+                                                            obj_dict, db_conn)
+        if not ok:
+            return (ok, (403, result))
         (ok, result) = cls.addr_mgmt.net_check_subnet_overlap(read_result,
                                                               obj_dict)
         if not ok:
@@ -328,12 +425,11 @@ class NetworkIpamServer(NetworkIpamServerGen):
         if not read_ok:
             return (False, (500, "Internal error : IPAM is not valid"))
         old_ipam_mgmt = read_result.get('network_ipam_mgmt')
-        if not old_ipam_mgmt:
+        new_ipam_mgmt = obj_dict.get('network_ipam_mgmt')
+        if not old_ipam_mgmt or not new_ipam_mgmt:
             return True, ""
-
-        old_dns_method = old_ipam_mgmt['ipam_dns_method']
-        new_ipam_mgmt = obj_dict['network_ipam_mgmt']
-        new_dns_method = new_ipam_mgmt['ipam_dns_method']
+        old_dns_method = old_ipam_mgmt.get('ipam_dns_method')
+        new_dns_method = new_ipam_mgmt.get('ipam_dns_method')
         if not cls.is_change_allowed(old_dns_method, new_dns_method, obj_dict,
                                      db_conn):
             return (False, (409, "Cannot change DNS Method from " +
@@ -411,7 +507,7 @@ class VirtualDnsServer(VirtualDnsServerGen):
             if not read_ok:
                 return (
                     False,
-                    (500, "Internal error : Virtual Dns is not in a domain"))
+                    (500, "Internal error : Virtual DNS is not in a domain"))
             virtual_DNSs = read_result.get('virtual_DNSs', None)
             for vdns in virtual_DNSs:
                 vdns_uuid = vdns['uuid']
@@ -422,7 +518,7 @@ class VirtualDnsServer(VirtualDnsServerGen):
                     return (
                         False,
                         (500,
-                         "Internal error : Unable to read Virtual Dns data"))
+                         "Internal error : Unable to read Virtual DNS data"))
                 vdns_data = read_result['virtual_DNS_data']
                 if 'next_virtual_DNS' in vdns_data:
                     if vdns_data['next_virtual_DNS'] == vdns_name:
@@ -525,7 +621,7 @@ class VirtualDnsServer(VirtualDnsServerGen):
                         return (
                             False,
                             (403,
-                             "Cannot have Virtual Dns servers "
+                             "Cannot have Virtual DNS Servers "
                              "referring to each other"))
         return True, ""
     # end validate_dns_server
@@ -616,3 +712,51 @@ class VirtualDnsRecordServer(VirtualDnsRecordServerGen):
         return True, ""
     # end validate_dns_record
 # end class VirtualDnsRecordServer
+
+class SecurityGroupServer(SecurityGroupServerGen):
+    generate_default_instance = False
+
+    @classmethod
+    def http_post_collection(cls, tenant_name, obj_dict, db_conn):
+        try:
+            fq_name = obj_dict['fq_name']
+            proj_uuid = db_conn.fq_name_to_uuid('project', fq_name[0:2])
+        except NoIdError:
+            return (False, (500, 'No Project ID error : ' + proj_uuid))
+
+        (ok, proj_dict) = QuotaHelper.get_project_dict(proj_uuid, db_conn)
+        if not ok:
+            return (False, (500, 'Internal error : ' + pformat(proj_dict)))
+
+        obj_type = 'security-group'
+        QuotaHelper.ensure_quota_project_present(obj_type, proj_uuid, proj_dict, db_conn)
+        if 'security_groups' in proj_dict:
+            quota_count = len(proj_dict['security_groups'])
+            (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+            if not ok:
+                return (False, (403, pformat(obj_dict['fq_name']) + ' : ' + quota_limit))
+        return True, ""
+    # end http_post_collection
+
+    @classmethod
+    def http_put(cls, id, fq_name, obj_dict, db_conn):
+        (ok, sec_dict) = QuotaHelper.get_objtype_dict(obj_dict['uuid'], 'security-group', db_conn)
+        if not ok:
+            return (False, (500, 'Bad Security Group error : ' + pformat(proj_dict)))
+
+        if sec_dict['parent_type'] == 'project':
+            (ok, proj_dict) = QuotaHelper.get_project_dict(sec_dict['parent_uuid'], db_conn)
+            if not ok:
+                return (False, (500, 'Bad Project error : ' + pformat(proj_dict)))
+
+            obj_type = 'security-group-rule'
+            QuotaHelper.ensure_quota_project_present(obj_type, proj_dict['uuid'], proj_dict, db_conn)
+            if 'security_group_entries' in obj_dict:
+                quota_count = len(obj_dict['security_group_entries']['policy_rule'])
+                (ok, quota_limit) = QuotaHelper.check_quota_limit(proj_dict, obj_type, quota_count)
+                if not ok:
+                    return (False, (403, pformat(fq_name) + ' : ' + quota_limit))
+        return True, ""
+    # end http_put
+
+# end class SecurityGroupServer

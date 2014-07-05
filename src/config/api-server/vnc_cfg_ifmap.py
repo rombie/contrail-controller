@@ -1004,12 +1004,15 @@ class VncZkClient(object):
         self._subnet_allocators = {}
     # end __init__
 
-    def create_subnet_allocator(self, subnet, subnet_alloc_list):
+    def create_subnet_allocator(self, subnet, subnet_alloc_list,
+                                addr_from_start):
         # TODO handle subnet resizing change, ignore for now
         if subnet not in self._subnet_allocators:
+            if addr_from_start is None:
+                addr_from_start = False
             self._subnet_allocators[subnet] = IndexAllocator(
                 self._zk_client, self._SUBNET_PATH+'/'+subnet+'/',
-                size=0, start_idx=0, reverse=True,
+                size=0, start_idx=0, reverse=not addr_from_start,
                 alloc_list=subnet_alloc_list)
     # end create_subnet_allocator
 
@@ -1175,13 +1178,7 @@ class VncDbClient(object):
             (ok, obj_dicts) = method([obj_uuid])
             obj_dict = obj_dicts[0]
 
-            # TODO remove backward compat create mapping in zk
-            try:
-                self._zk_db.create_fq_name_to_uuid_mapping(obj_type,
-                                      obj_dict['fq_name'], obj_uuid)
-            except ResourceExistsError:
-                pass
-
+            # TODO remove backward compat (use RT instead of VN->LR ref)
             if (obj_type == 'virtual_network' and
                 'logical_router_refs' in obj_dict):
                 for router in obj_dict['logical_router_refs']:
@@ -1250,9 +1247,8 @@ class VncDbClient(object):
                 ok = self.set_uuid(obj_type, obj_dict, uuid.UUID(uuid_requested), False)
             else:
                 (ok, obj_uuid) = self._alloc_set_uuid(obj_type, obj_dict)
-        except ResourceExistsError:
-            return (409, '' + pformat(obj_dict['fq_name']) +
-                ' already exists with uuid: ' + obj_dict['uuid'])
+        except ResourceExistsError as e:
+            return (409, str(e))
 
         parent_type = obj_dict.get('parent_type', None)
         method_name = obj_type.replace('-', '_')
@@ -1387,8 +1383,10 @@ class VncDbClient(object):
         self._zk_db.subnet_free_req(subnet, addr)
     # end subnet_free_req
 
-    def subnet_create_allocator(self, subnet, subnet_alloc_list):
-        self._zk_db.create_subnet_allocator(subnet, subnet_alloc_list)
+    def subnet_create_allocator(self, subnet, subnet_alloc_list,
+                                addr_from_start):
+        self._zk_db.create_subnet_allocator(subnet, subnet_alloc_list,
+                                            addr_from_start)
     # end subnet_create_allocator
 
     def subnet_delete_allocator(self, subnet):

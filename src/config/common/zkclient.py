@@ -1,6 +1,7 @@
 #
 # Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
 #
+import os
 import gevent
 import logging
 import kazoo.client
@@ -51,7 +52,8 @@ class IndexAllocator(object):
         self._reverse = reverse
         for idx in self._zookeeper_client.get_children(path):
             idx_int = self._get_bit_from_zk_index(int(idx))
-            self._set_in_use(idx_int)
+            if idx_int >= 0:
+                self._set_in_use(idx_int)
         # end for idx
     # end __init__
 
@@ -84,7 +86,7 @@ class IndexAllocator(object):
                 if alloc['start'] <= idx <= alloc['end']:
                     return idx - alloc['start'] + size
                 size += alloc['end'] - alloc['start'] + 1
-        raise Exception()
+        return -1
     # end _get_bit_from_zk_index
 
     def _set_in_use(self, idx):
@@ -119,9 +121,8 @@ class IndexAllocator(object):
     # end alloc
 
     def reserve(self, idx, value=None):
-        try:
-            bit_idx = self._get_bit_from_zk_index(idx)
-        except Exception:
+        bit_idx = self._get_bit_from_zk_index(idx)
+        if bit_idx < 0:
             return None  
         try:
             # Create a node at path and return its integer value
@@ -138,7 +139,7 @@ class IndexAllocator(object):
         id_str = "%(#)010d" % {'#': idx}
         self._zookeeper_client.delete_node(self._path + id_str)
         bit_idx = self._get_bit_from_zk_index(idx)
-        if bit_idx < self._in_use.length():
+        if 0 <= bit_idx < self._in_use.length():
             self._in_use[bit_idx] = 0
     # end delete
 
@@ -146,7 +147,9 @@ class IndexAllocator(object):
         id_str = "%(#)010d" % {'#': idx}
         id_val = self._zookeeper_client.read_node(self._path+id_str)
         if id_val is not None:
-            self._set_in_use(self._get_bit_from_zk_index(idx))
+            bit_idx = self._get_bit_from_zk_index(idx)
+            if bit_idx >= 0:
+                self._set_in_use(bit_idx)
         return id_val
     # end read
 
@@ -156,7 +159,11 @@ class IndexAllocator(object):
 
     @classmethod
     def delete_all(cls, zookeeper_client, path):
-        zookeeper_client.delete_node(path, recursive=True)
+        try:
+            zookeeper_client.delete_node(path, recursive=True)
+        except kazoo.exceptions.NotEmptyError:
+            #TODO: Add retries for NotEmptyError
+            zookeeper_client.syslog("NotEmptyError while deleting %s" % path)
     # end delete_all
 
 #end class IndexAllocator
@@ -227,7 +234,7 @@ class ZookeeperClient(object):
             # Lost the session with ZooKeeper Server
             # Best of option we have is to exit the process and restart all 
             # over again
-            exit(2)
+            os._exit(2)
     # end
 
     def _zk_election_callback(self, func, *args, **kwargs):

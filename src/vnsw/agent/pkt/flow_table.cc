@@ -561,6 +561,7 @@ void FlowEntry::ResetPolicy() {
     data_.match_p.m_reverse_sg_acl_l.clear();
     data_.match_p.reverse_out_sg_rule_present = false;
     data_.match_p.m_reverse_out_sg_acl_l.clear();
+    data_.match_p.m_vrf_assign_acl_l.clear();
 }
 
 void FlowEntry::GetPolicy(const VnEntry *vn) {
@@ -640,8 +641,8 @@ void FlowEntry::GetVrfAssignAcl() {
     //packet, else get the acl attached to VN and try matching the packet to
     //network acl
     const AclDBEntry* acl = intf->vrf_assign_acl();
-    if (acl == NULL && intf->vn()) {
-        acl = intf->vn()->GetAcl();
+    if (acl == NULL &&  data_.vn_entry.get() != NULL) {
+        acl = data_.vn_entry.get()->GetAcl();
     }
     if (!acl) {
         return;
@@ -730,6 +731,8 @@ void FlowEntry::GetPolicyInfo() {
 }
 
 void FlowTable::Add(FlowEntry *flow, FlowEntry *rflow) {
+    flow->reset_flags(FlowEntry::ReverseFlow);
+    rflow->set_flags(FlowEntry::ReverseFlow);
     UpdateReverseFlow(flow, rflow);
 
     flow->GetPolicyInfo();
@@ -806,6 +809,11 @@ void FlowTable::UpdateReverseFlow(FlowEntry *flow, FlowEntry *rflow) {
             rflow->set_flags(FlowEntry::Multicast);
         }
     }
+}
+
+void FlowEntry::UpdateFipStatsInfo(uint32_t fip, uint32_t id) {
+    stats_.fip = fip;
+    stats_.fip_vm_port_id = id;
 }
 
 void FlowEntry::FillFlowInfo(FlowInfo &info) {
@@ -991,7 +999,8 @@ void FlowEntry::SetAclFlowSandeshData(const AclDBEntry *acl,
     SetAclListAceId(acl, data_.match_p.m_out_sg_acl_l, fe_sandesh_data.ace_l);
     SetAclListAceId(acl, data_.match_p.m_out_mirror_acl_l, fe_sandesh_data.ace_l);
 
-    fe_sandesh_data.set_reverse_flow(reverse_flow_entry() ? "yes" : "no");
+    fe_sandesh_data.set_reverse_flow(is_flags_set(FlowEntry::ReverseFlow) ?
+                                     "yes" : "no");
     fe_sandesh_data.set_nat(is_flags_set(FlowEntry::NatFlow) ? "yes" : "no");
     fe_sandesh_data.set_implicit_deny(ImplicitDenyFlow() ? "yes" : "no");
     fe_sandesh_data.set_short_flow(is_flags_set(FlowEntry::ShortFlow) ? 
@@ -1117,7 +1126,6 @@ void FlowEntry::InitFwdFlow(const PktFlowInfo *info, const PktInfo *pkt,
     } else {
         reset_flags(FlowEntry::LinkLocalBindLocalSrcPort);
     }
-    reset_flags(FlowEntry::ReverseFlow);
     stats_.intf_in = pkt->GetAgentHdr().ifindex;
 
     if (info->ingress) {
@@ -1159,7 +1167,6 @@ void FlowEntry::InitRevFlow(const PktFlowInfo *info,
     if (InitFlowCmn(info, ctrl, rev_ctrl) == false) {
         return;
     }
-    set_flags(FlowEntry::ReverseFlow);
     if (ctrl->intf_) {
         stats_.intf_in = ctrl->intf_->id();
     } else {
@@ -2464,6 +2471,22 @@ void FlowEntry::SetAclAction(std::vector<AclAction> &acl_action_l) const
     const std::list<MatchAclParams> &r_out_sg_l = data_.match_p.m_reverse_out_sg_acl_l;
     acl_type = "r o sg";
     SetAclListAclAction(r_out_sg_l, acl_action_l, acl_type);
+}
+
+uint32_t FlowEntry::reverse_flow_fip() const {
+    FlowEntry *rflow = reverse_flow_entry_.get();
+    if (rflow) {
+        return rflow->stats().fip;
+    }
+    return 0;
+}
+
+uint32_t FlowEntry::reverse_flow_vmport_id() const {
+    FlowEntry *rflow = reverse_flow_entry_.get();
+    if (rflow) {
+        return rflow->stats().fip_vm_port_id;
+    }
+    return Interface::kInvalidIndex;
 }
 
 string FlowTable::GetAceSandeshDataKey(const AclDBEntry *acl, int ace_id) {

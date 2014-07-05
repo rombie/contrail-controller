@@ -42,6 +42,7 @@ public:
         agent_ = Agent::GetInstance();
     }
     void TearDown() {
+        WAIT_FOR(1000, 1000, agent_->GetVrfTable()->Size() == 1);
     }
 
     Agent *agent_;
@@ -235,6 +236,7 @@ TEST_F(CfgTest, MirrorNh_1) {
 
     MirrorTable::DelMirrorEntry(analyzer_2);
     WaitForIdle(table_size, 5);
+    DelVrf("test_vrf");
 }
 
 TEST_F(CfgTest, NhSandesh_1) {
@@ -272,6 +274,7 @@ TEST_F(CfgTest, NhSandesh_1) {
     table_size = agent_->GetNextHopTable()->Size();
     MirrorTable::DelMirrorEntry(analyzer_1);
     WaitForIdle(table_size, 5);
+    VrfDelReq("test_vrf_sandesh");
 }
 
 TEST_F(CfgTest, CreateVrfNh_1) {
@@ -286,6 +289,14 @@ TEST_F(CfgTest, CreateVrfNh_1) {
     req.data.reset(NULL);
     agent_->GetNextHopTable()->Enqueue(&req);
     client->WaitForIdle();
+
+    key = new VrfNHKey("test_vrf", false);
+    req.oper = DBRequest::DB_ENTRY_DELETE;
+    req.key.reset(key);
+    req.data.reset(NULL);
+    agent_->GetNextHopTable()->Enqueue(&req);
+
+    VrfDelReq("test_vrf");
 }
 
 TEST_F(CfgTest, EcmpNH_1) {
@@ -525,14 +536,15 @@ TEST_F(CfgTest, EcmpNH_3) {
     AddFloatingIpPool("fip-pool1", 1);
     AddFloatingIp("fip1", 1, "2.2.2.2");
     AddLink("floating-ip", "fip1", "floating-ip-pool", "fip-pool1");
-    AddLink("floating-ip-pool", "fip-pool1", "virtual-network", "vn2");
+    AddLink("floating-ip-pool", "fip-pool1", "virtual-network",
+            "default-project:vn2");
 
     //Associate vnet1 with floating IP
     AddLink("virtual-machine-interface", "vnet1", "floating-ip", "fip1");
     client->WaitForIdle();
     //First VM added, route points to composite NH
     Ip4Address ip = Ip4Address::from_string("2.2.2.2");
-    Inet4UnicastRouteEntry *rt = RouteGet("vn2:vn2", ip, 32);
+    Inet4UnicastRouteEntry *rt = RouteGet("default-project:vn2:vn2", ip, 32);
     EXPECT_TRUE(rt != NULL);
     const NextHop *nh = rt->GetActiveNextHop();
     EXPECT_TRUE(nh->GetType() == NextHop::INTERFACE);
@@ -660,12 +672,13 @@ TEST_F(CfgTest, EcmpNH_3) {
     EXPECT_FALSE(FindMplsLabel(MplsLabel::VPORT_NH, composite_mpls_label));
  
     DelLink("virtual-machine-interface", "vnet5", "floating-ip", "fip1");
-    DelLink("floating-ip-pool", "fip-pool1", "virtual-network", "vn2");
+    DelLink("floating-ip-pool", "fip-pool1", "virtual-network",
+            "default-project:vn2");
     client->WaitForIdle();
-    EXPECT_FALSE(RouteFind("vn2:vn2", ip, 32));
+    EXPECT_FALSE(RouteFind("default-project:vn2:vn2", ip, 32));
 
-    DeleteVmportEnv(input2, 1, true);
-    DeleteVmportEnv(input1, 5, true);
+    DeleteVmportFIpEnv(input1, 5, true);
+    DeleteVmportFIpEnv(input2, 1, true);
     WAIT_FOR(100, 1000, (VrfFind("vrf1") == false));
     WAIT_FOR(100, 1000, (VrfFind("vrf2") == false));
     client->WaitForIdle();
@@ -1061,13 +1074,16 @@ TEST_F(CfgTest, Nexthop_keys) {
     AddEncapList("VXLAN", "MPLSoGRE", "MPLSoUDP");
     client->WaitForIdle();
     CreateVmportEnv(input1, 1);
+    WAIT_FOR(1000, 1000, VmPortActive(10)); 
     Ip4Address ip = Ip4Address::from_string("1.1.1.1");
     WAIT_FOR(1000, 1000, (VrfGet("vrf10") != NULL));
     WAIT_FOR(1000, 1000, (RouteGet("vrf10", ip, 32) != NULL));
+    WAIT_FOR(1000, 1000, (RouteGet("vrf10", ip, 32) != NULL));
 
     //First VM added
+
     Inet4UnicastRouteEntry *rt = RouteGet("vrf10", ip, 32);
-    EXPECT_TRUE(rt != NULL);
+    WAIT_FOR(1000, 1000, (rt->GetActivePath() != NULL));
     const NextHop *nh = rt->GetActivePath()->nexthop(agent_);
     EXPECT_TRUE(nh != NULL);
     WAIT_FOR(100, 1000, (rt->GetActiveNextHop()->GetType() ==
@@ -1077,7 +1093,9 @@ TEST_F(CfgTest, Nexthop_keys) {
     DoNextHopSandesh();
 
     //Issue set for nexthop key
-    NextHopKey *nh_key = static_cast<NextHopKey *>(nh->GetDBRequestKey().release()); 
+    nh = rt->GetActiveNextHop();
+    const InterfaceNH *intf_nh = static_cast<const InterfaceNH *>(nh);
+    NextHopKey *nh_key = static_cast<NextHopKey *>(intf_nh->GetDBRequestKey().release()); 
     EXPECT_TRUE(nh_key->GetType() == NextHop::INTERFACE);
     EXPECT_TRUE(nh_key->GetPolicy() == false);
     NextHop *base_nh = static_cast<NextHop *>(agent_->
@@ -1364,5 +1382,8 @@ int main(int argc, char **argv) {
     client = TestInit(init_file, ksync_init);
 
     int ret = RUN_ALL_TESTS();
+    client->WaitForIdle();
+    TestShutdown();
+    delete client;
     return ret;
 }

@@ -25,6 +25,7 @@
 #include <oper/interface_common.h>
 #include <oper/vrf_assign.h>
 #include <oper/vxlan.h>
+#include <oper/oper_dhcp_options.h>
 
 #include <vnc_cfg_types.h>
 #include <oper/agent_sandesh.h>
@@ -146,11 +147,14 @@ static void BuildFloatingIpList(Agent *agent, VmInterfaceConfigData *data,
                     continue;
                 }
                 // Checking whether it is default vrf of not
-                unsigned found = vrf_node->name().find_last_of(':');
-                if (vn_node->name().compare(vrf_node->name().substr(0, found)) != 0) {
+                size_t found = vn_node->name().find_last_of(':');
+                std::string vrf_name = "";
+                if (found != string::npos) {
+                    vrf_name = vn_node->name() + vn_node->name().substr(found);
+                }
+                if (vrf_node->name().compare(vrf_name) != 0) {
                     continue;
                 }
-
                 FloatingIp *fip = static_cast<FloatingIp *>(node->GetObject());
                 assert(fip != NULL);
                 LOG(DEBUG, "Add FloatingIP <" << fip->address() << ":" <<
@@ -277,6 +281,13 @@ static void ReadInstanceIp(VmInterfaceConfigData *data, IFMapNode *node) {
     data->addr_ = Ip4Address::from_string(ip->address(), err);
 }
 
+
+// Get DHCP configuration
+static void ReadDhcpOptions(VirtualMachineInterface *cfg,
+                            VmInterfaceConfigData &data) {
+    data.oper_dhcp_options_.set_options(cfg->dhcp_option_list());
+    data.oper_dhcp_options_.set_host_routes(cfg->host_routes());
+}
 
 // Get interface mirror configuration.
 static void ReadAnalyzerNameAndCreate(Agent *agent,
@@ -408,6 +419,9 @@ bool InterfaceTable::IFNodeToReq(IFMapNode *node, DBRequest &req) {
     data = new VmInterfaceConfigData();
     ReadAnalyzerNameAndCreate(agent_, cfg, *data);
 
+    // Fill DHCP option data
+    ReadDhcpOptions(cfg, *data);
+
     //Fill config data items
     data->cfg_name_= node->name();
 
@@ -430,11 +444,15 @@ bool InterfaceTable::IFNodeToReq(IFMapNode *node, DBRequest &req) {
                     (adj_node->GetObject());
             assert(sg_cfg);
             autogen::IdPermsType id_perms = sg_cfg->id_perms();
-            uuid sg_uuid = nil_uuid();
-            CfgUuidSet(id_perms.uuid.uuid_mslong, id_perms.uuid.uuid_lslong,
-                       sg_uuid);
-            data->sg_list_.list_.insert
-                (VmInterface::SecurityGroupEntry(sg_uuid));
+            uint32_t sg_id = SgTable::kInvalidSgId;
+            stringToInteger(sg_cfg->id(), sg_id);
+            if (sg_id != SgTable::kInvalidSgId) {
+                uuid sg_uuid = nil_uuid();
+                CfgUuidSet(id_perms.uuid.uuid_mslong, id_perms.uuid.uuid_lslong,
+                           sg_uuid);
+                data->sg_list_.list_.insert
+                    (VmInterface::SecurityGroupEntry(sg_uuid));
+            }
         }
 
         if (adj_node->table() == agent_->cfg()->cfg_vn_table()) {
@@ -794,6 +812,9 @@ bool VmInterface::CopyConfig(VmInterfaceConfigData *data, bool *sg_changed) {
         mac_set_ = mac_set;
         ret = true;
     }
+
+    // Copy DHCP options; ret is not modified as there is no dependent action
+    oper_dhcp_options_ = data->oper_dhcp_options_;
 
     // Audit operational and config floating-ip list
     FloatingIpSet &old_fip_list = floating_ip_list_.list_;
