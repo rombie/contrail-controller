@@ -23,8 +23,6 @@
 #include "control-node/test/network_agent_mock.h"
 #include "io/test/event_manager_test.h"
 
-
-
 #define XMPP_CONTROL_SERV   "bgp.contrail.com"
 #define PUBSUB_NODE_ADDR "bgp-node.contrail.com"
 
@@ -39,10 +37,10 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(1);
-static vector<int>  n_routes    = boost::assign::list_of(1);
+static vector<int>  n_instances = boost::assign::list_of(5);
+static vector<int>  n_routes    = boost::assign::list_of(5);
 static vector<int>  n_peers     = boost::assign::list_of(1);
-static vector<int>  n_agents    = boost::assign::list_of(1);
+static vector<int>  n_agents    = boost::assign::list_of(5);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
                                   boost::assign::list_of(false);
@@ -266,7 +264,7 @@ protected:
                                        xmpp_server_, server_.get()));
         master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
             BgpConfigManager::kMasterInstance, "", ""));
-        rtinstance_ = static_cast<RoutingInstance *>(
+        master_instance_ = static_cast<RoutingInstance *>(
             server_->routing_instance_mgr()->GetRoutingInstance(
                 BgpConfigManager::kMasterInstance));
         n_families_ = 2;
@@ -346,12 +344,11 @@ protected:
     void CreateAgents();
     void Subscribe();
     void UnSubscribe();
-    void AddXmppRoutes();
-    void DeleteXmppRoutes();
-    void VerifyXmppRoutes(int routes);
+    void AddOrDeleteXmppRoutes(bool add);
+    void VerifyReceivedXmppRoutes(int routes);
     void DeleteAllRoutingInstances();
     void VerifyRoutingInstances();
-    void XmppPeerClose();
+    void XmppPeerClose(int npeers = -1);
     void CallStaleTimer(bool);
     void InitParams();
     void VerifyPeer(BgpServerTest *server, RoutingInstance *rtinstance,
@@ -371,7 +368,7 @@ protected:
     XmppServerTest *xmpp_server_;
     boost::scoped_ptr<BgpXmppChannelManagerMock> channel_manager_;
     scoped_ptr<BgpInstanceConfigTest> master_cfg_;
-    RoutingInstance *rtinstance_;
+    RoutingInstance *master_instance_;
     std::list<BgpNullPeer *> peers_;
     std::list<test::NetworkAgentMock *> xmpp_agents_;
     std::list<BgpXmppChannel *> xmpp_peers_;
@@ -394,13 +391,13 @@ void BgpPeerCloseTest::VerifyPeer(BgpServerTest *server,
 
 void BgpPeerCloseTest::VerifyPeers() {
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
-        VerifyPeer(server_.get(), rtinstance_, npeer, npeer->peer());
+        VerifyPeer(server_.get(), master_instance_, npeer, npeer->peer());
     }
 }
 
 void BgpPeerCloseTest::VerifyNoPeers() {
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
-        VerifyPeer(server_.get(), rtinstance_, npeer,
+        VerifyPeer(server_.get(), master_instance_, npeer,
                    static_cast<BgpPeerTest *>(NULL));
     }
 }
@@ -409,10 +406,10 @@ void BgpPeerCloseTest::VerifyRoutes(int count) {
     if (!n_peers_) return;
 
     for (int i = 0; i < n_families_; i++) {
-        BgpTable *tb = rtinstance_->GetTable(familes_[i]);
+        BgpTable *tb = master_instance_->GetTable(familes_[i]);
         if (count && n_agents_ && n_peers_ &&
                 familes_[i] == Address::INETVPN) {
-            BGP_VERIFY_ROUTE_COUNT(tb, (n_instances_ + 1) * count);
+            BGP_VERIFY_ROUTE_COUNT(tb, (n_agents_ * n_instances_ + 1) * count);
         } else {
             BGP_VERIFY_ROUTE_COUNT(tb, count);
         }
@@ -539,7 +536,7 @@ void BgpPeerCloseTest::AddRoutes(BgpTable *table, BgpNullPeer *npeer) {
 #endif
 
     Ip4Prefix prefix(Ip4Prefix::FromString("192.168.255.0/24"));
-    InetVpnPrefix vpn_prefix(InetVpnPrefix::FromString("123:456:10." +
+    InetVpnPrefix vpn_prefix(InetVpnPrefix::FromString("123:456:20." +
                 boost::lexical_cast<string>(npeer->peer_id()) + ".1.1/32"));
 
     for (int rt = 0; rt < n_routes_; rt++,
@@ -590,7 +587,7 @@ void BgpPeerCloseTest::AddAllRoutes() {
 
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
         for (int i = 0; i < n_families_; i++) {
-            BgpTable *table = rtinstance_->GetTable(familes_[i]);
+            BgpTable *table = master_instance_->GetTable(familes_[i]);
 
             server_->membership_mgr()->Register(npeer->peer(), table, policy,
                     -1, boost::bind(&BgpPeerCloseTest::CreateRibsDone, this, _1,
@@ -616,10 +613,10 @@ void BgpPeerCloseTest::AddXmppPeersWithRoutes() {
 
     WaitForIdle();
     Subscribe();
-    VerifyXmppRoutes(0);
-    AddXmppRoutes();
+    VerifyReceivedXmppRoutes(0);
+    AddOrDeleteXmppRoutes(true);
     WaitForIdle();
-    VerifyXmppRoutes(n_instances_ * n_routes_);
+    VerifyReceivedXmppRoutes(n_instances_ * n_agents_ * n_routes_);
 }
 
 void BgpPeerCloseTest::CreateAgents() {
@@ -666,44 +663,34 @@ void BgpPeerCloseTest::UnSubscribe() {
             agent->Unsubscribe(instance_name);
         }
     }
-    VerifyXmppRoutes(0);
+    VerifyReceivedXmppRoutes(0);
     WaitForIdle();
 }
 
-void BgpPeerCloseTest::AddXmppRoutes() {
-
+void BgpPeerCloseTest::AddOrDeleteXmppRoutes(bool add) {
+    int agent_id = 1;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         for (int i = 1; i <= n_instances_; i++) {
             string instance_name = "instance" + boost::lexical_cast<string>(i);
 
             Ip4Prefix prefix(Ip4Prefix::FromString(
-                        "10." + boost::lexical_cast<string>(i) + ".1.1/32"));
+                "10." + boost::lexical_cast<string>(i) +
+                boost::lexical_cast<string>(agent_id) + ".1/32"));
             for (int rt = 0; rt < n_routes_; rt++,
                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
-                agent->AddRoute(instance_name, prefix.ToString());
+                if (add)
+                    agent->AddRoute(instance_name, prefix.ToString());
+                else
+                    agent->DeleteRoute(instance_name, prefix.ToString());
             }
         }
-    }
-}
-
-void BgpPeerCloseTest::DeleteXmppRoutes() {
-    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        for (int i = 1; i <= n_instances_; i++) {
-            string instance_name = "instance" + boost::lexical_cast<string>(i);
-
-            Ip4Prefix prefix(Ip4Prefix::FromString(
-                        "10." + boost::lexical_cast<string>(i) + ".1.1/32"));
-            for (int rt = 0; rt < n_routes_; rt++,
-                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
-                agent->DeleteRoute(instance_name, prefix.ToString());
-            }
-        }
+        agent_id++;
     }
     WaitForIdle();
-    // VerifyXmppRoutes(0);
+    // if (!add) VerifyReceivedXmppRoutes(0);
 }
 
-void BgpPeerCloseTest::VerifyXmppRoutes(int routes) {
+void BgpPeerCloseTest::VerifyReceivedXmppRoutes(int routes) {
     if (!n_agents_) return;
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
@@ -785,9 +772,7 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
     Configure();
     SetPeerCloseGraceful(false);
 
-    //
     // Add XmppPeers with routes as well
-    //
     AddXmppPeersWithRoutes();
 
     for (int p = 1; p <= n_peers_; p++) {
@@ -796,8 +781,8 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
         oss << "NullPeer" << p;
         BgpNullPeer *npeer =
             new BgpNullPeer(server_.get(), instance_config, oss.str(),
-                            rtinstance_, p);
-        VerifyPeer(server_.get(), rtinstance_, npeer, npeer->peer());
+                            master_instance_, p);
+        VerifyPeer(server_.get(), master_instance_, npeer, npeer->peer());
 
         // Override certain default routines to customize behavior that we want
         // in this test.
@@ -833,22 +818,31 @@ void BgpPeerCloseTest::CallStaleTimer(bool bgp_peers_ready) {
     WaitForIdle();
 }
 
-void BgpPeerCloseTest::XmppPeerClose() {
+void BgpPeerCloseTest::XmppPeerClose(int npeers) {
+    if (npeers < 1)
+        npeers = xmpp_agents_.size();
 
+    int down_count = npeers;
     if (xmpp_close_from_control_node_) {
         BOOST_FOREACH(BgpXmppChannel *peer, xmpp_peers_) {
             peer->Peer()->Close();
+            if (!--down_count)
+                break;
         }
     } else {
         BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-            // agent->client()->Shutdown();
             agent->SessionDown();
+            if (!--down_count)
+                break;
         }
     }
 
     WaitForIdle();
+    down_count = npeers;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_TRUE(!agent->IsEstablished());
+        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+         if (!--down_count)
+             break;
     }
 }
 
@@ -942,7 +936,7 @@ TEST_P(BgpPeerCloseTest, DeleteXmppRoutes) {
         npeer->peer()->ManagedDelete();
     }
 
-    DeleteXmppRoutes();
+    AddOrDeleteXmppRoutes(false);
 
     // Assert that all ribins have been deleted correctly
     VerifyNoPeers();
@@ -987,106 +981,6 @@ TEST_P(BgpPeerCloseTest, DeleteRoutingInstances) {
         "Waiting for the completion of routing-instances' deletion");
 }
 
-TEST_P(BgpPeerCloseTest, ClosePeersWithRouteStalingAndDelete) {
-    SCOPED_TRACE(__FUNCTION__);
-    InitParams();
-    AddPeersWithRoutes(master_cfg_.get());
-    WaitForIdle();
-    VerifyPeers();
-    VerifyRoutes(n_routes_);
-    VerifyRibOutCreationCompletion();
-
-    SetPeerCloseGraceful(true);
-
-    // Trigger ribin deletes
-    BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
-        npeer->peer()->SetAdminState(true);
-    }
-
-    XmppPeerClose();
-
-    //
-    // Wait for xmpp sessions to go down in the server
-    //
-    BOOST_FOREACH(BgpXmppChannel *peer, xmpp_peers_) {
-        TASK_UTIL_EXPECT_FALSE(peer->Peer()->IsReady());
-    }
-
-    CallStaleTimer(false);
-
-    // Assert that all ribins have been deleted correctly
-    WaitForIdle();
-    VerifyPeers();
-    VerifyRoutes(0);
-}
-
-TEST_P(BgpPeerCloseTest, ClosePeersWithRouteStaling) {
-    SCOPED_TRACE(__FUNCTION__);
-    InitParams();
-
-    //
-    // Graceful restart is not supported yet from xmpp agents
-    //
-    AddPeersWithRoutes(master_cfg_.get());
-    WaitForIdle();
-    VerifyPeers();
-    VerifyRoutes(n_routes_);
-    VerifyRibOutCreationCompletion();
-    VerifyXmppRoutes(n_instances_ * n_routes_);
-
-    SetPeerCloseGraceful(true);
-
-    // Trigger ribin deletes
-    BOOST_FOREACH(BgpNullPeer *npeer, peers_) { npeer->peer()->Close(); }
-    XmppPeerClose();
-
-    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_FALSE(agent->IsEstablished());
-    }
-
-    // Verify that routes are still there (staled)
-    VerifyRoutes(n_routes_);
-    VerifyXmppRoutes(0);
-
-    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        agent->SessionUp();
-    }
-
-    WaitForIdle();
-
-    BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
-        TASK_UTIL_EXPECT_TRUE(npeer->peer()->IsReady());
-    }
-
-    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_TRUE(agent->IsEstablished());
-    }
-    VerifyRoutes(n_routes_);
-
-    // Feed the routes again - stale flag should be reset now
-    AddAllRoutes();
-
-    WaitForIdle();
-    Subscribe();
-    VerifyXmppRoutes(n_instances_ * n_routes_);
-    AddXmppRoutes();
-    WaitForIdle();
-    VerifyXmppRoutes(n_instances_ * n_routes_);
-
-    // Invoke stale timer callbacks as evm is not running in this unit test
-    CallStaleTimer(true);
-
-    WaitForIdle();
-    VerifyPeers();
-    VerifyRoutes(n_routes_);
-    VerifyXmppRoutes(n_instances_ * n_routes_);
-
-    SetPeerCloseGraceful(false);
-    UnSubscribe();
-    WaitForIdle();
-    XmppPeerClose();
-    WaitForIdle();
-}
 
 #define COMBINE_PARAMS \
     Combine(ValuesIn(GetInstanceParameters()),                      \
