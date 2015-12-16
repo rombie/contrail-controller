@@ -174,22 +174,33 @@ public:
     }
 
     virtual bool CloseComplete(bool from_timer, bool gr_cancelled) {
-        if (!parent_) return true;
+        if (!parent_)
+            return true;
+        if (IsCloseGraceful())
+            parent_->set_peer_deleted(false);
+
+        XmppConnection *connection =
+            const_cast<XmppConnection *>(parent_->channel_->connection());
 
         if (!from_timer) {
             // If graceful restart is enabled, do not delete this peer yet
             // However, if a gr is already aborted, do not trigger another gr
             if (!gr_cancelled && IsCloseGraceful()) {
+
+                // Restart state machine.
+                XmppStateMachine *state_machine = connection ?
+                    connection->state_machine() : NULL;
+                if (state_machine)
+                    state_machine->Initialize();
                 return false;
             }
         } else {
             // Close is complete off graceful restart timer. Delete this peer
             // if the session has not come back up
-            if (parent_->Peer()->IsReady()) return false;
+            if (parent_->Peer()->IsReady())
+                return false;
         }
 
-        XmppConnection *connection =
-            const_cast<XmppConnection *>(parent_->channel_->connection());
 
         // TODO(ananth): This needs to be cleaned up properly by clearly
         // separating GR entry and exit steps. Avoid duplicate channel
@@ -202,6 +213,7 @@ public:
     }
 
     void Close() {
+        assert(parent_->peer_deleted());
         manager_->Close();
     }
 
@@ -510,7 +522,7 @@ BgpXmppChannel::~BgpXmppChannel() {
     if (manager_ && close_in_progress_)
         manager_->decrement_closing_count();
     STLDeleteElements(&defer_q_);
-    assert(peer_->IsDeleted());
+    // assert(!peer_deleted());
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
@@ -2395,8 +2407,8 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
                 channel->Close();
             }
         } else {
-            // bgp_xmpp_channel = (*it).second;
-            // bgp_xmpp_channel->peer_->SetDeleted(false);
+            bgp_xmpp_channel = (*it).second;
+            assert(!bgp_xmpp_channel->peer_deleted());
         }
     } else if (state == xmps::NOT_READY) {
         if (it != channel_map_.end()) {
@@ -2471,10 +2483,9 @@ string BgpXmppChannel::transport_address_string() const {
 
 //
 // Mark the XmppPeer as deleted.
-// For unit testing only.
 //
-void BgpXmppChannel::set_peer_deleted() {
-    peer_->SetDeleted(true);
+void BgpXmppChannel::set_peer_deleted(bool flag) {
+    peer_->SetDeleted(flag);
 }
 
 //
