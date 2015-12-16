@@ -374,6 +374,7 @@ struct Active : public sc::state<Active, XmppStateMachine> {
             static_cast<XmppServer *>(
                 connection->server())->LocateConnectionEndpoint(
                 static_cast<XmppServerConnection *>(connection), created);
+        XmppSession *session = state_machine->session();
         if (!created) {
             if (connection_endpoint->connection()) {
                 XmppConnection *old_connection =
@@ -384,6 +385,12 @@ struct Active : public sc::state<Active, XmppStateMachine> {
                 connection->swap_state_machine(old_connection);
                 state_machine->swap_connection(old_state_machine);
 
+                XmppSession *old_session = old_state_machine->session();
+                if (old_session)
+                    old_session->SetConnection(connection);
+                session->SetConnection(old_connection);
+
+                old_connection->set_session(session);
 
                 // Trigger deletion of the new connection (which now is
                 // linked wth old_state_machine.
@@ -392,7 +399,6 @@ struct Active : public sc::state<Active, XmppStateMachine> {
                 connection_endpoint->set_connection(connection);
             }
         }
-        XmppSession *session = state_machine->session();
         state_machine->CancelOpenTimer();
         if (!connection->SendOpenConfirm(session)) {
             connection->SendClose(session);
