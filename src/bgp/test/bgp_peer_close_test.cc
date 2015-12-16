@@ -987,7 +987,7 @@ TEST_P(BgpPeerCloseTest, DeleteRoutingInstances) {
         "Waiting for the completion of routing-instances' deletion");
 }
 
-TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStalingAndDelete) {
+TEST_P(BgpPeerCloseTest, ClosePeersWithRouteStalingAndDelete) {
     SCOPED_TRACE(__FUNCTION__);
     InitParams();
     AddPeersWithRoutes(master_cfg_.get());
@@ -1020,7 +1020,7 @@ TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStalingAndDelete) {
     VerifyRoutes(0);
 }
 
-TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStaling) {
+TEST_P(BgpPeerCloseTest, ClosePeersWithRouteStaling) {
     SCOPED_TRACE(__FUNCTION__);
     InitParams();
 
@@ -1032,6 +1032,7 @@ TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStaling) {
     VerifyPeers();
     VerifyRoutes(n_routes_);
     VerifyRibOutCreationCompletion();
+    VerifyXmppRoutes(n_instances_ * n_routes_);
 
     SetPeerCloseGraceful(true);
 
@@ -1045,7 +1046,7 @@ TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStaling) {
 
     // Verify that routes are still there (staled)
     VerifyRoutes(n_routes_);
-    // VerifyXmppRoutes(n_instances_ * n_routes_);
+    VerifyXmppRoutes(0);
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         agent->SessionUp();
@@ -1060,15 +1061,17 @@ TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStaling) {
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         TASK_UTIL_EXPECT_TRUE(agent->IsEstablished());
     }
+    VerifyRoutes(n_routes_);
 
     // Feed the routes again - stale flag should be reset now
     AddAllRoutes();
 
     WaitForIdle();
     Subscribe();
+    VerifyXmppRoutes(n_instances_ * n_routes_);
     AddXmppRoutes();
     WaitForIdle();
-    // VerifyXmppRoutes(n_instances_ * n_routes_);
+    VerifyXmppRoutes(n_instances_ * n_routes_);
 
     // Invoke stale timer callbacks as evm is not running in this unit test
     CallStaleTimer(true);
@@ -1076,7 +1079,7 @@ TEST_P(BgpPeerCloseTest, DISABLED_ClosePeersWithRouteStaling) {
     WaitForIdle();
     VerifyPeers();
     VerifyRoutes(n_routes_);
-    // VerifyXmppRoutes(n_instances_ * n_routes_);
+    VerifyXmppRoutes(n_instances_ * n_routes_);
 
     SetPeerCloseGraceful(false);
     UnSubscribe();

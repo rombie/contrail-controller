@@ -68,19 +68,22 @@ class BgpPeer::PeerClose : public IPeerClose {
     // attempt to bring up session with the neighbor
     //
     virtual bool CloseComplete(bool from_timer, bool gr_cancelled) {
-        peer_->server()->decrement_closing_count();
+        if (!from_timer)
+            peer_->server()->decrement_closing_count();
         if (!peer_->IsDeleted()) {
 
             //
             // If this closure is off graceful restart timer, nothing else to
             // do as we retain the peer based on the configuration
             //
-            if (from_timer) return false;
+            if (from_timer)
+                return false;
 
             //
             // Reset peer's state machine
             //
-            if (!peer_->IsAdminDown()) peer_->state_machine_->Initialize();
+            if (!peer_->IsAdminDown())
+                peer_->state_machine_->Initialize();
 
             return false;
         }
