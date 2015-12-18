@@ -39,7 +39,7 @@ using ::testing::Combine;
 
 static vector<int>  n_instances = boost::assign::list_of(5);
 static vector<int>  n_routes    = boost::assign::list_of(5);
-static vector<int>  n_peers     = boost::assign::list_of(1);
+static vector<int>  n_peers     = boost::assign::list_of(5);
 static vector<int>  n_agents    = boost::assign::list_of(5);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
@@ -357,7 +357,6 @@ protected:
     void VerifyNoPeers();
     void VerifyRoutes(int count);
     void VerifyRibOutCreationCompletion();
-    void VerifyXmppRouteNextHops();
     bool SendUpdate(BgpPeerTest *peer, const uint8_t *msg, size_t msgsize);
     bool IsReady(bool ready);
     bool MpNlriAllowed(BgpPeerTest *peer, uint16_t afi, uint8_t safi);
@@ -403,15 +402,17 @@ void BgpPeerCloseTest::VerifyNoPeers() {
 }
 
 void BgpPeerCloseTest::VerifyRoutes(int count) {
-    if (!n_peers_) return;
+    // if (!n_peers_) return;
 
     for (int i = 0; i < n_families_; i++) {
         BgpTable *tb = master_instance_->GetTable(familes_[i]);
         if (count && n_agents_ && n_peers_ &&
                 familes_[i] == Address::INETVPN) {
-            BGP_VERIFY_ROUTE_COUNT(tb, (n_agents_ * n_instances_ + 1) * count);
+            BGP_VERIFY_ROUTE_COUNT(tb,
+                    n_agents_ * n_instances_ * count + // XMPP Routes
+                    n_peers_ * count); // BGP Routes
         } else {
-            BGP_VERIFY_ROUTE_COUNT(tb, count);
+            // BGP_VERIFY_ROUTE_COUNT(tb, count);
         }
     }
 }
@@ -679,7 +680,9 @@ void BgpPeerCloseTest::AddOrDeleteXmppRoutes(bool add) {
             for (int rt = 0; rt < n_routes_; rt++,
                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
                 if (add)
-                    agent->AddRoute(instance_name, prefix.ToString());
+                    agent->AddRoute(instance_name, prefix.ToString(),
+                                    "100.100.100." +
+                                    boost::lexical_cast<string>(agent_id));
                 else
                     agent->DeleteRoute(instance_name, prefix.ToString());
             }
@@ -694,39 +697,13 @@ void BgpPeerCloseTest::VerifyReceivedXmppRoutes(int routes) {
     if (!n_agents_) return;
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        if (routes > 0 && !agent->IsEstablished())
+            continue;
         for (int i = 1; i <= n_instances_; i++) {
             string instance_name = "instance" + boost::lexical_cast<string>(i);
             TASK_UTIL_EXPECT_EQ_MSG(routes, agent->RouteCount(instance_name),
                                     "Wait for routes in " + instance_name);
             ASSERT_TRUE(agent->RouteCount(instance_name) == routes);
-        }
-    }
-    WaitForIdle();
-}
-
-void BgpPeerCloseTest::VerifyXmppRouteNextHops() {
-    if (!n_agents_ || n_agents_ != n_peers_) return;
-
-    int agent_id = 0;
-    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        agent_id++;
-        for (int i = 1; i <= n_instances_; i++) {
-            string instance_name = "instance" + boost::lexical_cast<string>(i);
-            TASK_UTIL_EXPECT_EQ_MSG(n_routes_, agent->RouteCount(instance_name),
-                                    "Wait for routes in " + instance_name);
-            for (int rt = 0; rt < n_routes_; rt++) {
-                string prefix =
-                    "10." + boost::lexical_cast<string>(agent_id) + ".1.1/32";
-
-                //
-                // We expect two next-hops, one from the agent and one from
-                // the bgp peer
-                //
-                const test::NetworkAgentMock::RouteEntry *route;
-                TASK_UTIL_EXPECT_TRUE(
-                    (route = agent->RouteLookup(instance_name, prefix)) &&
-                    route->entry.next_hops.next_hop.size() == 2);
-            }
         }
     }
     WaitForIdle();
@@ -798,13 +775,10 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
     }
 
     AddAllRoutes();
-    VerifyXmppRouteNextHops();
 }
 
+// Invoke stale timer callbacks as evm is not running in this unit test
 void BgpPeerCloseTest::CallStaleTimer(bool bgp_peers_ready) {
-
-
-    // Invoke stale timer callbacks as evm is not running in this unit test
     BOOST_FOREACH(BgpNullPeer *peer, peers_) {
         peer->peer()->IsReady_fnc_ =
             boost::bind(&BgpPeerCloseTest::IsReady, this, bgp_peers_ready);
@@ -837,12 +811,9 @@ void BgpPeerCloseTest::XmppPeerClose(int npeers) {
         }
     }
 
-    WaitForIdle();
     down_count = npeers;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
-         if (!--down_count)
-             break;
+        TASK_UTIL_EXPECT_EQ(down_count-- < 1, agent->IsEstablished());
     }
 }
 
