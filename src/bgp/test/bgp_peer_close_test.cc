@@ -37,10 +37,10 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(5);
-static vector<int>  n_routes    = boost::assign::list_of(5);
-static vector<int>  n_peers     = boost::assign::list_of(5);
-static vector<int>  n_agents    = boost::assign::list_of(5);
+static vector<int>  n_instances = boost::assign::list_of(3);
+static vector<int>  n_routes    = boost::assign::list_of(3);
+static vector<int>  n_peers     = boost::assign::list_of(0);
+static vector<int>  n_agents    = boost::assign::list_of(3);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
                                   boost::assign::list_of(false);
@@ -256,7 +256,6 @@ protected:
     BgpPeerCloseTest() : thread_(&evm_) { }
 
     virtual void SetUp() {
-
         server_.reset(new BgpServerTest(&evm_, "A"));
         xmpp_server_ = new XmppServerTest(&evm_, XMPP_CONTROL_SERV);
 
@@ -290,7 +289,12 @@ protected:
     }
 
     virtual void TearDown() {
+        WaitForIdle();
         SetPeerCloseGraceful(false);
+        XmppPeerClose();
+        VerifyRoutes(0);
+        VerifyReceivedXmppRoutes(0);
+
         xmpp_server_->Shutdown();
         WaitForIdle();
         if (n_agents_) {
@@ -334,6 +338,9 @@ protected:
         return cfg;
     }
 
+    void GracefulRestartTestStart();
+    void GracefulRestartTestRun();
+
     string GetConfig();
     BgpAttr *CreatePathAttr();
     void AddRoutes(BgpTable *table, BgpNullPeer *npeer);
@@ -344,7 +351,8 @@ protected:
     void CreateAgents();
     void Subscribe();
     void UnSubscribe();
-    void AddOrDeleteXmppRoutes(bool add);
+    void AddOrDeleteXmppRoutes(bool add, int nroutes = -1,
+                               int down_agents = -1);
     void VerifyReceivedXmppRoutes(int routes);
     void DeleteAllRoutingInstances();
     void VerifyRoutingInstances();
@@ -368,9 +376,9 @@ protected:
     boost::scoped_ptr<BgpXmppChannelManagerMock> channel_manager_;
     scoped_ptr<BgpInstanceConfigTest> master_cfg_;
     RoutingInstance *master_instance_;
-    std::list<BgpNullPeer *> peers_;
-    std::list<test::NetworkAgentMock *> xmpp_agents_;
-    std::list<BgpXmppChannel *> xmpp_peers_;
+    std::vector<BgpNullPeer *> peers_;
+    std::vector<test::NetworkAgentMock *> xmpp_agents_;
+    std::vector<BgpXmppChannel *> xmpp_peers_;
     int n_families_;
     std::vector<Address::Family> familes_;
     int n_instances_;
@@ -379,6 +387,30 @@ protected:
     int n_agents_;
     int n_targets_;
     bool xmpp_close_from_control_node_;
+
+    struct AgentTestParams {
+        AgentTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
+                        vector<int> nroutes) {
+            initialize(agent, instance_ids, nroutes);
+        }
+
+        AgentTestParams(test::NetworkAgentMock *agent) {
+            initialize(agent, vector<int>(), vector<int>());
+        }
+
+        void initialize(test::NetworkAgentMock *agent,
+                        vector<int> instance_ids, vector<int> nroutes) {
+            this->agent = agent;
+            this->instance_ids = instance_ids;
+            this->nroutes = nroutes;
+        }
+
+        test::NetworkAgentMock *agent;
+        vector<int> instance_ids;
+        vector<int> nroutes;
+    };
+    std::vector<AgentTestParams> n_flip_from_agents_;
+    std::vector<test::NetworkAgentMock *> n_down_from_agents_;
 };
 
 void BgpPeerCloseTest::VerifyPeer(BgpServerTest *server,
@@ -626,11 +658,13 @@ void BgpPeerCloseTest::CreateAgents() {
     for (int i = 0; i < n_agents_; i++) {
 
         // create an XMPP client in server A
-        xmpp_agents_.push_back(new test::NetworkAgentMock(&evm_,
+        test::NetworkAgentMock *agent = new test::NetworkAgentMock(&evm_,
             "agent" + boost::lexical_cast<string>(i) +
                 "@vnsw.contrailsystems.com",
             xmpp_server_->GetPort(),
-            prefix.ip4_addr().to_string()));
+            prefix.ip4_addr().to_string());
+        agent->set_id(i);
+        xmpp_agents_.push_back(agent);
         WaitForIdle();
 
         TASK_UTIL_EXPECT_NE_MSG(static_cast<BgpXmppChannel *>(NULL),
@@ -668,16 +702,26 @@ void BgpPeerCloseTest::UnSubscribe() {
     WaitForIdle();
 }
 
-void BgpPeerCloseTest::AddOrDeleteXmppRoutes(bool add) {
+void BgpPeerCloseTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
+                                             int down_agents) {
+    if (n_routes ==-1)
+        n_routes = n_routes_;
+
+    if (down_agents == -1)
+        down_agents = n_agents_;
+
     int agent_id = 1;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        if (down_agents-- < 1)
+            continue;
+
         for (int i = 1; i <= n_instances_; i++) {
             string instance_name = "instance" + boost::lexical_cast<string>(i);
 
             Ip4Prefix prefix(Ip4Prefix::FromString(
                 "10." + boost::lexical_cast<string>(i) +
                 boost::lexical_cast<string>(agent_id) + ".1/32"));
-            for (int rt = 0; rt < n_routes_; rt++,
+            for (int rt = 0; rt < n_routes; rt++,
                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
                 if (add)
                     agent->AddRoute(instance_name, prefix.ToString(),
@@ -696,11 +740,15 @@ void BgpPeerCloseTest::AddOrDeleteXmppRoutes(bool add) {
 void BgpPeerCloseTest::VerifyReceivedXmppRoutes(int routes) {
     if (!n_agents_) return;
 
+    int agent_id = 0;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        agent_id++;
         if (routes > 0 && !agent->IsEstablished())
             continue;
         for (int i = 1; i <= n_instances_; i++) {
             string instance_name = "instance" + boost::lexical_cast<string>(i);
+            if (!agent->HasSubscribed(instance_name))
+                continue;
             TASK_UTIL_EXPECT_EQ_MSG(routes, agent->RouteCount(instance_name),
                                     "Wait for routes in " + instance_name);
             ASSERT_TRUE(agent->RouteCount(instance_name) == routes);
@@ -813,7 +861,8 @@ void BgpPeerCloseTest::XmppPeerClose(int npeers) {
 
     down_count = npeers;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_EQ(down_count-- < 1, agent->IsEstablished());
+        TASK_UTIL_EXPECT_EQ(down_count < 1, agent->IsEstablished());
+        down_count--;
     }
 }
 
@@ -851,6 +900,7 @@ void BgpPeerCloseTest::InitParams() {
 // 1. Repeated close in each of the above case before the close is complete
 // 2. Repeated close in each of the above case after the close is complete (?)
 
+/*
 TEST_P(BgpPeerCloseTest, ClosePeers) {
     SCOPED_TRACE(__FUNCTION__);
     InitParams();
@@ -951,7 +1001,273 @@ TEST_P(BgpPeerCloseTest, DeleteRoutingInstances) {
     TASK_UTIL_EXPECT_EQ_MSG(1, server_->routing_instance_mgr()->count(),
         "Waiting for the completion of routing-instances' deletion");
 }
+*/
 
+// Bring up n_agents_ in n_instances_ and advertise
+//     n_routes_ (v4 and v6) in each connection
+// Verify that n_agents_ * n_instances_ * n_routes_ routes are received in
+//     agent in each instance
+// * Subset * picked serially/randomly
+// Subset of agents support GR
+// Subset of agents go down permanently (Triggered from agents)
+// Subset of agents flip (go down and come back up) (Triggered from agents)
+// Subset of agents go down permanently (Triggered from control-node)
+// Subset of agents flip (Triggered from control-node)
+//     Subset of subscriptions after restart
+//     Subset of routes are [re]advertised after restart
+void BgpPeerCloseTest::GracefulRestartTestStart () {
+    InitParams();
+
+    //  Bring up n_agents_ in n_instances_ and advertise n_routes_ per session
+    AddPeersWithRoutes(master_cfg_.get());
+    VerifyPeers();
+    VerifyRoutes(n_routes_);
+    VerifyRibOutCreationCompletion();
+}
+
+void BgpPeerCloseTest::GracefulRestartTestRun () {
+    int total_routes = n_instances_ * n_agents_ * n_routes_;
+
+    //  Verify that n_agents_ * n_instances_ * n_routes_ routes are received in
+    //  agent in each instance
+    VerifyReceivedXmppRoutes(total_routes);
+
+    // Subset of agents support GR
+    // BOOST_FOREACH(test::NetworkAgentMock *agent, n_gr_supported_agents)
+        SetPeerCloseGraceful(true);
+
+    //  Subset of agents go down permanently (Triggered from agents)
+    BOOST_FOREACH(test::NetworkAgentMock *agent, n_down_from_agents_) {
+        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        agent->SessionDown();
+        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+        total_routes -= n_instances_ * n_routes_;
+    }
+
+    //  Subset of agents flip (Triggered from agents)
+    BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
+        test::NetworkAgentMock *agent = agent_test_param.agent;
+        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        agent->SessionDown();
+        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+        total_routes -= n_instances_ * n_routes_;
+    }
+
+    BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
+        test::NetworkAgentMock *agent = agent_test_param.agent;
+        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+        agent->SessionUp();
+    }
+    WaitForIdle();
+
+    BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
+        test::NetworkAgentMock *agent = agent_test_param.agent;
+        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+
+        // Subset of subscriptions after restart
+        agent->Subscribe(BgpConfigManager::kMasterInstance, -1);
+        for (size_t i = 0; i < agent_test_param.instance_ids.size(); i++) {
+            int instance_id = agent_test_param.instance_ids[i];
+            string instance_name = "instance" +
+                boost::lexical_cast<string>(instance_id);
+            agent->Subscribe(instance_name, instance_id);
+            // Subset of routes are [re]advertised after restart
+            Ip4Prefix prefix(Ip4Prefix::FromString(
+                "10." + boost::lexical_cast<string>(instance_id) +
+                boost::lexical_cast<string>(agent->id()) + ".1/32"));
+            int nroutes = agent_test_param.nroutes[i];
+            for (int rt = 0; rt < nroutes; rt++,
+                prefix = task_util::Ip4PrefixIncrement(prefix)) {
+                agent->AddRoute(instance_name, prefix.ToString(),
+                    "100.100.100." + boost::lexical_cast<string>(agent->id()));
+            }
+            total_routes += nroutes;
+        }
+    }
+    WaitForIdle();
+
+    // Directly invoke stale timer callbacks
+    CallStaleTimer(true);
+    VerifyReceivedXmppRoutes(total_routes);
+}
+
+// None of the agents go down permanently
+TEST_P(BgpPeerCloseTest, GracefulRestart_Down_1) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+    GracefulRestartTestRun();
+}
+
+// All agents go down permanently
+TEST_P(BgpPeerCloseTest, GracefulRestart_Down_2) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    n_down_from_agents_ = xmpp_agents_;
+    GracefulRestartTestRun();
+}
+
+// Some agents go down permanently
+TEST_P(BgpPeerCloseTest, GracefulRestart_Down_3) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size()/2; i++)
+        n_down_from_agents_.push_back(xmpp_agents_[i]);
+    GracefulRestartTestRun();
+}
+
+// Some agents go down permanently and some flip (which sends no routes)
+TEST_P(BgpPeerCloseTest, GracefulRestart_Down_4) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size(); i++) {
+        if (i <= xmpp_agents_.size()/2)
+            n_down_from_agents_.push_back(xmpp_agents_[i]);
+        else
+            n_flip_from_agents_.push_back(AgentTestParams(xmpp_agents_[i]));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up but do not subscribe to any instance
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_1) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        n_flip_from_agents_.push_back(AgentTestParams(agent));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up and subscribe to all instances and sends all routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_2) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(n_routes_);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up and subscribe to all instances but sends no routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_3) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(0);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up and subscribe to all instances and sends some routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_4) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(n_routes_/2);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
+
+
+
+
+
+// Some agents come back up but do not subscribe to any instance
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_Some_1) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
+        test::NetworkAgentMock *agent = xmpp_agents_[i];
+        n_flip_from_agents_.push_back(AgentTestParams(agent));
+    }
+    GracefulRestartTestRun();
+}
+
+// Some agents come back up and subscribe to all instances and sends all routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_Some_2) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
+        test::NetworkAgentMock *agent = xmpp_agents_[i];
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int j = 1; j <= n_instances_; j++) {
+            instance_ids.push_back(j);
+            nroutes.push_back(n_routes_);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
+
+// Some agents come back up and subscribe to all instances but sends no routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_Some_3) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
+        test::NetworkAgentMock *agent = xmpp_agents_[i];
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int j = 1; j <= n_instances_; j++) {
+            instance_ids.push_back(j);
+            nroutes.push_back(0);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
+
+// Some agents come back up and subscribe to all instances and sends some routes
+TEST_P(BgpPeerCloseTest, GracefulRestart_Flap_Some_4) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
+        test::NetworkAgentMock *agent = xmpp_agents_[i];
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int j = 1; j <= n_instances_; j++) {
+            instance_ids.push_back(j);
+            nroutes.push_back(n_routes_/2);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes));
+    }
+    GracefulRestartTestRun();
+}
 
 #define COMBINE_PARAMS \
     Combine(ValuesIn(GetInstanceParameters()),                      \
