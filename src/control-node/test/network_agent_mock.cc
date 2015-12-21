@@ -766,7 +766,7 @@ NetworkAgentMock::NetworkAgentMock(EventManager *evm, const string &hostname,
                 boost::bind(&NetworkAgentMock::ProcessRequest, this, _1)),
       server_address_(server_address), local_address_(local_address),
       server_port_(server_port), skip_updates_processing_(false), down_(false),
-      xmpp_auth_enabled_(xmpp_auth_enabled) {
+      xmpp_auth_enabled_(xmpp_auth_enabled), id_(0) {
 
     // Static initialization of NetworkAgentMock class.
     Initialize();
@@ -1406,6 +1406,10 @@ int NetworkAgentMock::RouteCount(const std::string &network) const {
 
 int NetworkAgentMock::RouteCount() const {
     return route_mgr_->Count();
+}
+
+bool NetworkAgentMock::HasSubscribed(const std::string &network) const {
+    return route_mgr_->HasSubscribed(network);
 }
 
 // Return number of nexthops associated with a given route
