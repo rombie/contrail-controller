@@ -378,6 +378,7 @@ public:
 
     int RouteCount(const std::string &network) const;
     int RouteCount() const;
+    bool HasSubscribed(const std::string &network) const;
     int RouteNextHopCount(const std::string &network,
                           const std::string &prefix);
     const RouteEntry *RouteLookup(const std::string &network,
@@ -487,6 +488,8 @@ public:
     const std::string ToString() const;
     void set_localaddr(const std::string &addr) { impl_->set_localaddr(addr); }
     XmppDocumentMock *GetXmlHandler() { return impl_.get(); }
+    void set_id (int id) { id_ = id; }
+    const int id() const { return id_; }
 
     XmppClient *client() { return client_; }
     void Delete();
@@ -541,6 +544,7 @@ private:
     tbb::interface5::condition_variable cond_var_;
 
     bool xmpp_auth_enabled_;
+    int id_;
 };
 
 typedef boost::shared_ptr<NetworkAgentMock> NetworkAgentMockPtr;

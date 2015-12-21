@@ -82,6 +82,9 @@ bool PeerCloseManager::StaleTimerCallback() {
     // Protect this method from possible parallel new close request
     tbb::recursive_mutex::scoped_lock lock(mutex_);
 
+    if (!stale_timer_running_)
+        return false;
+
     // If the peer is back up and this address family is still supported,
     // sweep old paths which may not have come back in the new session
     if (peer_->IsReady()) {
