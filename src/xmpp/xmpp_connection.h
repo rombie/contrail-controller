@@ -209,7 +209,7 @@ public:
         state_machine_.reset(state_machine);
     }
 
-    void swap_state_machine(XmppConnection *other) {
+    void SwapXmppStateMachine(XmppConnection *other) {
         state_machine_.swap(other->state_machine_);
     }
 

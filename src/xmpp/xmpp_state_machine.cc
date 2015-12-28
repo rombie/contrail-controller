@@ -368,37 +368,8 @@ struct Active : public sc::state<Active, XmppStateMachine> {
             return discard_event();
         }
 
-        // Swap old connection with the new one.
-        bool created;
-        XmppConnectionEndpoint *connection_endpoint =
-            static_cast<XmppServer *>(
-                connection->server())->LocateConnectionEndpoint(
-                static_cast<XmppServerConnection *>(connection), created);
         XmppSession *session = state_machine->session();
-        if (!created) {
-            if (connection_endpoint->connection()) {
-                XmppConnection *old_connection =
-                    connection_endpoint->connection();
-                XmppStateMachine *old_state_machine =
-                    old_connection->state_machine();
-
-                connection->swap_state_machine(old_connection);
-                state_machine->swap_connection(old_state_machine);
-
-                XmppSession *old_session = old_state_machine->session();
-                if (old_session)
-                    old_session->SetConnection(connection);
-                session->SetConnection(old_connection);
-
-                old_connection->set_session(session);
-
-                // Trigger deletion of the new connection (which now is
-                // linked wth old_state_machine.
-                connection->Shutdown();
-            } else {
-                connection_endpoint->set_connection(connection);
-            }
-        }
+        state_machine->ResurrectOldConnection(connection, session);
         state_machine->CancelOpenTimer();
         if (!connection->SendOpenConfirm(session)) {
             connection->SendClose(session);
@@ -1374,31 +1345,49 @@ bool XmppStateMachine::PassiveOpen(XmppSession *session) {
     return Enqueue(xmsm::EvTcpPassiveOpen(session));
 }
 
+// Process XmppStream header message received over a session. Close the stream
+// if an old session is still present and undergoing graceful restart.
 bool XmppStateMachine::ProcessStreamHeaderMessage(XmppSession *session,
         const XmppStanza::XmppMessage *msg) {
+
+    // Update "To" information which can be used to map an older session
     session->Connection()->SetTo(msg->from);
 
-    // Check if a connection from this peer already exists.
     XmppServer *xmpp_server = dynamic_cast<XmppServer *>(server_);
     XmppConnectionEndpoint *endp = NULL;
 
-    if (xmpp_server) {
+    // Look for an endpoint which may already exist
+    if (xmpp_server)
         endp = xmpp_server->FindConnectionEndpoint(
                 dynamic_cast<XmppServerConnection *>(connection_));
-    }
+
+    // If older endpoint is present and is still associated with XmppConnection,
+    // check if older connection is under graceful-restart.
     if (endp && endp->connection()) {
         XmppStateMachine *state_machine = endp->connection()->state_machine();
+
+        // Different state_machines imply that connections are different
         if (state_machine && state_machine != this) {
             xmsm::XmState state = state_machine->get_state();
+
+            // If GR is not supported, then close all new connections until old
+            // one is completely deleted. Even if GR is supported, new 
+            // connection cannot be accepted until old one is fully cleaned up.
             if (!xmpp_server->IsPeerCloseGraceful() || state != xmsm::ACTIVE) {
 
                 // Bring down old session if it is still in ESTABLISHED state.
+                // This is the scenario in which old session's TCP did not learn
+                // the session down event, possibly due to compute cold reboot.
+                // In that case, trigger closure (and possibly GR) process for
+                // the old session.
                 if (state == xmsm::ESTABLISHED)
                     Enqueue(xmsm::EvTcpClose(state_machine->session()));
                 return Enqueue(xmsm::EvTcpClose(session));
             }
         }
     }
+
+    // In all other cases, process the OpenMessage like it is normally done.
     return Enqueue(xmsm::EvXmppOpen(session, msg));
 }
 
@@ -1641,4 +1630,62 @@ void XmppStateMachine::SendConnectionInfo(XmppConnectionInfo *info,
     }
     XMPP_CONNECTION_LOG_MSG(*info);
     return;
+}
+
+// Resurrect an old xmpp connection if present (when under GracefulRestart)
+//
+// During Graceful Restart (or otherwise), new connections are not rejected in
+// ProcessStreamHeaderMessage() itself until old one's cleanup process is
+// complete and the system is ready to start a new session.
+//
+// Hence in here, when called upon receipt of OpenMessage, we can try to reuse
+// old XmppConnection if present and there by complete any pending GR process
+//
+// We do so by reusing XmppConnection, XmppChannel, etc. from the old connection
+// and only use the XmppSession and XmppStateMachine from the new session
+//
+// New connection is instead associated with the old state machine and session,
+// and their deletion is triggered
+void XmppStateMachine::ResurrectOldConnection(XmppConnection *new_connection,
+                                              XmppSession *new_session) {
+
+    // Look for an endpoint (which is a persistent data structure) across
+    // xmpp session flips
+    bool created;
+    XmppConnectionEndpoint *connection_endpoint =
+        static_cast<XmppServer *>(
+            new_connection->server())->LocateConnectionEndpoint(
+                static_cast<XmppServerConnection *>(new_connection), created);
+
+    // If this is a new endpoint, then there is no older connecction to manage.
+    if (created)
+        return;
+
+    // There is no connection associated with older end point. Treat it as
+    // a new endpoint being created (XXX Should we assert here instead ?)
+    if (!connection_endpoint->connection()) {
+        connection_endpoint->set_connection(new_connection);
+        return;
+    }
+
+    // Retrieve old XmppConnection and XmppStateMachine (to reuse)
+    XmppConnection *old_xmpp_connection = connection_endpoint->connection();
+    XmppStateMachine *old_state_machine = old_xmpp_connection->state_machine();
+
+    // Swap Old and New connections and state machines linkages
+    new_connection->SwapXmppStateMachine(old_xmpp_connection);
+    this->SwapXmppConnection(old_state_machine);
+
+    // Update XmppConnections from the sessions.
+    XmppSession *old_xmpp_session = old_state_machine->session();
+    if (old_xmpp_session)
+        old_xmpp_session->SetConnection(new_connection);
+    new_session->SetConnection(old_xmpp_connection);
+
+    // Swap old xmpp session with the new one.
+    old_xmpp_connection->set_session(new_session);
+
+    // Trigger deletion of the new connection (which now is linked wth
+    // the old_state_machine and old_xmpp_session
+    new_connection->Shutdown();
 }

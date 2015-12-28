@@ -128,7 +128,7 @@ public:
     void set_connection(const XmppConnection *connection) {
         connection_ = const_cast<XmppConnection *>(connection);
     }
-    void swap_connection(XmppStateMachine *other) {
+    void SwapXmppConnection(XmppStateMachine *other) {
         XmppConnection *tmp = connection_;
         connection_ = other->connection_;
         other->connection_ = tmp;
@@ -166,6 +166,8 @@ public:
 
     void SendConnectionInfo(XmppConnectionInfo *info, const std::string &event, 
                             const std::string &nextstate = ""); 
+    void ResurrectOldConnection(XmppConnection *connection,
+                                XmppSession *session);
 
     void set_last_event(const std::string &event);
     const std::string &last_event() const { return last_event_; }
