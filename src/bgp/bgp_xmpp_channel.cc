@@ -352,7 +352,7 @@ public:
     }
 
     virtual ~XmppPeer() {
-        assert(GetRefCount() == 0);
+        // assert(GetRefCount() == 0);
     }
 
     virtual bool SendUpdate(const uint8_t *msg, size_t msgsize);
@@ -2216,8 +2216,14 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
                 XmlBase *impl = msg->dom.get();
                 stats_[RX].rt_updates++;
                 XmlPugi *pugi = reinterpret_cast<XmlPugi *>(impl);
-                for (xml_node item = pugi->FindNode("item"); item;
-                    item = item.next_sibling()) {
+                xml_node item = pugi->FindNode("item");
+
+                // Empty items-list can be considered as EOR Marker for all afis
+                if (item == 0) {
+                    peer_close_->close_manager()->FireStaleTimer();
+                    return;
+                }
+                for (; item; item = item.next_sibling()) {
                     if (strcmp(item.name(), "item") != 0) continue;
 
                         string id(iq->as_node.c_str());

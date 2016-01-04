@@ -194,6 +194,7 @@ public:
     static const char *kPubSubNS;
 
     XmppDocumentMock(const std::string &hostname);
+    pugi::xml_document *AddEorMarker();
     pugi::xml_document *RouteAddXmlDoc(const std::string &network,
         const std::string &prefix,
         const NextHops &nexthops = NextHops(),
@@ -401,6 +402,7 @@ public:
         return inet6_route_mgr_->Lookup(network, prefix);
     }
 
+    void SendEorMarker();
     void AddRoute(const std::string &network, const std::string &prefix,
                   const std::string nexthop = "",
                   int local_pref = 0, int med = 0);
@@ -481,6 +483,8 @@ public:
 
     bool IsEstablished();
     bool IsSessionEstablished();
+    bool IsReady();
+    bool IsChannelReady();
     void ClearInstances();
 
     const std::string &hostname() const { return impl_->hostname(); }
@@ -501,6 +505,7 @@ public:
 
     enum RequestType {
         IS_ESTABLISHED,
+        IS_CHANNEL_READY,
     };
     struct Request {
         RequestType type;
