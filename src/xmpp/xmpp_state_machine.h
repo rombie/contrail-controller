@@ -91,7 +91,7 @@ public:
     void TimerErrorHandler(std::string name, std::string error);
 
     // Feed session events into the state machine.
-    void OnSessionEvent(TcpSession *session, TcpSession::Event event);
+    virtual void OnSessionEvent(TcpSession *session, TcpSession::Event event);
 
     // Receive Passive Open.
     bool PassiveOpen(XmppSession *session);

@@ -22,6 +22,7 @@
 #include "control-node/control_node.h"
 #include "control-node/test/network_agent_mock.h"
 #include "io/test/event_manager_test.h"
+#include "xmpp/xmpp_factory.h"
 
 #define XMPP_CONTROL_SERV   "bgp.contrail.com"
 #define PUBSUB_NODE_ADDR "bgp-node.contrail.com"
@@ -241,24 +242,33 @@ protected:
 
     struct AgentTestParams {
         AgentTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
+                        vector<int> nroutes, TcpSession::Event skip_tcp_event) {
+            initialize(agent, instance_ids, nroutes, skip_tcp_event);
+        }
+
+        AgentTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
                         vector<int> nroutes) {
-            initialize(agent, instance_ids, nroutes);
+            initialize(agent, instance_ids, nroutes, TcpSession::EVENT_NONE);
         }
 
         AgentTestParams(test::NetworkAgentMock *agent) {
-            initialize(agent, vector<int>(), vector<int>());
+            initialize(agent, vector<int>(), vector<int>(),
+                       TcpSession::EVENT_NONE);
         }
 
         void initialize(test::NetworkAgentMock *agent,
-                        vector<int> instance_ids, vector<int> nroutes) {
+                        vector<int> instance_ids, vector<int> nroutes,
+                        TcpSession::Event skip_tcp_event) {
             this->agent = agent;
             this->instance_ids = instance_ids;
             this->nroutes = nroutes;
+            this->skip_tcp_event = skip_tcp_event;
         }
 
         test::NetworkAgentMock *agent;
         vector<int> instance_ids;
         vector<int> nroutes;
+        TcpSession::Event skip_tcp_event;
     };
     std::vector<AgentTestParams> n_flip_from_agents_;
     std::vector<test::NetworkAgentMock *> n_down_from_agents_;
@@ -688,11 +698,16 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        XmppStateMachineTest::set_skip_tcp_event(
+                agent_test_param.skip_tcp_event);
         agent->SessionDown();
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+        TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
+                            XmppStateMachineTest::get_skip_tcp_event());
         total_routes -= remaining_instances * n_routes_;
     }
 
+    XmppStateMachineTest::set_skip_tcp_event(TcpSession::EVENT_NONE);
     BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
@@ -743,7 +758,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     VerifyReceivedXmppRoutes(total_routes);
 }
 
-// None of the agents go down permanently
+// None of the agents goes down or flip
 TEST_P(GracefulRestartTest, GracefulRestart_Down_1) {
     SCOPED_TRACE(__FUNCTION__);
     GracefulRestartTestStart();
@@ -795,6 +810,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_1) {
 }
 
 // All agents come back up and subscribe to all instances and sends all routes
+// Agent session tcp down event is detected at the server
 TEST_P(GracefulRestartTest, GracefulRestart_Flap_2) {
     SCOPED_TRACE(__FUNCTION__);
     GracefulRestartTestStart();
@@ -806,6 +822,9 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_2) {
             instance_ids.push_back(i);
             nroutes.push_back(n_routes_);
         }
+
+        // Trigger the case of compute-node hard reset where in tcp fin event
+        // never reaches control-node
         n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
                                                       nroutes));
     }
@@ -813,6 +832,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_2) {
 }
 
 // All agents come back up and subscribe to all instances but sends no routes
+// Agent session tcp down event is detected at the server
 TEST_P(GracefulRestartTest, GracefulRestart_Flap_3) {
     SCOPED_TRACE(__FUNCTION__);
     GracefulRestartTestStart();
@@ -831,6 +851,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_3) {
 }
 
 // All agents come back up and subscribe to all instances and sends some routes
+// Agent session tcp down event is detected at the server
 TEST_P(GracefulRestartTest, GracefulRestart_Flap_4) {
     SCOPED_TRACE(__FUNCTION__);
     GracefulRestartTestStart();
@@ -848,8 +869,68 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_4) {
     GracefulRestartTestRun();
 }
 
+// All agents come back up and subscribe to all instances and sends all routes
+// Agent session tcp down event is not detected at the server
+TEST_P(GracefulRestartTest, GracefulRestart_Flap_5) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
 
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(n_routes_);
+        }
 
+        // Trigger the case of compute-node hard reset where in tcp fin event
+        // never reaches control-node
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes,
+                                                      TcpSession::CLOSE));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up and subscribe to all instances but sends no routes
+// Agent session tcp down event is not detected at the server
+TEST_P(GracefulRestartTest, GracefulRestart_Flap_6) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(0);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes,
+                                                      TcpSession::CLOSE));
+    }
+    GracefulRestartTestRun();
+}
+
+// All agents come back up and subscribe to all instances and sends some routes
+// Agent session tcp down event is not detected at the server
+TEST_P(GracefulRestartTest, GracefulRestart_Flap_7) {
+    SCOPED_TRACE(__FUNCTION__);
+    GracefulRestartTestStart();
+
+    BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
+        vector<int> instance_ids = vector<int>();
+        vector<int> nroutes = vector<int>();
+        for (int i = 1; i <= n_instances_; i++) {
+            instance_ids.push_back(i);
+            nroutes.push_back(n_routes_/2);
+        }
+        n_flip_from_agents_.push_back(AgentTestParams(agent, instance_ids,
+                                                      nroutes,
+                                                      TcpSession::CLOSE));
+    }
+    GracefulRestartTestRun();
+}
 
 
 // Some agents come back up but do not subscribe to any instance
@@ -967,6 +1048,8 @@ static void SetUp() {
         boost::factory<PeerCloseManagerTest *>());
     BgpObjectFactory::Register<BgpXmppMessageBuilder>(
         boost::factory<BgpXmppMessageBuilder *>());
+    XmppObjectFactory::Register<XmppStateMachine>(
+        boost::factory<XmppStateMachineTest *>());
 }
 
 static void TearDown() {

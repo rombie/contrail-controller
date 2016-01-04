@@ -1382,7 +1382,8 @@ bool XmppStateMachine::ProcessStreamHeaderMessage(XmppSession *session,
                 // In that case, trigger closure (and possibly GR) process for
                 // the old session.
                 if (state == xmsm::ESTABLISHED)
-                    Enqueue(xmsm::EvTcpClose(state_machine->session()));
+                    state_machine->Enqueue(xmsm::EvTcpClose(
+                                state_machine->session()));
                 return Enqueue(xmsm::EvTcpClose(session));
             }
         }
