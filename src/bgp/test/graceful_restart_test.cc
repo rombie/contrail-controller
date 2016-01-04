@@ -218,10 +218,11 @@ protected:
     void DeleteRoutingInstances(vector<int> instances);
     void VerifyRoutingInstances();
     void XmppPeerClose(int nagents = -1);
-    void CallStaleTimer(bool);
+    void CallStaleTimer();
     void InitParams();
     void VerifyRoutes(int count);
     bool IsReady(bool ready);
+    void WaitForAgentToBeEstablished(test::NetworkAgentMock *agent);
 
     EventManager evm_;
     ServerThread thread_;
@@ -398,6 +399,12 @@ bool GracefulRestartTest::IsReady(bool ready) {
     return ready;
 }
 
+void GracefulRestartTest::WaitForAgentToBeEstablished(
+        test::NetworkAgentMock *agent) {
+    TASK_UTIL_EXPECT_EQ(true, agent->IsChannelReady());
+    TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+}
+
 ExtCommunitySpec *GracefulRestartTest::CreateRouteTargets() {
     auto_ptr<ExtCommunitySpec> commspec(new ExtCommunitySpec());
 
@@ -420,7 +427,7 @@ void GracefulRestartTest::AddXmppPeersWithRoutes() {
     CreateAgents();
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        WaitForAgentToBeEstablished(agent);
     }
 
     WaitForIdle();
@@ -606,7 +613,7 @@ void GracefulRestartTest::AddAgentsWithRoutes(
 }
 
 // Invoke stale timer callbacks as evm is not running in this unit test
-void GracefulRestartTest::CallStaleTimer(bool bgp_peers_ready) {
+void GracefulRestartTest::CallStaleTimer() {
     BOOST_FOREACH(BgpXmppChannel *peer, xmpp_peers_) {
         peer->Peer()->peer_close()->close_manager()->StaleTimerCallback();
     }
@@ -688,7 +695,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     //  Subset of agents go down permanently (Triggered from agents)
     BOOST_FOREACH(test::NetworkAgentMock *agent, n_down_from_agents_) {
-        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        WaitForAgentToBeEstablished(agent);
         agent->SessionDown();
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         total_routes -= remaining_instances * n_routes_;
@@ -697,7 +704,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     //  Subset of agents flip (Triggered from agents)
     BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
-        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        WaitForAgentToBeEstablished(agent);
         XmppStateMachineTest::set_skip_tcp_event(
                 agent_test_param.skip_tcp_event);
         agent->SessionDown();
@@ -712,7 +719,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         agent->SessionUp();
-        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        WaitForAgentToBeEstablished(agent);
     }
     DeleteRoutingInstances(instances_to_delete_during_gr_);
     remaining_instances -= instances_to_delete_during_gr_.size();
@@ -721,18 +728,18 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     BOOST_FOREACH(AgentTestParams agent_test_param, n_flip_from_agents_) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
-        TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+        WaitForAgentToBeEstablished(agent);
 
         // Subset of subscriptions after restart
         agent->Subscribe(BgpConfigManager::kMasterInstance, -1);
         for (size_t i = 0; i < agent_test_param.instance_ids.size(); i++) {
             int instance_id = agent_test_param.instance_ids[i];
             if (std::find(instances_to_delete_before_gr_.begin(),
-                          instances_to_delete_before_gr_.end(), instance_id) ==
+                          instances_to_delete_before_gr_.end(), instance_id) !=
                     instances_to_delete_before_gr_.end())
                 continue;
             if (std::find(instances_to_delete_during_gr_.begin(),
-                          instances_to_delete_during_gr_.end(), instance_id) ==
+                          instances_to_delete_during_gr_.end(), instance_id) !=
                     instances_to_delete_during_gr_.end())
                 continue;
             string instance_name = "instance" +
@@ -748,13 +755,16 @@ void GracefulRestartTest::GracefulRestartTestRun () {
                 agent->AddRoute(instance_name, prefix.ToString(),
                     "100.100.100." + boost::lexical_cast<string>(agent->id()));
             }
+
+            // Send EoR marker
+            // agent->SendEorMarker();
             total_routes += nroutes;
         }
     }
     WaitForIdle();
 
     // Directly invoke stale timer callbacks
-    CallStaleTimer(true);
+    CallStaleTimer();
     VerifyReceivedXmppRoutes(total_routes);
 }
 

@@ -54,6 +54,7 @@ public:
     void ProcessRibIn(DBTablePartBase *root, BgpRoute *rt, BgpTable *table,
                       int action_mask);
     bool IsCloseInProgress();
+    void FireStaleTimer();
 
 private:
     friend class PeerCloseManagerTest;
