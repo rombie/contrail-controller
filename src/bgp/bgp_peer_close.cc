@@ -43,6 +43,16 @@ void PeerCloseManager::StartStaleTimer() {
         boost::bind(&PeerCloseManager::StaleTimerCallback, this));
 }
 
+void PeerCloseManager::FireStaleTimer() {
+    if (!stale_timer_running_)
+        return;
+
+    // Cancel the old one and start a new one to trigger asap
+    stale_timer_->Cancel();
+    stale_timer_->Start(0,
+            boost::bind(&PeerCloseManager::StaleTimerCallback, this));
+}
+
 //
 // Concurrency: Runs in the context of the BGP peer rib membership task.
 //
@@ -103,7 +113,6 @@ bool PeerCloseManager::StaleTimerCallback() {
     // Timer callback is complete. Reset the appropriate flags
     stale_timer_running_ = false;
     start_stale_timer_ = false;
-    boost::system::error_code ec;
     stale_timer_->Cancel();
 
     return false;
