@@ -38,9 +38,9 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(5);
-static vector<int>  n_routes    = boost::assign::list_of(5);
-static vector<int>  n_agents    = boost::assign::list_of(5);
+static vector<int>  n_instances = boost::assign::list_of(2);
+static vector<int>  n_routes    = boost::assign::list_of(2);
+static vector<int>  n_agents    = boost::assign::list_of(2);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
                                   boost::assign::list_of(false);
