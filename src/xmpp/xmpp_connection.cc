@@ -618,7 +618,7 @@ public:
 
         if (parent_->session() || server_->IsPeerCloseGraceful()) {
             server_->NotifyConnectionEvent(parent_->ChannelMux(),
-                xmps::NOT_READY);
+                    xmps::NOT_READY);
         }
 
         if (parent_->logUVE()) {

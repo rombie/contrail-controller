@@ -187,6 +187,7 @@ bool BgpExport::Join(DBTablePartBase *root, const RibPeerSet &mjoin,
     // duplicate updates.
     //
     // TBD:: tweak this further to handle route refresh.
+    // TBD:: tweak this for post-update after GR
     RibPeerSet mcurrent, mscheduled;
     monitor->GetPeerSetCurrentAndScheduled(db_entry, RibOutUpdates::QUPDATE,
             &mcurrent, &mscheduled);

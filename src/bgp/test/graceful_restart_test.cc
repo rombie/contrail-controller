@@ -38,9 +38,9 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(2);
-static vector<int>  n_routes    = boost::assign::list_of(2);
-static vector<int>  n_agents    = boost::assign::list_of(2);
+static vector<int>  n_instances = boost::assign::list_of(5);
+static vector<int>  n_routes    = boost::assign::list_of(5);
+static vector<int>  n_agents    = boost::assign::list_of(5);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
                                   boost::assign::list_of(false);
@@ -211,6 +211,7 @@ protected:
     void CreateAgents();
     void Subscribe();
     void UnSubscribe();
+    test::NextHops GetNextHops(test::NetworkAgentMock *agent, int instance_id);
     void AddOrDeleteXmppRoutes(bool add, int nroutes = -1,
                                int down_agents = -1);
     void VerifyReceivedXmppRoutes(int routes);
@@ -301,11 +302,12 @@ void GracefulRestartTest::TearDown() {
     WaitForIdle();
     SetPeerCloseGraceful(false);
     XmppPeerClose();
+    xmpp_server_->Shutdown();
+    WaitForIdle();
+
     VerifyRoutes(0);
     VerifyReceivedXmppRoutes(0);
 
-    xmpp_server_->Shutdown();
-    WaitForIdle();
     if (n_agents_) {
         TASK_UTIL_EXPECT_EQ(0, xmpp_server_->ConnectionCount());
     }
@@ -488,6 +490,15 @@ void GracefulRestartTest::UnSubscribe() {
     WaitForIdle();
 }
 
+test::NextHops GracefulRestartTest::GetNextHops (test::NetworkAgentMock *agent,
+                                                 int instance_id) {
+    test::NextHops nexthops;
+    nexthops.push_back(test::NextHop("100.100.100." +
+                           boost::lexical_cast<string>(agent->id()),
+                           10000 + instance_id));
+    return nexthops;
+}
+
 void GracefulRestartTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
                                              int down_agents) {
     if (n_routes ==-1)
@@ -496,7 +507,6 @@ void GracefulRestartTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
     if (down_agents == -1)
         down_agents = n_agents_;
 
-    int agent_id = 1;
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         if (down_agents-- < 1)
             continue;
@@ -505,19 +515,18 @@ void GracefulRestartTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
             string instance_name = "instance" + boost::lexical_cast<string>(i);
 
             Ip4Prefix prefix(Ip4Prefix::FromString(
-                "10." + boost::lexical_cast<string>(i) +
-                boost::lexical_cast<string>(agent_id) + ".1/32"));
+                "10." + boost::lexical_cast<string>(i) + "." +
+                boost::lexical_cast<string>(agent->id()) + ".1/32"));
             for (int rt = 0; rt < n_routes; rt++,
                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
-                if (add)
+                if (add) {
                     agent->AddRoute(instance_name, prefix.ToString(),
-                                    "100.100.100." +
-                                    boost::lexical_cast<string>(agent_id));
-                else
+                                    GetNextHops(agent, i));
+                } else {
                     agent->DeleteRoute(instance_name, prefix.ToString());
+                }
             }
         }
-        agent_id++;
     }
     WaitForIdle();
     // if (!add) VerifyReceivedXmppRoutes(0);
@@ -615,7 +624,7 @@ void GracefulRestartTest::AddAgentsWithRoutes(
 // Invoke stale timer callbacks as evm is not running in this unit test
 void GracefulRestartTest::CallStaleTimer() {
     BOOST_FOREACH(BgpXmppChannel *peer, xmpp_peers_) {
-        peer->Peer()->peer_close()->close_manager()->StaleTimerCallback();
+        peer->Peer()->peer_close()->close_manager()->RestartTimerCallback();
     }
     WaitForIdle();
 }
@@ -747,13 +756,13 @@ void GracefulRestartTest::GracefulRestartTestRun () {
             agent->Subscribe(instance_name, instance_id);
             // Subset of routes are [re]advertised after restart
             Ip4Prefix prefix(Ip4Prefix::FromString(
-                "10." + boost::lexical_cast<string>(instance_id) +
+                "10." + boost::lexical_cast<string>(instance_id) + "." +
                 boost::lexical_cast<string>(agent->id()) + ".1/32"));
             int nroutes = agent_test_param.nroutes[i];
             for (int rt = 0; rt < nroutes; rt++,
                 prefix = task_util::Ip4PrefixIncrement(prefix)) {
                 agent->AddRoute(instance_name, prefix.ToString(),
-                    "100.100.100." + boost::lexical_cast<string>(agent->id()));
+                                    GetNextHops(agent, instance_id));
             }
 
             // Send EoR marker
