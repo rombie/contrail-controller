@@ -41,33 +41,27 @@ public:
     virtual ~PeerCloseManager();
 
     IPeer *peer() { return peer_; }
-    bool IsConfigDeleted() const { return config_deleted_; }
-    void SetConfigDeleted(bool deleted) { config_deleted_ = deleted; }
 
     void Close();
     bool StaleTimerCallback();
-    void CloseComplete(IPeer *ipeer, BgpTable *table, bool from_timer,
-                       bool gr_cancelled);
-    void SweepComplete(IPeer *ipeer, BgpTable *table);
-    int GetCloseTypeForTimerCallback(IPeerRib *peer_rib);
+    void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
     int GetActionAtStart(IPeerRib *peer_rib);
     void ProcessRibIn(DBTablePartBase *root, BgpRoute *rt, BgpTable *table,
                       int action_mask);
     bool IsCloseInProgress();
-    void FireStaleTimer();
+    void FireStaleTimerNow();
 
 private:
     friend class PeerCloseManagerTest;
 
     virtual void StartStaleTimer();
 
+    enum State { NONE, STALE, GR_TIMER, SWEEP, DELETE };
+
     IPeer *peer_;
-    bool close_in_progress_;
-    bool close_request_pending_;
-    bool config_deleted_;
     Timer *stale_timer_;
-    bool stale_timer_running_;
-    bool start_stale_timer_;
+    State state_;
+    bool close_again_;
     tbb::recursive_mutex mutex_;
 };
 
