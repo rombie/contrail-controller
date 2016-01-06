@@ -2102,12 +2102,14 @@ void BgpXmppChannel::ProcessSubscriptionRequest(
         if (add_change) {
             if (routing_instances_.find(rt_instance) !=
                 routing_instances_.end()) {
-                BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_WARN,
-                             BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
-                             "Duplicate subscribe for routing instance " <<
-                             vrf_name << ", triggering close");
-                channel_->Close();
-                return;
+                if (!peer_close_->close_manager()->IsCloseInProgress()) {
+                    BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_WARN,
+                                 BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
+                                 "Duplicate subscribe for routing instance " <<
+                                 vrf_name << ", triggering close");
+                    channel_->Close();
+                    return;
+                }
             }
             channel_stats_.instance_subscribe++;
         } else {
@@ -2201,7 +2203,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 
                 // Empty items-list can be considered as EOR Marker for all afis
                 if (item == 0) {
-                    peer_close_->close_manager()->FireStaleTimerNow();
+                    peer_close_->close_manager()->StartRestartTimer(0);
                     return;
                 }
                 for (; item; item = item.next_sibling()) {
@@ -2233,12 +2235,10 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 }
 
 bool BgpXmppChannelManager::DeleteExecutor(BgpXmppChannel *channel) {
-    if (channel->deleted()) return true;
-    channel->set_deleted(true);
-
-    // TODO(ananth): Enqueue an event to the deleter() and deleted this peer
-    // and the channel from a different thread to solve concurrency issues
-    delete channel;
+    if (!channel->deleted()) {
+        channel->set_deleted(true);
+        delete channel;
+    }
     return true;
 }
 

@@ -11,13 +11,13 @@
 
 // IPeer CloseProcess
 //
-// Graceful                                    close_state_ = NONE
-// 1. RibIn Stale Marking and Ribout deletion  close_state_ = STALE
-// 2. StateMachine restart and GR timer start  close_state_ = GR_TIMER
+// Graceful                                    close_state_: NONE
+// 1. RibIn Stale Marking and Ribout deletion  close_state_: STALE
+// 2. StateMachine restart and GR timer start  close_state_: GR_TIMER
 //
 // Peer IsReady() in timer callback
-// 3. RibIn Sweep and Ribout Generation        close_state_ = SWEEP
-// 4. UnregisterPeerComplete                   close_state_ = NONE
+// 3. RibIn Sweep and Ribout Generation        close_state_: SWEEP
+// 4. UnregisterPeerComplete                   close_state_: NONE
 //
 // Peer not IsReady() in timer callback
 // Goto step A
@@ -28,18 +28,15 @@
 //
 // NonGraceful                                 close_state_ = * (except DELETE)
 // A. RibIn deletion and Ribout deletion       close_state_ = DELETE
-// B. UnregisterPeerComplete => Peers deletion/StateMachine restart close_state_ = NONE
+// B. UnregisterPeerComplete => Peers delete/StateMachine restart
+//                                             close_state_ = NONE
 
 // Create an instance of PeerCloseManager with back reference to parent IPeer
 PeerCloseManager::PeerCloseManager(IPeer *peer) :
-        peer_(peer),
-        stale_timer_(NULL),
-        state_(NONE),
-        close_again_(false) {
-    if (peer->server()) {
+        peer_(peer), stale_timer_(NULL), state_(NONE), close_again_(false) {
+    if (peer->server())
         stale_timer_ = TimerManager::CreateTimer(*peer->server()->ioservice(),
                                                  "Graceful Restart StaleTimer");
-    }
 }
 
 PeerCloseManager::~PeerCloseManager() {
@@ -48,40 +45,49 @@ PeerCloseManager::~PeerCloseManager() {
 
 // Process RibIn staling related activities during peer closure
 // Return true if at least ome time is started, false otherwise
-void PeerCloseManager::StartStaleTimer() {
-    stale_timer_->Start(PeerCloseManager::kDefaultGracefulRestartTime * 1000,
-        boost::bind(&PeerCloseManager::StaleTimerCallback, this));
-    state_ = GR_TIMER;
+void PeerCloseManager::StartRestartTimer(int time) {
+    stale_timer_->Cancel();
+    stale_timer_->Start(time,
+        boost::bind(&PeerCloseManager::RestartTimerCallback, this));
 }
 
-void PeerCloseManager::FireStaleTimerNow() {
-    if (state_ != GR_TIMER)
-        return;
-
-    // Cancel the old one and start a new one to trigger asap
-    stale_timer_->Cancel();
-    stale_timer_->Start(0,
-            boost::bind(&PeerCloseManager::StaleTimerCallback, this));
+bool PeerCloseManager::RestartTimerCallback() {
+    if (state_ == GR_TIMER)
+        ProcessClosure();
+    return false;
 }
 
 // Route stale timer callback. If the peer has come back up, sweep routes for
 // those address families that are still active. Delete the rest
-bool PeerCloseManager::StaleTimerCallback() {
+void PeerCloseManager::ProcessClosure() {
     // Protect this method from possible parallel new close request
-    tbb::recursive_mutex::scoped_lock lock(mutex_);
-
-    if (state_ != GR_TIMER)
-        return false;
-    stale_timer_->Cancel();
+    tbb::recursive_mutex::scoped_lock mutex(mutex_);
 
     // If the peer is back up and this address family is still supported,
     // sweep old paths which may not have come back in the new session
-    state_ = peer_->IsReady() ? SWEEP : DELETE;
+    switch (state_) {
+        case NONE:
+            if (!peer_->peer_close()->IsCloseGraceful()) {
+                state_ = DELETE;
+            } else {
+                state_ = STALE;
+            }
+            break;
+        case GR_TIMER:
+            state_ = peer_->IsReady() && !close_again_ ? SWEEP : DELETE;
+            break;
 
+        case STALE:
+        case SWEEP:
+        case DELETE:
+            return;
+    }
+
+    if (state_ == DELETE)
+        peer_->peer_close()->CustomClose();
     peer_->server()->membership_mgr()->UnregisterPeer(peer_,
-        boost::bind(&PeerCloseManager::GetActionAtStart, this, _1),
+        boost::bind(&PeerCloseManager::GetCloseAction, this, _1),
         boost::bind(&PeerCloseManager::UnregisterPeerComplete, this, _1, _2));
-    return false;
 }
 
 bool PeerCloseManager::IsCloseInProgress() {
@@ -98,28 +104,27 @@ bool PeerCloseManager::IsCloseInProgress() {
 void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     tbb::recursive_mutex::scoped_lock lock(mutex_);
 
-    assert(state_ != NONE);
-    IPeerClose *peer_close = peer_->peer_close();
+    assert(state_ == STALE || state_ == SWEEP || state_ == DELETE);
 
     if (state_ == DELETE) {
-        peer_close->DeleteComplete();
-        return;
-    }
-
-    if (!close_again_ && state_ == SWEEP) {
+        peer_->peer_close()->DeleteComplete();
         state_ = NONE;
+        close_again_ = false;
         return;
     }
 
     if (close_again_) {
         state_ = DELETE;
-
-        // Start process to delete this peer's RibIns and RibOuts. Peer can be
-        // deleted only after these (asynchronous) activities are complete
+        peer_->peer_close()->CustomClose();
         peer_->server()->membership_mgr()->UnregisterPeer(peer_,
-            boost::bind(&PeerCloseManager::GetActionAtStart, this, _1),
+            boost::bind(&PeerCloseManager::GetCloseAction, this, _1),
             boost::bind(&PeerCloseManager::UnregisterPeerComplete, this,
                         _1, _2));
+        return;
+    }
+    
+    if (state_ == SWEEP) {
+        state_ = NONE;
         return;
     }
 
@@ -128,20 +133,19 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
 
     // If any stale timer has to be launched, then to wait for some time hoping
     // for the peer (and the paths) to come back up.
-    if (state_ == STALE) {
-        peer_close->CloseComplete();
-        StartStaleTimer();
-    }
+    peer_->peer_close()->CloseComplete();
+    StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTime * 1000);
+    state_ = GR_TIMER;
 }
 
 //
 // Get the type of RibIn close action at start (Not during graceful restart
 // timer callback, where in we walk the Rib again to sweep the routes)
 //
-int PeerCloseManager::GetActionAtStart(IPeerRib *peer_rib) {
+int PeerCloseManager::GetCloseAction(IPeerRib *peer_rib) {
     int action = MembershipRequest::INVALID;
 
-    if (state_ == DELETE && peer_rib->IsRibOutRegistered())
+    if ((state_ == STALE || state_ == DELETE) && peer_rib->IsRibOutRegistered())
         action |= static_cast<int>(MembershipRequest::RIBOUT_DELETE);
 
     if (!peer_rib->IsRibInRegistered())
@@ -150,12 +154,20 @@ int PeerCloseManager::GetActionAtStart(IPeerRib *peer_rib) {
     // If graceful restart timer is already running, then this is a second
     // close before previous restart has completed. Abort graceful restart
     // and delete the routes instead
-    if (state_ == DELETE) {
-        action |= static_cast<int>(MembershipRequest::RIBIN_DELETE);
-    } else if (state_ == STALE) {
+    switch (state_) {
+    case NONE:
+        break;
+    case STALE:
         action |= static_cast<int>(MembershipRequest::RIBIN_STALE);
-    } else if (state_ == STALE) {
+        break;
+    case GR_TIMER:
+        break;
+    case SWEEP:
         action |= static_cast<int>(MembershipRequest::RIBIN_SWEEP);
+        break;
+    case DELETE:
+        action |= static_cast<int>(MembershipRequest::RIBIN_DELETE);
+        break;
     }
     return (action);
 }
@@ -167,26 +179,21 @@ void PeerCloseManager::Close() {
     if (close_again_)
         return;
 
-    if (state_ != NONE) {
+    switch (state_) {
+    case NONE:
+        break;
+
+    case STALE:
+    case GR_TIMER:
+    case SWEEP:
+    case DELETE:
         close_again_ = true;
-        BGP_LOG_PEER(Event, peer_, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
-                     BGP_PEER_DIR_NA, "Close procedure already in progress");
-        FireStaleTimerNow();
-        return;
+        if (state_ != GR_TIMER)
+            return;
+        stale_timer_->Cancel();
+        break;
     }
-
-    IPeerClose *peer_close = peer_->peer_close();
-    state_ = peer_close->IsCloseGraceful() ? STALE : DELETE;
-
-    BGP_LOG_PEER(Event, peer_, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
-                 BGP_PEER_DIR_NA, "Close procedure initiated");
-    peer_close->CustomClose();
-
-    // Start process to delete this peer's RibIns and RibOuts. Peer can be
-    // deleted only after these (asynchronous) activities are complete.
-    peer_->server()->membership_mgr()->UnregisterPeer(peer_,
-        boost::bind(&PeerCloseManager::GetActionAtStart, this, _1),
-        boost::bind(&PeerCloseManager::UnregisterPeerComplete, this, _1, _2));
+    ProcessClosure();
 }
 
 // For graceful-restart, we take mark-and-sweep approach instead of directly

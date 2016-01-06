@@ -43,18 +43,18 @@ public:
     IPeer *peer() { return peer_; }
 
     void Close();
-    bool StaleTimerCallback();
+    bool RestartTimerCallback();
     void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
-    int GetActionAtStart(IPeerRib *peer_rib);
+    int GetCloseAction(IPeerRib *peer_rib);
     void ProcessRibIn(DBTablePartBase *root, BgpRoute *rt, BgpTable *table,
                       int action_mask);
     bool IsCloseInProgress();
-    void FireStaleTimerNow();
+    void StartRestartTimer(int time);
 
 private:
     friend class PeerCloseManagerTest;
 
-    virtual void StartStaleTimer();
+    void ProcessClosure();
 
     enum State { NONE, STALE, GR_TIMER, SWEEP, DELETE };
 

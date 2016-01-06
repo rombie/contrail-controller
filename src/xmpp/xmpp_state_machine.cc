@@ -1089,19 +1089,19 @@ void XmppStateMachine::ResetSession() {
     set_session(NULL);
     CancelHoldTimer();
 
-    if (!connection) return;
+    if (!connection)
+        return;
 
     // Stop keepalives, transition to IDLE and notify registerd entities.
     connection->StopKeepAliveTimer();
     connection->ChannelMux()->HandleStateEvent(xmsm::IDLE);
-    if (IsActiveChannel()) return;
+    if (IsActiveChannel())
+        return;
 
     // Retain the connection if graceful restart is supported.
     XmppServer *server = dynamic_cast<XmppServer *>(connection->server());
-    if (server->IsPeerCloseGraceful()) return;
-
-    // Delete the connection.
-    connection->ManagedDelete();
+    if (!server->IsPeerCloseGraceful())
+        connection->ManagedDelete();
 }
 
 XmppStateMachine::XmppStateMachine(XmppConnection *connection, bool active,
