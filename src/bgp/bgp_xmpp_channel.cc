@@ -173,43 +173,24 @@ public:
         parent_->rtarget_routes_.clear();
     }
 
-    virtual bool CloseComplete(bool from_timer, bool gr_cancelled) {
+    virtual void CloseComplete() {
         if (!parent_)
-            return true;
-        if (IsCloseGraceful())
-            parent_->set_peer_deleted(false);
+            return;
 
+        parent_->set_peer_deleted(false);
         XmppConnection *connection =
             const_cast<XmppConnection *>(parent_->channel_->connection());
 
-        if (!from_timer) {
-            // If graceful restart is enabled, do not delete this peer yet
-            // However, if a gr is already aborted, do not trigger another gr
-            if (!gr_cancelled && IsCloseGraceful()) {
+        // Restart state machine.
+        if (connection && connection->state_machine())
+            connection->state_machine()->Initialize();
+    }
 
-                // Restart state machine.
-                XmppStateMachine *state_machine = connection ?
-                    connection->state_machine() : NULL;
-                if (state_machine)
-                    state_machine->Initialize();
-                return false;
-            }
-        } else {
-            // Close is complete off graceful restart timer. Delete this peer
-            // if the session has not come back up
-            if (parent_->Peer()->IsReady())
-                return false;
-        }
-
-
-        // TODO(ananth): This needs to be cleaned up properly by clearly
-        // separating GR entry and exit steps. Avoid duplicate channel
-        // deletions.
-        if (connection && !connection->IsActiveChannel()) {
-            parent_->manager_->Enqueue(parent_);
-            parent_ = NULL;
-        }
-        return true;
+    virtual void DeleteComplete() {
+        if (!parent_)
+            return;
+        parent_->manager_->Enqueue(parent_);
+        parent_ = NULL;
     }
 
     void Close() {
@@ -2220,7 +2201,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 
                 // Empty items-list can be considered as EOR Marker for all afis
                 if (item == 0) {
-                    peer_close_->close_manager()->FireStaleTimer();
+                    peer_close_->close_manager()->FireStaleTimerNow();
                     return;
                 }
                 for (; item; item = item.next_sibling()) {
