@@ -68,9 +68,11 @@ class BgpPeer::PeerClose : public IPeerClose {
             peer_->state_machine_->Initialize();
     }
     virtual void DeleteComplete() {
-        peer_->server()->decrement_closing_count();
-        if (!peer_->IsDeleted())
+        if (!peer_->IsDeleted()) {
+            CloseComplete();
             return;
+        }
+        peer_->server()->decrement_closing_count();
         peer_->deleter()->RetryDelete();
         is_closed_ = true;
     }

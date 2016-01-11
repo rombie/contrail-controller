@@ -352,7 +352,6 @@ protected:
     void DeleteAllRoutingInstances();
     void VerifyRoutingInstances();
     void XmppPeerClose();
-    void CallStaleTimer(bool);
     void InitParams();
     void VerifyPeer(BgpServerTest *server, RoutingInstance *rtinstance,
                     BgpNullPeer *npeer, BgpPeerTest *peer);
@@ -814,23 +813,6 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
 
     AddAllRoutes();
     VerifyXmppRouteNextHops();
-}
-
-void BgpPeerCloseTest::CallStaleTimer(bool bgp_peers_ready) {
-
-
-    // Invoke stale timer callbacks as evm is not running in this unit test
-    BOOST_FOREACH(BgpNullPeer *peer, peers_) {
-        peer->peer()->IsReady_fnc_ =
-            boost::bind(&BgpPeerCloseTest::IsReady, this, bgp_peers_ready);
-        peer->peer()->peer_close()->close_manager()->StaleTimerCallback();
-    }
-
-    BOOST_FOREACH(BgpXmppChannel *peer, xmpp_peers_) {
-        peer->Peer()->peer_close()->close_manager()->StaleTimerCallback();
-    }
-
-    WaitForIdle();
 }
 
 void BgpPeerCloseTest::XmppPeerClose() {
