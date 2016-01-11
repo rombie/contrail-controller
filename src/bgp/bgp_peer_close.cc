@@ -52,6 +52,8 @@ void PeerCloseManager::StartRestartTimer(int time) {
 }
 
 bool PeerCloseManager::RestartTimerCallback() {
+    tbb::recursive_mutex::scoped_lock lock(mutex_);
+
     if (state_ == GR_TIMER)
         ProcessClosure();
     return false;
@@ -60,8 +62,6 @@ bool PeerCloseManager::RestartTimerCallback() {
 // Route stale timer callback. If the peer has come back up, sweep routes for
 // those address families that are still active. Delete the rest
 void PeerCloseManager::ProcessClosure() {
-    // Protect this method from possible parallel new close request
-    tbb::recursive_mutex::scoped_lock mutex(mutex_);
 
     // If the peer is back up and this address family is still supported,
     // sweep old paths which may not have come back in the new session
@@ -86,7 +86,7 @@ void PeerCloseManager::ProcessClosure() {
     if (state_ == DELETE)
         peer_->peer_close()->CustomClose();
     peer_->server()->membership_mgr()->UnregisterPeer(peer_,
-        boost::bind(&PeerCloseManager::GetCloseAction, this, _1),
+        boost::bind(&PeerCloseManager::GetCloseAction, this, _1, state_),
         boost::bind(&PeerCloseManager::UnregisterPeerComplete, this, _1, _2));
 }
 
@@ -117,7 +117,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
         state_ = DELETE;
         peer_->peer_close()->CustomClose();
         peer_->server()->membership_mgr()->UnregisterPeer(peer_,
-            boost::bind(&PeerCloseManager::GetCloseAction, this, _1),
+            boost::bind(&PeerCloseManager::GetCloseAction, this, _1, state_),
             boost::bind(&PeerCloseManager::UnregisterPeerComplete, this,
                         _1, _2));
         return;
@@ -136,40 +136,6 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     peer_->peer_close()->CloseComplete();
     StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTime * 1000);
     state_ = GR_TIMER;
-}
-
-//
-// Get the type of RibIn close action at start (Not during graceful restart
-// timer callback, where in we walk the Rib again to sweep the routes)
-//
-int PeerCloseManager::GetCloseAction(IPeerRib *peer_rib) {
-    int action = MembershipRequest::INVALID;
-
-    if ((state_ == STALE || state_ == DELETE) && peer_rib->IsRibOutRegistered())
-        action |= static_cast<int>(MembershipRequest::RIBOUT_DELETE);
-
-    if (!peer_rib->IsRibInRegistered())
-        return action;
-
-    // If graceful restart timer is already running, then this is a second
-    // close before previous restart has completed. Abort graceful restart
-    // and delete the routes instead
-    switch (state_) {
-    case NONE:
-        break;
-    case STALE:
-        action |= static_cast<int>(MembershipRequest::RIBIN_STALE);
-        break;
-    case GR_TIMER:
-        break;
-    case SWEEP:
-        action |= static_cast<int>(MembershipRequest::RIBIN_SWEEP);
-        break;
-    case DELETE:
-        action |= static_cast<int>(MembershipRequest::RIBIN_DELETE);
-        break;
-    }
-    return (action);
 }
 
 void PeerCloseManager::Close() {
@@ -194,6 +160,40 @@ void PeerCloseManager::Close() {
         break;
     }
     ProcessClosure();
+}
+
+//
+// Get the type of RibIn close action at start (Not during graceful restart
+// timer callback, where in we walk the Rib again to sweep the routes)
+//
+int PeerCloseManager::GetCloseAction(IPeerRib *peer_rib, State state) {
+    int action = MembershipRequest::INVALID;
+
+    if ((state == STALE || state == DELETE) && peer_rib->IsRibOutRegistered())
+        action |= static_cast<int>(MembershipRequest::RIBOUT_DELETE);
+
+    if (!peer_rib->IsRibInRegistered())
+        return action;
+
+    // If graceful restart timer is already running, then this is a second
+    // close before previous restart has completed. Abort graceful restart
+    // and delete the routes instead
+    switch (state_) {
+    case NONE:
+        break;
+    case STALE:
+        action |= static_cast<int>(MembershipRequest::RIBIN_STALE);
+        break;
+    case GR_TIMER:
+        break;
+    case SWEEP:
+        action |= static_cast<int>(MembershipRequest::RIBIN_SWEEP);
+        break;
+    case DELETE:
+        action |= static_cast<int>(MembershipRequest::RIBIN_DELETE);
+        break;
+    }
+    return (action);
 }
 
 // For graceful-restart, we take mark-and-sweep approach instead of directly

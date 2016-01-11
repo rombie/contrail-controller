@@ -34,6 +34,8 @@ class BgpTable;
 //
 class PeerCloseManager {
 public:
+    enum State { NONE, STALE, GR_TIMER, SWEEP, DELETE };
+
     static const int kDefaultGracefulRestartTime = 60;  // Seconds
 
     // thread: bgp::StateMachine
@@ -45,7 +47,7 @@ public:
     void Close();
     bool RestartTimerCallback();
     void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
-    int GetCloseAction(IPeerRib *peer_rib);
+    int GetCloseAction(IPeerRib *peer_rib, State state);
     void ProcessRibIn(DBTablePartBase *root, BgpRoute *rt, BgpTable *table,
                       int action_mask);
     bool IsCloseInProgress();
@@ -55,8 +57,6 @@ private:
     friend class PeerCloseManagerTest;
 
     void ProcessClosure();
-
-    enum State { NONE, STALE, GR_TIMER, SWEEP, DELETE };
 
     IPeer *peer_;
     Timer *stale_timer_;
