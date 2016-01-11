@@ -1348,6 +1348,8 @@ bool XmppStateMachine::PassiveOpen(XmppSession *session) {
 
 // Process XmppStream header message received over a session. Close the stream
 // if an old session is still present and undergoing graceful restart.
+//
+// Return true if msg is enqueued for further processing, false otherwise.
 bool XmppStateMachine::ProcessStreamHeaderMessage(XmppSession *session,
         const XmppStanza::XmppMessage *msg) {
 
@@ -1384,7 +1386,8 @@ bool XmppStateMachine::ProcessStreamHeaderMessage(XmppSession *session,
                 if (state == xmsm::ESTABLISHED)
                     state_machine->Enqueue(xmsm::EvTcpClose(
                                 state_machine->session()));
-                return Enqueue(xmsm::EvTcpClose(session));
+                Enqueue(xmsm::EvTcpClose(session));
+                return false;
             }
         }
     }
