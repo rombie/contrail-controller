@@ -57,6 +57,7 @@ private:
     friend class PeerCloseManagerTest;
 
     void ProcessClosure();
+    const std::string GetStateName(State state) const;
 
     IPeer *peer_;
     Timer *stale_timer_;
