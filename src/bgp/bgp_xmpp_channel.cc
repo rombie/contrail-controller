@@ -140,7 +140,8 @@ public:
     }
 
     virtual bool IsCloseGraceful() {
-        if (!parent_ || !parent_->channel_) return false;
+        if (!parent_ || !parent_->channel_)
+            return false;
 
         XmppConnection *connection =
             const_cast<XmppConnection *>(parent_->channel_->connection());
@@ -153,7 +154,8 @@ public:
     }
 
     virtual void CustomClose() {
-        if (parent_->rtarget_routes_.empty()) return;
+        if (!parent_ || parent_->rtarget_routes_.empty())
+            return;
         BgpServer *server = parent_->bgp_server_;
         RoutingInstanceMgr *instance_mgr = server->routing_instance_mgr();
         RoutingInstance *master =
@@ -194,8 +196,10 @@ public:
     }
 
     void Close() {
-        assert(parent_->peer_deleted());
-        manager_->Close();
+        if (parent_) {
+            assert(parent_->peer_deleted());
+            manager_->Close();
+        }
     }
 
 private:
@@ -2395,7 +2399,8 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
             }
         } else {
             bgp_xmpp_channel = (*it).second;
-            assert(!bgp_xmpp_channel->peer_deleted());
+            if (bgp_xmpp_channel->peer_deleted())
+                return;
         }
     } else if (state == xmps::NOT_READY) {
         if (it != channel_map_.end()) {
