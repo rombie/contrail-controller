@@ -51,6 +51,9 @@ struct PeerCloseInfo {
     7: u64 stale;
     8: u64 sweep;
     9: u64 gr_timer;
+    10: u64 deleted_state_paths;
+    11: u64 deleted_paths;
+    12: u64 marked_state_paths;
 }
 
 struct BgpNeighborResp {
