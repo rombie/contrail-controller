@@ -14,6 +14,7 @@
 #include "bgp/ipeer.h"
 
 class IPeerRib;
+class BgpNeighborResp;
 class BgpRoute;
 class BgpTable;
 
@@ -52,6 +53,7 @@ public:
                       int action_mask);
     bool IsCloseInProgress();
     void StartRestartTimer(int time);
+    void FillCloseInfo(BgpNeighborResp *resp);
 
 private:
     friend class PeerCloseManagerTest;
@@ -59,10 +61,24 @@ private:
     void ProcessClosure();
     const std::string GetStateName(State state) const;
 
+    struct Stats {
+        Stats() : init(0), close(0), nested(0), deletes(0), stale(0),
+                  sweep(0), gr_timer(0) {
+        }
+        uint64_t init;
+        uint64_t close;
+        uint64_t nested;
+        uint64_t deletes;
+        uint64_t stale;
+        uint64_t sweep;
+        uint64_t gr_timer;
+    };
+
     IPeer *peer_;
     Timer *stale_timer_;
     State state_;
     bool close_again_;
+    Stats stats_;
     tbb::recursive_mutex mutex_;
 };
 

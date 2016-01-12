@@ -124,7 +124,7 @@ public:
     virtual bool IsCloseGraceful() = 0;
     virtual void CustomClose() = 0;
     virtual void CloseComplete() = 0;
-    virtual void DeleteComplete() = 0;
+    virtual void Delete() = 0;
 };
 
 class IPeer : public IPeerUpdate {

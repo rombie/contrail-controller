@@ -105,6 +105,7 @@ public:
     void IdentifierUpdateCallback(Ip4Address old_identifier);
     void FillInstanceMembershipInfo(BgpNeighborResp *resp) const;
     void FillTableMembershipInfo(BgpNeighborResp *resp) const;
+    void FillCloseInfo(BgpNeighborResp *resp) const;
 
     const XmppChannel *channel() const { return channel_; }
 
