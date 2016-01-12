@@ -204,7 +204,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     // If any stale timer has to be launched, then to wait for some time hoping
     // for the peer (and the paths) to come back up.
     peer_->peer_close()->CloseComplete();
-    StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTime * 1000);
+    StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTimeMsecs);
     MOVE_TO_STATE(GR_TIMER);
     stats_.gr_timer++;
 }
@@ -286,6 +286,7 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
                 // Stale paths must be deleted
                 if (!path->IsStale())
                     return;
+                stats_.deleted_state_paths++;
                 oper = DBRequest::DB_ENTRY_DELETE;
                 attrs = NULL;
                 break;
@@ -293,6 +294,7 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
             case MembershipRequest::RIBIN_DELETE:
 
                 // This path must be deleted. Hence attr is not required
+                stats_.deleted_paths++;
                 oper = DBRequest::DB_ENTRY_DELETE;
                 attrs = NULL;
                 break;
@@ -302,6 +304,7 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
                 // This path must be marked for staling. Update the local
                 // preference and update the route accordingly
                 oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+                stats_.marked_state_paths++;
 
                 // Update attrs with maximum local preference so that this path
                 // is least preferred
@@ -337,6 +340,9 @@ void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) {
     peer_close_info.stale = stats_.stale;
     peer_close_info.sweep = stats_.sweep;
     peer_close_info.gr_timer = stats_.gr_timer;
+    peer_close_info.deleted_state_paths = stats_.deleted_state_paths;
+    peer_close_info.deleted_paths = stats_.deleted_paths;
+    peer_close_info.marked_state_paths = stats_.marked_state_paths;
 
     resp->set_peer_close_info(peer_close_info);
 }

@@ -37,7 +37,7 @@ class PeerCloseManager {
 public:
     enum State { NONE, STALE, GR_TIMER, SWEEP, DELETE };
 
-    static const int kDefaultGracefulRestartTime = 60;  // Seconds
+    static const int kDefaultGracefulRestartTimeMsecs = 60*1000;
 
     // thread: bgp::StateMachine
     explicit PeerCloseManager(IPeer *peer);
@@ -72,6 +72,9 @@ private:
         uint64_t stale;
         uint64_t sweep;
         uint64_t gr_timer;
+        uint64_t deleted_state_paths;
+        uint64_t deleted_paths;
+        uint64_t marked_state_paths;
     };
 
     IPeer *peer_;
