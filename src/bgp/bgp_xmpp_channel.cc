@@ -188,7 +188,7 @@ public:
             connection->state_machine()->Initialize();
     }
 
-    virtual void DeleteComplete() {
+    virtual void Delete() {
         if (!parent_)
             return;
         parent_->manager_->Enqueue(parent_);
@@ -1851,6 +1851,10 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
 
 void BgpXmppChannel::MembershipRequestCallback(IPeer *ipeer, BgpTable *table) {
     membership_response_worker_.Enqueue(table->name());
+}
+
+void BgpXmppChannel::FillCloseInfo(BgpNeighborResp *resp) const {
+    peer_close_->close_manager()->FillCloseInfo(resp);
 }
 
 void BgpXmppChannel::FillInstanceMembershipInfo(BgpNeighborResp *resp) const {

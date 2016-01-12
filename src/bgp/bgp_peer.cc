@@ -67,7 +67,7 @@ class BgpPeer::PeerClose : public IPeerClose {
         if (!peer_->IsAdminDown())
             peer_->state_machine_->Initialize();
     }
-    virtual void DeleteComplete() {
+    virtual void Delete() {
         if (!peer_->IsDeleted()) {
             CloseComplete();
             return;
@@ -1631,6 +1631,10 @@ static void FillSocketStats(const IPeerDebugStats::SocketStats &socket_stats,
             socket_stats.blocked_duration_usecs/socket_stats.blocked_count);
         peer_socket_stats.average_blocked_duration = os.str();
     }
+}
+
+void BgpPeer::FillCloseInfo(BgpNeighborResp *resp) const {
+    peer_close_->close_manager()->FillCloseInfo(resp);
 }
 
 void BgpPeer::FillBgpNeighborDebugState(BgpNeighborResp *bnr,

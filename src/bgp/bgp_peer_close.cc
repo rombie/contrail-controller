@@ -7,6 +7,7 @@
 
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_route.h"
 
 #define PEER_CLOSE_MANAGER_LOG(msg) \
@@ -23,6 +24,8 @@
 // Create an instance of PeerCloseManager with back reference to parent IPeer
 PeerCloseManager::PeerCloseManager(IPeer *peer) :
         peer_(peer), stale_timer_(NULL), state_(NONE), close_again_(false) {
+    SET_STATE(NONE);
+    stats_.init++;
     if (peer->server())
         stale_timer_ = TimerManager::CreateTimer(*peer->server()->ioservice(),
                                                  "Graceful Restart StaleTimer");
@@ -70,8 +73,11 @@ const std::string PeerCloseManager::GetStateName(State state) const {
 void PeerCloseManager::Close() {
     tbb::recursive_mutex::scoped_lock lock(mutex_);
 
+    stats_.close++;
+
     // Ignore nested closures
     if (close_again_) {
+        stats_.nested++;
         PEER_CLOSE_MANAGER_LOG("Nested close calls ignored");
         return;
     }
@@ -124,15 +130,20 @@ void PeerCloseManager::ProcessClosure() {
         case NONE:
             if (!peer_->peer_close()->IsCloseGraceful()) {
                 SET_STATE(DELETE);
+                stats_.deletes++;
             } else {
                 SET_STATE(STALE);
+                stats_.stale++;
             }
             break;
         case GR_TIMER:
-            if (peer_->IsReady() && !close_again_)
+            if (peer_->IsReady() && !close_again_) {
                 SET_STATE(SWEEP);
-            else
+                stats_.sweep++;
+            } else {
                 SET_STATE(DELETE);
+                stats_.deletes++;
+            }
             break;
 
         case STALE:
@@ -164,14 +175,16 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     assert(state_ == STALE || state_ == SWEEP || state_ == DELETE);
 
     if (state_ == DELETE) {
-        peer_->peer_close()->DeleteComplete();
+        peer_->peer_close()->Delete();
         SET_STATE(NONE);
+        stats_.init++;
         close_again_ = false;
         return;
     }
 
     if (close_again_) {
         SET_STATE(DELETE);
+        stats_.deletes++;
         peer_->peer_close()->CustomClose();
         peer_->server()->membership_mgr()->UnregisterPeer(peer_,
             boost::bind(&PeerCloseManager::GetCloseAction, this, _1, state_),
@@ -182,6 +195,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
 
     if (state_ == SWEEP) {
         SET_STATE(NONE);
+        stats_.init++;
         return;
     }
 
@@ -192,6 +206,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     peer_->peer_close()->CloseComplete();
     StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTime * 1000);
     SET_STATE(GR_TIMER);
+    stats_.gr_timer++;
 }
 
 // Get the type of RibIn close action at start (Not during graceful restart
@@ -307,4 +322,21 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
     }
 
     return;
+}
+
+void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) {
+    tbb::recursive_mutex::scoped_lock lock(mutex_);
+
+    PeerCloseInfo peer_close_info;
+    peer_close_info.state = GetStateName(state_);
+    peer_close_info.close_again = close_again_;
+    peer_close_info.init = stats_.init;
+    peer_close_info.close = stats_.close;
+    peer_close_info.nested = stats_.nested;
+    peer_close_info.deletes = stats_.deletes;
+    peer_close_info.stale = stats_.stale;
+    peer_close_info.sweep = stats_.sweep;
+    peer_close_info.gr_timer = stats_.gr_timer;
+
+    resp->set_peer_close_info(peer_close_info);
 }
