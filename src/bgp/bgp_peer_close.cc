@@ -15,16 +15,16 @@
         BGP_PEER_DIR_NA, "PeerCloseManager: State " << GetStateName(state_) << \
         ", CloseAgain? " << (close_again_ ? "Yes" : "No") << ": " << msg);
 
-#define SET_STATE(state)                                                  \
-    do {                                                                  \
-        PEER_CLOSE_MANAGER_LOG("Move to state " << GetStateName(state));  \
-        state_ = state;                                                   \
+#define MOVE_TO_STATE(state)                                                   \
+    do {                                                                       \
+        assert(state_ != state);                                               \
+        PEER_CLOSE_MANAGER_LOG("Move to state " << GetStateName(state));       \
+        state_ = state;                                                        \
     } while (false)
 
 // Create an instance of PeerCloseManager with back reference to parent IPeer
 PeerCloseManager::PeerCloseManager(IPeer *peer) :
         peer_(peer), stale_timer_(NULL), state_(NONE), close_again_(false) {
-    SET_STATE(NONE);
     stats_.init++;
     if (peer->server())
         stale_timer_ = TimerManager::CreateTimer(*peer->server()->ioservice(),
@@ -129,19 +129,19 @@ void PeerCloseManager::ProcessClosure() {
     switch (state_) {
         case NONE:
             if (!peer_->peer_close()->IsCloseGraceful()) {
-                SET_STATE(DELETE);
+                MOVE_TO_STATE(DELETE);
                 stats_.deletes++;
             } else {
-                SET_STATE(STALE);
+                MOVE_TO_STATE(STALE);
                 stats_.stale++;
             }
             break;
         case GR_TIMER:
             if (peer_->IsReady() && !close_again_) {
-                SET_STATE(SWEEP);
+                MOVE_TO_STATE(SWEEP);
                 stats_.sweep++;
             } else {
-                SET_STATE(DELETE);
+                MOVE_TO_STATE(DELETE);
                 stats_.deletes++;
             }
             break;
@@ -176,14 +176,14 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
 
     if (state_ == DELETE) {
         peer_->peer_close()->Delete();
-        SET_STATE(NONE);
+        MOVE_TO_STATE(NONE);
         stats_.init++;
         close_again_ = false;
         return;
     }
 
     if (close_again_) {
-        SET_STATE(DELETE);
+        MOVE_TO_STATE(DELETE);
         stats_.deletes++;
         peer_->peer_close()->CustomClose();
         peer_->server()->membership_mgr()->UnregisterPeer(peer_,
@@ -194,7 +194,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     }
 
     if (state_ == SWEEP) {
-        SET_STATE(NONE);
+        MOVE_TO_STATE(NONE);
         stats_.init++;
         return;
     }
@@ -205,7 +205,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
     // for the peer (and the paths) to come back up.
     peer_->peer_close()->CloseComplete();
     StartRestartTimer(PeerCloseManager::kDefaultGracefulRestartTime * 1000);
-    SET_STATE(GR_TIMER);
+    MOVE_TO_STATE(GR_TIMER);
     stats_.gr_timer++;
 }
 
