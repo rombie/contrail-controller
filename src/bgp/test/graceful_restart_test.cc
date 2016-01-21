@@ -692,7 +692,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     //  agent in each instance
     VerifyReceivedXmppRoutes(total_routes);
 
-    // Subset of agents support GR
+    // TODO Only a subset of agents support GR
     // BOOST_FOREACH(test::NetworkAgentMock *agent, n_gr_supported_agents)
         SetPeerCloseGraceful(true);
 
@@ -754,6 +754,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
             string instance_name = "instance" +
                 boost::lexical_cast<string>(instance_id);
             agent->Subscribe(instance_name, instance_id);
+
             // Subset of routes are [re]advertised after restart
             Ip4Prefix prefix(Ip4Prefix::FromString(
                 "10." + boost::lexical_cast<string>(instance_id) + "." +

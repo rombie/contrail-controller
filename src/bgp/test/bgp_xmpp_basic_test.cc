@@ -1267,7 +1267,7 @@ protected:
     }
 };
 
-TEST_P(BgpXmppBasicParamTest2, DuplicateEndpointName1_DISABLED) {
+TEST_P(BgpXmppBasicParamTest2, DISABLED_DuplicateEndpointName1) {
     CreateAgents();
 
     // Bring up one agent with given name.
@@ -1293,7 +1293,7 @@ TEST_P(BgpXmppBasicParamTest2, DuplicateEndpointName1_DISABLED) {
     DestroyAgents();
 }
 
-TEST_P(BgpXmppBasicParamTest2, DuplicateEndpointName2_DISABLED) {
+TEST_P(BgpXmppBasicParamTest2, DISABLED_DuplicateEndpointName2) {
     CreateAgents();
 
     // Bring up one agent with given name.
