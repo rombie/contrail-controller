@@ -21,8 +21,7 @@ static const char *loggingPattern = "%D{%Y-%m-%d %a %H:%M:%S:%Q %Z} "
                                     " %h [Thread %t, Pid %i]: %m%n";
 
 bool LoggingDisabled() {
-    return access("/tmp/contrail_log_enable", F_OK) != 0;
-    // return disabled_;
+    return disabled_;
 }
 
 void SetLoggingDisabled(bool flag) {
