@@ -1875,7 +1875,8 @@ void BgpXmppChannel::FillInstanceMembershipInfo(BgpNeighborResp *resp) const {
         routing_instances_) {
         BgpNeighborRoutingInstance instance;
         instance.set_name(entry.first->name());
-        instance.set_state("subscribed");
+        instance.set_state(entry.second.IsStale() ? "subscribed-stale" :
+                                                    "subscribed");
         instance.set_index(entry.second.index);
         vector<string> import_targets;
         BOOST_FOREACH(RouteTarget rt, entry.second.targets) {
@@ -1964,23 +1965,27 @@ void BgpXmppChannel::FlushDeferQ(string vrf_name) {
 void BgpXmppChannel::StaleCurrentSubscriptions() {
     BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
                   routing_instances_) {
-        entry.second.state = SubscriptionState::STALE;
+        entry.second.SetStale();
     }
 }
 
 // Sweep all current subscriptions which are still marked as 'stale'.
 void BgpXmppChannel::SweepCurrentSubscriptions() {
-    BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
-                  routing_instances_) {
-        if (entry.second.state == SubscriptionState::STALE) {
-            ProcessSubscriptionRequest(entry.first->name(), NULL, false);
+    for (SubscribedRoutingInstanceList::iterator i = routing_instances_.begin();
+            i != routing_instances_.end();) {
+        if (i->second.IsStale()) {
+            string name = i->first->name();
+            i++;
+            ProcessSubscriptionRequest(name, NULL, false);
+        } else {
+            i++;
         }
     }
 }
 
 // Clear staled subscription state as new subscription has been received.
 void BgpXmppChannel::ClearStaledSubscription(SubscriptionState &sub_state) {
-    sub_state.state = SubscriptionState::NONE;
+    sub_state.ClearStale();
 }
 
 void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,

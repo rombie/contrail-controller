@@ -155,6 +155,10 @@ private:
         SubscriptionState(const RoutingInstance::RouteTargetList &targets,
                           int index)
                 : targets(targets), index(index), state(NONE) { }
+        const bool IsStale() const { return(state == STALE); }
+        void SetStale() { state = STALE; }
+        void ClearStale() { state = NONE; }
+
         RoutingInstance::RouteTargetList targets;
         int index;
         State state;
