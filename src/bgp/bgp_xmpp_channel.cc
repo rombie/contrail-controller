@@ -1975,6 +1975,9 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
             i != routing_instances_.end();) {
         if (i->second.IsStale()) {
             string name = i->first->name();
+
+            // Incrementor the iterator first as we expect the entry to be
+            // soon removed.
             i++;
             ProcessSubscriptionRequest(name, NULL, false);
         } else {
