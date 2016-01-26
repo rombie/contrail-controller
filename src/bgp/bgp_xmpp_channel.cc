@@ -139,6 +139,18 @@ public:
         return manager_.get();
     }
 
+    // Mark all current subscription as 'stale'
+    virtual void GracefulRestartStale() {
+        if (parent_)
+            parent_->StaleCurrentSubscriptions();
+    }
+
+    // Delete all current sbscriptions which are still stale.
+    virtual void GracefulRestartSweep() {
+        if (parent_)
+            parent_->SweepCurrentSubscriptions();
+    }
+
     virtual bool IsCloseGraceful() {
         if (!parent_ || !parent_->channel_)
             return false;
@@ -1948,6 +1960,29 @@ void BgpXmppChannel::FlushDeferQ(string vrf_name) {
     }
 }
 
+// Mark all current subscriptions as 'stale'.
+void BgpXmppChannel::StaleCurrentSubscriptions() {
+    BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
+                  routing_instances_) {
+        entry.second.state = SubscriptionState::STALE;
+    }
+}
+
+// Sweep all current subscriptions which are still marked as 'stale'.
+void BgpXmppChannel::SweepCurrentSubscriptions() {
+    BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
+                  routing_instances_) {
+        if (entry.second.state == SubscriptionState::STALE) {
+            ProcessSubscriptionRequest(entry.first->name(), NULL, false);
+        }
+    }
+}
+
+// Clear staled subscription state as new subscription has been received.
+void BgpXmppChannel::ClearStaledSubscription(SubscriptionState &sub_state) {
+    sub_state.state = SubscriptionState::NONE;
+}
+
 void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,
     bool add_change, int index) {
     // Add rtarget route for import route target of the routing instance.
@@ -1973,8 +2008,14 @@ void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,
             routing_instances_.insert(
                   pair<RoutingInstance *, SubscriptionState>
                   (rt_instance, state));
-        if (!ret.second) return;
         it = ret.first;
+
+        // During GR, we expect duplicate subscriptionr requests. Clear the
+        // stale state, as agent did re-subscribe after restart.
+        if (!ret.second) {
+            ClearStaledSubscription((*(ret.first)).second);
+            return;
+        }
     } else {
         it = routing_instances_.find(rt_instance);
         if (it == routing_instances_.end()) return;

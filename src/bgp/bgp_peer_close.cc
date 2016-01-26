@@ -134,12 +134,14 @@ void PeerCloseManager::ProcessClosure() {
             } else {
                 MOVE_TO_STATE(STALE);
                 stats_.stale++;
+                peer_->peer_close()->GracefulRestartStale();
             }
             break;
         case GR_TIMER:
             if (peer_->IsReady() && !close_again_) {
                 MOVE_TO_STATE(SWEEP);
                 stats_.sweep++;
+                peer_->peer_close()->GracefulRestartSweep();
             } else {
                 MOVE_TO_STATE(DELETE);
                 stats_.deletes++;
