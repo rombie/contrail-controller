@@ -140,12 +140,14 @@ public:
     }
 
     // Mark all current subscription as 'stale'
+    // Concurrency: Protected with a mutex from peer close manager
     virtual void GracefulRestartStale() {
         if (parent_)
             parent_->StaleCurrentSubscriptions();
     }
 
     // Delete all current sbscriptions which are still stale.
+    // Concurrency: Protected with a mutex from peer close manager
     virtual void GracefulRestartSweep() {
         if (parent_)
             parent_->SweepCurrentSubscriptions();

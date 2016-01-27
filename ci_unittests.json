@@ -68,6 +68,7 @@
                     ".*/bgp/test/bgp_xmpp_inet6vpn_test$",
                     ".*/bgp/test/bgp_xmpp_mcast_test$",
                     ".*/bgp/test/bgp_xmpp_rtarget_test$",
+                    ".*/bgp/test/graceful_restart_test$",
                     ".*/bgp/test/service_chain_test",
                     ".*/bgp/test/svc_static_route_intergration_test",
                     ".*/bgp/test/xmpp_ecmp_test$"
