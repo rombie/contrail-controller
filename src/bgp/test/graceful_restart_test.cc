@@ -1049,8 +1049,20 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_5) {
     SCOPED_TRACE(__FUNCTION__);
     GracefulRestartTestStart();
 
-    for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
-        test::NetworkAgentMock *agent = xmpp_agents_[i];
+    for (size_t i = 1; i <= xmpp_agents_.size(); i++) {
+
+        // agents from 2nd half remain up through out this test
+        if (i > xmpp_agents_.size()/2)
+            continue;
+
+        // agents from 1st quarter go down permantently
+        if (i <= xmpp_agents_.size()/4) {
+            n_down_from_agents_.push_back(xmpp_agents_[i-1]);
+            continue;
+        }
+
+        // agents from 2nd quarter flip with gr
+        test::NetworkAgentMock *agent = xmpp_agents_[i-1];
         vector<int> instance_ids = vector<int>();
         vector<int> nroutes = vector<int>();
         for (int j = 1; j <= n_instances_; j++) {
