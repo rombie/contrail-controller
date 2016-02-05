@@ -19,7 +19,7 @@ class InstanceTask {
  public:
     typedef boost::function<void(InstanceTask *task, const std::string errors)>
         OnErrorCallback;
-    typedef boost::function<void(InstanceTask *task, const std::string msg)>
+    typedef boost::function<void(InstanceTask *task, const std::string &msg)>
         OnDataCallback;
     typedef boost::function<void(InstanceTask *task,
             const boost::system::error_code &ec)>OnExitCallback;
@@ -80,12 +80,16 @@ class InstanceTaskExecvp : public InstanceTask {
         return pid_;
     }
 
+    void set_cmd(std::string cmd) {
+        cmd_ = cmd;
+    }
+
     const std::string &cmd() const {
         return cmd_;
     }
 
     int cmd_type() const {
-            return cmd_type_;
+        return cmd_type_;
     }
 
     void set_pipe_stdout(bool pipe) {
@@ -96,7 +100,7 @@ class InstanceTaskExecvp : public InstanceTask {
     void ReadData(const boost::system::error_code &ec, size_t read_bytes);
 
     const std::string name_;
-    const std::string cmd_;
+    std::string cmd_;
     boost::asio::posix::stream_descriptor input_;
     std::stringstream errors_data_;
     char rx_buff_[kBufLen];

@@ -6,6 +6,9 @@
 #include <cmn/agent_stats.h>
 #include <oper/agent_profile.h>
 #include <vrouter/ksync/flowtable_ksync.h>
+#include <vrouter/ksync/ksync_init.h>
+#include <vrouter/ksync/ksync_flow_index_manager.h>
+#include "vrouter/flow_stats/flow_stats_collector.h"
 #include "flow_proto.h"
 #include "flow_mgmt_dbclient.h"
 #include "flow_mgmt.h"
@@ -329,8 +332,17 @@ bool FlowProto::FlowEventHandler(const FlowEvent &req, FlowTable *table) {
     case FlowEvent::KSYNC_VROUTER_ERROR: {
         FlowTableKSyncEntry *ksync_entry =
             (static_cast<FlowTableKSyncEntry *> (req.ksync_entry()));
+        // Mark the flow entry as short flow and update ksync error event
+        // to ksync index manager
         FlowEntry *flow = ksync_entry->flow_entry().get();
         flow->MakeShortFlow(FlowEntry::SHORT_FAILED_VROUTER_INSTALL);
+        KSyncFlowIndexManager *mgr =
+            agent()->ksync()->ksync_flow_index_manager();
+        mgr->UpdateKSyncError(flow);
+        // Enqueue Add request to flow-stats-collector
+        // to update flow flags in stats collector
+        FlowEntryPtr flow_ptr(flow);
+        agent()->flow_stats_manager()->AddEvent(flow_ptr);
         break;
     }
 
@@ -403,14 +415,23 @@ void UpdateStats(FlowEvent::Event event, FlowStats *stats) {
     case FlowEvent::REVALUATE_FLOW:
         stats->revaluate_count_++;
         break;
+    case FlowEvent::FLOW_HANDLE_UPDATE:
+        stats->handle_update_++;
+        break;
+    case FlowEvent::KSYNC_VROUTER_ERROR:
+        stats->vrouter_error_++;
+        break;
     default:
         break;
     }
 }
 
 void FlowProto::SetProfileData(ProfileData *data) {
+    data->flow_.flow_count_ = FlowCount();
     data->flow_.add_count_ = stats_.add_count_;
     data->flow_.del_count_ = stats_.delete_count_;
     data->flow_.audit_count_ = stats_.audit_count_;
     data->flow_.reval_count_ = stats_.revaluate_count_;
+    data->flow_.handle_update_ = stats_.handle_update_;
+    data->flow_.vrouter_error_ = stats_.vrouter_error_;
 }

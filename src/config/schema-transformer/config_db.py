@@ -34,6 +34,7 @@ except:
 import jsonpickle
 
 _PROTO_STR_TO_NUM = {
+    'icmp6': '58',
     'icmp': '1',
     'tcp': '6',
     'udp': '17',
@@ -116,8 +117,23 @@ class DBBaseST(DBBase):
         return cls.get(cls._uuid_fq_name_map.get(uuid))
 
     def handle_st_object_req(self):
-        return sandesh.StObject(object_type=self.obj_type, object=self.uuid,
-                                object_fq_name=self.name)
+        st_obj = sandesh.StObject(object_type=self.obj_type,
+                                  object_fq_name=self.name)
+        try:
+            st_obj.object_uuid = self.obj.uuid
+        except AttributeError:
+            pass
+        return st_obj
+
+    def _get_sandesh_ref_list(self, ref_type):
+        try:
+            ref = getattr(self, ref_type)
+            refs = [ref] if ref else []
+        except AttributeError:
+            refs = getattr(self, ref_type+'s')
+            if isinstance(refs, dict):
+                refs = refs.keys()
+        return sandesh.RefList(ref_type, refs)
 # end DBBaseST
 
 
@@ -293,6 +309,19 @@ class VirtualNetworkST(DBBaseST):
             self.multi_policy_service_chains_status_changed = True
     # end update
 
+    def _update_primary_ri_to_service_ri_connection(self, sc, si_name,
+                                                    multi_policy_enabled):
+            primary_ri = self.get_primary_routing_instance()
+            service_ri_name = self.get_service_name(sc.name, si_name)
+            service_ri = RoutingInstanceST.get(service_ri_name)
+            if (multi_policy_enabled and
+                    service_ri_name in primary_ri.connections):
+                primary_ri.delete_connection(service_ri)
+            elif (not multi_policy_enabled and
+                    service_ri_name not in primary_ri.connections):
+                primary_ri.add_connection(service_ri)
+    # end _update_primary_ri_to_service_ri_connection
+
     def check_multi_policy_service_chain_status(self):
         if not self.multi_policy_service_chains_status_changed:
             return
@@ -303,19 +332,24 @@ class VirtualNetworkST(DBBaseST):
                     continue
                 if sc.left_vn == self.name:
                     si_name = sc.service_list[0]
+                    other_vn_name = sc.right_vn
+                    other_si_name = sc.service_list[-1]
                 elif sc.right_vn == self.name:
-                    sc_name = sc.service_list[-1]
+                    si_name = sc.service_list[-1]
+                    other_vn_name = sc.left_vn
+                    other_si_name = sc.service_list[0]
                 else:
                     continue
-                primary_ri = self.get_primary_routing_instance()
-                service_ri_name = self.get_service_name(sc.name, si_name)
-                service_ri = RoutingInstanceST.get(service_ri_name)
-                if (self.multi_policy_service_chains_enabled and
-                    service_ri_name in primary_ri.connections):
-                    primary_ri.delete_connection(service_ri)
-                elif (not self.multi_policy_service_chains_enabled and
-                    service_ri_name not in primary_ri.connections):
-                    primary_ri.add_connection(service_ri)
+                other_vn = VirtualNetworkST.get(other_vn_name)
+                if not other_vn:
+                    continue
+                multi_policy_enabled = (
+                    self.multi_policy_service_chains_enabled and
+                    other_vn.multi_policy_service_chains_enabled)
+                self._update_primary_ri_to_service_ri_connection(
+                    sc, si_name, multi_policy_enabled)
+                other_vn._update_primary_ri_to_service_ri_connection(
+                    sc, other_si_name, multi_policy_enabled)
     # end check_multi_policy_service_chain_status
 
     def delete_obj(self):
@@ -1031,14 +1065,14 @@ class VirtualNetworkST(DBBaseST):
                     acl = self.add_acl_rule(
                         sa, sp, da, dp, arule_proto, rule_uuid,
                         prule.action_list, prule.direction,
-                        service_ris.get(da, [None])[0])
+                        service_ris.get(da.virtual_network, [None])[0])
                     result_acl_rule_list.append(acl)
                     if ((prule.direction == "<>") and
                         (sa != da or sp != dp)):
                         acl = self.add_acl_rule(
                             da, dp, sa, sp, arule_proto, rule_uuid,
                             prule.action_list, prule.direction,
-                            service_ris.get(sa, [None, None])[1])
+                            service_ris.get(sa.virtual_network, [None, None])[1])
 
                         result_acl_rule_list.append(acl)
                 # end for sp, dp
@@ -1115,6 +1149,12 @@ class VirtualNetworkST(DBBaseST):
                         # between the routing instances
                         action.simple_action = "pass"
                         action.apply_service = []
+                        if self.multi_policy_service_chains_enabled:
+                            other_vn = VirtualNetworkST.get(connected_network)
+                            if not other_vn:
+                                continue
+                            if other_vn.multi_policy_service_chains_enabled:
+                                self.add_connection(connected_network)
                         continue
 
                     if connected_network and action.simple_action:
@@ -1264,20 +1304,19 @@ class VirtualNetworkST(DBBaseST):
     # end get_prefixes
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(VirtualNetworkST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('routing_instance', self.routing_instances),
-            sandesh.RefsList('network_policy', self.network_policys.keys()),
-            sandesh.RefsList('virtual_machine_interface',
-                             self.virtual_machine_interfaces),
-            sandesh.RefsList('virtual_network', self.connections),
-            sandesh.RefsList('route_table', self.route_tables),
-            sandesh.RefsList('service_chain', self.service_chains.keys())
+            self._get_sandesh_ref_list('routing_instance'),
+            self._get_sandesh_ref_list('network_policy'),
+            self._get_sandesh_ref_list('virtual_machine_interface'),
+            sandesh.RefList('virtual_network', self.connections),
+            self._get_sandesh_ref_list('route_table'),
+            self._get_sandesh_ref_list('service_chain')
         ]
         resp.properties = [
             sandesh.PropList('route_target', self._route_target),
             sandesh.PropList('network_id',
-                             self.obj.get_virtual_network_network_id())
+                             str(self.obj.get_virtual_network_network_id()))
         ]
         return resp
     # end handle_st_object_req
@@ -1438,12 +1477,12 @@ class NetworkPolicyST(DBBaseST):
     # end delete_obj
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(NetworkPolicyST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_network', self.virtual_networks),
-            sandesh.RefsList('service_instance', self.service_instances),
-            sandesh.RefsList('network_policy', self.network_policys),
-            sandesh.RefsList('referred_policy', self.referred_policies)
+            self._get_sandesh_ref_list('virtual_network'),
+            self._get_sandesh_ref_list('service_instance'),
+            self._get_sandesh_ref_list('network_policy'),
+            sandesh.RefList('referred_policy', self.referred_policies)
         ]
         resp.properties = [
             sandesh.PropList('rule', str(rule)) for rule in self.rules
@@ -1507,10 +1546,10 @@ class RouteTableST(DBBaseST):
         self.update_multiple_refs('virtual_network', {})
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(RouteTableST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_network', self.virtual_networks),
-            sandesh.RefsList('service_instance', self.service_instances),
+            self._get_sandesh_ref_list('virtual_network'),
+            self._get_sandesh_ref_list('service_instance'),
         ]
         resp.properties = [
             sandesh.PropList('route', str(route)) for route in self.routes
@@ -1739,14 +1778,14 @@ class SecurityGroupST(DBBaseST):
     # end policy_to_acl_rule
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(SecurityGroupST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('security_group', self.security_groups),
-            sandesh.RefsList('referred_security_group', self.referred_sgs)
+            self._get_sandesh_ref_list('security_group'),
+            sandesh.RefList('referred_security_group', self.referred_sgs)
         ]
         resp.properties = [
-            sandesh.PropList('sg_id', self.sg_id),
-            sandesh.PropList('configured_id', self.config_sgid)
+            sandesh.PropList('sg_id', str(self.sg_id)),
+            sandesh.PropList('configured_id', str(self.config_sgid))
         ] + [sandesh.PropList('rule', str(rule))
              for rule in self.rule_entries.get_policy_rule() or []]
         return resp
@@ -2120,10 +2159,10 @@ class RoutingInstanceST(DBBaseST):
     # end delete_obj
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(RoutingInstanceST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_network', [self.virtual_network]),
-            sandesh.RefsList('routing_instance', self.connections),
+            self._get_sandesh_ref_list('virtual_network'),
+            sandesh.RefList('routing_instance', self.connections),
         ]
         resp.properties = [
             sandesh.PropList('service_chain', self.service_chain),
@@ -2154,6 +2193,8 @@ class ServiceChain(DBBaseST):
             # destroy them
             chain.present_stale = True
             chain.created_stale = chain.created
+            if not hasattr(chain, 'partially_created'):
+                chain.partially_created = False
             cls._dict[name] = chain
     # end init
 
@@ -2247,7 +2288,7 @@ class ServiceChain(DBBaseST):
 
     def log_error(self, msg):
         self.error_msg = msg
-        self._logger.error('service chain %s: ' + msg)
+        self._logger.error('service chain %s: %s' %(self.name, msg))
     # end log_error
 
     def _get_vm_pt_info(self, vm_pt, mode):
@@ -2298,7 +2339,7 @@ class ServiceChain(DBBaseST):
         for service in self.service_list:
             si = ServiceInstanceST.get(service)
             if si is None:
-                self.log_error("Service instance %s not found " + service)
+                self.log_error("Service instance %s not found " % service)
                 return None
             vm_list = si.virtual_machines
             pt_list = si.port_tuples
@@ -2380,7 +2421,10 @@ class ServiceChain(DBBaseST):
             self.log_error("vn1_obj or vn2_obj is None")
             return
 
-        if not vn1_obj.multi_policy_service_chains_enabled:
+        multi_policy_enabled = (vn1_obj.multi_policy_service_chains_enabled and
+                                vn2_obj.multi_policy_service_chains_enabled)
+        service_ri2 = None
+        if not multi_policy_enabled:
             service_ri2 = vn1_obj.get_primary_routing_instance()
             if service_ri2 is None:
                 self.log_error("primary ri is None for " + self.left_vn)
@@ -2393,7 +2437,7 @@ class ServiceChain(DBBaseST):
             ri_obj = RoutingInstanceST.create(service_name1, vn1_obj, has_pnf)
             service_ri1 = RoutingInstanceST.locate(service_name1, ri_obj)
             if service_ri1 is None:
-                self.log_error("service_ri1 or service_ri2 is None")
+                self.log_error("service_ri1 is None")
                 return
             if service_ri2 is not None:
                 service_ri2.add_connection(service_ri1)
@@ -2448,7 +2492,7 @@ class ServiceChain(DBBaseST):
             rt_list.add(vn2_obj.get_route_target())
         service_ri2.update_route_target_list(rt_add_export=rt_list)
 
-        if not vn2_obj.multi_policy_service_chains_enabled:
+        if not multi_policy_enabled:
             service_ri2.add_connection(vn2_obj.get_primary_routing_instance())
 
         if not transparent and len(self.service_list) == 1:
@@ -2555,9 +2599,9 @@ class ServiceChain(DBBaseST):
     # end build_introspect
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(ServiceChain, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('service_instance', self.service_list)
+            sandesh.RefList('service_instance', self.service_list)
         ]
         resp.properties = [
             sandesh.PropList('left_network', self.left_vn),
@@ -2702,8 +2746,11 @@ class BgpRouterST(DBBaseST):
                         self._vnc_lib.bgp_as_a_service_update(bgpaas.obj)
                     except NoIdError:
                         pass
-                self._vnc_lib.bgp_router_delete(id=self.obj.uuid)
-                self.delete(self.name)
+                try:
+                    self._vnc_lib.bgp_router_delete(id=self.obj.uuid)
+                    self.delete(self.name)
+                except RefsExistError:
+                    pass
             elif ret:
                 self._vnc_lib.bgp_router_update(self.obj)
         elif self.router_type != 'bgpaas-server':
@@ -2732,26 +2779,32 @@ class BgpRouterST(DBBaseST):
         update = False
         params = self.obj.get_bgp_router_parameters()
         if self.asn != bgpaas.asn:
-            params.autonomous_system = bgpaas.asn
+            params.autonomous_system = int(bgpaas.asn)
             self.asn = bgpaas.asn
             update = True
-        if params.address != bgpaas.ip_address:
-            params.address = bgpaas.ip_address
+        ip = bgpaas.ip_address or vmi.get_primary_instance_ip_address()
+        if params.address != ip:
+            params.address = ip
             update = True
         if params.identifier != bgpaas.ip_address:
             params.identifier = bgpaas.ip_address
             update = True
+        if update:
+            self.obj.set_bgp_router_parameters(params)
         router_refs = self.obj.get_bgp_router_refs()
         peering_attribs = router_refs[0]['attr']
         if peering_attribs != bgpaas.peering_attribs:
             self.obj.set_bgp_router_list([router_refs[0]['to']],
                                          [bgpaas.peering_attribs])
             update = True
+
         return update
     # end update_bgpaas_client
 
     def update_peering(self):
         if not GlobalSystemConfigST.get_ibgp_auto_mesh():
+            return
+        if self.router_type in ('bgpaas-server', 'bgpaas-client'):
             return
         global_asn = int(GlobalSystemConfigST.get_autonomous_system())
         if self.asn != global_asn:
@@ -2767,6 +2820,9 @@ class BgpRouterST(DBBaseST):
         for router in self._dict.values():
             if router.name == self.name:
                 continue
+            if not self.router_type:
+                if router.router_type in ('bgpaas-server', 'bgpaas-client'):
+                    continue
             if router.asn != global_asn:
                 continue
             router_fq_name = router.name.split(':')
@@ -2787,10 +2843,10 @@ class BgpRouterST(DBBaseST):
     # end update_peering
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(BgpRouterST, self).handle_st_object_req()
         resp.obj_refs = []
         resp.properties = [
-            sandesh.PropList('asn', self.asn),
+            sandesh.PropList('asn', str(self.asn)),
             sandesh.PropList('vendor', self.vendor),
             sandesh.PropList('identifier', self.identifier),
         ]
@@ -2847,11 +2903,6 @@ class BgpAsAServiceST(DBBaseST):
         ri = vn.get_primary_routing_instance()
         if not ri:
             return
-        router_fq_name = ri.obj.get_fq_name_str() + ':' + vmi.obj.name
-        if router_fq_name in BgpRouterST:
-            self.bgp_routers.add(router_fq_name)
-            self.bgpaas_clients[name] = router_fq_name
-            return
         server_fq_name = ri.obj.get_fq_name_str() + ':bgpaas-server'
         server_router = BgpRouterST.get(server_fq_name)
         if not server_router:
@@ -2862,30 +2913,43 @@ class BgpAsAServiceST(DBBaseST):
             BgpRouterST.locate(server_fq_name, server_router)
         else:
             server_router = server_router.obj
-        bgp_router = BgpRouter(vmi.obj.name, parent_obj=ri.obj)
+        router_fq_name = ri.obj.get_fq_name_str() + ':' + vmi.obj.name
+        bgpr = BgpRouterST.get(router_fq_name)
+        create = False
+        src_port = None
+        if not bgpr:
+            bgp_router = BgpRouter(vmi.obj.name, parent_obj=ri.obj)
+            create = True
+            src_port = self._cassandra.alloc_bgpaas_port(router_fq_name)
+        else:
+            bgp_router = self._vnc_lib.bgp_router_read(id=bgpr.obj.uuid)
+            src_port = bgpr.source_port
+        ip = self.ip_address or vmi.get_primary_instance_ip_address()
         params = BgpRouterParams(
             autonomous_system=int(self.asn) if self.asn else None,
-            address=self.ip_address,
-            identifier=self.ip_address,
-            source_port=self._cassandra.alloc_bgpaas_port(router_fq_name),
+            address=ip,
+            identifier=ip,
+            source_port=src_port,
             router_type='bgpaas-client')
         bgp_router.set_bgp_router_parameters(params)
         bgp_router.set_bgp_router(server_router, self.peering_attribs)
-        self._vnc_lib.bgp_router_create(bgp_router)
-        bgpr = BgpRouterST.locate(router_fq_name, bgp_router)
-        self.obj.add_bgp_router(bgp_router)
-        self._vnc_lib.bgp_as_a_service_update(self.obj)
+        if not create:
+            self._vnc_lib.bgp_router_update(bgp_router)
+        else:
+            self._vnc_lib.bgp_router_create(bgp_router)
+            bgpr = BgpRouterST.locate(router_fq_name, bgp_router)
+            self.obj.add_bgp_router(bgp_router)
+            self._vnc_lib.bgp_as_a_service_update(self.obj)
         self.bgp_routers.add(router_fq_name)
         bgpr.bgp_as_a_service = self.name
         self.bgpaas_clients[name] = router_fq_name
     # end create_bgp_router
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(BgpAsAServiceST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine_interface',
-                             self.virtual_machine_interfaces),
-            sandesh.RefsList('bgp_router', self.bgp_routers)
+            self._get_sandesh_ref_list('virtual_machine_interface'),
+            self._get_sandesh_ref_list('bgp_router')
         ]
         resp.properties = [
             sandesh.PropList('ip_address', self.ip_address),
@@ -2893,7 +2957,7 @@ class BgpAsAServiceST(DBBaseST):
         ]
         return resp
     # end handle_st_object_req
-# end class BgpAsAService
+# end class BgpAsAServiceST
 
 class VirtualMachineInterfaceST(DBBaseST):
     _dict = {}
@@ -2918,7 +2982,6 @@ class VirtualMachineInterfaceST(DBBaseST):
         self.update_multiple_refs('floating_ip', self.obj)
         self.vrf_table = jsonpickle.encode(self.obj.get_vrf_assign_table())
         self.update(self.obj)
-        self.update_single_ref('port_tuple', self.obj)
     # end __init__
 
     def update(self, obj=None):
@@ -2929,6 +2992,7 @@ class VirtualMachineInterfaceST(DBBaseST):
             self.virtual_machine = self.obj.get_parent_fq_name_str()
         else:
             self.update_single_ref('virtual_machine', self.obj)
+        self.update_single_ref('port_tuple', self.obj)
         self.update_single_ref('logical_router', self.obj)
         self.update_single_ref('bgp_as_a_service', self.obj)
         self.set_properties()
@@ -2963,6 +3027,16 @@ class VirtualMachineInterfaceST(DBBaseST):
                 return ip.address
         return None
     # end get_any_instance_ip_address
+
+    def get_primary_instance_ip_address(self):
+        for ip_name in self.instance_ips:
+            ip = InstanceIpST.get(ip_name)
+            if ip.address is None:
+                continue
+            if ip.is_primary():
+                return ip.address
+        return None
+    # end get_primary_instance_ip_address
 
     def set_properties(self):
         props = self.obj.get_virtual_machine_interface_properties()
@@ -3102,7 +3176,11 @@ class VirtualMachineInterfaceST(DBBaseST):
             if ip and ip.address:
                 ip_list.append(ip.address)
         for ip in ip_list:
-            address = AddressType(subnet=SubnetType(ip, 32))
+            if IPAddress(ip).version == 6:
+                address = AddressType(subnet=SubnetType(ip, 128))
+            else:
+                address = AddressType(subnet=SubnetType(ip, 32))
+
             mc = MatchConditionType(src_address=address,
                                     protocol='any',
                                     src_port=PortType(),
@@ -3152,14 +3230,14 @@ class VirtualMachineInterfaceST(DBBaseST):
     # end recreate_vrf_assign_table
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(VirtualMachineInterfaceST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('instance_ip', self.instance_ips),
-            sandesh.RefsList('floating_ip', self.floating_ips),
-            sandesh.RefsList('virtual_network', [self.virtual_network]),
-            sandesh.RefsList('virtual_machine', [self.virtual_machine]),
-            sandesh.RefsList('port_tuple', [self.port_tuple]),
-            sandesh.RefsList('logical_router', [self.logical_router]),
+            self._get_sandesh_ref_list('instance_ip'),
+            self._get_sandesh_ref_list('floating_ip'),
+            self._get_sandesh_ref_list('virtual_network'),
+            self._get_sandesh_ref_list('virtual_machine'),
+            self._get_sandesh_ref_list('port_tuple'),
+            self._get_sandesh_ref_list('logical_router'),
         ]
         resp.properties = [
             sandesh.PropList('service_interface_type',
@@ -3177,6 +3255,7 @@ class InstanceIpST(DBBaseST):
 
     def __init__(self, name, obj=None):
         self.name = name
+        self.is_secondary = False
         self.virtual_machine_interfaces = set()
         self.update(obj)
     # end __init
@@ -3185,21 +3264,26 @@ class InstanceIpST(DBBaseST):
         self.obj = obj or self.read_vnc_obj(fq_name=self.name)
         self.address = self.obj.get_instance_ip_address()
         self.service_instance_ip = self.obj.get_service_instance_ip()
+        self.is_secondary = self.obj.get_instance_ip_secondary() or False
         self.update_multiple_refs('virtual_machine_interface', self.obj)
     # end update
+
+    def is_primary(self):
+        return not self.is_secondary
+    #end
 
     def delete_obj(self):
         self.update_multiple_refs('virtual_machine_interface', {})
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(InstanceIpST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine_interface',
-                             [self.virtual_machine_interface]),
+            self._get_sandesh_ref_list('virtual_machine_interface'),
         ]
         resp.properties = [
             sandesh.PropList('address', self.address),
-            sandesh.PropList('service_instance_ip', self.service_instance_ip),
+            sandesh.PropList('service_instance_ip',
+                             str(self.service_instance_ip)),
         ]
         return resp
     # end handle_st_object_req
@@ -3226,10 +3310,9 @@ class FloatingIpST(DBBaseST):
         self.update_single_ref('virtual_machine_interface', {})
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(FloatingIpST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine_interface',
-                             [self.virtual_machine_interface]),
+            self._get_sandesh_ref_list('virtual_machine_interface'),
         ]
         resp.properties = [
             sandesh.PropList('address', self.address),
@@ -3274,11 +3357,10 @@ class VirtualMachineST(DBBaseST):
     # end get_service_mode
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(VirtualMachineST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine_interface',
-                             self.virtual_machine_interfaces),
-            sandesh.RefsList('service_instance', [self.service_instance]),
+            self._get_sandesh_ref_list('virtual_machine_interface'),
+            self._get_sandesh_ref_list('service_instance'),
         ]
         resp.properties = [
             sandesh.PropList('service_mode', self.get_service_mode()),
@@ -3403,12 +3485,11 @@ class LogicalRouterST(DBBaseST):
     # end set_route_target_list
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(LogicalRouterST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine_interface',
-                             self.virtual_machine_interfaces),
-            sandesh.RefsList('virtual_network', self.virtual_networks),
-            sandesh.RefsList('route_target', selt.rt_list)
+            self._get_sandesh_ref_list('virtual_machine_interface'),
+            self._get_sandesh_ref_list('virtual_network'),
+            sandesh.RefList('route_target', self.rt_list)
         ]
         resp.properties = [
             sandesh.PropList('route_target', self.route_target),
@@ -3438,7 +3519,7 @@ class ServiceInstanceST(DBBaseST):
         for ref in self.obj.get_routing_policy_back_refs() or []:
             self.routing_policys[':'.join(ref['to'])] = ref['attr']
         for ref in self.obj.get_route_aggregate_back_refs() or []:
-            self.route_aggregate[':'.join(ref['to'])] = ref['attr'].interface_type
+            self.route_aggregates[':'.join(ref['to'])] = ref['attr']['interface_type']
         self.set_children('port_tuple', self.obj)
     # end __init__
 
@@ -3565,13 +3646,13 @@ class ServiceInstanceST(DBBaseST):
     # end get_virtualization_type
 
     def handle_st_object_req(self):
-        resp = DBBaseST.handle_st_object_req()
+        resp = super(ServiceInstanceST, self).handle_st_object_req()
         resp.obj_refs = [
-            sandesh.RefsList('virtual_machine', self.virtual_machines),
-            sandesh.RefsList('port_tuple', self.port_tuples),
-            sandesh.RefsList('service_template', [self.service_template]),
-            sandesh.RefsList('network_policy', self.network_policys),
-            sandesh.RefsList('route_table', self.route_tables),
+            self._get_sandesh_ref_list('virtual_machine'),
+            self._get_sandesh_ref_list('port_tuple'),
+            self._get_sandesh_ref_list('service_template'),
+            self._get_sandesh_ref_list('network_policy'),
+            self._get_sandesh_ref_list('route_table'),
         ]
         resp.properties = [
             sandesh.PropList('left_network', self.left_vn_str),
@@ -3629,6 +3710,15 @@ class RoutingPolicyST(DBBaseST):
                                  None, 'DELETE')
         self.routing_instances.discard(ri.name)
     # end delete_routing_instance
+
+    def handle_st_object_req(self):
+        resp = super(RoutingPolicyST, self).handle_st_object_req()
+        resp.obj_refs = [
+            self._get_sandesh_ref_list('service_instance'),
+            self._get_sandesh_ref_list('routing_instance'),
+        ]
+        return resp
+    # end handle_st_object_req
 # end RoutingPolicyST
 
 class RouteAggregateST(DBBaseST):
@@ -3695,6 +3785,15 @@ class RouteAggregateST(DBBaseST):
         self._vnc_lib.route_aggregate_update(self.obj)
         self.routing_instances.discard(ri.name)
     # end delete_routing_instance
+
+    def handle_st_object_req(self):
+        resp = super(RouteAggregateST, self).handle_st_object_req()
+        resp.obj_refs = [
+            self._get_sandesh_ref_list('service_instance'),
+            self._get_sandesh_ref_list('routing_instance'),
+        ]
+        return resp
+    # end handle_st_object_req
 # end RouteAggregateST
 
 
@@ -3709,11 +3808,11 @@ class PortTupleST(DBBaseST):
         self.update(obj)
         self.uuid = self.obj.uuid
         self.add_to_parent(self.obj)
+        self.update_multiple_refs('virtual_machine_interface', self.obj)
     # end __init__
 
     def update(self, obj=None):
         self.obj = obj or self.read_vnc_obj(fq_name=self.name)
-        self.update_multiple_refs('virtual_machine_interface', self.obj)
     # end update
 
     def delete_obj(self):
@@ -3731,4 +3830,13 @@ class PortTupleST(DBBaseST):
             return None
         return si_obj.get_service_mode()
     # end get_service_mode
+
+    def handle_st_object_req(self):
+        resp = super(PortTupleST, self).handle_st_object_req()
+        resp.obj_refs = [
+            self._get_sandesh_ref_list('virtual_machine_interface'),
+            self._get_sandesh_ref_list('service_instance'),
+        ]
+        return resp
+    # end handle_st_object_req
 # end PortTupleST

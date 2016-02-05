@@ -153,8 +153,8 @@ void RoutingPolicyMgr::ApplyRoutingPolicy(RoutingInstance *instance) {
 // On a given path of the route, apply the policy
 RoutingPolicy::PolicyResult RoutingPolicyMgr::ExecuteRoutingPolicy(
                              const RoutingPolicy *policy, const BgpRoute *route,
-                             BgpAttr *attr) const {
-    return (*policy)(route, attr);
+                             const BgpPath *path, BgpAttr *attr) const {
+    return (*policy)(route, path, attr);
 }
 
 //
@@ -358,27 +358,38 @@ RoutingPolicy::PolicyTermPtr RoutingPolicy::BuildTerm(const RoutingPolicyTerm &c
          new MatchCommunity(communities_to_match);
         matches.push_back(community);
     }
-    if (!cfg_term.match.prefix_match.prefix_to_match.empty()) {
-        boost::system::error_code ec;
-        Ip4Address ip4;
-        int plen;
-        ec = Ip4PrefixParse(cfg_term.match.prefix_match.prefix_to_match,
-                            &ip4, &plen);
-        if (ec.value() == 0) {
-            PrefixMatchInet *prefix =
-                new PrefixMatchInet(cfg_term.match.prefix_match.prefix_to_match,
-                                 cfg_term.match.prefix_match.prefix_match_type);
-            matches.push_back(prefix);
-        } else {
-            Ip6Address ip6;
-            ec = Inet6PrefixParse(cfg_term.match.prefix_match.prefix_to_match,
-                                  &ip6, &plen);
+
+    if (!cfg_term.match.protocols_match.empty()) {
+        MatchProtocol *protocol =
+         new MatchProtocol(cfg_term.match.protocols_match);
+        matches.push_back(protocol);
+    }
+
+    if (!cfg_term.match.prefixes_to_match.empty()) {
+        PrefixMatchConfigList inet_prefix_list;
+        PrefixMatchConfigList inet6_prefix_list;
+        BOOST_FOREACH(PrefixMatchConfig match, cfg_term.match.prefixes_to_match) {
+            boost::system::error_code ec;
+            Ip4Address ip4;
+            int plen;
+            ec = Ip4PrefixParse(match.prefix_to_match, &ip4, &plen);
             if (ec.value() == 0) {
-                PrefixMatchInet6 *prefix = new
-                   PrefixMatchInet6(cfg_term.match.prefix_match.prefix_to_match,
-                                 cfg_term.match.prefix_match.prefix_match_type);
-                matches.push_back(prefix);
+                inet_prefix_list.push_back(match);
+            } else {
+                Ip6Address ip6;
+                ec = Inet6PrefixParse(match.prefix_to_match, &ip6, &plen);
+                if (ec.value() == 0) {
+                    inet6_prefix_list.push_back(match);
+                }
             }
+        }
+        if (!inet_prefix_list.empty()) {
+            PrefixMatchInet *prefix = new PrefixMatchInet(inet_prefix_list);
+            matches.push_back(prefix);
+        } 
+        if (!inet6_prefix_list.empty()) {
+            PrefixMatchInet6 *prefix = new PrefixMatchInet6(inet6_prefix_list);
+            matches.push_back(prefix);
         }
     }
 
@@ -416,6 +427,12 @@ RoutingPolicy::PolicyTermPtr RoutingPolicy::BuildTerm(const RoutingPolicyTerm &c
         UpdateLocalPref *local_pref =
             new UpdateLocalPref(cfg_term.action.update.local_pref);
         actions.push_back(local_pref);
+    }
+
+    if (cfg_term.action.update.med) {
+        UpdateMed *med =
+            new UpdateMed(cfg_term.action.update.med);
+        actions.push_back(med);
     }
 
     PolicyTermPtr ret_term;
@@ -524,10 +541,10 @@ void RoutingPolicy::RetryDelete() {
 }
 
 RoutingPolicy::PolicyResult RoutingPolicy::operator()(const BgpRoute *route,
-                                                      BgpAttr *attr) const {
+                                  const BgpPath *path, BgpAttr *attr) const {
     BOOST_FOREACH(PolicyTermPtr term, terms()) {
         bool terminal = term->terminal();
-        bool matched = term->ApplyTerm(route, attr);
+        bool matched = term->ApplyTerm(route, path, attr);
         if (matched && terminal) {
             return std::make_pair(terminal,
                                   (*term->actions().begin())->accept());
@@ -550,10 +567,11 @@ bool PolicyTerm::terminal() const {
     return false;
 }
 
-bool PolicyTerm::ApplyTerm(const BgpRoute *route, BgpAttr *attr) const {
+bool PolicyTerm::ApplyTerm(const BgpRoute *route, const BgpPath *path,
+                           BgpAttr *attr) const {
     bool matched = true;
     BOOST_FOREACH(RoutingPolicyMatch *match, matches()) {
-        if (!(*match)(route, attr)) {
+        if (!(*match)(route, path, attr)) {
             matched = false;
             break;
         }

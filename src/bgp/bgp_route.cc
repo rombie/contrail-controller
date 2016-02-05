@@ -14,6 +14,7 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/extended-community/site_of_origin.h"
 #include "bgp/origin-vn/origin_vn.h"
+#include "bgp/routing-instance/routepath_replicator.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/security_group/security_group.h"
 #include "bgp/tunnel_encap/tunnel_encap.h"
@@ -437,6 +438,10 @@ void BgpRoute::FillRouteInfo(const BgpTable *table,
             srp.set_protocol("StaticRoute");
         } else if (path->GetSource() == BgpPath::Local) {
             srp.set_protocol("Local");
+        } else if (path->GetSource() == BgpPath::Aggregate) {
+            srp.set_protocol("Aggregate");
+        } else if (path->GetSource() == BgpPath::ResolvedRoute) {
+            srp.set_protocol("ResolvedRoute");
         }
 
         const BgpPeer *bgp_peer = dynamic_cast<const BgpPeer *>(peer);
@@ -452,7 +457,7 @@ void BgpRoute::FillRouteInfo(const BgpTable *table,
         srp.set_local_preference(attr->local_pref());
         srp.set_next_hop(attr->nexthop().to_string());
         srp.set_label(path->GetLabel());
-        srp.set_flags(path->GetFlags());
+        srp.set_flags(path->GetFlagsStringList());
         srp.set_last_modified(
             integerToString(UTCUsecToPTime(path->time_stamp_usecs())));
         if (path->IsReplicated()) {
@@ -462,6 +467,14 @@ void BgpRoute::FillRouteInfo(const BgpTable *table,
             srp.set_primary_table(replicated->src_table()->name());
         } else {
             srp.set_replicated(false);
+            Address::Family vpn_family =
+                Address::VpnFamilyFromFamily(table->family());
+            const RoutePathReplicator *replicator =
+                table->server()->replicator(vpn_family);
+            if (replicator) {
+                srp.set_secondary_tables(
+                    replicator->GetReplicatedTableNameList(table, this, path));
+            }
         }
         if (attr->cluster_list()) {
             FillRoutePathClusterListInfo(attr->cluster_list(), &srp);

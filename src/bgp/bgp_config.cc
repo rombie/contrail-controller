@@ -330,12 +330,22 @@ void BgpRoutingPolicyConfig::Clear() {
 std::string RoutingPolicyMatchConfig::ToString() const {
     ostringstream oss;
     oss << "from {" << std::endl;
-    if (!community_match.empty()) {
-        oss << "    " << community_match << std::endl;
+    if (!protocols_match.empty()) {
+        oss << "    protocol [ ";
+        BOOST_FOREACH(const string &protocol, protocols_match) {
+            oss << protocol << ",";
+        }
+        oss.seekp(-1, oss.cur);
+        oss << " ]";
     }
-    if (!prefix_match.prefix_to_match.empty()) {
-        oss << "    " << prefix_match.prefix_to_match << " "
-            << prefix_match.prefix_match_type << std::endl;
+    if (!community_match.empty()) {
+        oss << "    community " << community_match << std::endl;
+    }
+    if (!prefixes_to_match.empty()) {
+        BOOST_FOREACH(const PrefixMatchConfig &match, prefixes_to_match) {
+            oss << "    prefix " << match.prefix_to_match << " "
+                << match.prefix_match_type << std::endl;
+        }
     }
     oss << "}" << std::endl;
     return oss.str();
@@ -366,6 +376,9 @@ string RoutingPolicyActionConfig::ToString() const {
     }
     if (update.local_pref) {
         oss << "    local-preference " << update.local_pref << std::endl;
+    }
+    if (update.med) {
+        oss << "    med " << update.med << std::endl;
     }
 
     if (action == ACCEPT) {

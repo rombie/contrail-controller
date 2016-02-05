@@ -331,6 +331,8 @@ class VirtualRouterSM(DBBaseSM):
 
     def __init__(self, uuid, obj_dict=None):
         self.uuid = uuid
+        self.agent_state = False
+        self.agent_down_count = 0
         self.virtual_machines = set()
         self.update(obj_dict)
     # end __init__
@@ -351,6 +353,19 @@ class VirtualRouterSM(DBBaseSM):
         obj.update_multiple_refs('virtual_machine', {})
         del cls._dict[uuid]
     # end delete
+
+    def set_agent_state(self, up):
+        if up:
+            self.agent_down_count = 0
+            self.agent_state = True
+        else:
+            self.agent_down_count += 1
+            if not (self.agent_down_count % 3):
+                self.agent_state = False
+
+    def set_netns_version(self, netns_version):
+        self.netns_version = netns_version
+
 # end VirtualRouterSM
 
 
@@ -363,6 +378,7 @@ class VirtualMachineInterfaceSM(DBBaseSM):
         self.params = None
         self.if_type = None
         self.virtual_ip = None
+        self.loadbalancer = None
         self.virtual_network = None
         self.virtual_machine = None
         self.loadbalancer_pool = None
@@ -393,6 +409,7 @@ class VirtualMachineInterfaceSM(DBBaseSM):
         if self.aaps:
             self.aaps = self.aaps.get('allowed_address_pair', None)
         self.update_single_ref('virtual_ip', obj)
+        self.update_single_ref('loadbalancer', obj)
         self.update_single_ref('loadbalancer_pool', obj)
         self.update_multiple_refs('instance_ip', obj)
         self.update_multiple_refs('floating_ip', obj)
@@ -417,6 +434,7 @@ class VirtualMachineInterfaceSM(DBBaseSM):
             return
         obj = cls._dict[uuid]
         obj.update_single_ref('virtual_ip', {})
+        obj.update_single_ref('loadbalancer', {})
         obj.update_single_ref('loadbalancer_pool', {})
         obj.update_multiple_refs('instance_ip', {})
         obj.update_multiple_refs('floating_ip', {})

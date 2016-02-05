@@ -607,6 +607,7 @@ void AgentXmppChannel::ReceiveV4V6Update(XmlPugi *pugi) {
 
 static void GetEcmpHashFieldsToUse(ItemType *item,
                                    EcmpLoadBalance &ecmp_load_balance) {
+    ecmp_load_balance.ResetAll();
     if (item->entry.load_balance.load_balance_decision.empty() ||
         item->entry.load_balance.load_balance_decision !=
             LoadBalanceDecision)
@@ -1475,7 +1476,6 @@ void AgentXmppChannel::HandleAgentXmppClientChannelEvent(AgentXmppChannel *peer,
                                                          xmps::PeerState state) {
     Agent *agent = peer->agent();
     peer->UpdateConnectionInfo(state);
-    bool change_agent_mcast_builder = false;
     bool headless_mode = agent->headless_agent_mode();
 
     if (state == xmps::READY) {
@@ -1505,29 +1505,9 @@ void AgentXmppChannel::HandleAgentXmppClientChannelEvent(AgentXmppChannel *peer,
                              "NULL", "BGP peer set as config server.");
         }
 
-        // Evaluate switching over Multicast Tree Builder
-        AgentXmppChannel *agent_mcast_builder =
-            agent->mulitcast_builder();
-        //Either mcast builder is being set for first time or a lower peer has
-        //come up. In both cases its time to set new mcast peer as builder.
-        change_agent_mcast_builder = agent_mcast_builder ? false : true;
-
-        if (agent_mcast_builder && (agent_mcast_builder != peer)) {
-            // Check whether new peer can be a potential mcast builder
-            boost::system::error_code ec;
-            IpAddress ip1 = ip::address::from_string(peer->GetXmppServer(),ec);
-            IpAddress ip2 = ip::address::from_string(agent_mcast_builder->
-                                                     GetXmppServer(),ec);
-            if (ip1.to_v4().to_ulong() < ip2.to_v4().to_ulong()) {
-                change_agent_mcast_builder = true;
-                // Walk route-tables and send dissociate to older peer
-                // for subnet and broadcast routes
-                agent_mcast_builder->bgp_peer_id()->
-                    PeerNotifyMulticastRoutes(false);
-            }
-        }
-
-        if (change_agent_mcast_builder) {
+        AgentXmppChannel *agent_mcast_builder = agent->mulitcast_builder();
+        //Mcast builder was not set it, use the new peer
+        if (agent_mcast_builder == NULL) {
             //Since this is first time mcast peer so old and new peer are same
             AgentXmppChannel::SetMulticastPeer(peer, peer);
             CleanMulticastStale(peer);
@@ -1693,7 +1673,8 @@ bool AgentXmppChannel::ControllerSendVmCfgSubscribe(AgentXmppChannel *peer,
 
 
     datalen_ = XmppProto::EncodeMessage(impl.get(), data_, sizeof(data_));
-    CONTROLLER_INFO_TRACE(Trace, peer->GetBgpPeerName(), "",
+    CONTROLLER_TX_CONFIG_TRACE(Trace, peer->GetXmppServerIdx(),
+                               peer->GetBgpPeerName(), "",
               std::string(reinterpret_cast<const char *>(data_), datalen_));
     // send data
     if (peer->SendUpdate(data_,datalen_) == false) {
@@ -1733,7 +1714,8 @@ bool AgentXmppChannel::ControllerSendCfgSubscribe(AgentXmppChannel *peer) {
     pugi->AddAttribute("node", node);
 
     datalen_ = XmppProto::EncodeMessage(impl.get(), data_, sizeof(data_));
-    CONTROLLER_INFO_TRACE(Trace, peer->GetBgpPeerName(), "",
+    CONTROLLER_TX_CONFIG_TRACE(Trace, peer->GetXmppServerIdx(),
+                               peer->GetBgpPeerName(), "",
             std::string(reinterpret_cast<const char *>(data_), datalen_));
     // send data
     if (peer->SendUpdate(data_,datalen_) == false) {
@@ -1862,6 +1844,7 @@ bool AgentXmppChannel::ControllerSendV4V6UnicastRouteCommon(AgentRoute *route,
     }
 
     item.entry.version = 1; //TODO
+    item.entry.med = 0;
 
     //Set sequence number and preference of route
     item.entry.sequence_number = path_preference.sequence();
@@ -2010,6 +1993,7 @@ bool AgentXmppChannel::BuildTorMulticastMessage(EnetItemType &item,
     }
 
     item.entry.next_hops.next_hop.push_back(nh);
+    item.entry.med = 0;
     //item.entry.version = 1; //TODO
     //item.entry.virtual_network = vn;
     return true;
@@ -2081,14 +2065,14 @@ bool AgentXmppChannel::BuildEvpnMulticastMessage(EnetItemType &item,
                 nh.tunnel_encapsulation_list.tunnel_encapsulation.push_back("udp");
             }
         } else {
+            if (path == NULL)
+                path = route->FindPath(agent_->local_peer());
+
             if (path) {
                 nh.label = path->vxlan_id();
                 item.entry.nlri.ethernet_tag = nh.label;
             } else {
-                //Before marking label as 0 check for local_peer path as well.
-                path = route->FindPath(agent_->local_peer());
-                if (path == NULL)
-                    nh.label = 0;
+                nh.label = 0;
             }
             nh.tunnel_encapsulation_list.tunnel_encapsulation.push_back("vxlan");
         }
@@ -2099,6 +2083,7 @@ bool AgentXmppChannel::BuildEvpnMulticastMessage(EnetItemType &item,
     }
 
     item.entry.next_hops.next_hop.push_back(nh);
+    item.entry.med = 0;
     //item.entry.version = 1; //TODO
     //item.entry.virtual_network = vn;
     return true;
@@ -2171,6 +2156,7 @@ bool AgentXmppChannel::BuildEvpnUnicastMessage(EnetItemType &item,
     }
 
     item.entry.next_hops.next_hop.push_back(nh);
+    item.entry.med = 0;
     //item.entry.version = 1; //TODO
     //item.entry.virtual_network = vn;
 

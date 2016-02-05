@@ -524,7 +524,7 @@ void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
     CfgIntKey *key = new CfgIntKey(MakeUuid(intf_id));
     CfgIntData *data = new CfgIntData();
     boost::system::error_code ec;
-    IpAddress ip = Ip4Address::from_string(ipaddr, ec);
+    Ip4Address ip = Ip4Address::from_string(ipaddr, ec);
     char vm_name[MAX_TESTNAME_LEN];
     sprintf(vm_name, "vm%d", vm_id);
     Ip6Address ip6 = Ip6Address();
@@ -2042,15 +2042,23 @@ void DeleteLogicalInterface(const char *name) {
     DelNode("logical-interface", name);
 }
 
-void AddVmPortVrf(const char *name, const string &ip, uint16_t tag) {
-    char buff[256];
+void AddVmPortVrf(const char *name, const string &ip, uint16_t tag,
+                  const string &v6_ip) {
+    char buff[1024];
     int len = 0;
 
     len += sprintf(buff + len,   "<direction>both</direction>");
     len += sprintf(buff + len,   "<vlan-tag>%d</vlan-tag>", tag);
     len += sprintf(buff + len,   "<src-mac>02:00:00:00:00:02</src-mac>");
     len += sprintf(buff + len,   "<dst-mac>02:00:00:00:00:01</dst-mac>");
-    len += sprintf(buff + len,   "<service-chain-address>%s</service-chain-address>", ip.c_str());
+    len += sprintf(buff + len,
+                   "<service-chain-address>%s</service-chain-address>",
+                   ip.c_str());
+    if (!v6_ip.empty()) {
+        len += sprintf(buff + len,
+                   "<ipv6-service-chain-address>%s</ipv6-service-chain-address>",
+                    v6_ip.c_str());
+    }
     AddLinkNode("virtual-machine-interface-routing-instance", name, buff);
 }
 

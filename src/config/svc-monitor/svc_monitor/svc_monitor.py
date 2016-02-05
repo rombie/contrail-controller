@@ -290,7 +290,7 @@ class SvcMonitor(object):
                 self.logger.log_info("SI %s deletion succeed" % si_id)
 
                 for iip_id in dependency_tracker.resources.get('instance_ip', []):
-                    self.delete_shared_iip(iip_id)
+                    self.port_tuple_agent.delete_shared_iip(iip_id)
 
         for vn_id in dependency_tracker.resources.get('virtual_network', []):
             vn = VirtualNetworkSM.get(vn_id)
@@ -326,6 +326,8 @@ class SvcMonitor(object):
                     vmi = VirtualMachineInterfaceSM.get(vmi_id)
                     if vmi and vmi.virtual_ip:
                         self.netns_manager.add_fip_to_vip_vmi(vmi, fip)
+                    elif vmi and vmi.loadbalancer:
+                        self.netns_manager.add_fip_to_vip_vmi(vmi, fip)
 
         for lr_id in dependency_tracker.resources.get('logical_router', []):
             lr = LogicalRouterSM.get(lr_id)
@@ -347,7 +349,7 @@ class SvcMonitor(object):
         self.vrouter_scheduler = importutils.import_object(
             self._args.si_netns_scheduler_driver,
             self._vnc_lib, self._nova_client,
-            self._args)
+            self._disc, self.logger, self._args)
 
         # load virtual machine instance manager
         self.vm_manager = importutils.import_object(
@@ -429,9 +431,30 @@ class SvcMonitor(object):
         self.upgrade()
 
         # check services
+        self.vrouter_scheduler.vrouters_running()
         self.launch_services()
 
         self._db_resync_done.set()
+
+    def _upgrade_instance_ip(self, vm):
+        for vmi_id in vm.virtual_machine_interfaces:
+            vmi = VirtualMachineInterfaceSM.get(vmi_id)
+            if not vmi:
+                continue
+
+            for iip_id in vmi.instance_ips:
+                iip = InstanceIpSM.get(iip_id)
+                if not iip or iip.service_instance_ip:
+                    continue
+                iip_obj = InstanceIp()
+                iip_obj.name = iip.name
+                iip_obj.uuid = iip.uuid
+                iip_obj.set_service_instance_ip(True)
+                try:
+                    self._vnc_lib.instance_ip_update(iip_obj)
+                except NoIdError:
+                    self.logger.log_error("upgrade instance ip to service ip failed %s" % (iip.name))
+                    continue
 
     def upgrade(self):
         for si in ServiceInstanceSM.values():
@@ -442,6 +465,7 @@ class SvcMonitor(object):
             vm_id_list = list(si.virtual_machines)
             for vm_id in vm_id_list:
                 vm = VirtualMachineSM.get(vm_id)
+                self._upgrade_instance_ip(vm)
                 if vm.virtualization_type:
                     continue
 
@@ -484,7 +508,10 @@ class SvcMonitor(object):
                 self.port_delete_or_si_link(vm, vmi)
 
         # invoke port tuple handling
-        self.port_tuple_agent.update_port_tuples()
+        try:
+            self.port_tuple_agent.update_port_tuples()
+        except Exception:
+            cgitb_error_log(self)
 
         # Load the loadbalancer driver
         self.loadbalancer_agent.load_drivers()
@@ -710,6 +737,19 @@ def skip_check_service(si):
 
 
 def timer_callback(monitor):
+    # delete orphan shared iips
+    iip_delete_list = []
+    for iip in InstanceIpSM.values():
+        if not iip.instance_ip_secondary or not iip.service_instance_ip:
+            continue
+        if iip.service_instance:
+            continue
+        if len(iip.virtual_machine_interfaces):
+            continue
+        iip_delete_list.append(iip)
+    for iip in iip_delete_list:
+        monitor.port_tuple_agent.delete_shared_iip(iip.uuid)
+
     # delete vms without si
     vm_delete_list = []
     for vm in VirtualMachineSM.values():
@@ -727,6 +767,9 @@ def timer_callback(monitor):
             vmi_delete_list.append(vmi.uuid)
     if len(vmi_delete_list):
         monitor.vm_manager.cleanup_svc_vm_ports(vmi_delete_list)
+
+    # check vrouter agent status
+    monitor.vrouter_scheduler.vrouters_running()
 
     # check status of service
     si_list = list(ServiceInstanceSM.values())

@@ -2,11 +2,9 @@
  * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
  */
 
-//
-//  viz.sandesh
-//
-//  Collector definitions
-//
+/**
+ *  Definitions of structures used internally by contrail daemons
+ */
 
 const string COLLECTOR_KEYSPACE     = "ContrailAnalytics"
 const string COLLECTOR_KEYSPACE_CQL = "ContrailAnalyticsCql"
@@ -140,6 +138,9 @@ const string STATS_TABLE_BY_U64_U64_TAG     = "StatsTableByU64U64TagV3"
 const string STATS_TABLE_BY_DBL_TAG         = "StatsTableByDblTagV3"
 const string STATS_TABLE_BY_STR_TAG         = "StatsTableByStrTagV3"
 const string STATS_TABLE_BY_U64_TAG         = "StatsTableByU64TagV3"
+
+const u16 PARTITION_MIN = 0
+const u16 PARTITION_MAX = 16
 
 enum TtlType {
     FLOWDATA_TTL,

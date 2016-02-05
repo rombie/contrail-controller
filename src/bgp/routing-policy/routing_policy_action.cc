@@ -7,16 +7,20 @@
 #include <boost/foreach.hpp>
 
 #include <algorithm>
+#include <sstream>
 
 #include <bgp/bgp_attr.h>
 #include <bgp/bgp_server.h>
 #include <bgp/community.h>
 #include <net/community_type.h>
 
+using std::copy;
+using std::ostringstream;
+using std::string;
 
-UpdateCommunity::UpdateCommunity(const std::vector<std::string> communities,
-                                 std::string op) {
-    BOOST_FOREACH(const std::string &community, communities) {
+UpdateCommunity::UpdateCommunity(const std::vector<string> communities,
+                                 string op) {
+    BOOST_FOREACH(const string &community, communities) {
         uint32_t value = CommunityType::CommunityFromString(community);
         if (value) communities_.push_back(value);
     }
@@ -37,24 +41,33 @@ UpdateCommunity::UpdateCommunity(const std::vector<std::string> communities,
 void UpdateCommunity::operator()(BgpAttr *attr) const {
     if (!attr) return;
     const Community *comm = attr->community();
-    if (comm) {
-        BgpAttrDB *attr_db = attr->attr_db();
-        BgpServer *server = attr_db->server();
-        CommunityDB *comm_db = server->comm_db();
-        CommunityPtr new_community;
-        if (op_ == SET) {
-            new_community = comm_db->SetAndLocate(comm, communities_);
-        } else if (op_ == ADD) {
-            new_community = comm_db->AppendAndLocate(comm, communities_);
-        } else if (op_ == REMOVE) {
-            new_community = comm_db->RemoveAndLocate(comm, communities_);
-        }
-        attr->set_community(new_community);
+    BgpAttrDB *attr_db = attr->attr_db();
+    BgpServer *server = attr_db->server();
+    CommunityDB *comm_db = server->comm_db();
+    CommunityPtr new_community = NULL;
+    if (op_ == SET) {
+        new_community = comm_db->SetAndLocate(comm, communities_);
+    } else if (op_ == ADD) {
+        new_community = comm_db->AppendAndLocate(comm, communities_);
+    } else if (op_ == REMOVE) {
+        if (comm) new_community = comm_db->RemoveAndLocate(comm, communities_);
     }
+    attr->set_community(new_community);
 }
 
-std::string UpdateCommunity::ToString() const {
-    return "Update Community";
+string UpdateCommunity::ToString() const {
+    ostringstream oss;
+    if (op_ == SET) oss << "community set [ ";
+    else if  (op_ == ADD) oss << "community add [ ";
+    else if (op_ == REMOVE) oss << "community remove [ ";
+
+    BOOST_FOREACH(uint32_t community, communities()) {
+        string name = CommunityType::CommunityToString(community);
+        oss << name << ",";
+    }
+    oss.seekp(-1, oss.cur);
+    oss << " ]";
+    return oss.str();
 }
 
 bool UpdateCommunity::IsEqual(const RoutingPolicyAction &community) const {
@@ -73,12 +86,34 @@ void UpdateLocalPref::operator()(BgpAttr *attr) const {
     attr->set_local_pref(local_pref_);
 }
 
-std::string UpdateLocalPref::ToString() const {
-    return "Update LocalPref";
+string UpdateLocalPref::ToString() const {
+    ostringstream oss;
+    oss << "local-pref " << local_pref_;
+    return oss.str();
 }
 
 bool UpdateLocalPref::IsEqual(const RoutingPolicyAction &local_pref) const {
     const UpdateLocalPref in_lp =
         static_cast<const UpdateLocalPref&>(local_pref);
     return (local_pref_ == in_lp.local_pref_);
+}
+
+UpdateMed::UpdateMed(uint32_t med)
+    : med_(med) {
+}
+
+void UpdateMed::operator()(BgpAttr *attr) const {
+    attr->set_med(med_);
+}
+
+string UpdateMed::ToString() const {
+    ostringstream oss;
+    oss << "med " << med_;
+    return oss.str();
+}
+
+bool UpdateMed::IsEqual(const RoutingPolicyAction &med) const {
+    const UpdateMed in_med =
+        static_cast<const UpdateMed&>(med);
+    return (med_ == in_med.med_);
 }

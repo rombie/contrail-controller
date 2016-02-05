@@ -5,10 +5,13 @@
 #include "bgp/routing-instance/path_resolver.h"
 
 #include <boost/assign/list_of.hpp>
+#include <boost/bind.hpp>
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
 
 #include "bgp/bgp_factory.h"
+#include "bgp/bgp_peer_types.h"
+#include "bgp/bgp_sandesh.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/extended-community/load_balance.h"
 #include "bgp/security_group/security_group.h"
@@ -20,6 +23,8 @@
 
 using namespace boost::program_options;
 using boost::assign::list_of;
+using std::cout;
+using std::endl;
 using std::set;
 using std::string;
 using std::vector;
@@ -114,7 +119,8 @@ protected:
           bgp_peer1_(new PeerMock(false, "192.168.1.1")),
           bgp_peer2_(new PeerMock(false, "192.168.1.2")),
           xmpp_peer1_(new PeerMock(true, "172.16.1.1")),
-          xmpp_peer2_(new PeerMock(true, "172.16.1.2")) {
+          xmpp_peer2_(new PeerMock(true, "172.16.1.2")),
+          validate_done_(false) {
         bgp_server_->session_manager()->Initialize(0);
     }
     ~PathResolverTest() {
@@ -435,6 +441,32 @@ protected:
         }
     }
 
+    void DisableConditionListener() {
+        Address::Family family =
+            nexthop_family_is_inet ? Address::INET : Address::INET6;
+        BgpConditionListener *condition_listener =
+            bgp_server_->condition_listener(family);
+        condition_listener->DisableTableWalkProcessing();
+    }
+
+    void EnableConditionListener() {
+        Address::Family family =
+            nexthop_family_is_inet ? Address::INET : Address::INET6;
+        BgpConditionListener *condition_listener =
+            bgp_server_->condition_listener(family);
+        condition_listener->EnableTableWalkProcessing();
+    }
+
+    size_t ResolverNexthopMapSize(const string &instance) {
+        BgpTable *table = GetTable(instance);
+        return table->path_resolver()->GetResolverNexthopMapSize();
+    }
+
+    size_t ResolverNexthopDeleteListSize(const string &instance) {
+        BgpTable *table = GetTable(instance);
+        return table->path_resolver()->GetResolverNexthopDeleteListSize();
+    }
+
     void DisableResolverNexthopRegUnregProcessing(const string &instance) {
         BgpTable *table = GetTable(instance);
         table->path_resolver()->DisableResolverNexthopRegUnregProcessing();
@@ -706,6 +738,50 @@ protected:
         TASK_UTIL_EXPECT_TRUE(CheckPathNoExists(instance, prefix, path_id));
     }
 
+    template <typename RespT>
+    void ValidateResponse(Sandesh *sandesh,
+        const string &instance, size_t path_count, size_t nexthop_count) {
+        RespT *resp = dynamic_cast<RespT *>(sandesh);
+        TASK_UTIL_EXPECT_NE((RespT *) NULL, resp);
+        TASK_UTIL_EXPECT_EQ(1, resp->get_resolvers().size());
+        const ShowPathResolver &spr = resp->get_resolvers().at(0);
+        TASK_UTIL_EXPECT_TRUE(spr.get_name().find(instance) != string::npos);
+        TASK_UTIL_EXPECT_EQ(path_count, spr.get_path_count());
+        TASK_UTIL_EXPECT_EQ(0, spr.get_modified_path_count());
+        TASK_UTIL_EXPECT_EQ(nexthop_count, spr.get_nexthop_count());
+        TASK_UTIL_EXPECT_EQ(0, spr.get_modified_nexthop_count());
+        cout << spr.log() << endl;
+        validate_done_ = true;
+    }
+
+    void VerifyPathResolverSandesh(const string &instance, size_t path_count,
+        size_t nexthop_count) {
+        BgpSandeshContext sandesh_context;
+        sandesh_context.bgp_server = bgp_server_.get();
+        sandesh_context.xmpp_peer_manager = NULL;
+        Sandesh::set_client_context(&sandesh_context);
+
+        Sandesh::set_response_callback(boost::bind(
+            &PathResolverTest<T>::ValidateResponse<ShowPathResolverResp>,
+            this, _1, instance, path_count, nexthop_count));
+        ShowPathResolverReq *req = new ShowPathResolverReq;
+        req->set_search_string(instance);
+        validate_done_ = false;
+        req->HandleRequest();
+        req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+
+        Sandesh::set_response_callback(boost::bind(
+            &PathResolverTest<T>::ValidateResponse<ShowPathResolverSummaryResp>,
+            this, _1, instance, path_count, nexthop_count));
+        ShowPathResolverSummaryReq *sreq = new ShowPathResolverSummaryReq;
+        sreq->set_search_string(instance);
+        validate_done_ = false;
+        sreq->HandleRequest();
+        sreq->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+
     EventManager evm_;
     BgpServerTestPtr bgp_server_;
     Address::Family family_;
@@ -714,6 +790,7 @@ protected:
     PeerMock *bgp_peer2_;
     PeerMock *xmpp_peer1_;
     PeerMock *xmpp_peer2_;
+    bool validate_done_;
 };
 
 // Specialization of GetFamily for INET.
@@ -1573,6 +1650,8 @@ TYPED_TEST(PathResolverTest, MultiplePrefix) {
             this->BuildNextHopAddress("172.16.1.1"), 10000);
     }
 
+    this->VerifyPathResolverSandesh("blue", DB::PartitionCount() * 2, 1);
+
     this->DeleteXmppPath(xmpp_peer1, "blue",
         this->BuildPrefix(bgp_peer1->ToString(), 32));
     for (int idx = 1; idx <= DB::PartitionCount() * 2; ++idx) {
@@ -1736,6 +1815,8 @@ TYPED_TEST(PathResolverTest, MultiplePrefixWithMultipath) {
             this->BuildNextHopAddress("172.16.1.2"), 10002);
     }
 
+    this->VerifyPathResolverSandesh("blue", DB::PartitionCount() * 4, 2);
+
     this->DeleteXmppPath(xmpp_peer1, "blue",
         this->BuildPrefix(bgp_peer1->ToString(), 32));
     this->DeleteXmppPath(xmpp_peer2, "blue",
@@ -1799,9 +1880,11 @@ TYPED_TEST(PathResolverTest, MultipleTableMultiplePrefix) {
 }
 
 //
-// Delete BGP path before it's nexthop is registered to condition listener.
+// Delete nexthop before it's registered to condition listener.
+// Intent is verify that we don't try to remove and unregister a nexthop
+// that was never registered.  It should simply get destroyed.
 //
-TYPED_TEST(PathResolverTest, StopResolutionBeforeRegister) {
+TYPED_TEST(PathResolverTest, ResolverNexthopCleanup1) {
     PeerMock *bgp_peer1 = this->bgp_peer1_;
     PeerMock *bgp_peer2 = this->bgp_peer2_;
 
@@ -1813,6 +1896,128 @@ TYPED_TEST(PathResolverTest, StopResolutionBeforeRegister) {
     this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
     this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
     this->EnableResolverNexthopRegUnregProcessing("blue");
+}
+
+//
+// Resume processing the update list only after the nexthop gets destroyed.
+// Intent is to ensure that the nexthop doesn't get added to the update list
+// after it's marked deleted.
+//
+TYPED_TEST(PathResolverTest, ResolverNexthopCleanup2) {
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *bgp_peer2 = this->bgp_peer2_;
+    PeerMock *xmpp_peer1 = this->xmpp_peer1_;
+    PeerMock *xmpp_peer2 = this->xmpp_peer2_;
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddBgpPath(bgp_peer2, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer2->ToString()));
+    this->AddXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+    this->AddXmppPath(xmpp_peer2, "blue",
+        this->BuildPrefix(bgp_peer2->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.2"), 10002);
+    task_util::WaitForIdle();
+
+    this->DisableResolverNexthopUpdateProcessing("blue");
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
+    task_util::WaitForIdle();
+
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopRegUnregListSize("blue"));
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopUpdateListSize("blue"));
+    this->EnableResolverNexthopUpdateProcessing("blue");
+    task_util::WaitForIdle();
+
+    this->DeleteXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
+    this->DeleteXmppPath(xmpp_peer2, "blue",
+        this->BuildPrefix(bgp_peer2->ToString(), 32));
+}
+
+//
+// Recreate nexthop before the previous incarnation has been removed (and
+// then unregistered) from condition listener.
+// Intent is to verify that the previous incarnation is reused.
+//
+TYPED_TEST(PathResolverTest, ResolverNexthopCleanup3) {
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *bgp_peer2 = this->bgp_peer2_;
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddBgpPath(bgp_peer2, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer2->ToString()));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopRegUnregListSize("blue"));
+
+    this->DisableResolverNexthopRegUnregProcessing("blue");
+
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopRegUnregListSize("blue"));
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddBgpPath(bgp_peer2, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer2->ToString()));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopRegUnregListSize("blue"));
+
+    this->EnableResolverNexthopRegUnregProcessing("blue");
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopRegUnregListSize("blue"));
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
+}
+
+//
+// Recreate nexthop after the previous incarnation has been removed but before
+// it has been unregistered from condition listener.
+// Intent is to verify that the previous incarnation is not reused.
+//
+TYPED_TEST(PathResolverTest, ResolverNexthopCleanup4) {
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *bgp_peer2 = this->bgp_peer2_;
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddBgpPath(bgp_peer2, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer2->ToString()));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopDeleteListSize("blue"));
+
+    this->DisableConditionListener();
+
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopDeleteListSize("blue"));
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddBgpPath(bgp_peer2, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer2->ToString()));
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopDeleteListSize("blue"));
+
+    this->EnableConditionListener();
+
+    TASK_UTIL_EXPECT_EQ(2, this->ResolverNexthopMapSize("blue"));
+    TASK_UTIL_EXPECT_EQ(0, this->ResolverNexthopDeleteListSize("blue"));
+
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
 }
 
 //

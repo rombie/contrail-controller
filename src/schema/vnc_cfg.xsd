@@ -641,6 +641,8 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
 <!-- Ecmp load balance parameters to be used -->
 <xsd:complexType name="EcmpHashingIncludeFields">
     <xsd:all>
+        <!-- hashing-configured - decides if fields should be used or not -->
+        <xsd:element name="hashing-configured" type="xsd:boolean" default="false"/>
         <xsd:element name="source-mac" type="xsd:boolean" default="true"/>
         <xsd:element name="destination-mac" type="xsd:boolean" default="true"/>
         <xsd:element name="source-ip" type="xsd:boolean" default="true"/>
@@ -1087,8 +1089,8 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
 
 <xsd:element name="virtual-machine-interface-bindings" type="KeyValuePairs"/>
 <!--#IFMAP-SEMANTICS-IDL
-     ListProperty('virtual-machine-interface-bindings',
-                  'virtual-machine-interface') -->
+     MapProperty('virtual-machine-interface-bindings',
+                  'virtual-machine-interface', 'key') -->
 
 <xsd:complexType name="ProtocolType">
     <xsd:all>
@@ -1110,7 +1112,7 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
 <xsd:element name="virtual-machine-interface-fat-flow-protocols"
              type="FatFlowProtocols"/>
 <!--#IFMAP-SEMANTICS-IDL
-     Property('virtual-machine-interface-fat-flow-protocols',
+     ListProperty('virtual-machine-interface-fat-flow-protocols',
              'virtual-machine-interface') -->
 
 <xsd:element name="virtual-machine-interface-sub-interface"/>
@@ -1686,11 +1688,18 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
     </xsd:all>
 </xsd:complexType>
 
+<xsd:simpleType name="RouteNextHopType">
+    <xsd:restriction base="xsd:string">
+        <xsd:enumeration value="service-instance"/>
+        <xsd:enumeration value="ip-address"/>
+    </xsd:restriction>
+</xsd:simpleType>
+
 <xsd:complexType name='RouteType'>
     <xsd:all>
         <xsd:element name='prefix' type='xsd:string'/>
         <xsd:element name='next-hop' type='xsd:string'/>
-        <xsd:element name='next-hop-type' type='xsd:string'/>
+        <xsd:element name='next-hop-type' type='RouteNextHopType'/>
         <xsd:element name='community-attributes' type='CommunityAttributes'/>
     </xsd:all>
 </xsd:complexType>

@@ -46,10 +46,15 @@ static int ProtocolToString(const std::string proto) {
         return IPPROTO_ICMP;
     }
 
+    if (proto == "SCTP" || proto == "sctp") {
+        return IPPROTO_SCTP;
+    }
+
     if (proto == "all") {
         return 0;
     }
-    return -1;
+
+    return atoi(proto.c_str());
 }
 
 void GlobalVrouter::UpdateFlowAging(autogen::GlobalVrouterConfig *cfg) {
@@ -63,7 +68,7 @@ void GlobalVrouter::UpdateFlowAging(autogen::GlobalVrouterConfig *cfg) {
 
     while (new_list_it != cfg->flow_aging_timeout_list().end()) {
         int proto = ProtocolToString(new_list_it->protocol);
-        if (proto < 0) {
+        if (proto < 0 || proto > 0xFF) {
             new_list_it++;
             continue;
         }
@@ -523,8 +528,11 @@ void GlobalVrouter::GlobalVrouterConfig(DBTablePartBase *partition,
             flow_export_rate_ = kDefaultFlowExportRate;
         }
         UpdateFlowAging(cfg);
-        resync_vn = ecmp_load_balance_.UpdateFields(cfg->
-                                              ecmp_hashing_include_fields());
+        if (cfg->ecmp_hashing_include_fields().hashing_configured) {
+            resync_vn =
+                ecmp_load_balance_.UpdateFields(cfg->
+                                                ecmp_hashing_include_fields());
+        }
     } else {
         DeleteLinkLocalServiceConfig();
         TunnelType::DeletePriorityList();

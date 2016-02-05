@@ -2,8 +2,8 @@
  * Copyright (c) 2015 Juniper Networks, Inc. All rights reserved.
  */
 
-#ifndef SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATE_H_
-#define SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATE_H_
+#ifndef SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATOR_H_
+#define SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATOR_H_
 
 #include <tbb/mutex.h>
 
@@ -13,6 +13,7 @@
 #include "bgp/routing-instance/iroute_aggregator.h"
 
 #include "bgp/bgp_condition_listener.h"
+#include "bgp/bgp_config.h"
 #include "bgp/inet/inet_route.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/inet6/inet6_route.h"
@@ -44,8 +45,8 @@ typedef ConditionMatchPtr AggregateRoutePtr;
 // RouteAggregator
 // ================
 //
-// This class impliments the route aggregation for control node. It provides
-// api to create/delete/update route aggregation config for a routing instance
+// This class implements the route aggregation for control node. It provides
+// APIs to create/delete/update route aggregation config for a routing instance
 // An object of this class for the address families that supports route
 // aggregation is hooked to routing instance. Currently route aggregation is
 // supported for INET and INET6 address family. Support for multiple address
@@ -121,7 +122,7 @@ typedef ConditionMatchPtr AggregateRoutePtr;
 // DBState: RouteAggregatorState:
 // ============================
 //
-// Route agggregator registers with the BgpTable to set the DBState.
+// RouteAggregator registers with the BgpTable to set the DBState.
 // The RouteAggregatorState implements the DBState.
 // The DBState is added on both matching/contributing route and aggregate route.
 // A route can be both contributing and aggregating route at the same time.
@@ -148,7 +149,7 @@ typedef ConditionMatchPtr AggregateRoutePtr;
 //
 // Concurrency
 // ===========
-// bgp::RouteAggregation task runs in execlusion to any task that adds/deletes
+// bgp::RouteAggregation task runs in exclusion to any task that adds/deletes
 // path from route. i.e. db::DBTable, bgp::ServiceChain, bgp::StaticRoute and
 // bgp::ResolverPath.
 // bgp::RouteAggregation runs in exclusion to bgp::Config task
@@ -202,9 +203,16 @@ public:
                                         AggregateRouteEntriesInfo *info) const;
 
 private:
-    friend class RouteAggregationTest;
     class DeleteActor;
     typedef std::set<AggregateRoutePtr> AggregateRouteProcessList;
+    typedef BgpInstanceConfig::AggregateRouteList AggregateRouteConfigList;
+
+    int CompareAggregateRoute(typename AggregateRouteMap::iterator loc,
+        AggregateRouteConfigList::iterator it);
+    void AddAggregateRoute(AggregateRouteConfigList::iterator it);
+    void DelAggregateRoute(typename AggregateRouteMap::iterator loc);
+    void UpdateAggregateRoute(typename AggregateRouteMap::iterator loc,
+        AggregateRouteConfigList::iterator it);
 
     void LocateAggregateRoutePrefix(const AggregateRouteConfig &cfg);
     void RemoveAggregateRoutePrefix(const PrefixT &static_route);
@@ -244,4 +252,4 @@ private:
 typedef RouteAggregator<AggregateInetRoute> RouteAggregatorInet;
 typedef RouteAggregator<AggregateInet6Route> RouteAggregatorInet6;
 
-#endif  // SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATE_H_
+#endif  // SRC_BGP_ROUTING_INSTANCE_ROUTE_AGGREGATOR_H_

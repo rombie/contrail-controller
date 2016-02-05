@@ -109,7 +109,8 @@ void KSyncFlowIndexManager::Add(FlowEntry *flow) {
 void KSyncFlowIndexManager::Change(FlowEntry *flow) {
     KSyncFlowIndexEntry *index_entry = flow->ksync_index_entry();
     if (flow->deleted() ||
-        (index_entry->state_ != KSyncFlowIndexEntry::INDEX_SET)) {
+        (index_entry->state_ != KSyncFlowIndexEntry::INDEX_SET &&
+         index_entry->state_ != KSyncFlowIndexEntry::INDEX_FAILED)) {
         return;
     }
 
@@ -177,6 +178,17 @@ void KSyncFlowIndexManager::UpdateFlowHandle(FlowEntry *flow) {
     }
 }
 
+void KSyncFlowIndexManager::UpdateKSyncError(FlowEntry *flow) {
+    KSyncFlowIndexEntry *index_entry = flow->ksync_index_entry();
+    if (index_entry->state_ != KSyncFlowIndexEntry::INDEX_UNASSIGNED) {
+        // currently we only deal with index allocation failures
+        // from vrouter
+        return;
+    }
+
+    index_entry->state_ = KSyncFlowIndexEntry::INDEX_FAILED;
+}
+
 void KSyncFlowIndexManager::Release(FlowEntry *flow) {
     FlowEntryPtr wait_flow = ReleaseIndex(flow);
 
@@ -214,6 +226,10 @@ void KSyncFlowIndexManager::Release(FlowEntry *flow) {
         RetryIndexAcquireRequest(wait_flow.get(), evict_index);
         break;
     }
+
+    // Entry has index failure and no further transitions necessary
+    case KSyncFlowIndexEntry::INDEX_FAILED:
+        break;
 
     default:
         assert(0);
