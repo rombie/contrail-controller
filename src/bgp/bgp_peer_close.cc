@@ -294,6 +294,7 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
                 // Stale paths must be deleted
                 if (!path->IsStale())
                     return;
+                path->ResetStale();
                 stats_.deleted_state_paths++;
                 oper = DBRequest::DB_ENTRY_DELETE;
                 attrs = NULL;
