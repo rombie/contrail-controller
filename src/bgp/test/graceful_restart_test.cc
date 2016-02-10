@@ -314,7 +314,7 @@ void GracefulRestartTest::TearDown() {
     VerifyReceivedXmppRoutes(0);
 
     if (n_agents_) {
-        TASK_UTIL_EXPECT_EQ(0, xmpp_server_->ConnectionCount());
+        TASK_UTIL_EXPECT_EQ(0, xmpp_server_->connection_map().size());
     }
     AgentCleanup();
     channel_manager_.reset();
