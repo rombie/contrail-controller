@@ -270,7 +270,6 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
                            const IPeer *peer, DBRequest *req,
                            DBRequest::DBOperation oper, BgpAttrPtr attrs,
                            uint32_t path_id, uint32_t flags, uint32_t label) {
-    bool is_stale = false;
     bool delete_rt = false;
 
     switch (oper) {
@@ -287,7 +286,6 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
                 (path->GetLabel() != label)) {
 
                 // Update Attributes and notify (if needed)
-                is_stale = path->IsStale();
                 if (path->NeedsResolution())
                     path_resolver_->StopPathResolution(root->index(), path);
                 rt->DeletePath(path);
@@ -300,12 +298,6 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
         BgpPath *new_path;
         new_path =
             new BgpPath(peer, path_id, BgpPath::BGP_XMPP, attrs, flags, label);
-
-        // If the path is being staled (by bringing down the local pref,
-        // mark the same in the new path created.
-        if (is_stale) {
-            new_path->SetStale();
-        }
 
         if (new_path->NeedsResolution()) {
             Address::Family family = new_path->GetAttr()->nexthop_family();
@@ -434,8 +426,8 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
             }
 
             delete_rt = InputCommon(root, rt, path, peer, req, req->oper,
-                                     attr, path_id, nexthop.flags_,
-                                     nexthop.label_);
+                                    attr, path_id, nexthop.flags_,
+                                    nexthop.label_);
         }
     }
 

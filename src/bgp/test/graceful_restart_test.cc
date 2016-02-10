@@ -551,7 +551,6 @@ void GracefulRestartTest::VerifyReceivedXmppRoutes(int routes) {
                 continue;
             TASK_UTIL_EXPECT_EQ_MSG(routes, agent->RouteCount(instance_name),
                                     "Wait for routes in " + instance_name);
-            ASSERT_TRUE(agent->RouteCount(instance_name) == routes);
         }
     }
     WaitForIdle();

@@ -149,6 +149,9 @@ protected:
         task_util::WaitForIdle();
         xc_a_->Shutdown();
         task_util::WaitForIdle();
+        xc_a_->ConfigUpdate(new XmppConfigData());
+        TASK_UTIL_EXPECT_EQ(0, xs_a_->ConnectionCount());
+        task_util::WaitForIdle();
 
         // Now delete the channel manager
         delete bgp_channel_manager_;
