@@ -144,13 +144,15 @@ protected:
         b_->Shutdown();
         task_util::WaitForIdle();
 
+        // Delete the channel first
+        delete xmpp_cchannel_;
+        task_util::WaitForIdle();
+        xmpp_cchannel_ = NULL;
+
         // This will trigger cleanup of all clients
         xs_a_->Shutdown();
         task_util::WaitForIdle();
         xc_a_->Shutdown();
-        task_util::WaitForIdle();
-        xc_a_->ConfigUpdate(new XmppConfigData());
-        TASK_UTIL_EXPECT_EQ(0, xs_a_->ConnectionCount());
         task_util::WaitForIdle();
 
         // Now delete the channel manager
