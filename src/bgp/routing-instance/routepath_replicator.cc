@@ -10,7 +10,11 @@
 
 #include "base/set_util.h"
 #include "base/task_annotations.h"
+#include "base/task_trigger.h"
+#include "bgp/bgp_config.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_route.h"
+#include "bgp/bgp_server.h"
 #include "bgp/origin-vn/origin_vn.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/routing-instance/rtarget_group_mgr.h"
@@ -116,6 +120,10 @@ void TableState::RemoveGroup(RtGroup *group) {
 const RtGroup *TableState::FindGroup(RtGroup *group) const {
     GroupList::const_iterator it = list_.find(group);
     return (it != list_.end() ? *it : NULL);
+}
+
+uint32_t TableState::route_count() const {
+    return table_->GetDBStateCount(listener_id());
 }
 
 RtReplicated::RtReplicated(RoutePathReplicator *replicator)
@@ -427,9 +435,9 @@ void RoutePathReplicator::DBStateSync(BgpTable *table, TableState *ts,
 static ExtCommunityPtr UpdateExtCommunity(BgpServer *server,
         const RoutingInstance *rtinstance, const ExtCommunity *ext_community,
         const ExtCommunity::ExtCommunityList &export_list) {
-    // Add RouteTargets exported by the instance for a non-default instance.
+    // Add RouteTargets exported by the instance for a non-master instance.
     ExtCommunityPtr extcomm_ptr;
-    if (!rtinstance->IsDefaultRoutingInstance()) {
+    if (!rtinstance->IsMasterRoutingInstance()) {
         extcomm_ptr =
             server->extcomm_db()->AppendAndLocate(ext_community, export_list);
         return extcomm_ptr;
@@ -520,7 +528,7 @@ bool RoutePathReplicator::RouteListener(TableState *ts,
 
     // Get the export route target list from the routing instance.
     ExtCommunity::ExtCommunityList export_list;
-    if (!rtinstance->IsDefaultRoutingInstance()) {
+    if (!rtinstance->IsMasterRoutingInstance()) {
         BOOST_FOREACH(RouteTarget rtarget, rtinstance->GetExportList()) {
             export_list.push_back(rtarget.GetExtCommunity());
         }
@@ -582,7 +590,7 @@ bool RoutePathReplicator::RouteListener(TableState *ts,
             continue;
 
         // Add OriginVn when replicating self-originated routes from a VRF.
-        if (!rtinstance->IsDefaultRoutingInstance() &&
+        if (!vn_index && !rtinstance->IsMasterRoutingInstance() &&
             path->IsVrfOriginated() && rtinstance->virtual_network_index()) {
             vn_index = rtinstance->virtual_network_index();
             OriginVn origin_vn(server_->autonomous_system(), vn_index);

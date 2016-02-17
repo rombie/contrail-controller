@@ -9,11 +9,11 @@
 
 #include "base/util.h"
 #include "route/path.h"
-#include "bgp/bgp_peer.h"
 #include "bgp/bgp_attr.h"
 
 class BgpTable;
 class BgpRoute;
+class IPeer;
 
 class BgpPath : public Path {
 public:
@@ -24,18 +24,18 @@ public:
         NoTunnelEncap = 1 << 3,
         OriginatorIdLooped = 1 << 4,
         ResolveNexthop = 1 << 5,
-        RoutingPolicyReject = 1 << 6,
+        ResolvedPath = 1 << 6,
+        RoutingPolicyReject = 1 << 7
     };
 
     // Ordered in the ascending order of path preference
     enum PathSource {
         None = 0,
         BGP_XMPP = 1,
-        ResolvedRoute = 2,
-        ServiceChain = 3,
-        StaticRoute = 4,
-        Aggregate = 5,
-        Local = 6,
+        ServiceChain = 2,
+        StaticRoute = 3,
+        Aggregate = 4,
+        Local = 5
     };
 
     static const uint32_t INFEASIBLE_MASK = (AsPathLooped |
@@ -43,7 +43,6 @@ public:
         RoutingPolicyReject);
 
     static std::string PathIdString(uint32_t path_id);
-    static std::string PathSourceString(PathSource source);
 
     BgpPath(const IPeer *peer, uint32_t path_id, PathSource src,
             const BgpAttrPtr ptr, uint32_t flags, uint32_t label);
@@ -61,8 +60,7 @@ public:
     bool IsVrfOriginated() const {
         if (IsReplicated())
             return false;
-        if (source_ != ResolvedRoute && source_ != Aggregate &&
-            source_ != BGP_XMPP && source_ != Local)
+        if (source_ != Aggregate && source_ != BGP_XMPP && source_ != Local)
             return false;
         return true;
     }
@@ -75,14 +73,7 @@ public:
         return path_id_;
     }
 
-    void UpdatePeerRefCount(int count) {
-        if (!peer_)
-            return;
-        peer_->UpdateRefCount(count);
-        if (source_ != BGP_XMPP || IsReplicated())
-            return;
-        peer_->UpdatePrimaryPathCount(count);
-    }
+    void UpdatePeerRefCount(int count) const;
 
     void SetAttr(const BgpAttrPtr attr, const BgpAttrPtr original_attr) {
         attr_ = attr;
@@ -109,6 +100,10 @@ public:
         return ((flags_ & INFEASIBLE_MASK) == 0);
     }
 
+    bool IsResolutionFeasible() const {
+        return ((flags_ & (INFEASIBLE_MASK & ~ResolveNexthop)) == 0);
+    }
+
     uint32_t GetFlags() const {
         return flags_;
     }
@@ -117,6 +112,7 @@ public:
     PathSource GetSource() const {
         return source_;
     }
+    std::string GetSourceString(bool combine_bgp_and_xmpp = false) const;
 
     // Check if the path is stale
     bool IsStale() const {
@@ -149,10 +145,7 @@ public:
 
     bool NeedsResolution() const { return ((flags_ & ResolveNexthop) != 0); }
 
-    virtual std::string ToString() const {
-        // Dump the peer name
-        return peer_ ? peer_->ToString() : "Nil";
-    }
+    virtual std::string ToString() const;
 
     // Select one path over other
     int PathCompare(const BgpPath &rhs, bool allow_ecmp) const;

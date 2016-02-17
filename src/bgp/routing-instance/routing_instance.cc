@@ -9,8 +9,10 @@
 
 #include "base/set_util.h"
 #include "base/task_annotations.h"
+#include "bgp/bgp_config.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_server.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/iservice_chain_mgr.h"
 #include "bgp/routing-instance/istatic_route_mgr.h"
@@ -92,9 +94,15 @@ const RoutingInstance *RoutingInstanceMgr::GetDefaultRoutingInstance() const {
 // Go through all export targets for the RoutingInstance and add an entry for
 // each one to the InstanceTargetMap.
 //
+// Ignore export targets that are not in the import list.  This is done since
+// export only targets are managed by user and the same export only target can
+// be configured on multiple virtual networks.
+//
 void RoutingInstanceMgr::InstanceTargetAdd(RoutingInstance *rti) {
     for (RoutingInstance::RouteTargetList::const_iterator it =
          rti->GetExportList().begin(); it != rti->GetExportList().end(); ++it) {
+        if (rti->GetImportList().find(*it) == rti->GetImportList().end())
+            continue;
         target_map_.insert(make_pair(*it, rti));
     }
 }
@@ -105,9 +113,14 @@ void RoutingInstanceMgr::InstanceTargetAdd(RoutingInstance *rti) {
 // entries in the InstanceTargetMap for a given export target.  Hence we need
 // to make sure that we only remove the entry that matches the RoutingInstance.
 //
+// Ignore export targets that are not in the import list. They shouldn't be in
+// in the map because of the same check in InstanceTargetAdd.
+//
 void RoutingInstanceMgr::InstanceTargetRemove(const RoutingInstance *rti) {
     for (RoutingInstance::RouteTargetList::const_iterator it =
          rti->GetExportList().begin(); it != rti->GetExportList().end(); ++it) {
+        if (rti->GetImportList().find(*it) == rti->GetImportList().end())
+            continue;
         for (InstanceTargetMap::iterator loc = target_map_.find(*it);
              loc != target_map_.end() && loc->first == *it; ++loc) {
             if (loc->second == rti) {
@@ -477,7 +490,7 @@ RoutingInstance::RoutingInstance(string name, BgpServer *server,
                                  RoutingInstanceMgr *mgr,
                                  const BgpInstanceConfig *config)
     : name_(name), index_(-1), server_(server), mgr_(mgr), config_(config),
-      is_default_(false), always_subscribe_(false), virtual_network_index_(0),
+      is_master_(false), always_subscribe_(false), virtual_network_index_(0),
       virtual_network_allow_transit_(false),
       vxlan_id_(0),
       deleter_(new DeleteActor(server, this)),
@@ -543,7 +556,7 @@ void RoutingInstance::ProcessServiceChainConfig() {
 }
 
 void RoutingInstance::ProcessStaticRouteConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -553,7 +566,7 @@ void RoutingInstance::ProcessStaticRouteConfig() {
 }
 
 void RoutingInstance::UpdateStaticRouteConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -563,7 +576,7 @@ void RoutingInstance::UpdateStaticRouteConfig() {
 }
 
 void RoutingInstance::FlushStaticRouteConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -572,8 +585,18 @@ void RoutingInstance::FlushStaticRouteConfig() {
     }
 }
 
+void RoutingInstance::UpdateAllStaticRoutes() {
+    if (is_master_)
+        return;
+
+    vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
+    BOOST_FOREACH(Address::Family family, families) {
+        static_route_mgr(family)->UpdateAllRoutes();
+    }
+}
+
 void RoutingInstance::ProcessRouteAggregationConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -583,7 +606,7 @@ void RoutingInstance::ProcessRouteAggregationConfig() {
 }
 
 void RoutingInstance::UpdateRouteAggregationConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -593,7 +616,7 @@ void RoutingInstance::UpdateRouteAggregationConfig() {
 }
 
 void RoutingInstance::FlushRouteAggregationConfig() {
-    if (is_default_)
+    if (is_master_)
         return;
 
     vector<Address::Family> families = list_of(Address::INET)(Address::INET6);
@@ -636,7 +659,7 @@ void RoutingInstance::ProcessConfig() {
     // Create BGP Table
     if (name_ == BgpConfigManager::kMasterInstance) {
         assert(mgr_->count() == 1);
-        is_default_ = true;
+        is_master_ = true;
 
         VpnTableCreate(Address::INETVPN);
         VpnTableCreate(Address::INET6VPN);
@@ -696,6 +719,10 @@ void RoutingInstance::UpdateConfig(const BgpInstanceConfig *cfg) {
         }
     }
 
+    // Update all static routes so that they reflect the new OriginVn.
+    if (virtual_network_index_ != cfg->virtual_network_index())
+        UpdateAllStaticRoutes();
+
     // Update virtual network info.
     virtual_network_ = cfg->virtual_network();
     virtual_network_index_ = cfg->virtual_network_index();
@@ -704,7 +731,7 @@ void RoutingInstance::UpdateConfig(const BgpInstanceConfig *cfg) {
 
     // Master routing instance doesn't have import & export list
     // Master instance imports and exports all RT
-    if (IsDefaultRoutingInstance())
+    if (IsMasterRoutingInstance())
         return;
 
     RouteTargetList future_import;
@@ -754,8 +781,8 @@ void RoutingInstance::ClearConfig() {
 }
 
 void RoutingInstance::ManagedDelete() {
-    // RoutingInstanceMgr logs the delete for non-default instances.
-    if (IsDefaultRoutingInstance()) {
+    // RoutingInstanceMgr logs the delete for non-master instances.
+    if (IsMasterRoutingInstance()) {
         RTINSTANCE_LOG(Delete, this,
             SandeshLevel::SYS_DEBUG, RTINSTANCE_LOG_FLAG_ALL);
     }
@@ -976,7 +1003,7 @@ void RoutingInstance::DeleteRouteTarget(bool import,
 
 void RoutingInstance::ClearRouteTarget() {
     CHECK_CONCURRENCY("bgp::Config");
-    if (IsDefaultRoutingInstance()) {
+    if (IsMasterRoutingInstance()) {
         return;
     }
 
@@ -1122,7 +1149,7 @@ string RoutingInstance::GetVrfFromTableName(const string table) {
 
 void RoutingInstance::set_index(int index) {
     index_ = index;
-    if (is_default_)
+    if (is_master_)
         return;
 
     rd_.reset(new RouteDistinguisher(server_->bgp_identifier(), index));
@@ -1222,4 +1249,15 @@ bool RoutingInstance::IsContributingRoute(const BgpTable *table,
                                           const BgpRoute *route) const {
     if (!route_aggregator(table->family())) return false;
     return route_aggregator(table->family())->IsContributingRoute(route);
+}
+
+int RoutingInstance::GetOriginVnForAggregateRoute(Address::Family fmly) const {
+    const ServiceChainConfig *sc_config =
+        config_ ? config_->service_chain_info(fmly) : NULL;
+    if (sc_config && !sc_config->routing_instance.empty()) {
+        RoutingInstance *dest =
+            mgr_->GetRoutingInstance(sc_config->routing_instance);
+        if (dest) return dest->virtual_network_index();
+    }
+    return virtual_network_index_;
 }

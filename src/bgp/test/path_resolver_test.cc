@@ -9,6 +9,9 @@
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
 
+#include "sandesh/sandesh_types.h"
+#include "sandesh/sandesh.h"
+#include "sandesh/sandesh_trace.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_sandesh.h"
@@ -220,7 +223,8 @@ protected:
     void AddBgpPath(IPeer *bgp_peer, const string &instance,
         const string &prefix_str, const string &nexthop_str, uint32_t med = 0,
         const vector<uint32_t> &comm_list = vector<uint32_t>(),
-        const vector<uint16_t> &as_list = vector<uint16_t>()) {
+        const vector<uint16_t> &as_list = vector<uint16_t>(),
+        uint32_t flags = 0) {
         assert(!bgp_peer->IsXmppPeer());
 
         boost::system::error_code ec;
@@ -259,7 +263,7 @@ protected:
 
         BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attr_spec);
         request.data.reset(
-            new BgpTable::RequestData(attr, BgpPath::ResolveNexthop, 0));
+            new BgpTable::RequestData(attr, flags|BgpPath::ResolveNexthop, 0));
         table->Enqueue(&request);
     }
 
@@ -279,6 +283,12 @@ protected:
         const vector<uint16_t> &as_list) {
         AddBgpPath(bgp_peer, instance, prefix_str, nexthop_str, 0,
             vector<uint32_t>(), as_list);
+    }
+
+    void AddBgpPathWithFlags(IPeer *bgp_peer, const string &instance,
+        const string &prefix_str, const string &nexthop_str, uint32_t flags) {
+        AddBgpPath(bgp_peer, instance, prefix_str, nexthop_str, 0,
+            vector<uint32_t>(), vector<uint16_t>(), flags);
     }
 
     template <typename XmppTableT, typename XmppPrefixT>
@@ -650,7 +660,7 @@ protected:
         for (Route::PathList::iterator it = route->GetPathList().begin();
              it != route->GetPathList().end(); ++it) {
             const BgpPath *path = static_cast<const BgpPath *>(it.operator->());
-            if (path->GetSource() != BgpPath::ResolvedRoute)
+            if ((path->GetFlags() & BgpPath::ResolvedPath) == 0)
                 continue;
             if (BgpPath::PathIdString(path->GetPathId()) != path_id)
                 continue;
@@ -673,7 +683,7 @@ protected:
         for (Route::PathList::iterator it = route->GetPathList().begin();
              it != route->GetPathList().end(); ++it) {
             const BgpPath *path = static_cast<const BgpPath *>(it.operator->());
-            if (path->GetSource() != BgpPath::ResolvedRoute)
+            if ((path->GetFlags() & BgpPath::ResolvedPath) == 0)
                 continue;
             if (BgpPath::PathIdString(path->GetPathId()) == path_id)
                 return false;
@@ -1041,6 +1051,40 @@ TYPED_TEST(PathResolverTest, SinglePrefixChangeBgpPath3) {
         this->BuildHostAddress(bgp_peer1->ToString()), as_list3);
     this->VerifyPathAttributes("blue", this->BuildPrefix(1),
         this->BuildNextHopAddress("172.16.1.1"), 10000, as_list3);
+
+    this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
+    this->VerifyPathNoExists("blue", this->BuildPrefix(1),
+        this->BuildNextHopAddress("172.16.1.1"));
+
+    this->DeleteXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
+}
+
+//
+// Change BGP path flags to infeasible after BGP path has been resolved.
+//
+TYPED_TEST(PathResolverTest, SinglePrefixChangeBgpPath4) {
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *xmpp_peer1 = this->xmpp_peer1_;
+
+    this->AddXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->VerifyPathAttributes("blue", this->BuildPrefix(1),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+
+    this->AddBgpPathWithFlags(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()), BgpPath::AsPathLooped);
+    this->VerifyPathNoExists("blue", this->BuildPrefix(1),
+        this->BuildNextHopAddress("172.16.1.1"));
+
+    this->AddBgpPath(bgp_peer1, "blue", this->BuildPrefix(1),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->VerifyPathAttributes("blue", this->BuildPrefix(1),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
 
     this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
     this->VerifyPathNoExists("blue", this->BuildPrefix(1),

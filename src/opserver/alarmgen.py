@@ -235,15 +235,6 @@ class Controller(object):
                 self._conf.discovery()['server'],
                 self._conf.discovery()['port'],
                 ModuleNames[Module.ALARM_GENERATOR])
-            data = {
-                'ip-address': self._conf.host_ip(),
-                'instance-id': self._instance_id,
-                'redis-port': str(self._conf.redis_server_port()),
-                'partitions': json.dumps({})
-            }
-            print("Disc Publish to %s : %s" \
-                % (str(self._conf.discovery()), str(data)))
-            self.disc.publish(ALARM_GENERATOR_SERVICE_NAME, data)
 
         is_collector = True
         if test_logger is not None:
@@ -395,11 +386,11 @@ class Controller(object):
             agp_trace = AlarmgenPartitionTrace(data=agp, sandesh=self._sandesh)
             agp_trace.send(sandesh=self._sandesh) 
 
-            pc = PartitionClient("alarmgen",
+            pc = PartitionClient(self._conf.kafka_prefix() + "-alarmgen",
                     self._libpart_name, ag_list,
                     self._conf.partitions(), self.libpart_cb,
                     ','.join(self._conf.zk_list()), self._logger)
-            self._logger.error('Started PC')
+            self._logger.error('Started PC %s' % self._conf.kafka_prefix() + "-alarmgen")
             return pc
         except Exception as e:
             self._logger.error('Could not import libpartition: %s' % str(e))
@@ -580,7 +571,7 @@ class Controller(object):
         """
 
         lredis = None
-        oldworkerset = {}
+        oldworkerset = None
         while True:
             workerset = {}
             for part in self._workers.keys():
@@ -597,7 +588,7 @@ class Controller(object):
                     self._logger.error("Disc Publish to %s : %s"
                                   % (str(self._conf.discovery()), str(data)))
                     self.disc.publish(ALARM_GENERATOR_SERVICE_NAME, data)
-                oldworkerset = workerset
+                oldworkerset = copy.deepcopy(workerset)
              
             for part in self._uveqf.keys():
                 self._logger.error("Stop UVE processing for %d:%d" % \

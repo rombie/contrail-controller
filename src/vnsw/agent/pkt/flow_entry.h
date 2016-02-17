@@ -439,7 +439,7 @@ class FlowEntry {
     }
     bool deleted() { return deleted_; }
 
-    bool IsShortFlow() { return (flags_ & (1 << ShortFlow)); }
+    bool IsShortFlow() { return is_flags_set(FlowEntry::ShortFlow); }
     // Flow action routines
     void ResyncFlow();
     bool ActionRecompute();
@@ -530,9 +530,6 @@ private:
     FlowStatsCollector *fsc_;
     // IMPORTANT: Remember to update Reset() routine if new fields are added
     // IMPORTANT: Remember to update Copy() routine if new fields are added
-
-    static InetUnicastRouteEntry inet4_route_key_;
-    static InetUnicastRouteEntry inet6_route_key_;
     static SecurityGroupList default_sg_list_;
 };
  

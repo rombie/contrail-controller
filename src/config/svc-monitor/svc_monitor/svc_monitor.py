@@ -19,7 +19,6 @@ import ConfigParser
 import cgitb
 import cStringIO
 import argparse
-import socket
 
 import os
 
@@ -29,10 +28,9 @@ import logging.handlers
 from cfgm_common.imid import *
 from cfgm_common import importutils
 from cfgm_common import svc_info
+from cfgm_common.utils import cgitb_hook
 
-from cfgm_common.vnc_kombu import VncKombuClient
 from config_db import *
-from cfgm_common.dependency_tracker import DependencyTracker
 
 from pysandesh.sandesh_base import Sandesh, SandeshSystem
 from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
@@ -47,6 +45,7 @@ import discoveryclient.client as client
 from agent_manager import AgentManager
 from db import ServiceMonitorDB
 from logger import ServiceMonitorLogger
+from rabbit import RabbitConnection
 from loadbalancer_agent import LoadbalancerAgent
 from port_tuple import PortTupleAgent
 from snat_agent import SNATAgent
@@ -58,108 +57,6 @@ _zookeeper_client = None
 
 
 class SvcMonitor(object):
-
-    """
-    data + methods used/referred to by ssrc and arc greenlets
-    """
-    _REACTION_MAP = {
-        "service_appliance_set": {
-            'self': [],
-            'service_appliance': []
-        },
-        "service_appliance": {
-            'self': ['service_appliance_set','physical_interface'],
-            'service_appliance_set': []
-        },
-        "loadbalancer_pool": {
-            'self': [],
-            'virtual_ip': [],
-            'loadbalancer_listener': [],
-            'loadbalancer_member': [],
-            'loadbalancer_healthmonitor': [],
-        },
-        "loadbalancer_member": {
-            'self': ['loadbalancer_pool'],
-            'loadbalancer_pool': []
-        },
-        "virtual_ip": {
-            'self': ['loadbalancer_pool'],
-            'loadbalancer_pool': []
-        },
-        "loadbalancer_listener": {
-            'self': ['loadbalancer_pool'],
-            'loadbalancer_pool': [],
-            'loadbalancer': []
-        },
-        "loadbalancer": {
-            'self': ['loadbalancer_listener'],
-            'loadbalancer_listener': []
-        },
-        "loadbalancer_healthmonitor": {
-            'self': ['loadbalancer_pool'],
-            'loadbalancer_pool': []
-        },
-        "service_instance": {
-            'self': ['virtual_machine', 'port_tuple','instance_ip'],
-            'virtual_machine': [],
-            'port_tuple': [],
-            'virtual_machine_interface' : []
-        },
-        "instance_ip": {
-            'self': [],
-            'service_instance': [],
-        },
-        "floating_ip": {
-            'self': [],
-        },
-        "service_template": {
-            'self': [],
-        },
-        "physical_router": {
-            'self': [],
-        },
-        "physical_interface": {
-            'self': [],
-            'service_appliance':['virtual_machine_interface'],
-            'virtual_machine_interface':['service_appliance'],
-        },
-        "logical_interface": {
-            'self': [],
-        },
-        "logical_router": {
-            'self': [],
-        },
-        "virtual_network": {
-            'self': [],
-        },
-        "virtual_machine": {
-            'self': ['virtual_machine_interface'],
-            'service_instance': [],
-            'virtual_machine_interface': [],
-        },
-        "port_tuple": {
-            'self': ['virtual_machine_interface'],
-            'service_instance': [],
-            'virtual_machine_interface': [],
-        },
-        "virtual_machine_interface": {
-            'self': ['interface_route_table', 'virtual_machine', 'port_tuple'],
-            'interface_route_table': [],
-            'virtual_machine': [],
-            'port_tuple': ['physical_interface'],
-            'physical_interface': ['service_instance']
-        },
-        "interface_route_table": {
-            'self': [],
-            'virtual_machine_interface': [],
-        },
-        "project": {
-            'self': [],
-        },
-        "logical_router": {
-            'self': [],
-        },
-    }
 
     def __init__(self, args=None):
         self._args = args
@@ -184,155 +81,16 @@ class SvcMonitor(object):
                     self._err_file, maxBytes=64*1024, backupCount=2)
                 self._svc_err_logger.addHandler(handler)
         except IOError:
-            self.logger.log_warning("Failed to open trace file %s" %
+            self.logger.warning("Failed to open trace file %s" %
                                     self._err_file)
 
-        # Connect to Rabbit and Initialize cassandra connection
-        self._connect_rabbit()
-
-    def _connect_rabbit(self):
-        rabbit_server = self._args.rabbit_server
-        rabbit_port = self._args.rabbit_port
-        rabbit_user = self._args.rabbit_user
-        rabbit_password = self._args.rabbit_password
-        rabbit_vhost = self._args.rabbit_vhost
-        rabbit_ha_mode = self._args.rabbit_ha_mode
-
-        self._db_resync_done = gevent.event.Event()
-
-        q_name = 'svc_mon.%s' % (socket.gethostname())
-        self._vnc_kombu = VncKombuClient(rabbit_server, rabbit_port,
-                                         rabbit_user, rabbit_password,
-                                         rabbit_vhost, rabbit_ha_mode,
-                                         q_name, self._vnc_subscribe_callback,
-                                         self.logger.log)
-
+        # init cassandra
         self._cassandra = ServiceMonitorDB(self._args, self.logger)
         DBBaseSM.init(self, self.logger, self._cassandra)
-    # end _connect_rabbit
 
-    def _vnc_subscribe_callback(self, oper_info):
-        self._db_resync_done.wait()
-        try:
-            self._vnc_subscribe_actions(oper_info)
-        except Exception:
-            cgitb_error_log(self)
-
-    def _vnc_subscribe_actions(self, oper_info):
-        try:
-            msg = "Notification Message: %s" % (pformat(oper_info))
-            self.logger.log_debug(msg)
-            obj_type = oper_info['type'].replace('-', '_')
-            obj_class = DBBaseSM.get_obj_type_map().get(obj_type)
-            if obj_class is None:
-                return
-
-            if oper_info['oper'] == 'CREATE' or oper_info['oper'] == 'UPDATE':
-                dependency_tracker = DependencyTracker(
-                    DBBaseSM.get_obj_type_map(), self._REACTION_MAP)
-                obj_id = oper_info['uuid']
-                obj = obj_class.get(obj_id)
-                if obj is not None:
-                    dependency_tracker.evaluate(obj_type, obj)
-                else:
-                    obj = obj_class.locate(obj_id)
-                try:
-                    obj.update()
-                except NoIdError:
-                    return
-                dependency_tracker.evaluate(obj_type, obj)
-            elif oper_info['oper'] == 'DELETE':
-                obj_id = oper_info['uuid']
-                obj = obj_class.get(obj_id)
-                if obj is None:
-                    return
-                dependency_tracker = DependencyTracker(
-                    DBBaseSM.get_obj_type_map(), self._REACTION_MAP)
-                dependency_tracker.evaluate(obj_type, obj)
-                obj_class.delete(obj_id)
-            else:
-                # unknown operation
-                self.logger.log_error('Unknown operation %s' %
-                                      oper_info['oper'])
-                return
-
-            if obj is None:
-                self.logger.log_error('Error while accessing %s uuid %s' % (
-                                      obj_type, obj_id))
-                return
-
-        except Exception:
-            cgitb_error_log(self)
-
-        for sas_id in dependency_tracker.resources.get(
-                'service_appliance_set', []):
-            sas_obj = ServiceApplianceSetSM.get(sas_id)
-            if sas_obj is not None:
-                sas_obj.add()
-
-        for lb_pool_id in dependency_tracker.resources.get(
-                'loadbalancer_pool', []):
-            lb_pool = LoadbalancerPoolSM.get(lb_pool_id)
-            if lb_pool is not None:
-                lb_pool.add()
-
-        for si_id in dependency_tracker.resources.get('service_instance', []):
-            si = ServiceInstanceSM.get(si_id)
-            if si:
-                si.state = 'launch'
-                self._create_service_instance(si)
-            else:
-                self.logger.log_info("Deleting SI %s" % si_id)
-                for vm_id in dependency_tracker.resources.get(
-                        'virtual_machine', []):
-                    vm = VirtualMachineSM.get(vm_id)
-                    self._delete_service_instance(vm)
-                self.logger.log_info("SI %s deletion succeed" % si_id)
-
-                for iip_id in dependency_tracker.resources.get('instance_ip', []):
-                    self.port_tuple_agent.delete_shared_iip(iip_id)
-
-        for vn_id in dependency_tracker.resources.get('virtual_network', []):
-            vn = VirtualNetworkSM.get(vn_id)
-            if vn:
-                for si_id in ServiceInstanceSM:
-                    si = ServiceInstanceSM.get(si_id)
-                    intf_list = []
-                    if si.params:
-                        intf_list = si.params.get('interface_list', [])
-                    for intf in intf_list:
-                        if (':').join(vn.fq_name) in intf.values():
-                            self._create_service_instance(si)
-
-        for vmi_id in dependency_tracker.resources.get(
-                'virtual_machine_interface', []):
-            vmi = VirtualMachineInterfaceSM.get(vmi_id)
-            if vmi:
-                for vm_id in dependency_tracker.resources.get(
-                        'virtual_machine', []):
-                    vm = VirtualMachineSM.get(vm_id)
-                    self.port_delete_or_si_link(vm, vmi)
-                if vmi.port_tuple:
-                    self.port_tuple_agent.update_port_tuple(vmi.port_tuple)
-            else:
-                for irt_id in dependency_tracker.resources.get(
-                        'interface_route_table', []):
-                    self._delete_interface_route_table(irt_id)
-
-        for fip_id in dependency_tracker.resources.get('floating_ip', []):
-            fip = FloatingIpSM.get(fip_id)
-            if fip:
-                for vmi_id in fip.virtual_machine_interfaces:
-                    vmi = VirtualMachineInterfaceSM.get(vmi_id)
-                    if vmi and vmi.virtual_ip:
-                        self.netns_manager.add_fip_to_vip_vmi(vmi, fip)
-                    elif vmi and vmi.loadbalancer:
-                        self.netns_manager.add_fip_to_vip_vmi(vmi, fip)
-
-        for lr_id in dependency_tracker.resources.get('logical_router', []):
-            lr = LogicalRouterSM.get(lr_id)
-            if lr:
-                self.snat_agent.update_snat_instance(lr)
+        # init rabbit connection
+        self.rabbit = RabbitConnection(self.logger, args)
+        self.rabbit._connect_rabbit()
 
     def post_init(self, vnc_lib, args=None):
         # api server
@@ -434,7 +192,7 @@ class SvcMonitor(object):
         self.vrouter_scheduler.vrouters_running()
         self.launch_services()
 
-        self._db_resync_done.set()
+        self.rabbit._db_resync_done.set()
 
     def _upgrade_instance_ip(self, vm):
         for vmi_id in vm.virtual_machine_interfaces:
@@ -453,7 +211,7 @@ class SvcMonitor(object):
                 try:
                     self._vnc_lib.instance_ip_update(iip_obj)
                 except NoIdError:
-                    self.logger.log_error("upgrade instance ip to service ip failed %s" % (iip.name))
+                    self.logger.error("upgrade instance ip to service ip failed %s" % (iip.name))
                     continue
 
     def upgrade(self):
@@ -485,11 +243,11 @@ class SvcMonitor(object):
                     continue
 
                 vm.virtualization_type = st.virtualization_type
-                self._delete_service_instance(vm)
+                self.delete_service_instance(vm)
 
     def launch_services(self):
         for si in ServiceInstanceSM.values():
-            self._create_service_instance(si)
+            self.create_service_instance(si)
 
     def sync_sm(self):
         # Read and Sync all DBase
@@ -536,7 +294,7 @@ class SvcMonitor(object):
         domain_name = 'default-domain'
         domain_fq_name = [domain_name]
         st_fq_name = [domain_name, st_name]
-        self.logger.log_info("Creating %s %s hypervisor %s" %
+        self.logger.info("Creating %s %s hypervisor %s" %
                              (domain_name, st_name, hypervisor_type))
 
         domain_obj = None
@@ -547,12 +305,12 @@ class SvcMonitor(object):
                 domain_obj.fq_name = domain_fq_name
                 break
         if not domain_obj:
-            self.logger.log_error("%s domain not found" % (domain_name))
+            self.logger.error("%s domain not found" % (domain_name))
             return
 
         for st in ServiceTemplateSM.values():
             if st.fq_name == st_fq_name:
-                self.logger.log_info("%s exists uuid %s" %
+                self.logger.info("%s exists uuid %s" %
                                      (st.name, str(st.uuid)))
                 return
 
@@ -591,14 +349,14 @@ class SvcMonitor(object):
         try:
             st_uuid = self._vnc_lib.service_template_create(st_obj)
         except Exception as e:
-            self.logger.log_error("%s create failed with error %s" %
+            self.logger.error("%s create failed with error %s" %
                                   (st_name, str(e)))
             return
 
         # Create the service template in local db
         ServiceTemplateSM.locate(st_uuid)
 
-        self.logger.log_info("%s created with uuid %s" %
+        self.logger.info("%s created with uuid %s" %
                              (st_name, str(st_uuid)))
     #_create_default_analyzer_template
 
@@ -625,18 +383,18 @@ class SvcMonitor(object):
             self.vm_manager.link_si_to_vm(si, st, index, vm.uuid)
             return
 
-    def _create_service_instance(self, si):
+    def create_service_instance(self, si):
         if si.state == 'active':
             return
         st = ServiceTemplateSM.get(si.service_template)
         if not st:
-            self.logger.log_error("template not found for %s" %
+            self.logger.error("template not found for %s" %
                                   ((':').join(si.fq_name)))
             return
         if st.params and st.params.get('version', 1) == 2:
             return
 
-        self.logger.log_info("Creating SI %s (%s)" %
+        self.logger.info("Creating SI %s (%s)" %
                              ((':').join(si.fq_name), st.virtualization_type))
         try:
             if st.virtualization_type == 'virtual-machine':
@@ -648,16 +406,16 @@ class SvcMonitor(object):
             elif st.virtualization_type == 'physical-device':
                 self.ps_manager.create_service(st, si)
             else:
-                self.logger.log_error("Unknown virt type: %s" %
+                self.logger.error("Unknown virt type: %s" %
                                       st.virtualization_type)
         except Exception:
             cgitb_error_log(self)
         si.launch_count += 1
-        self.logger.log_info("SI %s creation success" % (':').join(si.fq_name))
+        self.logger.info("SI %s creation success" % (':').join(si.fq_name))
 
-    def _delete_service_instance(self, vm):
-        self.logger.log_info("Deleting VM %s %s" %
-            ((':').join(vm.fq_name), vm.uuid))
+    def delete_service_instance(self, vm):
+        self.logger.info("Deleting VM %s %s for SI %s" %
+            ((':').join(vm.fq_name), vm.uuid, vm.service_id))
 
         try:
             if vm.virtualization_type == svc_info.get_vm_instance_type():
@@ -668,6 +426,8 @@ class SvcMonitor(object):
                 self.vrouter_manager.delete_service(vm)
             elif vm.virtualization_type == 'physical-device':
                 self.ps_manager.delete_service(vm)
+            self.logger.info("Deleted VM %s %s for SI %s" %
+                ((':').join(vm.fq_name), vm.uuid, vm.service_id))
         except Exception:
             cgitb_error_log(self)
 
@@ -680,7 +440,7 @@ class SvcMonitor(object):
 
     def _relaunch_service_instance(self, si):
         si.state = 'relaunch'
-        self._create_service_instance(si)
+        self.create_service_instance(si)
 
     def _check_service_running(self, si):
         st = ServiceTemplateSM.get(si.service_template)
@@ -696,7 +456,7 @@ class SvcMonitor(object):
             status = self.ps_manager.check_service(si)
         return status
 
-    def _delete_interface_route_table(self, irt_uuid):
+    def delete_interface_route_table(self, irt_uuid):
         try:
             self._vnc_lib.interface_route_table_delete(id=irt_uuid)
             InterfaceRouteTableSM.delete(irt_uuid)
@@ -705,7 +465,7 @@ class SvcMonitor(object):
 
     def _delete_shared_vn(self, vn_uuid):
         try:
-            self.logger.log_info("Deleting vn %s" % (vn_uuid))
+            self.logger.info("Deleting vn %s" % (vn_uuid))
             self._vnc_lib.virtual_network_delete(id=vn_uuid)
             VirtualNetworkSM.delete(vn_uuid)
         except (NoIdError, RefsExistError):
@@ -757,7 +517,7 @@ def timer_callback(monitor):
         if not si and vm.virtualization_type:
             vm_delete_list.append(vm)
     for vm in vm_delete_list:
-        monitor._delete_service_instance(vm)
+        monitor.delete_service_instance(vm)
 
     # delete vmis with si but no vms
     vmi_delete_list = []
@@ -799,11 +559,11 @@ def timer_callback(monitor):
 
 def launch_timer(monitor):
     if not monitor._args.check_service_interval.isdigit():
-        monitor.logger.log_emergency("set seconds for check_service_interval "
+        monitor.logger.emergency("set seconds for check_service_interval "
                                      "in contrail-svc-monitor.conf. \
                                         example: check_service_interval=60")
         sys.exit()
-    monitor.logger.log_notice("check_service_interval set to %s seconds" %
+    monitor.logger.notice("check_service_interval set to %s seconds" %
                               monitor._args.check_service_interval)
 
     while True:
@@ -816,7 +576,7 @@ def launch_timer(monitor):
 
 def cgitb_error_log(monitor):
     string_buf = cStringIO.StringIO()
-    cgitb.Hook(file=string_buf, format="text").handle(sys.exc_info())
+    cgitb_hook(file=string_buf, format="text")
     monitor.logger.log(string_buf.getvalue(), level=SandeshLevel.SYS_ERR)
 
 

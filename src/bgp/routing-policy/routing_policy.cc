@@ -8,6 +8,7 @@
 #include <boost/foreach.hpp>
 
 #include "base/task_annotations.h"
+#include "base/task_trigger.h"
 #include "bgp/bgp_config.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_server.h"
@@ -340,7 +341,8 @@ RoutingPolicy::RoutingPolicy(std::string name, BgpServer *server,
                                  const BgpRoutingPolicyConfig *config)
     : name_(name), server_(server), mgr_(mgr), config_(config),
       deleter_(new DeleteActor(server, this)),
-      manager_delete_ref_(this, mgr->deleter()), refcount_(0), generation_(0) {
+      manager_delete_ref_(this, mgr->deleter()), generation_(0) {
+    refcount_ = 0;
 }
 
 RoutingPolicy::~RoutingPolicy() {

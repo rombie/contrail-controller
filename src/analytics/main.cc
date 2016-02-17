@@ -126,7 +126,7 @@ bool CollectorInfoLogger(VizSandeshContext &ctx) {
     CollectorCPULogger(analytics->name());
     CollectorSummaryLogger(analytics->GetCollector(), analytics->name(),
             analytics->GetOsp());
-
+    analytics->SendDbStatistics();
     analytics->SendProtobufCollectorStatistics();
 
     vector<ModuleServerState> sinfos;
@@ -379,6 +379,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    Sandesh::DisableFlowCollection(options.disable_flow_collection());
     Sandesh::SetLoggingParams(options.log_local(), options.log_category(),
                               options.log_level());
 

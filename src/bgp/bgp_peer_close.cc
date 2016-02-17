@@ -9,6 +9,7 @@
 #include "bgp/bgp_peer_membership.h"
 #include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_route.h"
+#include "bgp/bgp_server.h"
 
 #define PEER_CLOSE_MANAGER_LOG(msg) \
     BGP_LOG_PEER(Event, peer_, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,       \

@@ -160,7 +160,6 @@ public:
     // Table managment routines
     FlowEntry *Locate(FlowEntry *flow, uint64_t t);
     FlowEntry *Find(const FlowKey &key);
-    bool IsEvictedFlow(const FlowKey &key);
     void Add(FlowEntry *flow, FlowEntry *rflow);
     void Update(FlowEntry *flow, FlowEntry *rflow);
     bool Delete(const FlowKey &key, bool del_reverse_flow);
@@ -200,6 +199,7 @@ public:
    
     void RevaluateFlow(FlowEntry *flow);
     void DeleteMessage(FlowEntry *flow);
+    void EvictFlow(FlowEntry *flow);
 
     void RevaluateInterface(FlowEntry *flow);
     void RevaluateVn(FlowEntry *flow);
@@ -232,6 +232,10 @@ public:
     void GrowFreeList();
     FlowEntryFreeList *free_list() { return &free_list_; }
 
+    // Concurrency check to ensure all flow-table and free-list manipulations
+    // are done from FlowEvent task context only
+    void ConcurrencyCheck();
+
     friend class FlowStatsCollector;
     friend class PktSandeshFlow;
     friend class PktSandeshFlowStats;
@@ -239,6 +243,7 @@ public:
     friend class PktFlowInfo;
     friend void intrusive_ptr_release(FlowEntry *fe);
 private:
+    bool IsEvictedFlow(const FlowKey &key);
 
     void DeleteInternal(FlowEntryMap::iterator &it, uint64_t t);
     void ResyncAFlow(FlowEntry *fe);
@@ -263,6 +268,7 @@ private:
     LinkLocalFlowInfoMap linklocal_flow_info_map_;
     FlowEntryFreeList free_list_;
     tbb::mutex mutex_;
+    int flow_task_id_;
     DISALLOW_COPY_AND_ASSIGN(FlowTable);
 };
 

@@ -375,6 +375,9 @@ void PathPreferenceSM::Process() {
          const AgentPath *path =
              static_cast<const AgentPath *>(it.operator->());
          if (path == local_path) {
+             if (path->path_preference().sequence() < sequence()) {
+                 EnqueuePathChange();
+             }
              continue;
          }
          //Get best preference and sequence no from all BGP peer
@@ -431,11 +434,11 @@ void PathPreferenceSM::EnqueuePathChange() {
 
     AgentRouteTable *table = NULL;
     if (rt_->GetTableType() == Agent::EVPN) {
-        table = rt_->vrf()->GetEvpnRouteTable();
+        table = agent_->fabric_evpn_table();
     } else if (rt_->GetTableType() == Agent::INET4_UNICAST) {
-        table = rt_->vrf()->GetInet4UnicastRouteTable();
+        table = agent_->fabric_inet4_unicast_table();
     } else if (rt_->GetTableType() == Agent::INET6_UNICAST) {
-        table = rt_->vrf()->GetInet6UnicastRouteTable();
+        table = agent_->fabric_inet4_unicast_table();
     }
 
     if (table) {

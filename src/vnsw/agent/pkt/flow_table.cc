@@ -61,7 +61,8 @@ FlowTable::FlowTable(Agent *agent, uint16_t table_index) :
     table_index_(table_index),
     ksync_object_(NULL),
     flow_entry_map_(),
-    free_list_(this) {
+    free_list_(this),
+    flow_task_id_(0) {
 }
 
 FlowTable::~FlowTable() {
@@ -69,6 +70,7 @@ FlowTable::~FlowTable() {
 }
 
 void FlowTable::Init() {
+    flow_task_id_ = agent_->task_scheduler()->GetTaskId(kTaskFlowEvent);
     FlowEntry::Init();
     rand_gen_ = boost::uuids::random_generator();
     return;
@@ -78,6 +80,19 @@ void FlowTable::InitDone() {
 }
 
 void FlowTable::Shutdown() {
+}
+
+// Concurrency check to ensure all flow-table and free-list manipulations
+// are done from FlowEvent task context only
+void FlowTable::ConcurrencyCheck() {
+    Task *current = Task::Running();
+    // test code invokes FlowTable API from main thread. The running task
+    // will be NULL in such cases
+    if (current == NULL) {
+        return;
+    }
+    assert(current->GetTaskId() == flow_task_id_);
+    assert(current->GetTaskInstance() == table_index_);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -101,6 +116,7 @@ void FlowTable::GetMutexSeq(tbb::mutex &mutex1, tbb::mutex &mutex2,
 }
 
 FlowEntry *FlowTable::Find(const FlowKey &key) {
+    ConcurrencyCheck();
     FlowEntryMap::iterator it;
 
     it = flow_entry_map_.find(key);
@@ -111,15 +127,6 @@ FlowEntry *FlowTable::Find(const FlowKey &key) {
     }
 }
 
-bool FlowTable::IsEvictedFlow(const FlowKey &key) {
-    FlowEntry *fe = Find(key);
-    if (fe) {
-        tbb::mutex::scoped_lock lock(fe->mutex());
-        return fe->ksync_index_entry()->IsEvicted();
-    }
-    return false;
-}
-
 void FlowTable::Copy(FlowEntry *lhs, const FlowEntry *rhs) {
     DeleteFlowInfo(lhs);
     if (rhs)
@@ -127,6 +134,7 @@ void FlowTable::Copy(FlowEntry *lhs, const FlowEntry *rhs) {
 }
 
 FlowEntry *FlowTable::Locate(FlowEntry *flow, uint64_t time) {
+    ConcurrencyCheck();
     std::pair<FlowEntryMap::iterator, bool> ret;
     ret = flow_entry_map_.insert(FlowEntryMapPair(flow->key(), flow));
     if (ret.second == true) {
@@ -448,6 +456,9 @@ void FlowTable::RevaluateInterface(FlowEntry *flow) {
 
 void FlowTable::RevaluateVn(FlowEntry *flow) {
     const VnEntry *vn = flow->vn_entry();
+    if (vn == NULL)
+        return;
+
     // Revaluate flood unknown-unicast flag. If flow has UnknownUnicastFlood and
     // VN doesnt allow it, make Short Flow
     if (vn->flood_unknown_unicast() == false &&
@@ -619,7 +630,7 @@ void FlowTable::RevaluateRoute(FlowEntry *flow, const AgentRoute *route) {
         sg_changed = true;
     }
 
-    if (RevaluateSgList(rflow, route, sg_list)) {
+    if (rflow && RevaluateSgList(rflow, route, sg_list)) {
         sg_changed = true;
     }
 
@@ -660,8 +671,7 @@ void FlowTable::RevaluateFlow(FlowEntry *flow) {
     }
 
     if (flow->set_pending_recompute(true)) {
-        agent_->pkt()->pkt_handler()->SendMessage(PktHandler::FLOW,
-                                                  new FlowTaskMsg(flow));
+        agent_->pkt()->get_flow_proto()->MessageRequest(new FlowTaskMsg(flow));
     }
 }
 
@@ -670,6 +680,18 @@ void FlowTable::RevaluateFlow(FlowEntry *flow) {
 void FlowTable::DeleteMessage(FlowEntry *flow) {
     Delete(flow->key(), true);
     DeleteFlowInfo(flow);
+}
+
+void FlowTable::EvictFlow(FlowEntry *flow) {
+    FlowEntry *reverse_flow = flow->reverse_flow_entry();
+    Delete(flow->key(), false);
+    DeleteFlowInfo(flow);
+
+    // Reverse flow unlinked with forward flow. Make it short-flow
+    if (reverse_flow && reverse_flow->deleted() == false) {
+        reverse_flow->MakeShortFlow(FlowEntry::SHORT_NO_REVERSE_FLOW);
+        UpdateKSync(reverse_flow, true);
+    }
 }
 
 // Handle events from Flow Management module for a flow
@@ -704,6 +726,7 @@ bool FlowTable::FlowResponseHandler(const FlowEvent *resp) {
         }
 
         const VnEntry *vn = dynamic_cast<const VnEntry *>(entry);
+        // TODO: check if the following need not be done for short flows
         if (vn && (deleted_flow == false)) {
             RevaluateVn(flow);
             break;
@@ -861,6 +884,7 @@ void FlowEntryFreeList::Grow() {
 }
 
 FlowEntry *FlowEntryFreeList::Allocate(const FlowKey &key) {
+    table_->ConcurrencyCheck();
     FlowEntry *flow = NULL;
     if (free_list_.size() == 0) {
         flow = new FlowEntry(table_);
@@ -882,6 +906,7 @@ FlowEntry *FlowEntryFreeList::Allocate(const FlowKey &key) {
 }
 
 void FlowEntryFreeList::Free(FlowEntry *flow) {
+    table_->ConcurrencyCheck();
     total_free_++;
     flow->Reset();
     free_list_.push_back(*flow);

@@ -14,6 +14,7 @@
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_server.h"
+#include "bgp/bgp_table.h"
 #include "bgp/inet/inet_route.h"
 #include "bgp/inet6/inet6_route.h"
 
@@ -119,14 +120,14 @@ void PathResolver::StartPathResolution(int part_id, const BgpPath *path,
 // the caller to call StartPathResolution instead.
 //
 void PathResolver::UpdatePathResolution(int part_id, const BgpPath *path,
-    BgpTable *nh_table) {
+    BgpRoute *route, BgpTable *nh_table) {
     CHECK_CONCURRENCY("db::DBTable");
 
     if (!nh_table)
         nh_table = table_;
     assert(nh_table->family() == Address::INET ||
         nh_table->family() == Address::INET6);
-    partitions_[part_id]->UpdatePathResolution(path, nh_table);
+    partitions_[part_id]->UpdatePathResolution(path, route, nh_table);
 }
 
 //
@@ -139,6 +140,14 @@ void PathResolver::StopPathResolution(int part_id, const BgpPath *path) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation", "bgp::Config");
 
     partitions_[part_id]->StopPathResolution(path);
+}
+
+//
+// Return the BgpConditionListener for the given family.
+//
+BgpConditionListener *PathResolver::get_condition_listener(
+    Address::Family family) {
+    return table_->server()->condition_listener(family);
 }
 
 //
@@ -571,6 +580,8 @@ PathResolverPartition::~PathResolverPartition() {
 //
 void PathResolverPartition::StartPathResolution(const BgpPath *path,
     BgpRoute *route, BgpTable *nh_table) {
+    if (!path->IsResolutionFeasible())
+        return;
     if (table()->IsDeleted() || nh_table->IsDeleted())
         return;
     IpAddress address = path->GetAttr()->nexthop();
@@ -587,15 +598,17 @@ void PathResolverPartition::StartPathResolution(const BgpPath *path,
 // old ResolverPath and creating a new one.
 //
 void PathResolverPartition::UpdatePathResolution(const BgpPath *path,
-    BgpTable *nh_table) {
+    BgpRoute *route, BgpTable *nh_table) {
     ResolverPath *rpath = FindResolverPath(path);
-    if (!rpath)
+    if (!rpath) {
+        StartPathResolution(path, route, nh_table);
         return;
+    }
     const ResolverNexthop *rnexthop = rpath->rnexthop();
     if (rnexthop->address() != path->GetAttr()->nexthop() ||
         rnexthop->table() != nh_table) {
         StopPathResolution(path);
-        StartPathResolution(path, rpath->route(), nh_table);
+        StartPathResolution(path, route, nh_table);
     } else {
         TriggerPathResolution(rpath);
     }
@@ -622,6 +635,13 @@ void PathResolverPartition::TriggerPathResolution(ResolverPath *rpath) {
 
     rpath_update_list_.insert(rpath);
     rpath_update_trigger_->Set();
+}
+
+//
+// Get the BgpTable partition corresponding to this PathResolverPartition.
+//
+DBTablePartBase *PathResolverPartition::table_partition() {
+    return table()->GetTablePartition(part_id_);
 }
 
 //
@@ -809,8 +829,8 @@ void ResolverPath::DeleteResolvedPath(ResolvedPathList::const_iterator it) {
 //
 // Find or create the matching resolved BgpPath.
 //
-BgpPath *ResolverPath::LocateResolvedPath(uint32_t path_id, const BgpAttr *attr,
-    uint32_t label) {
+BgpPath *ResolverPath::LocateResolvedPath(uint32_t path_id,
+    const BgpAttr *attr, uint32_t label) {
     for (ResolvedPathList::iterator it = resolved_path_list_.begin();
          it != resolved_path_list_.end(); ++it) {
         BgpPath *path = *it;
@@ -820,7 +840,11 @@ BgpPath *ResolverPath::LocateResolvedPath(uint32_t path_id, const BgpAttr *attr,
             return path;
         }
     }
-    return (new BgpPath(path_id, BgpPath::ResolvedRoute, attr, 0, label));
+
+    BgpPath::PathSource src = path_->GetSource();
+    uint32_t flags =
+        (path_->GetFlags() & ~BgpPath::ResolveNexthop) | BgpPath::ResolvedPath;
+    return (new BgpPath(path_id, src, attr, flags, label));
 }
 
 //

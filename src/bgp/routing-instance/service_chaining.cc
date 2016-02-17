@@ -9,6 +9,8 @@
 #include <algorithm>
 
 #include "base/task_annotations.h"
+#include "base/task_trigger.h"
+#include "bgp/bgp_config.h"
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_peer_membership.h"
 #include "bgp/extended-community/load_balance.h"
@@ -37,22 +39,19 @@ static int GetOriginVnIndex(const BgpTable *table, const BgpRoute *route) {
     if (!path)
         return 0;
 
-    if (path->IsVrfOriginated())
-        return table->routing_instance()->virtual_network_index();
-
     const BgpAttr *attr = path->GetAttr();
     const ExtCommunity *ext_community = attr->ext_community();
-    if (!ext_community)
-        return 0;
-
-    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                  ext_community->communities()) {
-        if (!ExtCommunity::is_origin_vn(comm))
-            continue;
-        OriginVn origin_vn(comm);
-        return origin_vn.vn_index();
+    if (ext_community) {
+        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                      ext_community->communities()) {
+            if (!ExtCommunity::is_origin_vn(comm))
+                continue;
+            OriginVn origin_vn(comm);
+            return origin_vn.vn_index();
+        }
     }
-
+    if (path->IsVrfOriginated())
+        return table->routing_instance()->virtual_network_index();
     return 0;
 }
 
@@ -516,7 +515,7 @@ void ServiceChain<T>::AddServiceChainRoute(PrefixT prefix,
             const BgpSecondaryPath *spath =
                 static_cast<const BgpSecondaryPath *>(connected_path);
             const RoutingInstance *ri = spath->src_table()->routing_instance();
-            if (ri->IsDefaultRoutingInstance()) {
+            if (ri->IsMasterRoutingInstance()) {
                 const VpnRouteT *vpn_route =
                     static_cast<const VpnRouteT *>(spath->src_rt());
                 new_attr = attr_db->ReplaceSourceRdAndLocate(new_attr.get(),
@@ -988,8 +987,13 @@ bool ServiceChainMgr<T>::LocateServiceChain(RoutingInstance *rtinstance,
 
     RoutingInstanceMgr *mgr = server_->routing_instance_mgr();
     RoutingInstance *dest = mgr->GetRoutingInstance(config.routing_instance);
+    //
     // Destination routing instance is not yet created.
-    if (dest == NULL || dest->deleted()) {
+    // Or Destination routing instance is deleted Or
+    // virtual network index is not yet calculated (due missing virtual network
+    // link)
+    //
+    if (dest == NULL || dest->deleted() || !dest->virtual_network_index()) {
         // Wait for the creation of RoutingInstance
         AddPendingServiceChain(rtinstance);
         return false;
@@ -1094,7 +1098,8 @@ bool ServiceChainMgr<T>::ResolvePendingServiceChain() {
 
 template <typename T>
 void ServiceChainMgr<T>::RoutingInstanceCallback(string name, int op) {
-    if (op == RoutingInstanceMgr::INSTANCE_ADD) StartResolve();
+    if (op != RoutingInstanceMgr::INSTANCE_DELETE)
+        StartResolve();
 }
 
 template <typename T>
@@ -1153,6 +1158,16 @@ void ServiceChainMgr<T>::PeerRegistrationCallback(IPeer *peer, BgpTable *table,
         new ServiceChainRequestT(ServiceChainRequestT::UPDATE_ALL_ROUTES, NULL,
                                 NULL, PrefixT(), ServiceChainPtr(chain));
     Enqueue(req);
+}
+
+template <typename T>
+void ServiceChainMgr<T>::DisableResolveTrigger() {
+    resolve_trigger_->set_disable();
+}
+
+template <typename T>
+void ServiceChainMgr<T>::EnableResolveTrigger() {
+    resolve_trigger_->set_enable();
 }
 
 template <typename T>

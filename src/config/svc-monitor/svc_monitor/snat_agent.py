@@ -37,11 +37,12 @@ class SNATAgent(Agent):
         for nic in si.vn_info:
             if nic['type'] == svc_info.get_left_if_str():
                 nic['user-visible'] = False
+        return True
 
     def _create_snat_vn(self, si_obj, vn_name):
         snat_subnet = svc_info.get_snat_left_subnet()
         self._svc_mon.netns_manager.create_service_vn(
-            vn_name, snat_subnet, si_obj.fq_name[:-1],
+            vn_name, snat_subnet, None, si_obj.fq_name[:-1],
             user_visible=False)
 
     def _get_snat_vn(self, project_obj, si_obj):

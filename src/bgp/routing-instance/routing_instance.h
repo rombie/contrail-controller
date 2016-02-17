@@ -65,6 +65,7 @@ public:
     void ProcessStaticRouteConfig();
     void UpdateStaticRouteConfig();
     void FlushStaticRouteConfig();
+    void UpdateAllStaticRoutes();
 
     void ProcessRouteAggregationConfig();
     void UpdateRouteAggregationConfig();
@@ -106,8 +107,8 @@ public:
     void set_index(int index);
     int index() const { return index_; }
     bool always_subscribe() const { return always_subscribe_; }
-    bool IsDefaultRoutingInstance() const {
-        return is_default_;
+    bool IsMasterRoutingInstance() const {
+        return is_master_;
     }
 
     const std::string &name() const { return name_; }
@@ -168,6 +169,8 @@ public:
     bool IsContributingRoute(const BgpTable *table,
                              const BgpRoute *route) const;
 
+    int GetOriginVnForAggregateRoute(Address::Family family) const;
+
 private:
     friend class RoutingInstanceMgr;
     class DeleteActor;
@@ -202,7 +205,7 @@ private:
     BgpServer *server_;
     RoutingInstanceMgr *mgr_;
     const BgpInstanceConfig *config_;
-    bool is_default_;
+    bool is_master_;
     bool always_subscribe_;
     std::string virtual_network_;
     int virtual_network_index_;

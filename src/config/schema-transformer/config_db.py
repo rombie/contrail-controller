@@ -94,6 +94,12 @@ class DBBaseST(DBBase):
         pass
 
     @classmethod
+    def reinit(cls):
+        for obj in cls.list_vnc_obj():
+            cls.locate(obj.get_fq_name_str(), obj)
+    # reinit
+
+    @classmethod
     def locate(cls, key, *args):
         obj = super(DBBaseST, cls).locate(key, *args)
         if obj.obj.uuid not in cls._uuid_fq_name_map:
@@ -142,6 +148,12 @@ class GlobalSystemConfigST(DBBaseST):
     obj_type = 'global_system_config'
     _autonomous_system = 0
     _ibgp_auto_mesh = None
+
+    @classmethod
+    def reinit(cls):
+        for gsc in cls.list_vnc_obj():
+            cls.locate(gsc.uuid, gsc)
+    # end reinit
 
     def __init__(self, uuid, obj):
         self.name = uuid
@@ -226,30 +238,14 @@ class VirtualNetworkST(DBBaseST):
                 self.dynamic_acl = acl_obj
 
         self.ipams = {}
-        rt_list = self.obj.get_route_target_list()
-        if rt_list:
-            self.rt_list = set(rt_list.get_route_target())
-            for rt in self.rt_list:
-                RouteTargetST.locate(rt)
-        else:
-            self.rt_list = set()
-        import_rt_list = self.obj.get_import_route_target_list()
-        if import_rt_list:
-            self.import_rt_list = set(import_rt_list.get_route_target())
-            for rt in self.import_rt_list:
-                RouteTargetST.locate(rt)
-        else:
-            self.import_rt_list = set()
-        export_rt_list = self.obj.get_export_route_target_list()
-        if export_rt_list:
-            self.export_rt_list = set(export_rt_list.get_route_target())
-            for rt in self.export_rt_list:
-                RouteTargetST.locate(rt)
-        else:
-            self.export_rt_list = set()
+        self.get_route_target_lists(self.obj)
+        for rt in itertools.chain(self.rt_list, self.import_rt_list,
+                                  self.export_rt_list):
+            RouteTargetST.locate(rt)
         self._route_target = None
         self.route_tables = set()
         self.routes = {}
+        self.ip_routes = {}
         self.service_chains = {}
         prop = self.obj.get_virtual_network_properties(
         ) or VirtualNetworkType()
@@ -269,6 +265,7 @@ class VirtualNetworkST(DBBaseST):
         self.update(self.obj)
         self.update_multiple_refs('virtual_machine_interface', self.obj)
         self.multi_policy_service_chains_status_changed = False
+        self.init_static_ip_routes()
     # end __init__
 
     def update(self, obj=None):
@@ -647,26 +644,36 @@ class VirtualNetworkST(DBBaseST):
                     ri.update_route_target_list(rt_del=[self.get_route_target()])
     # end set_properties
 
-    def set_route_target_list(self, obj):
-        ri = self.get_primary_routing_instance()
-        old_rt_list = self.rt_list
+    def get_route_target_lists(self, obj):
         rt_list = obj.get_route_target_list()
         if rt_list:
             self.rt_list = set(rt_list.get_route_target())
         else:
             self.rt_list = set()
-        old_import_rt_list = self.import_rt_list
         rt_list = obj.get_import_route_target_list()
         if rt_list:
             self.import_rt_list = set(rt_list.get_route_target())
         else:
             self.import_rt_list = set()
-        old_export_rt_list = self.export_rt_list
         rt_list = obj.get_export_route_target_list()
         if rt_list:
             self.export_rt_list = set(rt_list.get_route_target())
         else:
             self.export_rt_list = set()
+
+        # if any RT exists in both import and export, just add it to rt_list
+        self.rt_list |= self.import_rt_list & self.export_rt_list
+        # if any RT exists in rt_list, remove it from import/export lists
+        self.import_rt_list -= self.rt_list
+        self.export_rt_list -= self.rt_list
+    # end get_route_target_lists
+
+    def set_route_target_list(self, obj):
+        ri = self.get_primary_routing_instance()
+        old_rt_list = self.rt_list
+        old_import_rt_list = self.import_rt_list
+        old_export_rt_list = self.export_rt_list
+        self.get_route_target_lists(obj)
 
         rt_add = self.rt_list - old_rt_list
         rt_add_export = self.export_rt_list - old_export_rt_list
@@ -711,6 +718,7 @@ class VirtualNetworkST(DBBaseST):
             if update:
                 left_ri.obj.set_static_route_entries(static_route_entries)
                 self._vnc_lib.routing_instance_update(left_ri.obj)
+
         for rt in rt_del - (rt_add | rt_add_export | rt_add_import):
             try:
                 RouteTargetST.delete(rt)
@@ -751,6 +759,34 @@ class VirtualNetworkST(DBBaseST):
         left_ri_name = left_vn.get_service_name(sc.name, next_hop)
         return RoutingInstanceST.get(left_ri_name)
     # end _get_routing_instance_from_route
+
+    def init_static_ip_routes(self):
+        primary_ri = self.get_primary_routing_instance()
+        if primary_ri is None:
+            return
+        static_route_entries = primary_ri.obj.get_static_route_entries(
+            ) or StaticRouteEntriesType()
+        for sr in static_route_entries.get_route() or []:
+            self.ip_routes[sr.prefix] = sr.next_hop
+    #end init_static_ip_routes
+
+    def update_static_ip_routes(self, new_ip_routes):
+        primary_ri = self.get_primary_routing_instance()
+        if primary_ri is None:
+            return
+
+        if self.ip_routes == new_ip_routes:
+            return
+
+        static_route_entries = StaticRouteEntriesType()
+        for prefix, next_hop_ip in new_ip_routes.items():
+            static_route = StaticRouteType(prefix=prefix, next_hop=next_hop_ip)
+            static_route_entries.add_route(static_route)
+
+        primary_ri.obj.set_static_route_entries(static_route_entries)
+        self._vnc_lib.routing_instance_update(primary_ri.obj)
+        self.ip_routes = new_ip_routes
+    # end update_static_ip_routes
 
     def add_route(self, prefix, next_hop):
         self.routes[prefix] = next_hop
@@ -820,6 +856,7 @@ class VirtualNetworkST(DBBaseST):
 
     def update_route_table(self):
         stale = {}
+        new_ip_map = {}
         for prefix in self.routes:
             stale[prefix] = True
         for rt_name in self.route_tables:
@@ -832,12 +869,16 @@ class VirtualNetworkST(DBBaseST):
                     if route.next_hop == self.routes[route.prefix]:
                         continue
                     self.delete_route(route.prefix)
-                # end if route.prefix
-                self.add_route(route.prefix, route.next_hop)
+                # end
+                if route.next_hop_type == "ip-address":
+                    new_ip_map[route.prefix] = route.next_hop
+                else:
+                    self.add_route(route.prefix, route.next_hop)
             # end for route
         # end for route_table
         for prefix in stale:
             self.delete_route(prefix)
+        self.update_static_ip_routes(new_ip_map)
     # end update_route_table
 
     def uve_send(self, deleted=False):
@@ -898,7 +939,7 @@ class VirtualNetworkST(DBBaseST):
         if not vm_analyzer and not pt_list:
             return (None, None)
         if pt_list:
-            vm_pt = PortTupleST.get(pt[0])
+            vm_pt = PortTupleST.get(pt_list[0])
         else:
             vm_pt = VirtualMachineST.get(vm_analyzer[0])
         if vm_pt is None:
@@ -1495,6 +1536,7 @@ class NetworkPolicyST(DBBaseST):
 class RouteTableST(DBBaseST):
     _dict = {}
     obj_type = 'route_table'
+
     _service_instances = {}
 
     def __init__(self, name, obj=None):
@@ -1511,7 +1553,10 @@ class RouteTableST(DBBaseST):
         routes = self.obj.get_routes()
         if routes:
             self.routes = routes.get_route() or []
-        si_set = set(route.next_hop for route in self.routes)
+        si_set = set()
+        for route in self.routes:
+            if route.next_hop_type != 'ip-address':
+                si_set.add(route.next_hop)
         self.update_service_instances(si_set)
     # end update
 
@@ -1836,6 +1881,10 @@ class RoutingInstanceST(DBBaseST):
         vmi_refs = self.obj.get_virtual_machine_interface_back_refs() or []
         self.virtual_machine_interfaces = set([':'.join(ref['to'])
                                               for ref in vmi_refs])
+        self.update_multiple_refs('route_aggregate', self.obj)
+        for ref in self.obj.get_routing_policy_back_refs() or []:
+            rp_name = ':'.join(ref['to'])
+            self.routing_policys[rp_name] = ref['attr']['sequence']
     # end __init__
 
     def update(self, obj=None):
@@ -1951,7 +2000,7 @@ class RoutingInstanceST(DBBaseST):
                                 rtgt_obj.obj, InstanceTargetType('import'))
                     elif vn.allow_transit:
                         rtgt_obj = RouteTarget(vn._route_target)
-                        rinst_obj.add_route_target(rtgt_obj, inst_tgt_data)
+                        self.obj.add_route_target(rtgt_obj, inst_tgt_data)
                 if not compare_refs(self.obj.get_route_target_refs(),
                                     old_rt_refs):
                     self._vnc_lib.routing_instance_update(self.obj)
@@ -2129,11 +2178,21 @@ class RoutingInstanceST(DBBaseST):
         for rp_name in self.routing_policys:
             rp = RoutingPolicyST.get(rp_name)
             if rp:
-                rp.delete_routing_instance(self.name)
+                rp.delete_routing_instance(self)
+            else:
+                rp_obj = RoutingPolicyST.read_vnc_obj(fq_name=rp_name)
+                if rp_obj:
+                    rp_obj.del_routing_instance(self.obj)
+                    self._vnc_lib.routing_policy_update(rp_obj)
         for ra_name in self.route_aggregates:
             ra = RouteAggregateST.get(ra_name)
             if ra:
-                ra.delete_routing_instance(self.name)
+                ra.delete_routing_instance(self)
+            else:
+                ra_obj = RouteAggregateST.read_vnc_obj(fq_name=ra_name)
+                if ra_obj:
+                    ra_obj.del_routing_instance(self.obj)
+                    self._vnc_lib.route_aggregate_update(ra_obj)
         self.routing_policys = {}
         self.route_aggregates = set()
         bgpaas_server_name = self.obj.get_fq_name_str() + ':bgpaas-server'
@@ -2357,19 +2416,19 @@ class ServiceChain(DBBaseST):
                     self.log_error('virtual machine %s not found' % service_vm)
                     return None
                 vm_info = self._get_vm_pt_info(vm_obj, mode)
-                if vm_info is None:
-                    return None
-                vm_info_list.append(vm_info)
+                if vm_info:
+                    vm_info_list.append(vm_info)
             for pt in pt_list:
                 pt_obj = PortTupleST.get(pt)
                 if pt_obj is None:
                     self.log_error('virtual machine %s not found' % pt)
                     return None
                 vm_info = self._get_vm_pt_info(pt_obj, mode)
-                if vm_info is None:
-                    return None
-                vm_info_list.append(vm_info)
+                if vm_info:
+                    vm_info_list.append(vm_info)
             # end for service_vm
+            if not vm_info:
+                return None
             virtualization_type = si.get_virtualization_type()
             ret_dict[service] = {'mode': mode, 'vm_list': vm_info_list,
                                  'virtualization_type': virtualization_type}
@@ -2786,8 +2845,8 @@ class BgpRouterST(DBBaseST):
         if params.address != ip:
             params.address = ip
             update = True
-        if params.identifier != bgpaas.ip_address:
-            params.identifier = bgpaas.ip_address
+        if params.identifier != ip:
+            params.identifier = ip
             update = True
         if update:
             self.obj.set_bgp_router_parameters(params)
@@ -2866,7 +2925,14 @@ class BgpAsAServiceST(DBBaseST):
         self.bgp_routers = set()
         self.bgpaas_clients = {}
         self.update(self.obj)
+        self.set_bgpaas_clients()
     # end __init__
+
+    def set_bgpaas_clients(self):
+        for bgp_router in self.bgp_routers:
+            bgpr = BgpRouterST.get(bgp_router)
+            self.bgpaas_clients[bgpr.obj.name] = bgpr.obj.get_fq_name_str()
+    # end set_bgp_clients
 
     def update(self, obj=None):
         self.obj = obj or self.read_vnc_obj(fq_name=self.name)
@@ -2953,7 +3019,7 @@ class BgpAsAServiceST(DBBaseST):
         ]
         resp.properties = [
             sandesh.PropList('ip_address', self.ip_address),
-            sandesh.PropList('asn', self.asn)
+            sandesh.PropList('asn', str(self.asn))
         ]
         return resp
     # end handle_st_object_req
@@ -3023,17 +3089,15 @@ class VirtualMachineInterfaceST(DBBaseST):
                 continue
             if not ip.service_instance_ip:
                 continue
-            if not ip_version or IPAddress(ip.address).version == ip_version:
+            if not ip_version or ip.ip_version == ip_version:
                 return ip.address
         return None
     # end get_any_instance_ip_address
 
-    def get_primary_instance_ip_address(self):
+    def get_primary_instance_ip_address(self, ip_version=4):
         for ip_name in self.instance_ips:
             ip = InstanceIpST.get(ip_name)
-            if ip.address is None:
-                continue
-            if ip.is_primary():
+            if ip.is_primary() and ip.address and ip_version == ip.ip_version:
                 return ip.address
         return None
     # end get_primary_instance_ip_address
@@ -3077,9 +3141,14 @@ class VirtualMachineInterfaceST(DBBaseST):
     def delete_routing_instance(self, ri):
         if ri.name not in self.routing_instances:
             return
-        self._vnc_lib.ref_update(
-            'virtual-machine-interface', self.uuid, 'routing-instance',
-            ri.obj.uuid, None, 'DELETE')
+        try:
+            self._vnc_lib.ref_update(
+                'virtual-machine-interface', self.uuid, 'routing-instance',
+                ri.obj.uuid, None, 'DELETE')
+        except NoIdError:
+            # NoIdError could happen if RI is deleted while we try to remove
+            # the link from VMI
+            pass
         del self.routing_instances[ri.name]
         ri.virtual_machine_interfaces.discard(self.name)
     # end delete_routing_instance
@@ -3170,16 +3239,16 @@ class VirtualMachineInterfaceST(DBBaseST):
         for ip_name in self.instance_ips:
             ip = InstanceIpST.get(ip_name)
             if ip and ip.address:
-                ip_list.append(ip.address)
+                ip_list.append(ip)
         for ip_name in self.floating_ips:
             ip = FloatingIpST.get(ip_name)
             if ip and ip.address:
-                ip_list.append(ip.address)
+                ip_list.append(ip)
         for ip in ip_list:
-            if IPAddress(ip).version == 6:
-                address = AddressType(subnet=SubnetType(ip, 128))
+            if ip.ip_version == 6:
+                address = AddressType(subnet=SubnetType(ip.address, 128))
             else:
-                address = AddressType(subnet=SubnetType(ip, 32))
+                address = AddressType(subnet=SubnetType(ip.address, 32))
 
             mc = MatchConditionType(src_address=address,
                                     protocol='any',
@@ -3257,12 +3326,15 @@ class InstanceIpST(DBBaseST):
         self.name = name
         self.is_secondary = False
         self.virtual_machine_interfaces = set()
+        self.ip_version = None
         self.update(obj)
     # end __init
 
     def update(self, obj=None):
         self.obj = obj or self.read_vnc_obj(fq_name=self.name)
         self.address = self.obj.get_instance_ip_address()
+        if self.address:
+            self.ip_version = IPAddress(self.address).version
         self.service_instance_ip = self.obj.get_service_instance_ip()
         self.is_secondary = self.obj.get_instance_ip_secondary() or False
         self.update_multiple_refs('virtual_machine_interface', self.obj)
@@ -3297,12 +3369,15 @@ class FloatingIpST(DBBaseST):
     def __init__(self, name, obj=None):
         self.name = name
         self.virtual_machine_interface = None
+        self.ip_version = None
         self.update(obj)
     # end __init
 
     def update(self, obj=None):
         self.obj = obj or self.read_vnc_obj(fq_name=self.name)
         self.address = self.obj.get_floating_ip_address()
+        if self.address:
+            self.ip_version = IPAddress(self.address).version
         self.update_single_ref('virtual_machine_interface', self.obj)
     # end update
 

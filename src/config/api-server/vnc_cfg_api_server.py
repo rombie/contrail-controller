@@ -10,7 +10,8 @@ from gevent import monkey
 monkey.patch_all()
 from gevent import hub
 
-# from neutron plugin to api server, the request URL could be large. fix the const
+# from neutron plugin to api server, the request URL could be large.
+# fix the const
 import gevent.pywsgi
 gevent.pywsgi.MAX_REQUEST_LINE = 65535
 
@@ -18,7 +19,6 @@ import sys
 reload(sys)
 sys.setdefaultencoding('UTF8')
 import functools
-import re
 import logging
 import logging.config
 import signal
@@ -27,13 +27,10 @@ import socket
 from cfgm_common import jsonutils as json
 import uuid
 import copy
-import argparse
-import ConfigParser
 from pprint import pformat
-import cgitb
 from cStringIO import StringIO
 from lxml import etree
-#import GreenletProfiler
+# import GreenletProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +65,7 @@ from cfgm_common import ignore_exceptions, imid
 from cfgm_common.uve.vnc_api.ttypes import VncApiCommon, VncApiConfigLog,\
     VncApiError
 from cfgm_common import illegal_xml_chars_RE
-from sandesh_common.vns.ttypes import Module, NodeType
+from sandesh_common.vns.ttypes import Module
 from sandesh_common.vns.constants import ModuleNames, Module2NodeType,\
     NodeTypeNames, INSTANCE_ID_DEFAULT, API_SERVER_DISCOVERY_SERVICE_NAME,\
     IFMAP_SERVER_DISCOVERY_SERVICE_NAME
@@ -80,9 +77,10 @@ from gen.resource_common import *
 from gen.resource_server import *
 import gen.vnc_api_server_gen
 import cfgm_common
+from cfgm_common.utils import cgitb_hook
 from cfgm_common.rest import LinkObject, hdr_server_tenant
 from cfgm_common.exceptions import *
-from cfgm_common.vnc_extensions import ExtensionManager, ApiHookManager
+from cfgm_common.vnc_extensions import ExtensionManager
 import gen.resource_xsd
 import vnc_addr_mgmt
 import vnc_auth
@@ -95,12 +93,13 @@ from cfgm_common.vnc_api_stats import log_api_stats
 from pysandesh.sandesh_base import *
 from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
 import discoveryclient.client as client
-#from gen_py.vnc_api.ttypes import *
+# from gen_py.vnc_api.ttypes import *
 import netifaces
 from pysandesh.connection_info import ConnectionState
 from cfgm_common.uve.cfgm_cpuinfo.ttypes import NodeStatusUVE, \
     NodeStatus
 
+from sandesh.discovery_client_stats import ttypes as sandesh
 from sandesh.traces.ttypes import RestApiTrace
 from vnc_bottle import get_bottle_server
 
@@ -172,51 +171,6 @@ def error_503(err):
     return err.body
 # end error_503
 
-
-# Masking of password from openstack/common/log.py
-_SANITIZE_KEYS = ['adminPass', 'admin_pass', 'password', 'admin_password']
-
-# NOTE(ldbragst): Let's build a list of regex objects using the list of
-# _SANITIZE_KEYS we already have. This way, we only have to add the new key
-# to the list of _SANITIZE_KEYS and we can generate regular expressions
-# for XML and JSON automatically.
-_SANITIZE_PATTERNS = []
-_FORMAT_PATTERNS = [r'(%(key)s\s*[=]\s*[\"\']).*?([\"\'])',
-                    r'(<%(key)s>).*?(</%(key)s>)',
-                    r'([\"\']%(key)s[\"\']\s*:\s*[\"\']).*?([\"\'])',
-                    r'([\'"].*?%(key)s[\'"]\s*:\s*u?[\'"]).*?([\'"])']
-
-for key in _SANITIZE_KEYS:
-    for pattern in _FORMAT_PATTERNS:
-        reg_ex = re.compile(pattern % {'key': key}, re.DOTALL)
-        _SANITIZE_PATTERNS.append(reg_ex)
-
-def mask_password(message, secret="***"):
-    """Replace password with 'secret' in message.
-    :param message: The string which includes security information.
-    :param secret: value with which to replace passwords.
-    :returns: The unicode value of message with the password fields masked.
-
-    For example:
-
-    >>> mask_password("'adminPass' : 'aaaaa'")
-    "'adminPass' : '***'"
-    >>> mask_password("'admin_pass' : 'aaaaa'")
-    "'admin_pass' : '***'"
-    >>> mask_password('"password" : "aaaaa"')
-    '"password" : "***"'
-    >>> mask_password("'original_password' : 'aaaaa'")
-    "'original_password' : '***'"
-    >>> mask_password("u'original_password' :   u'aaaaa'")
-    "u'original_password' :   u'***'"
-    """
-    if not any(key in message for key in _SANITIZE_KEYS):
-        return message
-
-    secret = r'\g<1>' + secret + r'\g<2>'
-    for pattern in _SANITIZE_PATTERNS:
-        message = re.sub(pattern, secret, message)
-    return message
 
 class VncApiServer(object):
     """
@@ -831,6 +785,9 @@ class VncApiServer(object):
 
         def stateful_delete():
             get_context().set_state('PRE_DBE_DELETE')
+            (ok, del_result) = r_class.pre_dbe_delete(id, read_result, db_conn)
+            if not ok:
+                return (ok, del_result)
             # Delete default children first
             for child_field in r_class.children_fields:
                 child_type, is_derived = r_class.children_field_types[child_field]
@@ -841,9 +798,6 @@ class VncApiServer(object):
                     continue
                 self.delete_default_children(child_type, read_result)
 
-            (ok, del_result) = r_class.pre_dbe_delete(id, read_result, db_conn)
-            if not ok:
-                return (ok, del_result)
             callable = getattr(r_class, 'http_delete_fail', None)
             if callable:
                 cleanup_on_failure.append((callable, [id, read_result, db_conn]))
@@ -1314,6 +1268,7 @@ class VncApiServer(object):
         self.get_resource_class('logical-interface').generate_default_instance = False
         self.get_resource_class('api-access-list').generate_default_instance = False
         self.get_resource_class('dsa-rule').generate_default_instance = False
+        self.get_resource_class('bgp-as-a-service').generate_default_instance = False
 
         for act_res in _ACTION_RESOURCES:
             link = LinkObject('action', self._base_url, act_res['uri'],
@@ -1371,6 +1326,9 @@ class VncApiServer(object):
         if self._args.sandesh_send_rate_limit is not None:
             SandeshSystem.set_sandesh_send_rate_limit(
                 self._args.sandesh_send_rate_limit)
+        sandesh.DiscoveryClientStatsReq.handle_request = self.sandesh_disc_client_stats_handle_request
+        sandesh.DiscoveryClientSubscribeInfoReq.handle_request = self.sandesh_disc_client_subinfo_handle_request
+        sandesh.DiscoveryClientPublishInfoReq.handle_request = self.sandesh_disc_client_pubinfo_handle_request
         module = Module.API_SERVER
         module_name = ModuleNames[Module.API_SERVER]
         node_type = Module2NodeType[module]
@@ -1385,7 +1343,7 @@ class VncApiServer(object):
                                      self._args.collectors,
                                      'vnc_api_server_context',
                                      int(self._args.http_server_port),
-                                     ['cfgm_common'], self._disc,
+                                     ['cfgm_common', 'vnc_cfg_api_server.sandesh'], self._disc,
                                      logger_class=self._args.logger_class,
                                      logger_config_file=self._args.logging_conf)
         self._sandesh.trace_buffer_create(name="VncCfgTraceBuf", size=1000)
@@ -1456,6 +1414,66 @@ class VncApiServer(object):
         self._cpu_info = cpu_info
 
     # end __init__
+
+    def sandesh_disc_client_subinfo_handle_request(self, req):
+        stats = self._disc.get_stats()
+        resp = sandesh.DiscoveryClientSubscribeInfoResp(Subscribe=[])
+
+        for sub in stats['subs']:
+            info = sandesh.SubscribeInfo(service_type=sub['service_type'])
+            info.instances   = sub['instances']
+            info.ttl         = sub['ttl']
+            info.blob        = sub['blob']
+            resp.Subscribe.append(info)
+
+        resp.response(req.context())
+    # end
+
+    def sandesh_disc_client_pubinfo_handle_request(self, req):
+        stats = self._disc.get_stats()
+        resp = sandesh.DiscoveryClientPublishInfoResp(Publish=[])
+
+        for service_type, pub in stats['pubs'].items():
+            info = sandesh.PublishInfo(service_type=service_type)
+            info.blob        = pub['blob']
+            resp.Publish.append(info)
+
+        resp.response(req.context())
+    # end
+
+    # Return discovery client stats
+    def sandesh_disc_client_stats_handle_request(self, req):
+        stats = self._disc.get_stats()
+        resp = sandesh.DiscoveryClientStatsResp(Subscribe=[], Publish=[])
+
+        # pub stats
+        for service_type, pub in stats['pubs'].items():
+            pub_stats = sandesh.PublisherStats(service_type=service_type)
+            pub_stats.Request     = pub['request']
+            pub_stats.Response     = pub['response']
+            pub_stats.ConnError   = pub['conn_error']
+            pub_stats.Timeout   = pub['timeout']
+            pub_stats.unknown_exceptions = pub['exc_unknown']
+            pub_stats.exception_info    = pub['exc_info']
+            xxx = ['%s:%d' % (k[3:], v) for k, v in pub.items() if 'sc_' in k]
+            pub_stats.HttpError = ", ".join(xxx)
+            resp.Publish.append(pub_stats)
+
+        # sub stats
+        for sub in stats['subs']:
+            sub_stats = sandesh.SubscriberStats(service_type=sub['service_type'])
+            sub_stats.Request   = sub['request']
+            sub_stats.Response   = sub['response']
+            sub_stats.ConnError   = sub['conn_error']
+            sub_stats.Timeout   = sub['timeout']
+            sub_stats.unknown_exceptions = sub['exc_unknown']
+            sub_stats.exception_info    = sub['exc_info']
+            xxx = ['%s:%d' % (k[3:], v) for k, v in sub.items() if 'sc_' in k]
+            sub_stats.HttpError = ", ".join(xxx)
+            resp.Subscribe.append(sub_stats)
+
+        resp.response(req.context())
+    # end sandesh_disc_client_stats_handle_request
 
     def _extensions_transform_request(self, request):
         extensions = self._extension_mgrs.get('resourceApi')
@@ -1544,11 +1562,8 @@ class VncApiServer(object):
                     bottle.abort(e.status_code, e.content)
                 else:
                     string_buf = StringIO()
-                    cgitb.Hook(
-                        file=string_buf,
-                        format="text",
-                        ).handle(sys.exc_info())
-                    err_msg = mask_password(string_buf.getvalue())
+                    cgitb_hook(file=string_buf, format="text")
+                    err_msg = string_buf.getvalue()
                     self.config_log(err_msg, level=SandeshLevel.SYS_ERR)
                     raise
 

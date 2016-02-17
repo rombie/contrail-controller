@@ -15,8 +15,11 @@
 #include "bgp/bgp_config_parser.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_peer.h"
+#include "bgp/bgp_server.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/routing-instance/peer_manager.h"
+#include "bgp/routing-instance/routing_instance.h"
 #include "bgp/routing-policy/routing_policy.h"
 #include "control-node/control_node.h"
 #include "db/db_graph.h"
@@ -1146,7 +1149,7 @@ TEST_F(BgpConfigTest, Instances3) {
 
     // Verify number of export and import targets in green.
     TASK_UTIL_EXPECT_EQ(1, green->GetExportList().size());
-    TASK_UTIL_EXPECT_EQ(4, green->GetImportList().size());
+    TASK_UTIL_EXPECT_EQ(3, green->GetImportList().size());
 
     // Change the connection to a unidirectional one from green to red.
     autogen::ConnectionType *connection_type1 = new autogen::ConnectionType;
@@ -1180,7 +1183,7 @@ TEST_F(BgpConfigTest, Instances3) {
 
     // Verify number of export and import targets in green.
     TASK_UTIL_EXPECT_EQ(1, green->GetExportList().size());
-    TASK_UTIL_EXPECT_EQ(4, green->GetImportList().size());
+    TASK_UTIL_EXPECT_EQ(3, green->GetImportList().size());
 
     // Clean up.
     ifmap_test_util::IFMapMsgUnlink(&config_db_,

@@ -10,8 +10,6 @@
 from cfgm_common import jsonutils as json
 import re
 import itertools
-import copy
-import bottle
 import socket
 
 import cfgm_common
@@ -21,8 +19,7 @@ import netaddr
 import uuid
 from vnc_quota import QuotaHelper
 
-import context
-from context import get_context, set_context, get_request
+from context import get_context
 from gen.resource_xsd import *
 from gen.resource_common import *
 from gen.resource_server import *
@@ -381,7 +378,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
     # end _kvp_to_dict
 
     @classmethod
-    def _check_vrouter_link(cls, obj_dict, kvp_dict, db_conn):
+    def _check_vrouter_link(cls, kvp_dict, obj_dict, db_conn):
         host_id = kvp_dict.get('host_id')
         vm_refs = obj_dict.get('virtual_machine_refs')
 
@@ -454,7 +451,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
             'virtual_machine_interface_allowed_address_pairs', {})
         for aap in aap_config.get('allowed_address_pair', []):
             if aap['mac'] == "":
-                aap['mac'] = mac_addrs_dict['mac_address']
+                aap['mac'] = mac_addrs_dict['mac_address'][0]
 
         if 'virtual_machine_interface_bindings' in obj_dict:
             bindings = obj_dict['virtual_machine_interface_bindings']
@@ -517,41 +514,67 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
     # end post_dbe_create
 
     @classmethod
-    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn,
+                       prop_collection_updates=None, **kwargs):
 
         vmi_id = {'uuid': id}
 
         try:
-            (read_ok, read_result) = db_conn.dbe_read('virtual-machine-interface', vmi_id)
+            (ok, read_result) = db_conn.dbe_read('virtual-machine-interface', vmi_id)
         except cfgm_common.exceptions.NoIdError as e:
             return (False, (404, str(e)))
-        if not read_ok:
+        if not ok:
             return (False, (500, read_result))
+
+        if ('virtual_machine_interface_refs' in obj_dict and
+                'virtual_machine_interface_refs' in read_result):
+            for ref in read_result['virtual_machine_interface_refs']:
+                if ref not in obj_dict['virtual_machine_interface_refs']:
+                    # Dont allow remove of vmi ref during update
+                    msg = "VMI ref delete not allowed during update"
+                    return (False, (409, msg))
 
         aap_config = obj_dict.get(
             'virtual_machine_interface_allowed_address_pairs', {})
         for aap in aap_config.get('allowed_address_pair', []):
             if aap['mac'] == "":
                 aap['mac'] = read_result[
-                    'virtual_machine_interface_mac_addresses']['mac_address']
+                    'virtual_machine_interface_mac_addresses']['mac_address'][0]
 
         bindings = read_result.get('virtual_machine_interface_bindings', {})
         kvps = bindings.get('key_value_pair', [])
         kvp_dict = cls._kvp_to_dict(kvps)
         old_vnic_type = kvp_dict.get('vnic_type', 'normal')
 
-        if 'virtual_machine_interface_bindings' in obj_dict:
-            bindings = obj_dict['virtual_machine_interface_bindings']
-            if 'key_value_pair' in bindings:
-                kvps = bindings['key_value_pair']
-                kvp_dict = cls._kvp_to_dict(kvps)
-                new_vnic_type = kvp_dict.get('vnic_type', old_vnic_type)
-                if (old_vnic_type  != new_vnic_type):
-                    return (False, (409, "Vnic_type can not be modified"))
-                cls._check_vrouter_link(kvp_dict, obj_dict, db_conn)
+        bindings = obj_dict.get('virtual_machine_interface_bindings', {})
+        kvps = bindings.get('key_value_pair', [])
+
+        for oper_param in prop_collection_updates or []:
+            if (oper_param['field'] == 'virtual_machine_interface_bindings' and
+                    oper_param['operation'] == 'set'):
+                kvps.append(oper_param['value'])
+
+        if kvps:
+            kvp_dict = cls._kvp_to_dict(kvps)
+            new_vnic_type = kvp_dict.get('vnic_type', old_vnic_type)
+            if (old_vnic_type  != new_vnic_type):
+                return (False, (409, "Vnic_type can not be modified"))
+            cls._check_vrouter_link(kvp_dict, obj_dict, db_conn)
 
         return True, ""
     # end pre_dbe_update
+
+    @classmethod
+    def pre_dbe_delete(cls, id, obj_dict, db_conn):
+        if ('virtual_machine_interface_refs' in obj_dict and
+               'virtual_machine_interface_properties' in obj_dict):
+            vmi_props = obj_dict['virtual_machine_interface_properties']
+            if 'sub_interface_vlan_tag' not in vmi_props:
+                msg = "Cannot delete vmi with existing ref to sub interface"
+                return (False, (409, msg))
+
+        return True, ""
+    # end pre_dbe_delete
 # end class VirtualMachineInterfaceServer
 
 class ServiceApplianceSetServer(Resource, ServiceApplianceSet):

@@ -53,7 +53,7 @@ class PortTupleAgent(Agent):
             iip_obj.set_instance_ip_mode(si.ha_mode)
             try:
                 self._vnc_lib.instance_ip_create(iip_obj)
-                self._vnc_lib.ref_relax_for_delete(iip_id, vn_obj.uuid)
+                self._vnc_lib.ref_relax_for_delete(iip_obj.uuid, vn_obj.uuid)
             except RefsExistError:
                 self._vnc_lib.instance_ip_update(iip_obj)
             except Exception as e:
@@ -124,9 +124,10 @@ class PortTupleAgent(Agent):
             vmi.update()
             self.set_secondary_ip_tracking_ip(vmi)
 
-    def delete_shared_iip(self, iip_id):
-        iip = InstanceIpSM.get(iip_id)
-        if not iip:
+    def delete_shared_iip(self, iip):
+        if not iip.service_instance_ip or not iip.instance_ip_secondary:
+            return
+        if iip.service_instance:
             return
         for vmi_id in iip.virtual_machine_interfaces:
             self._vnc_lib.ref_update('instance-ip', iip.uuid,
@@ -137,6 +138,27 @@ class PortTupleAgent(Agent):
             InstanceIpSM.delete(iip.uuid)
         except NoIdError:
             return
+
+    def delete_old_vmi_links(self, vmi):
+        for iip_id in list(vmi.instance_ips):
+            iip = InstanceIpSM.get(iip_id)
+            if not iip or not iip.service_instance:
+                continue
+            self._vnc_lib.ref_update('instance-ip', iip_id,
+                'virtual-machine-interface', vmi.uuid, None, 'DELETE')
+            vmi.instance_ips.remove(iip_id)
+
+        irt = InterfaceRouteTableSM.get(vmi.interface_route_table)
+        if irt and irt.service_instance:
+            self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
+                'interface-route-table', irt.uuid, None, 'DELETE')
+            vmi.interface_route_table = None
+
+        health = ServiceHealthCheckSM.get(vmi.service_health_check)
+        if health and health.service_instance:
+            self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
+                'service-health-check', health.uuid, None, 'DELETE')
+            vmi.service_health_check = None
 
     def set_port_service_chain_ip(self, si, port, vmi, vmi_obj):
         self._allocate_shared_iip(si, port, vmi, vmi_obj)
@@ -174,8 +196,14 @@ class PortTupleAgent(Agent):
 
         return port_config
 
-    def update_port_tuple(self, pt_id):
-        pt = PortTupleSM.get(pt_id)
+    def update_port_tuple(self, vmi=None, pt_id=None):
+        if vmi:
+            if not vmi.port_tuple:
+                self.delete_old_vmi_links(vmi)
+                return
+            pt = PortTupleSM.get(vmi.port_tuple)
+        if pt_id:
+            pt = PortTupleSM.get(pt_id)
         if not pt:
             return
         si = ServiceInstanceSM.get(pt.parent_key)
@@ -208,8 +236,6 @@ class PortTupleAgent(Agent):
     def update_port_tuples(self):
         for si in ServiceInstanceSM.values():
             for pt_id in si.port_tuples:
-                self.update_port_tuple(pt_id)
+                self.update_port_tuple(pt_id=pt_id)
         for iip in InstanceIpSM.values():
-            if (iip.service_instance_ip and
-                    iip.instance_ip_secondary and not iip.service_instance):
-                self.delete_shared_iip(iip.uuid)
+                self.delete_shared_iip(iip)

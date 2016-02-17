@@ -125,12 +125,9 @@ uint64_t DbHandler::GetTtlFromMap(const TtlMap& ttl_map,
 std::string DbHandler::GetName() const {
     return name_;
 }
-std::string DbHandler::GetHost() const {
-    return dbif_->Db_GetHost();
-}
 
-int DbHandler::GetPort() const {
-    return dbif_->Db_GetPort();
+std::vector<boost::asio::ip::tcp::endpoint> DbHandler::GetEndpoints() const {
+    return dbif_->Db_GetEndpoints();
 }
 
 bool DbHandler::DropMessage(const SandeshHeader &header,
@@ -235,7 +232,9 @@ bool DbHandler::CreateTables() {
         columns.push_back(stat_col);
 
         if (!dbif_->Db_AddColumnSync(col_list)) {
-            VIZD_ASSERT(0);
+            DB_LOG(ERROR, g_viz_constants.SYSTEM_OBJECT_TABLE <<
+                ": Start Time Column Add FAILED");
+            return false;
         }
     }
 
@@ -270,7 +269,9 @@ bool DbHandler::CreateTables() {
         columns.push_back(stat_col);
 
         if (!dbif_->Db_AddColumnSync(col_list)) {
-            VIZD_ASSERT(0);
+            DB_LOG(ERROR, g_viz_constants.SYSTEM_OBJECT_TABLE <<
+                ": TTL Column Add FAILED");
+            return false;
         }
     }
 
@@ -396,9 +397,33 @@ bool DbHandler::GetStats(std::vector<GenDb::DbTableInfo> *vdbti,
     GenDb::DbErrors *dbe, std::vector<GenDb::DbTableInfo> *vstats_dbti) {
     {
         tbb::mutex::scoped_lock lock(smutex_);
-        stable_stats_.Get(vstats_dbti);
+        stable_stats_.GetDiffs(vstats_dbti);
     }
     return dbif_->Db_GetStats(vdbti, dbe);
+}
+
+bool DbHandler::GetCqlMetrics(cass::cql::Metrics *metrics) const {
+    if (!UseCql()) {
+        return false;
+    }
+    cass::cql::CqlIf *cql_if(dynamic_cast<cass::cql::CqlIf *>(dbif_.get()));
+    if (cql_if == NULL) {
+        return false;
+    }
+    cql_if->Db_GetCqlMetrics(metrics);
+    return true;
+}
+
+bool DbHandler::GetCqlStats(cass::cql::DbStats *stats) const {
+    if (!UseCql()) {
+        return false;
+    }
+    cass::cql::CqlIf *cql_if(dynamic_cast<cass::cql::CqlIf *>(dbif_.get()));
+    if (cql_if == NULL) {
+        return false;
+    }
+    cql_if->Db_GetCqlStats(stats);
+    return true;
 }
 
 bool DbHandler::AllowMessageTableInsert(const SandeshHeader &header) {
@@ -856,7 +881,7 @@ bool DbHandler::StatTableWrite(uint32_t t2,
             break;
         default:
             tbb::mutex::scoped_lock lock(smutex_);
-            stable_stats_.Update(statName + ":" + statAttr, true, true);
+            stable_stats_.Update(statName + ":" + statAttr, true, true, 1);
             DB_LOG(ERROR, "Bad Prefix Tag " << statName <<
                     ", " << statAttr <<  " tag " << ptag.first <<
                     ":" << stag.first << " jsonline " << jsonline);
@@ -864,7 +889,7 @@ bool DbHandler::StatTableWrite(uint32_t t2,
     }
     if (bad_suffix) {
         tbb::mutex::scoped_lock lock(smutex_);
-        stable_stats_.Update(statName + ":" + statAttr, true, true);
+        stable_stats_.Update(statName + ":" + statAttr, true, true, 1);
         DB_LOG(ERROR, "Bad Suffix Tag " << statName <<
                 ", " << statAttr <<  " tag " << ptag.first <<
                 ":" << stag.first << " jsonline " << jsonline);
@@ -917,11 +942,11 @@ bool DbHandler::StatTableWrite(uint32_t t2,
                 ":" << stag.first << " into table " <<
                 cfname <<" FAILED");
         tbb::mutex::scoped_lock lock(smutex_);
-        stable_stats_.Update(statName + ":" + statAttr, true, true);
+        stable_stats_.Update(statName + ":" + statAttr, true, true, 1);
         return false;
     } else {
         tbb::mutex::scoped_lock lock(smutex_);
-        stable_stats_.Update(statName + ":" + statAttr, true, false);
+        stable_stats_.Update(statName + ":" + statAttr, true, false, 1);
         return true;
     }
 }
@@ -1456,10 +1481,12 @@ bool FlowLogDataObjectWalker<T>::for_each(pugi::xml_node& node) {
                 std::stringstream ss;
                 ss << node.child_value();
                 boost::uuids::uuid u;
-                ss >> u;
-                if (ss.fail()) {
-                    LOG(ERROR, "FlowRecordTable: " << col_name << ": (" << 
-                        node.child_value() << ") INVALID");
+                if (!ss.str().empty()) {
+                    ss >> u;
+                    if (ss.fail()) {
+                        LOG(ERROR, "FlowRecordTable: " << col_name << ": (" <<
+                            node.child_value() << ") INVALID");
+                    }
                 }     
                 values_[ftinfo.get<0>()] = u;
                 break;
@@ -1676,21 +1703,17 @@ bool DbHandlerInitializer::Initialize() {
     boost::system::error_code ec;
     if (!db_handler_->Init(true, db_task_instance_)) {
         // Update connection info
-        boost::asio::ip::address db_addr(boost::asio::ip::address::from_string(
-            db_handler_->GetHost(), ec));
-        boost::asio::ip::tcp::endpoint db_endpoint(db_addr, db_handler_->GetPort());
         ConnectionState::GetInstance()->Update(ConnectionType::DATABASE,
-            db_name_, ConnectionStatus::DOWN, db_endpoint, std::string());
+            db_name_, ConnectionStatus::DOWN, db_handler_->GetEndpoints(),
+            std::string());
         LOG(DEBUG, db_name_ << ": Db Initialization FAILED");
         ScheduleInit();
         return false;
     }
     // Update connection info
-    boost::asio::ip::address db_addr(boost::asio::ip::address::from_string(
-        db_handler_->GetHost(), ec));
-    boost::asio::ip::tcp::endpoint db_endpoint(db_addr, db_handler_->GetPort());
     ConnectionState::GetInstance()->Update(ConnectionType::DATABASE,
-        db_name_, ConnectionStatus::UP, db_endpoint, std::string());
+        db_name_, ConnectionStatus::UP, db_handler_->GetEndpoints(),
+        std::string());
 
     if (callback_) {
        callback_();

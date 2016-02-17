@@ -621,10 +621,6 @@ static void GetEcmpHashFieldsToUse(ItemType *item,
     for (uint32_t i = 0; i < field_list_size; i++) {
         std::string field_type = item->entry.
             load_balance.load_balance_fields.load_balance_field_list[i];
-        if (field_type == ecmp_load_balance.source_mac_str())
-            ecmp_load_balance.set_source_mac();
-        if (field_type == ecmp_load_balance.destination_mac_str())
-            ecmp_load_balance.set_destination_mac();
         if (field_type == ecmp_load_balance.source_ip_str())
             ecmp_load_balance.set_source_ip();
         if (field_type == ecmp_load_balance.destination_ip_str())
@@ -873,7 +869,8 @@ void AgentXmppChannel::AddEvpnRoute(const std::string &vrf_name,
                                                      vn_list,
                                                      item->entry.security_group_list.security_group,
                                                      path_preference,
-                                                     (item->entry.next_hops.next_hop.size() > 1));
+                                                     (item->entry.next_hops.next_hop.size() > 1),
+                                                     EcmpLoadBalance());
         rt_table->AddRemoteVmRouteReq(bgp_peer_id(), vrf_name, mac, ip_addr,
                                       item->entry.nlri.ethernet_tag, data);
         return;
@@ -1008,12 +1005,14 @@ void AgentXmppChannel::AddRemoteRoute(string vrf_name, IpAddress prefix_addr,
                      addr.to_v4().to_string(), label, vn_string);
 
     if (agent_->router_id() != addr.to_v4()) {
+        EcmpLoadBalance ecmp_load_balance;
+        GetEcmpHashFieldsToUse(item, ecmp_load_balance);
         ControllerVmRoute *data =
             ControllerVmRoute::MakeControllerVmRoute(bgp_peer_id(),
                                agent_->fabric_vrf_name(), agent_->router_id(),
                                vrf_name, addr.to_v4(), encap, label, vn_list,
                                item->entry.security_group_list.security_group,
-                               path_preference, false);
+                               path_preference, false, ecmp_load_balance);
         rt_table->AddRemoteVmRouteReq(bgp_peer_id(), vrf_name, prefix_addr,
                                       prefix_len, data);
         return;
@@ -1033,6 +1032,7 @@ void AgentXmppChannel::AddRemoteRoute(string vrf_name, IpAddress prefix_addr,
             VmInterfaceKey intf_key(AgentKey::ADD_DEL_CHANGE,
                                     intf_nh->GetIfUuid(), "");
             EcmpLoadBalance ecmp_load_balance;
+            GetEcmpHashFieldsToUse(item, ecmp_load_balance);
             BgpPeer *bgp_peer = bgp_peer_id();
             if (interface->type() == Interface::VM_INTERFACE) {
                 ControllerLocalVmRoute *local_vm_route =
@@ -1124,6 +1124,9 @@ void AgentXmppChannel::AddRemoteRoute(string vrf_name, IpAddress prefix_addr,
 }
 
 bool AgentXmppChannel::IsEcmp(const std::vector<autogen::NextHopType> &nexthops) {
+    if (nexthops.size() == 0)
+        return false;
+
     std::string address = nexthops[0].address;
     for (uint32_t index = 1; index < nexthops.size(); index++) {
         if (nexthops[index].address != address)
@@ -2473,7 +2476,9 @@ bool AgentXmppChannel::ControllerSendRouteAdd(AgentXmppChannel *peer,
                                                    type, ecmp_load_balance);
     }
     if (type == Agent::EVPN) {
-        std::string vn = *vn_list.begin();
+        std::string vn;
+        if (vn_list.size())
+            vn = *vn_list.begin();
         ret = peer->ControllerSendEvpnRouteCommon(route, nexthop_ip, vn,
                                                   sg_list, communities, label,
                                                   bmap, "", "",
@@ -2515,9 +2520,11 @@ bool AgentXmppChannel::ControllerSendRouteDelete(AgentXmppChannel *peer,
     }
     if (type == Agent::EVPN) {
         Ip4Address nh_ip(0);
+        std::string vn;
+        if (vn_list.size())
+            vn = *vn_list.begin();
         ret = peer->ControllerSendEvpnRouteCommon(route, &nh_ip,
-                                                  *vn_list.begin(),
-                                                  NULL, NULL,
+                                                  vn, NULL, NULL,
                                                   label, bmap, "", "",
                                                   path_preference, false);
     }

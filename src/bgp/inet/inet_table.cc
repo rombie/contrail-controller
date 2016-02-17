@@ -4,7 +4,8 @@
 
 #include "bgp/inet/inet_table.h"
 
-
+#include "bgp/bgp_server.h"
+#include "bgp/bgp_update.h"
 #include "bgp/l3vpn/inetvpn_route.h"
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
@@ -142,7 +143,7 @@ bool InetTable::Export(RibOut *ribout, Route *route, const RibPeerSet &peerset,
 }
 
 PathResolver *InetTable::CreatePathResolver() {
-    if (routing_instance()->IsDefaultRoutingInstance())
+    if (routing_instance()->IsMasterRoutingInstance())
         return NULL;
     return (new PathResolver(this));
 }

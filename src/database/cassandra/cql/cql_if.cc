@@ -214,6 +214,11 @@ static std::string DbDataTypes2CassTypes(
     return std::string(DbDataType2CassType(v_db_types[0]));
 }
 
+static const std::string kQCompactionStrategy(
+    "compaction = {'class': "
+    "'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'}");
+static const std::string kQGCGraceSeconds("gc_grace_seconds = 0");
+
 std::string StaticCf2CassCreateTableIfNotExists(const GenDb::NewCf &cf) {
     std::ostringstream query;
     // Table name
@@ -231,7 +236,8 @@ std::string StaticCf2CassCreateTableIfNotExists(const GenDb::NewCf &cf) {
         query << ", \"" << column.first << "\" " <<
             DbDataType2CassType(column.second);
     }
-    query << ")";
+    query << ") WITH " << kQCompactionStrategy << " AND " <<
+        kQGCGraceSeconds;
     return query.str();
 }
 
@@ -287,7 +293,8 @@ std::string DynamicCf2CassCreateTableIfNotExists(const GenDb::NewCf &cf) {
         }
         query << "column" << cnum;
     }
-    query << "))";
+    query << ")) WITH " << kQCompactionStrategy << " AND " <<
+        kQGCGraceSeconds;
     return query.str();
 }
 
@@ -323,7 +330,7 @@ std::string DynamicCf2CassInsertIntoTable(const GenDb::ColList *v_columns) {
         int cnum(i + 1);
         query << ", column" << cnum;
         boost::apply_visitor(values_printer, cnames[i]);
-        if (i != cn_size -1 ) {
+        if (i != cn_size - 1) {
             values_ss << ", ";
         }
     }
@@ -336,7 +343,6 @@ std::string DynamicCf2CassInsertIntoTable(const GenDb::ColList *v_columns) {
     } else {
         query << ") VALUES (";
     }
-    //boost::apply_visitor(values_printer, cvalues[0]);
     values_ss << ")";
     query << values_ss.str();
     if (column.ttl > 0) {
@@ -1039,6 +1045,50 @@ class CqlIf::CqlIfImpl {
         return success;
     }
 
+    void GetMetrics(Metrics *metrics) const {
+        CassMetrics cass_metrics;
+        cass_session_get_metrics(session_.get(), &cass_metrics);
+        // Requests
+        metrics->requests.min = cass_metrics.requests.min;
+        metrics->requests.max = cass_metrics.requests.max;
+        metrics->requests.mean = cass_metrics.requests.mean;
+        metrics->requests.stddev = cass_metrics.requests.stddev;
+        metrics->requests.median = cass_metrics.requests.median;
+        metrics->requests.percentile_75th =
+            cass_metrics.requests.percentile_75th;
+        metrics->requests.percentile_95th =
+            cass_metrics.requests.percentile_95th;
+        metrics->requests.percentile_98th =
+            cass_metrics.requests.percentile_98th;
+        metrics->requests.percentile_99th =
+            cass_metrics.requests.percentile_99th;
+        metrics->requests.percentile_999th =
+            cass_metrics.requests.percentile_999th;
+        metrics->requests.mean_rate = cass_metrics.requests.mean_rate;
+        metrics->requests.one_minute_rate =
+            cass_metrics.requests.one_minute_rate;
+        metrics->requests.five_minute_rate =
+            cass_metrics.requests.five_minute_rate;
+        metrics->requests.fifteen_minute_rate =
+            cass_metrics.requests.fifteen_minute_rate;
+        // Stats
+        metrics->stats.total_connections =
+            cass_metrics.stats.total_connections;
+        metrics->stats.available_connections =
+            cass_metrics.stats.available_connections;
+        metrics->stats.exceeded_pending_requests_water_mark =
+            cass_metrics.stats.exceeded_pending_requests_water_mark;
+        metrics->stats.exceeded_write_bytes_water_mark =
+            cass_metrics.stats.exceeded_write_bytes_water_mark;
+        // Errors
+        metrics->errors.connection_timeouts =
+            cass_metrics.errors.connection_timeouts;
+        metrics->errors.pending_request_timeouts =
+            cass_metrics.errors.pending_request_timeouts;
+        metrics->errors.request_timeouts =
+            cass_metrics.errors.request_timeouts;
+    }
+
  private:
     typedef boost::function<void(CassFuture *)> ConnectCbFn;
     typedef boost::function<void(CassFuture *)> DisconnectCbFn;
@@ -1136,6 +1186,13 @@ CqlIf::CqlIf(EventManager *evm,
     impl_ = new CqlIfImpl(evm, cassandra_ips, cassandra_port,
         cassandra_user, cassandra_password);
     initialized_ = false;
+    BOOST_FOREACH(const std::string &cassandra_ip, cassandra_ips) {
+        boost::system::error_code ec;
+        boost::asio::ip::address cassandra_addr(
+            boost::asio::ip::address::from_string(cassandra_ip, ec));
+        GenDb::Endpoint endpoint(cassandra_addr, cassandra_port);
+        endpoints_.push_back(endpoint);
+    }
 }
 
 CqlIf::CqlIf() : impl_(NULL) {
@@ -1171,46 +1228,85 @@ bool CqlIf::Db_AddSetTablespace(const std::string &tablespace,
     bool success(impl_->CreateKeyspaceIfNotExistsSync(tablespace,
         replication_factor, CASS_CONSISTENCY_QUORUM));
     if (!success) {
+        IncrementErrors(GenDb::IfErrors::ERR_WRITE_TABLESPACE);
         return success;
     }
     success = impl_->UseKeyspaceSync(tablespace, CASS_CONSISTENCY_ONE);
     if (!success) {
+        IncrementErrors(GenDb::IfErrors::ERR_READ_TABLESPACE);
         return success;
     }
     return success;
 }
 
 bool CqlIf::Db_SetTablespace(const std::string &tablespace) {
-    return impl_->UseKeyspaceSync(tablespace, CASS_CONSISTENCY_ONE);
+    bool success(impl_->UseKeyspaceSync(tablespace, CASS_CONSISTENCY_ONE));
+    if (!success) {
+        IncrementErrors(GenDb::IfErrors::ERR_READ_TABLESPACE);
+        return success;
+    }
+    return success;
 }
 
 // Column family
 bool CqlIf::Db_AddColumnfamily(const GenDb::NewCf &cf) {
-    return impl_->CreateTableIfNotExistsSync(cf, CASS_CONSISTENCY_QUORUM);
+    bool success(
+        impl_->CreateTableIfNotExistsSync(cf, CASS_CONSISTENCY_QUORUM));
+    if (!success) {
+        IncrementTableWriteFailStats(cf.cfname_);
+        IncrementErrors(GenDb::IfErrors::ERR_WRITE_COLUMN_FAMILY);
+        return success;
+    }
+    IncrementTableWriteStats(cf.cfname_);
+    return success;
 }
 
 bool CqlIf::Db_UseColumnfamily(const GenDb::NewCf &cf) {
     // Check existence of table
-    return impl_->IsTablePresent(cf);
+    bool success(impl_->IsTablePresent(cf));
+    if (!success) {
+        IncrementTableReadFailStats(cf.cfname_);
+        IncrementErrors(GenDb::IfErrors::ERR_READ_COLUMN_FAMILY);
+        return success;
+    }
+    IncrementTableReadStats(cf.cfname_);
+    return success;
 }
 
 // Column
 bool CqlIf::Db_AddColumn(std::auto_ptr<GenDb::ColList> cl) {
     if (!initialized_) {
+        IncrementTableWriteFailStats(cl->cfname_);
+        IncrementErrors(GenDb::IfErrors::ERR_WRITE_COLUMN);
         return false;
     }
     return Db_AddColumnSync(cl);
 }
 
 bool CqlIf::Db_AddColumnSync(std::auto_ptr<GenDb::ColList> cl) {
-    return impl_->InsertIntoTableSync(cl, CASS_CONSISTENCY_ONE);
+    std::string cfname(cl->cfname_);
+    bool success(impl_->InsertIntoTableSync(cl, CASS_CONSISTENCY_ONE));
+    if (!success) {
+        IncrementTableWriteFailStats(cfname);
+        IncrementErrors(GenDb::IfErrors::ERR_WRITE_COLUMN);
+        return success;
+    }
+    IncrementTableWriteStats(cfname);
+    return success;
 }
 
 // Read
 bool CqlIf::Db_GetRow(GenDb::ColList *out, const std::string &cfname,
     const GenDb::DbDataValueVec &rowkey) {
-    return impl_->SelectFromTableSync(cfname, rowkey, CASS_CONSISTENCY_ONE,
-        &out->columns_);
+    bool success(impl_->SelectFromTableSync(cfname, rowkey,
+        CASS_CONSISTENCY_ONE, &out->columns_));
+    if (!success) {
+        IncrementTableReadFailStats(cfname);
+        IncrementErrors(GenDb::IfErrors::ERR_READ_COLUMN);
+        return success;
+    }
+    IncrementTableReadStats(cfname);
+    return success;
 }
 
 bool CqlIf::Db_GetMultiRow(GenDb::ColListVec *out, const std::string &cfname,
@@ -1224,10 +1320,13 @@ bool CqlIf::Db_GetMultiRow(GenDb::ColListVec *out, const std::string &cfname,
         if (!success) {
             CQLIF_LOG_ERR("SELECT FROM Table: " << cfname << " Partition Key: "
                 << GenDb::DbDataValueVecToString(rkey) << " FAILED");
+            IncrementTableReadFailStats(cfname);
+            IncrementErrors(GenDb::IfErrors::ERR_READ_COLUMN);
             return false;
         }
         out->push_back(v_columns.release());
     }
+    IncrementTableReadStats(cfname, v_rowkey.size());
     return true;
 }
 
@@ -1244,10 +1343,13 @@ bool CqlIf::Db_GetMultiRow(GenDb::ColListVec *out, const std::string &cfname,
             CQLIF_LOG_ERR("SELECT FROM Table: " << cfname << " Partition Key: "
                 << GenDb::DbDataValueVecToString(rkey) <<
                 " Clustering Key Range: " << crange.ToString() << " FAILED");
+            IncrementTableReadFailStats(cfname);
+            IncrementErrors(GenDb::IfErrors::ERR_READ_COLUMN);
             return false;
         }
         out->push_back(v_columns.release());
     }
+    IncrementTableReadStats(cfname, v_rowkey.size());
     return true;
 }
 
@@ -1270,19 +1372,75 @@ void CqlIf::Db_ResetQueueWaterMarks() {
 // Stats
 bool CqlIf::Db_GetStats(std::vector<GenDb::DbTableInfo> *vdbti,
         GenDb::DbErrors *dbe) {
-    //return impl_->Db_GetStats(vdbti, dbe);
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.GetDiffs(vdbti, dbe);
     return true;
 }
 
-// Connection
-std::string CqlIf::Db_GetHost() const {
-    //return impl_->Db_GetHost();
-    return std::string();
+void CqlIf::Db_GetCqlMetrics(Metrics *metrics) const {
+    impl_->GetMetrics(metrics);
 }
 
-int CqlIf::Db_GetPort() const {
-    //return impl_->Db_GetPort();
-    return -1;
+void CqlIf::Db_GetCqlStats(DbStats *db_stats) const {
+    Metrics metrics;
+    impl_->GetMetrics(&metrics);
+    db_stats->requests_one_minute_rate = metrics.requests.one_minute_rate;
+    db_stats->stats = metrics.stats;
+    db_stats->errors = metrics.errors;
+}
+
+void CqlIf::IncrementTableWriteStats(const std::string &table_name) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableWrite(table_name);
+}
+
+void CqlIf::IncrementTableWriteStats(const std::string &table_name,
+    uint64_t num_writes) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableWrite(table_name, num_writes);
+}
+
+void CqlIf::IncrementTableWriteFailStats(const std::string &table_name) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableWriteFail(table_name);
+}
+
+void CqlIf::IncrementTableWriteFailStats(const std::string &table_name,
+    uint64_t num_writes) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableWriteFail(table_name, num_writes);
+}
+
+void CqlIf::IncrementTableReadStats(const std::string &table_name) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableRead(table_name);
+}
+
+void CqlIf::IncrementTableReadStats(const std::string &table_name,
+    uint64_t num_reads) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableRead(table_name, num_reads);
+}
+
+void CqlIf::IncrementTableReadFailStats(const std::string &table_name) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableReadFail(table_name);
+}
+
+void CqlIf::IncrementTableReadFailStats(const std::string &table_name,
+    uint64_t num_reads) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementTableReadFail(table_name, num_reads);
+}
+
+void CqlIf::IncrementErrors(GenDb::IfErrors::Type err_type) {
+    tbb::mutex::scoped_lock lock(stats_mutex_);
+    stats_.IncrementErrors(err_type);
+}
+
+// Connection
+std::vector<GenDb::Endpoint> CqlIf::Db_GetEndpoints() const {
+    return endpoints_;
 }
 
 }  // namespace cql

@@ -67,7 +67,8 @@ bool ControllerEcmpRoute::AddChangePath(Agent *agent, AgentPath *path,
     CompositeNHKey *comp_key = static_cast<CompositeNHKey *>(nh_req_.key.get());
     //Reorder the component NH list, and add a reference to local composite mpls
     //label if any
-    path->ReorderCompositeNH(agent, comp_key);
+    if (path->ReorderCompositeNH(agent, comp_key) == false)
+        return false;
     return InetUnicastRouteEntry::ModifyEcmpPath(dest_addr_, plen_, vn_list_,
                                                  label_, local_ecmp_nh_,
                                                  vrf_name_, sg_list_,
@@ -87,7 +88,8 @@ ControllerVmRoute *ControllerVmRoute::MakeControllerVmRoute(const Peer *peer,
                                          const VnListType &dest_vn_list,
                                          const SecurityGroupList &sg_list,
                                          const PathPreference &path_preference,
-                                         bool ecmp_suppressed) {
+                                         bool ecmp_suppressed,
+                                         const EcmpLoadBalance &ecmp_load_balance) {
     // Make Tunnel-NH request
     DBRequest nh_req(DBRequest::DB_ENTRY_ADD_CHANGE);
     nh_req.key.reset(new TunnelNHKey(default_vrf, router_id, tunnel_dest, false,
@@ -98,7 +100,8 @@ ControllerVmRoute *ControllerVmRoute::MakeControllerVmRoute(const Peer *peer,
     ControllerVmRoute *data =
         new ControllerVmRoute(peer, default_vrf, tunnel_dest, label,
                               dest_vn_list, bmap, sg_list, path_preference,
-                              nh_req, ecmp_suppressed);
+                              nh_req, ecmp_suppressed,
+                              ecmp_load_balance);
     return data;
 }
 
@@ -236,6 +239,11 @@ bool ControllerVmRoute::AddChangePath(Agent *agent, AgentPath *path,
 
     if (path->ecmp_suppressed() != ecmp_suppressed_) {
         path->set_ecmp_suppressed(ecmp_suppressed_);
+        ret = true;
+    }
+
+    if (ecmp_load_balance_ != path->ecmp_load_balance()) {
+        path->set_ecmp_load_balance(ecmp_load_balance_);
         ret = true;
     }
 

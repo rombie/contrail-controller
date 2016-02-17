@@ -11,31 +11,29 @@ monkey.patch_all()
 import gevent
 import gevent.event
 from gevent.queue import Queue, Empty
-import sys
 import time
 from pprint import pformat
 
-from lxml import etree, objectify
-import cgitb
+from lxml import etree
 import StringIO
-import re
 
 import socket
 from netaddr import IPNetwork
 
 from cfgm_common.uve.vnc_api.ttypes import *
 from cfgm_common import ignore_exceptions
-from cfgm_common.ifmap.client import client, namespaces
+from cfgm_common.ifmap.client import client
 from cfgm_common.ifmap.request import NewSessionRequest, PublishRequest
 from cfgm_common.ifmap.id import Identity
 from cfgm_common.ifmap.operations import PublishUpdateOperation,\
     PublishDeleteOperation
-from cfgm_common.ifmap.response import Response, newSessionResult
+from cfgm_common.ifmap.response import newSessionResult
 from cfgm_common.ifmap.metadata import Metadata
 from cfgm_common.imid import escape
 from cfgm_common.exceptions import ResourceExhaustionError, ResourceExistsError
 from cfgm_common.vnc_cassandra import VncCassandraClient
 from cfgm_common.vnc_kombu import VncKombuClient
+from cfgm_common.utils import cgitb_hook
 
 
 import copy
@@ -56,7 +54,6 @@ from provision_defaults import *
 import cfgm_common.imid
 from cfgm_common.exceptions import *
 from vnc_quota import *
-import gen
 from pysandesh.connection_info import ConnectionState
 from pysandesh.gen_py.process_info.ttypes import ConnectionStatus
 from pysandesh.gen_py.process_info.ttypes import ConnectionType as ConnType
@@ -138,7 +135,9 @@ class VncIfmapClient(object):
         my_imid = 'contrail:%s:%s' %(res_type, my_fqn)
         if parent_fqn:
             if parent_type is None:
-                return (None, None)
+                err_msg = "Parent: %s type is none for: %s" % (parent_fqn,
+                                                               my_fqn)
+                return False, (409, err_msg)
             parent_imid = 'contrail:' + parent_type + ':' + parent_fqn
         else: # parent is config-root
             parent_imid = 'contrail:config-root:root'
@@ -270,7 +269,10 @@ class VncIfmapClient(object):
     def _object_read_to_meta_index(self, ifmap_id):
         # metas is a dict where key is meta-name and val is list of dict of
         # form [{'meta':meta}, {'id':id1, 'meta':meta}, {'id':id2, 'meta':meta}]
-        return self._id_to_metas[ifmap_id].copy()
+        metas = {}
+        if ifmap_id in self._id_to_metas:
+            metas = self._id_to_metas[ifmap_id].copy()
+        return metas
     # end _object_read_to_meta_index
 
     def object_update(self, res_type, ifmap_id, new_obj_dict):
@@ -784,132 +786,6 @@ class VncServerCassandraClient(VncCassandraClient):
         bch.send()
     # end ref_relax_for_delete
 
-    def _create_prop(self, bch, obj_uuid, prop_name, prop_val):
-        bch.insert(obj_uuid, {'prop:%s' % (prop_name): json.dumps(prop_val)})
-    # end _create_prop
-
-    def _update_prop(self, bch, obj_uuid, prop_name, new_props):
-        if new_props[prop_name] is None:
-            bch.remove(obj_uuid, columns=['prop:' + prop_name])
-        else:
-            bch.insert(
-                obj_uuid,
-                {'prop:' + prop_name: json.dumps(new_props[prop_name])})
-
-        # prop has been accounted for, remove so only new ones remain
-        del new_props[prop_name]
-    # end _update_prop
-
-    def _add_to_prop_list(self, bch, obj_uuid, prop_name,
-                          prop_elem_value, prop_elem_position):
-        bch.insert(obj_uuid,
-            {'propl:%s:%s' %(prop_name, prop_elem_position):
-             json.dumps(prop_elem_value)})
-    # end _add_to_prop_list
-
-    def _delete_from_prop_list(self, bch, obj_uuid, prop_name,
-                               prop_elem_position):
-        bch.remove(obj_uuid,
-            columns=['propl:%s:%s' %(prop_name, prop_elem_position)])
-    # end _delete_from_prop_list
-
-    def _set_in_prop_map(self, bch, obj_uuid, prop_name,
-                          prop_elem_value, prop_elem_position):
-        bch.insert(obj_uuid,
-            {'propm:%s:%s' %(prop_name, prop_elem_position):
-             json.dumps(prop_elem_value)})
-    # end _set_in_prop_map
-
-    def _delete_from_prop_map(self, bch, obj_uuid, prop_name,
-                               prop_elem_position):
-        bch.remove(obj_uuid,
-            columns=['propm:%s:%s' %(prop_name, prop_elem_position)])
-    # end _delete_from_prop_map
-
-    def _create_child(self, bch, parent_type, parent_uuid,
-                      child_type, child_uuid):
-        child_col = {'children:%s:%s' %
-                     (child_type, child_uuid): json.dumps(None)}
-        bch.insert(parent_uuid, child_col)
-
-        parent_col = {'parent:%s:%s' %
-                      (parent_type, parent_uuid): json.dumps(None)}
-        bch.insert(child_uuid, parent_col)
-    # end _create_child
-
-    def _delete_child(self, bch, parent_type, parent_uuid,
-                      child_type, child_uuid):
-        child_col = {'children:%s:%s' %
-                     (child_type, child_uuid): json.dumps(None)}
-        bch.remove(parent_uuid, columns=[
-                   'children:%s:%s' % (child_type, child_uuid)])
-    # end _delete_child
-
-    def _create_ref(self, bch, obj_type, obj_uuid, ref_type,
-                    ref_uuid, ref_data):
-        bch.insert(
-            obj_uuid, {'ref:%s:%s' %
-                  (ref_type, ref_uuid): json.dumps(ref_data)})
-        if obj_type == ref_type:
-            bch.insert(
-                ref_uuid, {'ref:%s:%s' %
-                      (obj_type, obj_uuid): json.dumps(ref_data)})
-        else:
-            bch.insert(
-                ref_uuid, {'backref:%s:%s' %
-                      (obj_type, obj_uuid): json.dumps(ref_data)})
-    # end _create_ref
-
-    def _update_ref(self, bch, obj_type, obj_uuid, ref_type,
-                    old_ref_uuid, new_ref_infos):
-        if ref_type not in new_ref_infos:
-            # update body didn't touch this type, nop
-            return
-
-        if old_ref_uuid not in new_ref_infos[ref_type]:
-            # remove old ref
-            bch.remove(obj_uuid, columns=[
-                       'ref:%s:%s' % (ref_type, old_ref_uuid)])
-            if obj_type == ref_type:
-                bch.remove(old_ref_uuid, columns=[
-                           'ref:%s:%s' % (obj_type, obj_uuid)])
-            else:
-                bch.remove(old_ref_uuid, columns=[
-                           'backref:%s:%s' % (obj_type, obj_uuid)])
-        else:
-            # retain old ref with new ref attr
-            new_ref_data = new_ref_infos[ref_type][old_ref_uuid]
-            bch.insert(
-                obj_uuid,
-                {'ref:%s:%s' %
-                 (ref_type, old_ref_uuid): json.dumps(new_ref_data)})
-            if obj_type == ref_type:
-                bch.insert(
-                    old_ref_uuid, {'ref:%s:%s' % (obj_type, obj_uuid):
-                                   json.dumps(new_ref_data)})
-            else:
-                bch.insert(
-                    old_ref_uuid, {'backref:%s:%s' % (obj_type, obj_uuid):
-                                   json.dumps(new_ref_data)})
-            # uuid has been accounted for, remove so only new ones remain
-            del new_ref_infos[ref_type][old_ref_uuid]
-    # end _update_ref
-
-    def _delete_ref(self, bch, obj_type, obj_uuid, ref_type, ref_uuid):
-        send = False
-        if bch is None:
-            send = True
-            bch = self._obj_uuid_cf.batch()
-        bch.remove(obj_uuid, columns=['ref:%s:%s' % (ref_type, ref_uuid)])
-        if obj_type == ref_type:
-            bch.remove(ref_uuid, columns=['ref:%s:%s' % (obj_type, obj_uuid)])
-        else:
-            bch.remove(ref_uuid, columns=[
-                       'backref:%s:%s' % (obj_type, obj_uuid)])
-        if send:
-            bch.send()
-    # end _delete_ref
-
     def _relax_ref_for_delete(self, bch, obj_uuid, ref_uuid):
         send = False
         if bch is None:
@@ -941,13 +817,6 @@ class VncServerCassandraClient(VncCassandraClient):
         else:
             return False
     # end is_latest
-
-    def update_last_modified(self, bch, obj_uuid, id_perms=None):
-        if id_perms is None:
-            id_perms = self.uuid_to_obj_perms(obj_uuid)
-        id_perms['last_modified'] = datetime.datetime.utcnow().isoformat()
-        self._update_prop(bch, obj_uuid, 'id_perms', {'id_perms': id_perms})
-    # end update_last_modified
 
     # Insert new perms. Called on startup when walking DB
     def update_perms2(self, obj_uuid):
@@ -1119,7 +988,7 @@ class VncServerKombuClient(VncKombuClient):
             trace_msg(trace, 'MessageBusNotifyTraceBuf', self._sandesh)
         except Exception as e:
             string_buf = cStringIO.StringIO()
-            cgitb.Hook(file=string_buf, format="text").handle(sys.exc_info())
+            cgitb_hook(file=string_buf, format="text")
             errmsg = string_buf.getvalue()
             self.config_log(string_buf.getvalue(),
                 level=SandeshLevel.SYS_ERR)
@@ -1641,6 +1510,11 @@ class VncDbClient(object):
                 parent_type = obj_dict.get('parent_type', None)
                 (ok, result) = self._ifmap_db.object_alloc(
                     obj_type, parent_type, obj_dict['fq_name'])
+                if not ok:
+                    self.config_object_error(
+                        obj_uuid, None, obj_type, 'dbe_resync:ifmap_alloc',
+                        result[1])
+                    continue
                 (my_imid, parent_imid) = result
             except Exception as e:
                 self.config_object_error(

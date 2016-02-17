@@ -9,6 +9,8 @@
 #include "base/task_annotations.h"
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_ribout_updates.h"
+#include "bgp/bgp_route.h"
+#include "bgp/bgp_server.h"
 #include "bgp/bgp_update_queue.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/path_resolver.h"
@@ -198,7 +200,7 @@ UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
             // Don't advertise any routes from non-master instances.
             // The ribout can only be for bgpaas-clients since that's
             // the only case with bgp peers in non-master instance.
-            if (!rtinstance_->IsDefaultRoutingInstance())
+            if (!rtinstance_->IsMasterRoutingInstance())
                 return NULL;
 
             // Sender side AS path loop check.

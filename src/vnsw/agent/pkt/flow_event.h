@@ -16,6 +16,8 @@ public:
         INVALID,
         // Flow add message from VRouter
         VROUTER_FLOW_MSG,
+        // Message to update a flow
+        FLOW_MESSAGE,
         // Event to delete a flow entry
         DELETE_FLOW,
         // Event by audit module to delete a flow
@@ -100,6 +102,12 @@ public:
         gen_id_(0), flow_key_(key), del_rev_flow_(del_rev_flow),
         flow_handle_(FlowEntry::kInvalidFlowHandle), ksync_entry_(NULL),
         ksync_event_() {
+    }
+
+    FlowEvent(Event event, const FlowKey &key, uint32_t flow_handle) :
+        event_(event), flow_(NULL), pkt_info_(), db_entry_(NULL),
+        gen_id_(0), flow_key_(key), del_rev_flow_(false),
+        flow_handle_(flow_handle), ksync_entry_(NULL), ksync_event_() {
     }
 
     FlowEvent(Event event, PktInfoPtr pkt_info) :

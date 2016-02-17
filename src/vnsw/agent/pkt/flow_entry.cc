@@ -91,10 +91,6 @@ const std::map<uint16_t, const char*>
         ((uint16_t)DROP_REVERSE_OUT_SG,      "DROP_REVERSE_OUT_SG");
 
 tbb::atomic<int> FlowEntry::alloc_count_;
-InetUnicastRouteEntry FlowEntry::inet4_route_key_(NULL, Ip4Address(), 32,
-                                                  false);
-InetUnicastRouteEntry FlowEntry::inet6_route_key_(NULL, Ip6Address(), 128,
-                                                  false);
 SecurityGroupList FlowEntry::default_sg_list_;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -116,9 +112,10 @@ VmFlowRef:: ~VmFlowRef() {
 }
 
 void VmFlowRef::operator=(const VmFlowRef &rhs) {
-    // UPDATE on linklocal flows is not supported. So, fd_ should be invalid
-    assert(fd_ == VmFlowRef::kInvalidFd);
-    assert(rhs.fd_ == VmFlowRef::kInvalidFd);
+    // When flow is evicted by vrouter, reuse the older fd and port
+    FreeFd();
+    fd_ = rhs.fd_;
+    port_ = rhs.port_;
     SetVm(rhs.vm_.get());
 }
 
@@ -396,6 +393,7 @@ void intrusive_ptr_release(FlowEntry *fe) {
     int prev = fe->refcount_.fetch_and_decrement();
     if (prev == 1) {
         if (fe->on_tree()) {
+            flow_table->ConcurrencyCheck();
             FlowTable::FlowEntryMap::iterator it =
                 flow_table->flow_entry_map_.find(fe->key());
             assert(it != flow_table->flow_entry_map_.end());
@@ -626,11 +624,11 @@ AgentRoute *FlowEntry::GetUcRoute(const VrfEntry *entry,
                                   const IpAddress &addr) {
     AgentRoute *rt = NULL;
     if (addr.is_v4()) {
-        inet4_route_key_.set_addr(addr.to_v4());
-        rt = entry->GetUcRoute(inet4_route_key_);
+        InetUnicastRouteEntry key(NULL, addr, 32, false);
+        rt = entry->GetUcRoute(key);
     } else {
-        inet6_route_key_.set_addr(addr.to_v6());
-        rt = entry->GetUcRoute(inet6_route_key_);
+        InetUnicastRouteEntry key(NULL, addr, 128, false);
+        rt = entry->GetUcRoute(key);
     }
     if (rt != NULL && rt->IsRPFInvalid()) {
         return NULL;
@@ -726,7 +724,8 @@ void FlowEntry::GetSourceRouteInfo(const AgentRoute *rt) {
         data_.source_plen = 0;
     } else {
         data_.source_vn_list = path->dest_vn_list();
-        data_.source_vn_match = *path->dest_vn_list().begin();
+        if (path->dest_vn_list().size())
+            data_.source_vn_match = *path->dest_vn_list().begin();
         data_.source_sg_id_l = path->sg_list();
         data_.source_plen = rt->plen();
     }
@@ -748,7 +747,8 @@ void FlowEntry::GetDestRouteInfo(const AgentRoute *rt) {
         data_.dest_plen = 0;
     } else {
         data_.dest_vn_list = path->dest_vn_list();
-        data_.dest_vn_match = *path->dest_vn_list().begin();
+        if (path->dest_vn_list().size())
+            data_.dest_vn_match = *path->dest_vn_list().begin();
         data_.dest_sg_id_l = path->sg_list();
         data_.dest_plen = rt->plen();
     }
@@ -1871,6 +1871,9 @@ void FlowEntry::FillFlowInfo(FlowInfo &info) {
     info.set_smac(data_.smac.ToString());
     info.set_dmac(data_.dmac.ToString());
     info.set_drop_reason(FlowEntry::DropReasonStr(data_.drop_reason));
+    if (flow_table_) {
+        info.set_table_id(flow_table_->table_index());
+    }
 }
 
 static void SetAclListAceId(const AclDBEntry *acl,

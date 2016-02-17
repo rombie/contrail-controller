@@ -281,7 +281,7 @@ bool SandeshGenerator::GetSandeshStateMachineDropLevel(
 
 bool SandeshGenerator::GetSandeshStateMachineStats(
                     SandeshStateMachineStats &sm_stats,
-                    SandeshGeneratorStats &sm_msg_stats) const {
+                    SandeshGeneratorBasicStats &sm_msg_stats) const {
     if (!state_machine_) {
         return false;
     }
@@ -299,12 +299,10 @@ void SandeshGenerator::SendDbStatistics() {
     std::vector<GenDb::DbTableInfo> vdbti, vstats_dbti;
     GenDb::DbErrors dbe;
     db_handler_->GetStats(&vdbti, &dbe, &vstats_dbti);
-    std::vector<GenDb::DbErrors> vdbe;
-    vdbe.push_back(dbe);
     GeneratorDbStats * snh = GENERATOR_DB_STATS_CREATE();
     snh->set_name(name_);
     snh->set_table_info(vdbti);
-    snh->set_errors(vdbe);
+    snh->set_errors(dbe);
     snh->set_statistics_table_info(vstats_dbti);
     GENERATOR_DB_STATS_SEND_SANDESH(snh);
 }
