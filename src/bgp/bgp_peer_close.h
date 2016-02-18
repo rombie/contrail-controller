@@ -59,6 +59,7 @@ private:
     friend class PeerCloseManagerTest;
 
     void ProcessClosure();
+    void CloseComplete();
     const std::string GetStateName(State state) const;
 
     struct Stats {
