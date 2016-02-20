@@ -176,13 +176,13 @@ public:
     bool OpenTimerCancelled() { return open_timer_->cancelled(); }
     bool HoldTimerCancelled() { return hold_timer_->cancelled(); }
     void AssertOnHoldTimeout();
+    bool HoldTimerExpired();
 
 private:
     friend class XmppStateMachineTest;
 
     bool ConnectTimerExpired();
     bool OpenTimerExpired();
-    bool HoldTimerExpired();
     bool Enqueue(const sc::event_base &ev);
     bool DequeueEvent(boost::intrusive_ptr<const sc::event_base> &event);
     bool ProcessStreamHeaderMessage(XmppSession *session,
