@@ -54,13 +54,7 @@ public:
     bool IsCloseInProgress();
     void StartRestartTimer(int time);
     void FillCloseInfo(BgpNeighborResp *resp);
-
-private:
-    friend class PeerCloseManagerTest;
-
-    void ProcessClosure();
-    void CloseComplete();
-    const std::string GetStateName(State state) const;
+    const State state() const { return state_; }
 
     struct Stats {
         Stats() { memset(this, 0, sizeof(Stats)); }
@@ -76,6 +70,14 @@ private:
         uint64_t deleted_paths;
         uint64_t marked_state_paths;
     };
+    const Stats &stats() const { return stats_; }
+
+private:
+    friend class PeerCloseManagerTest;
+
+    void ProcessClosure();
+    void CloseComplete();
+    const std::string GetStateName(State state) const;
 
     IPeer *peer_;
     Timer *stale_timer_;

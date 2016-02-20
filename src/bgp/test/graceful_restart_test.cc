@@ -22,6 +22,7 @@
 #include "control-node/control_node.h"
 #include "control-node/test/network_agent_mock.h"
 #include "io/test/event_manager_test.h"
+#include "xmpp/xmpp_connection.h"
 #include "xmpp/xmpp_factory.h"
 
 #define XMPP_CONTROL_SERV   "bgp.contrail.com"
@@ -38,9 +39,9 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(1);
-static vector<int>  n_routes    = boost::assign::list_of(1);
-static vector<int>  n_agents    = boost::assign::list_of(2);
+static vector<int>  n_instances = boost::assign::list_of(8);
+static vector<int>  n_routes    = boost::assign::list_of(8);
+static vector<int>  n_agents    = boost::assign::list_of(8);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 static vector<bool> xmpp_close_from_control_node =
                                   boost::assign::list_of(false);
@@ -752,17 +753,37 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
                 total_routes -= nroutes;
             }
         }
-
     }
 
     // Send EoR marker or trigger GR timer for agents which came back up and
     // sent desired routes.
     BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
-        if (agent_test_param.send_eor && agent->IsEstablished())
+        if (agent_test_param.send_eor && agent->IsEstablished()) {
             agent->SendEorMarker();
-        else
+        } else {
+            PeerCloseManager *pc =
+                xmpp_peers_[agent->id()]->Peer()->peer_close()->close_manager();
+
+            // If the session is down and TCP down event was meant to be skipped
+            // then we do not expect control-node to be unaware of it. Hold
+            // timer must have expired by then. Trigger the hold-timer expiry
+            // first in order to bring the peer down in the controller and then
+            // call the GR timer callback.
+            if (!agent->IsEstablished()) {
+                if (agent_test_param.skip_tcp_event != TcpSession::EVENT_NONE) {
+                    uint64_t stale = pc->stats().stale;
+                    const XmppStateMachine *sm = xmpp_peers_[
+                        agent->id()]->channel()->connection()->state_machine();
+                    const_cast<XmppStateMachine *>(sm)->HoldTimerExpired();
+                    TASK_UTIL_EXPECT_EQ(stale + 1, pc->stats().stale);
+                }
+                TASK_UTIL_EXPECT_EQ(false, xmpp_peers_[
+                                               agent->id()]->Peer()->IsReady());
+                TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
+            }
             CallStaleTimer(xmpp_peers_[agent->id()]);
+        }
     }
     task_util::WaitForIdle();
 }
