@@ -749,6 +749,11 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
             TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                                 XmppStateMachineTest::get_skip_tcp_event());
             for (size_t i = 0; i < agent_test_param.instance_ids.size(); i++) {
+                int instance_id = agent_test_param.instance_ids[i];
+                if (std::find(instances_to_delete_before_gr_.begin(),
+                          instances_to_delete_before_gr_.end(), instance_id) !=
+                        instances_to_delete_before_gr_.end())
+                    continue;
                 int nroutes = agent_test_param.nroutes[i];
                 total_routes -= nroutes;
             }
