@@ -754,6 +754,10 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
                           instances_to_delete_before_gr_.end(), instance_id) !=
                         instances_to_delete_before_gr_.end())
                     continue;
+                if (std::find(instances_to_delete_during_gr_.begin(),
+                          instances_to_delete_during_gr_.end(), instance_id) !=
+                        instances_to_delete_during_gr_.end())
+                    continue;
                 int nroutes = agent_test_param.nroutes[i];
                 total_routes -= nroutes;
             }
