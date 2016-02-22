@@ -523,7 +523,7 @@ static void BuildVm(VmInterfaceConfigData *data, IFMapNode *node,
                     "configuration VM UUID is",
                     UuidToString(data->vm_uuid_),
                     "compute VM uuid is",
-                    UuidToString(cfg_entry->GetVnUuid()));
+                    UuidToString(cfg_entry->GetVmUuid()));
     }
 }
 
@@ -2878,27 +2878,30 @@ void VmInterface::UpdateAllowedAddressPair(bool force_update, bool policy_change
                                            bool l2, bool old_layer2_forwarding,
                                            bool old_layer3_forwarding) {
     AllowedAddressPairSet::iterator it =
-       allowed_address_pair_list_.list_.begin();
+        allowed_address_pair_list_.list_.begin();
     while (it != allowed_address_pair_list_.list_.end()) {
         AllowedAddressPairSet::iterator prev = it++;
-        /* V4 AAP entries should be enabled only if ipv4_active_ is true
-         * V6 AAP entries should be enabled only if ipv6_active_ is true
-         */
-        if ((!ipv4_active_ && prev->addr_.is_v4()) ||
-            (!ipv6_active_ && prev->addr_.is_v6())) {
-            continue;
-        }
         if (prev->del_pending_) {
             prev->L2DeActivate(this);
             prev->DeActivate(this);
             allowed_address_pair_list_.list_.erase(prev);
+        }
+    }
+
+    for (it = allowed_address_pair_list_.list_.begin();
+         it != allowed_address_pair_list_.list_.end(); it++) {
+        /* V4 AAP entries should be enabled only if ipv4_active_ is true
+         * V6 AAP entries should be enabled only if ipv6_active_ is true
+         */
+        if ((!ipv4_active_ && it->addr_.is_v4()) ||
+            (!ipv6_active_ && it->addr_.is_v6())) {
+            continue;
+        }
+        if (l2) {
+            it->L2Activate(this, force_update, policy_change,
+                    old_layer2_forwarding, old_layer3_forwarding);
         } else {
-            if (l2) {
-                prev->L2Activate(this, force_update, policy_change,
-                                 old_layer2_forwarding, old_layer3_forwarding);
-            } else {
-                prev->Activate(this, force_update, policy_change);
-            }
+           it->Activate(this, force_update, policy_change);
         }
     }
 }
@@ -4385,6 +4388,11 @@ void VmInterface::InsertHealthCheckInstance(HealthCheckInstance *hc_inst) {
 void VmInterface::DeleteHealthCheckInstance(HealthCheckInstance *hc_inst) {
     std::size_t ret = hc_instance_set_.erase(hc_inst);
     assert(ret != 0);
+}
+
+const VmInterface::HealthCheckInstanceSet &
+VmInterface::hc_instance_set() const {
+    return hc_instance_set_;
 }
 
 ////////////////////////////////////////////////////////////////////////////

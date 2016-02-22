@@ -178,6 +178,27 @@ class TestPolicy(test_case.STTestCase):
                 raise Exception('ri_ref found from %s to %s' % (fq_name, to_fq_name))
 
     @retries(5)
+    def check_default_ri_rtgt_imported(self, fq_name, service_ri_fq_name):
+        ri = self._vnc_lib.routing_instance_read(fq_name)
+        service_ri = self._vnc_lib.routing_instance_read(service_ri_fq_name)
+        to_fq_names = [rt_ref['to'] for rt_ref in service_ri.get_route_target_refs()]
+        for rt_ref in ri.get_route_target_refs() or []:
+            if rt_ref['to'] in to_fq_names:
+                return
+        raise Exception('%s not imported to service_ri:%s ' % (rt_ref['to'],
+                    service_ri_fq_name))
+
+    @retries(5)
+    def check_default_ri_rtgt_not_imported(self, fq_name, service_ri_fq_name):
+        ri = self._vnc_lib.routing_instance_read(fq_name)
+        service_ri = self._vnc_lib.routing_instance_read(service_ri_fq_name)
+        to_fq_names = [rt_ref['to'] for rt_ref in service_ri.get_route_target_refs()]
+        for rt_ref in ri.get_route_target_refs() or []:
+            if rt_ref['to'] in to_fq_names:
+                raise Exception('%s imported to service_ri:%s ' % (rt_ref['to'],
+                    service_ri_fq_name))
+
+    @retries(5)
     def check_ri_refs_are_deleted(self, fq_name):
         ri = self._vnc_lib.routing_instance_read(fq_name)
         ri_refs = ri.get_routing_instance_refs()
@@ -303,12 +324,28 @@ class TestPolicy(test_case.STTestCase):
     def check_acl_match_dst_cidr(self, fq_name, ip_prefix, ip_len):
         acl = self._vnc_lib.access_control_list_read(fq_name)
         for rule in acl.access_control_list_entries.acl_rule:
-            if (rule.match_condition.dst_address.subnet is not None and
-                rule.match_condition.dst_address.subnet.ip_prefix == ip_prefix and
-                rule.match_condition.dst_address.subnet.ip_prefix_len == ip_len):
+            subnets = []
+            if rule.match_condition.dst_address.subnet:
+                subnets.append(rule.match_condition.dst_address.subnet)
+            if rule.match_condition.dst_address.subnet_list:
+                subnets.extend(rule.match_condition.dst_address.subnet_list)
+            for subnet in subnets:
+                if (subnet.ip_prefix == ip_prefix and
+                       subnet.ip_prefix_len == ip_len):
                     return
         raise Exception('prefix %s/%d not found in ACL rules for %s' %
                         (ip_prefix, ip_len, fq_name))
+
+    @retries(5)
+    def check_acl_implicit_deny_rule(self, fq_name, src_vn, dst_vn):
+        acl = self._vnc_lib.access_control_list_read(fq_name)
+        for rule in acl.access_control_list_entries.acl_rule:
+            match_condition = rule.match_condition
+            if (match_condition.src_address.virtual_network == src_vn and
+                   match_condition.dst_address.virtual_network == dst_vn and
+                   rule.action_list.simple_action == 'deny'):
+                return
+        raise Exception('Implicit deny ACL rule not found')
 
     @retries(5)
     def check_acl_match_nets(self, fq_name, vn1_fq_name, vn2_fq_name):
@@ -655,8 +692,12 @@ class TestPolicy(test_case.STTestCase):
         self._vnc_lib.virtual_network_update(vn2_obj)
         self.check_ri_ref_not_present(self.get_ri_name(vn1_obj),
                                       self.get_ri_name(vn1_obj, sc_ri_name))
+        self.check_default_ri_rtgt_imported(self.get_ri_name(vn1_obj),
+                self.get_ri_name(vn1_obj, sc_ri_name))
         self.check_ri_ref_not_present(self.get_ri_name(vn2_obj),
                                   self.get_ri_name(vn2_obj, sc_ri_name))
+        self.check_default_ri_rtgt_imported(self.get_ri_name(vn2_obj),
+                self.get_ri_name(vn2_obj, sc_ri_name))
         self.check_ri_ref_present(self.get_ri_name(vn1_obj),
                                   self.get_ri_name(vn2_obj))
 
@@ -664,8 +705,12 @@ class TestPolicy(test_case.STTestCase):
         self._vnc_lib.virtual_network_update(vn1_obj)
         self.check_ri_ref_present(self.get_ri_name(vn1_obj),
                                   self.get_ri_name(vn1_obj, sc_ri_name))
+        self.check_default_ri_rtgt_not_imported(self.get_ri_name(vn1_obj),
+                self.get_ri_name(vn1_obj, sc_ri_name))
         self.check_ri_ref_present(self.get_ri_name(vn2_obj),
                                   self.get_ri_name(vn2_obj, sc_ri_name))
+        self.check_default_ri_rtgt_not_imported(self.get_ri_name(vn2_obj),
+                self.get_ri_name(vn2_obj, sc_ri_name))
         self.check_ri_ref_not_present(self.get_ri_name(vn1_obj),
                                   self.get_ri_name(vn2_obj))
 
@@ -1031,8 +1076,12 @@ class TestPolicy(test_case.STTestCase):
             sc_ri_name = 'service-'+sc+'-default-domain_default-project_' + service_name
             self.check_ri_ref_not_present(self.get_ri_name(vn1_obj),
                                           self.get_ri_name(vn1_obj, sc_ri_name))
+            self.check_default_ri_rtgt_imported(self.get_ri_name(vn1_obj),
+                                    self.get_ri_name(vn1_obj, sc_ri_name))
             self.check_ri_ref_not_present(self.get_ri_name(vn2_obj),
                                           self.get_ri_name(vn2_obj, sc_ri_name))
+            self.check_default_ri_rtgt_imported(self.get_ri_name(vn2_obj),
+                                    self.get_ri_name(vn2_obj, sc_ri_name))
             self.check_ri_ref_present(self.get_ri_name(vn1_obj),
                                       self.get_ri_name(vn2_obj))
 
@@ -1412,6 +1461,53 @@ class TestPolicy(test_case.STTestCase):
 
         # check if vn is deleted
         self.check_vn_is_deleted(uuid=vn1.uuid)
+    # end test_policy_with_cidr
+
+    def test_policy_with_cidr_and_vn(self):
+        vn1_name = self.id() + 'vn1'
+        vn2_name = self.id() + 'vn2'
+        vn1 = self.create_virtual_network(vn1_name, "10.1.1.0/24")
+        vn2 = self.create_virtual_network(vn2_name, ["10.2.1.0/24", "10.2.2.0/24"])
+        rules = []
+        rule1 = { "protocol": "icmp",
+                  "direction": "<>",
+                  "src-port": "any",
+                  "src": {"type": "vn", "value": vn1},
+                  "dst": [{"type": "cidr_list", "value": ["10.2.1.0/24"]},
+                          {"type": "vn", "value": vn2}],
+                  "dst-port": "any",
+                  "action": "pass"
+                 }
+        rules.append(rule1)
+
+        np = self.create_network_policy_with_multiple_rules(rules)
+        seq = SequenceType(1, 1)
+        vnp = VirtualNetworkPolicyType(seq)
+        vn1.set_network_policy(np, vnp)
+        self._vnc_lib.virtual_network_update(vn1)
+
+        for obj in [vn1]:
+            ident_name = self.get_obj_imid(obj)
+            gevent.sleep(2)
+            ifmap_ident = self.assertThat(FakeIfmapClient._graph, Contains(ident_name))
+
+        self.check_vn_ri_state(fq_name=self.get_ri_name(vn1))
+
+        self.check_acl_match_dst_cidr(fq_name=self.get_ri_name(vn1),
+                                      ip_prefix="10.2.1.0", ip_len=24)
+        self.check_acl_implicit_deny_rule(fq_name=self.get_ri_name(vn1),
+                src_vn=':'.join(vn1.get_fq_name()),
+                dst_vn=':'.join(vn2.get_fq_name()))
+
+        #cleanup
+        self.delete_network_policy(np, auto_policy=True)
+        self._vnc_lib.virtual_network_delete(fq_name=vn1.get_fq_name())
+        self._vnc_lib.virtual_network_delete(fq_name=vn2.get_fq_name())
+
+        # check if vn is deleted
+        self.check_vn_is_deleted(uuid=vn1.uuid)
+        self.check_vn_is_deleted(uuid=vn2.uuid)
+    # end test_policy_with_cidr_and_vn
 
     # test st restart while service chain is configured
     def test_st_restart_service_chain_delete(self):

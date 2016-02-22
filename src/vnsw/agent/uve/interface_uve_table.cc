@@ -3,6 +3,7 @@
  */
 
 #include <oper/interface_common.h>
+#include <oper/health_check.h>
 #include <uve/interface_uve_table.h>
 #include <uve/agent_uve_base.h>
 
@@ -47,14 +48,21 @@ bool InterfaceUveTable::TimerExpiry() {
                 entry->renewed_ = false;
                 entry->changed_ = false;
                 SendInterfaceMsg(cfg_name, entry);
+                // Send Interface ACE stats
+                SendInterfaceAceStats(cfg_name, entry);
             }
-        } else if (entry->changed_) {
-            SendInterfaceMsg(cfg_name, entry);
-            entry->changed_ = false;
-            /* Clear renew flag to be on safer side. Not really required */
-            entry->renewed_ = false;
+        } else {
+            if (entry->changed_) {
+                SendInterfaceMsg(cfg_name, entry);
+                entry->changed_ = false;
+                /* Clear renew flag to be on safer side. Not really required */
+                entry->renewed_ = false;
+            }
+            // Send Interface ACE stats
+            SendInterfaceAceStats(cfg_name, entry);
         }
     }
+
 
     if (it == interface_tree_.end()) {
         timer_last_visited_ = "";
@@ -107,6 +115,7 @@ bool InterfaceUveTable::UveInterfaceEntry::FrameInterfaceMsg(const string &name,
     s_intf->set_mac_address(intf_->vm_mac());
     s_intf->set_ip6_address(intf_->primary_ip6_addr().to_string());
     s_intf->set_ip6_active(intf_->ipv6_active());
+    s_intf->set_is_health_check_active(intf_->is_hc_active());
 
     vector<VmFloatingIPAgent> uve_fip_list;
     if (intf_->HasFloatingIp(Address::INET)) {
@@ -132,6 +141,23 @@ bool InterfaceUveTable::UveInterfaceEntry::FrameInterfaceMsg(const string &name,
     }
     s_intf->set_floating_ips(uve_fip_list);
 
+    vector<VmHealthCheckInstance> uve_hc_list;
+    const VmInterface::HealthCheckInstanceSet hc_list =
+        intf_->hc_instance_set();
+    VmInterface::HealthCheckInstanceSet::const_iterator hc_it =
+        hc_list.begin();
+    while (hc_it != hc_list.end()) {
+        HealthCheckInstance *inst = (*hc_it);
+        VmHealthCheckInstance uve_inst;
+        uve_inst.set_name(inst->service_->name());
+        uve_inst.set_uuid(to_string(inst->service_->uuid()));
+        uve_inst.set_status(inst->active() ? "Active" : "InActive");
+        uve_inst.set_is_running(inst->IsRunning());
+        hc_it++;
+        uve_hc_list.push_back(uve_inst);
+    }
+    s_intf->set_health_check_instance_list(uve_hc_list);
+
     s_intf->set_label(intf_->label());
     s_intf->set_ip4_active(intf_->ipv4_active());
     s_intf->set_l2_active(intf_->l2_active());
@@ -151,7 +177,9 @@ void InterfaceUveTable::UveInterfaceEntry::Reset() {
     port_bitmap_.Reset();
     prev_fip_tree_.clear();
     fip_tree_.clear();
+    ace_set_.clear();
 
+    ace_stats_changed_ = false;
     deleted_ = true;
     renewed_ = false;
 }
@@ -542,3 +570,50 @@ void InterfaceUveTable::UveInterfaceEntry::RemoveFloatingIp
     }
 }
 
+void InterfaceUveTable::UveInterfaceEntry::UpdateInterfaceAceStats
+    (const std::string &ace_uuid) {
+    AceStats key(ace_uuid);
+    ace_stats_changed_ = true;
+    AceStatsSet::const_iterator it = ace_set_.find(key);
+    if (it != ace_set_.end()) {
+        it->count++;
+        return;
+    }
+    key.count = 1;
+    ace_set_.insert(key);
+}
+
+bool InterfaceUveTable::UveInterfaceEntry::FrameInterfaceAceStatsMsg
+    (const std::string &name, UveVMInterfaceAgent *s_intf) {
+    if (!ace_stats_changed_) {
+        return false;
+    }
+    std::vector<SgAclRuleStats> list;
+    AceStatsSet::iterator it = ace_set_.begin();
+    bool changed = false;
+    while (it != ace_set_.end()) {
+        SgAclRuleStats item;
+        item.set_rule(it->ace_uuid);
+        uint64_t diff_count = it->count - it->prev_count;
+        item.set_count(diff_count);
+        //Update prev_count
+        it->prev_count = it->count;
+        list.push_back(item);
+        ++it;
+        /* If diff_count is non-zero for any rule entry, we send the entire
+         * list */
+        if (diff_count) {
+            changed = true;
+        }
+    }
+    /* If all the entries in the list has 0 diff_stats, then UVE won't be
+     * sent */
+    if (changed) {
+        s_intf->set_name(name);
+        SetVnVmInfo(s_intf);
+        s_intf->set_sg_rule_stats(list);
+        ace_stats_changed_ = false;
+        return true;
+    }
+    return false;
+}

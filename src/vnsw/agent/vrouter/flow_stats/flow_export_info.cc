@@ -8,22 +8,24 @@ FlowExportInfo::FlowExportInfo() :
     flow_handle_(FlowEntry::kInvalidFlowHandle), action_info_(),
     vm_cfg_name_(), peer_vrouter_(), tunnel_type_(TunnelType::INVALID),
     underlay_source_port_(0), changed_(false),
-    fip_(0), fip_vmi_(AgentKey::ADD_DEL_CHANGE, nil_uuid(), ""), tcp_flags_(0) {
+    fip_(0), fip_vmi_(AgentKey::ADD_DEL_CHANGE, nil_uuid(), ""), tcp_flags_(0),
+    delete_enqueued_(false) {
     drop_reason_ = FlowEntry::DropReasonStr(FlowEntry::DROP_UNKNOWN);
     rev_flow_key_.Reset();
     interface_uuid_ = boost::uuids::nil_uuid();
 }
 
 FlowExportInfo::FlowExportInfo(FlowEntry *fe, uint64_t setup_time) :
-    source_vn_(fe->data().source_vn_match), dest_vn_(fe->data().dest_vn_match),
+    flow_uuid_(fe->uuid()), source_vn_(fe->data().source_vn_match),
+    dest_vn_(fe->data().dest_vn_match),
     sg_rule_uuid_(fe->sg_rule_uuid()), nw_ace_uuid_(fe->nw_ace_uuid()),
     setup_time_(setup_time), teardown_time_(0), last_modified_time_(setup_time),
     bytes_(0), packets_(0), flags_(fe->flags()),
     flow_handle_(fe->flow_handle()), action_info_(fe->match_p().action_info),
     vm_cfg_name_(fe->data().vm_cfg_name), peer_vrouter_(fe->peer_vrouter()),
     tunnel_type_(fe->tunnel_type()), underlay_source_port_(0),
-    changed_(true), fip_(fe->fip()), fip_vmi_(fe->fip_vmi()), tcp_flags_(0) {
-    flow_uuid_ = FlowTable::rand_gen_();
+    changed_(true), fip_(fe->fip()), fip_vmi_(fe->fip_vmi()), tcp_flags_(0),
+    delete_enqueued_(false) {
     egress_uuid_ = FlowTable::rand_gen_();
     FlowEntry *rflow = fe->reverse_flow_entry();
     if (rflow) {
