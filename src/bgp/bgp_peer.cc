@@ -38,7 +38,7 @@ class BgpPeer::PeerClose : public IPeerClose {
   public:
     explicit PeerClose(BgpPeer *peer)
         : peer_(peer),
-          is_closed_(false),
+          is_deleted_(false),
           manager_(BgpObjectFactory::Create<PeerCloseManager>(peer_)) {
     }
 
@@ -78,10 +78,10 @@ class BgpPeer::PeerClose : public IPeerClose {
         }
         peer_->server()->decrement_closing_count();
         peer_->deleter()->RetryDelete();
-        is_closed_ = true;
+        is_deleted_ = true;
     }
 
-    bool IsClosed() const { return is_closed_; }
+    bool IsDeleted() const { return is_deleted_; }
     virtual PeerCloseManager *close_manager() { return manager_.get(); }
 
     void Close() {
@@ -92,7 +92,7 @@ class BgpPeer::PeerClose : public IPeerClose {
 
 private:
     BgpPeer *peer_;
-    bool is_closed_;
+    bool is_deleted_;
     boost::scoped_ptr<PeerCloseManager> manager_;
 };
 
@@ -208,7 +208,7 @@ public:
 
     virtual bool MayDelete() const {
         CHECK_CONCURRENCY("bgp::Config");
-        if (!peer_->peer_close_->IsClosed())
+        if (!peer_->peer_close_->IsDeleted())
             return false;
         if (!peer_->state_machine_->IsQueueEmpty())
             return false;
