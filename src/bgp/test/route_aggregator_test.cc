@@ -518,6 +518,7 @@ TEST_F(RouteAggregatorTest, Basic) {
     task_util::WaitForIdle();
 }
 
+
 //
 // The nexthop is also a more specific route
 // Verify that the aggregate route is not published when only nexthop route is
@@ -1012,6 +1013,158 @@ TEST_F(RouteAggregatorTest, ServiceChain) {
     DeleteRoute<InetDefinition>(peers_[0], "blue.inet.0", "1.1.1.3/32");
     task_util::WaitForIdle();
 }
+
+//
+// Add route aggregate config to aggregate to 0/0 to routing instance with
+// service chain config
+// 1. Ensure that origin vn is set correctly on the aggregate route
+// 2. Ensure that contributing routes are considered only if the origin vn
+// matches dest VN of service chain
+//
+TEST_F(RouteAggregatorTest, ServiceChain_0) {
+    string content =
+        FileRead("controller/src/bgp/testdata/route_aggregate_4a.xml");
+    EXPECT_TRUE(parser_.Parse(content));
+    task_util::WaitForIdle();
+
+    boost::system::error_code ec;
+    peers_.push_back(
+        new BgpPeerMock(Ip4Address::from_string("192.168.0.1", ec)));
+
+    // Add connected routes
+    AddRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.3/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "blue.inet.0", "1.1.1.3/32", 100);
+    task_util::WaitForIdle();
+
+    VERIFY_EQ(1, RouteCount("red.inet.0"));
+    VERIFY_EQ(1, RouteCount("blue.inet.0"));
+
+    // No route aggregation
+    BgpRoute *rt = RouteLookup<InetDefinition>("blue.inet.0", "0/0");
+    ASSERT_TRUE(rt == NULL);
+    rt = RouteLookup<InetDefinition>("red.inet.0", "0/0");
+    ASSERT_TRUE(rt == NULL);
+
+    // Add more specific route to RED
+    AddRoute<InetDefinition>(peers_[0], "red.inet.0", "2.2.2.1/32", 100);
+    task_util::WaitForIdle();
+
+    // Route aggregation is triggered in blue
+    VERIFY_EQ(3, RouteCount("blue.inet.0"));
+
+    // Route aggregation is NOT triggered in red
+    VERIFY_EQ(2, RouteCount("red.inet.0"));
+
+    rt = RouteLookup<InetDefinition>("blue.inet.0", "0/0");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    TASK_UTIL_EXPECT_TRUE(GetOriginVnFromRoute(rt->BestPath()) == "red-vn");
+
+    rt = RouteLookup<InetDefinition>("blue.inet.0", "2.2.2.1/32");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 1);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->GetSource() == BgpPath::ServiceChain);
+    TASK_UTIL_EXPECT_TRUE(IsContributingRoute<InetDefinition>("blue",
+                                            "blue.inet.0", "2.2.2.1/32"));
+
+    TASK_UTIL_EXPECT_FALSE(IsContributingRoute<InetDefinition>("blue",
+                                            "blue.inet.0", "1.1.1.3/32"));
+
+    // Verify the sandesh
+    VerifyRouteAggregateSandesh("blue");
+
+    // Add more specific route to blue
+    AddRoute<InetDefinition>(peers_[0], "blue.inet.0", "1.1.1.1/32", 100);
+    // Delete the more specific route in red
+    DeleteRoute<InetDefinition>(peers_[0], "red.inet.0", "2.2.2.1/32");
+    task_util::WaitForIdle();
+
+    // service chain vm-route + connected route + aggregate route
+    VERIFY_EQ(3, RouteCount("red.inet.0"));
+
+    // Aggregated route is removed and Route Agggregation is not triggered on
+    // VM route from blue vn
+    VERIFY_EQ(2, RouteCount("blue.inet.0"));
+
+    rt = RouteLookup<InetDefinition>("red.inet.0", "0/0");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    TASK_UTIL_EXPECT_TRUE(GetOriginVnFromRoute(rt->BestPath()) == "blue-vn");
+
+    rt = RouteLookup<InetDefinition>("red.inet.0", "1.1.1.1/32");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 1);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->GetSource() == BgpPath::ServiceChain);
+    TASK_UTIL_EXPECT_TRUE(IsContributingRoute<InetDefinition>("red",
+                                            "red.inet.0", "1.1.1.1/32"));
+
+    TASK_UTIL_EXPECT_FALSE(IsContributingRoute<InetDefinition>("red",
+                                            "red.inet.0", "1.1.1.3/32"));
+
+    // Verify the sandesh
+    VerifyRouteAggregateSandesh("red");
+
+    DeleteRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.3/32");
+    DeleteRoute<InetDefinition>(peers_[0], "blue.inet.0", "1.1.1.1/32");
+    DeleteRoute<InetDefinition>(peers_[0], "blue.inet.0", "1.1.1.3/32");
+    task_util::WaitForIdle();
+}
+
+//
+// Route aggregation is triggered only when route's origin VN matches
+//
+TEST_F(RouteAggregatorTest, OriginVnCheck) {
+    string content =
+        FileRead("controller/src/bgp/testdata/route_aggregate_4b.xml");
+    EXPECT_TRUE(parser_.Parse(content));
+    task_util::WaitForIdle();
+
+    boost::system::error_code ec;
+    peers_.push_back(
+        new BgpPeerMock(Ip4Address::from_string("192.168.0.1", ec)));
+
+    AddRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.254/32", 100);
+    task_util::WaitForIdle();
+
+    AddRoute<InetDefinition>(peers_[0], "blue.inet.0", "2.2.1.1/32", 100);
+    task_util::WaitForIdle();
+
+    VERIFY_EQ(2, RouteCount("red.inet.0"));
+    BgpRoute *rt = RouteLookup<InetDefinition>("red.inet.0", "0/0");
+    ASSERT_TRUE(rt == NULL);
+
+    AddRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.1/32", 100);
+    task_util::WaitForIdle();
+
+    VERIFY_EQ(4, RouteCount("red.inet.0"));
+    rt = RouteLookup<InetDefinition>("red.inet.0", "0/0");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+
+    TASK_UTIL_EXPECT_FALSE(IsContributingRoute<InetDefinition>("red",
+                                            "red.inet.0", "2.2.1.1/32"));
+    TASK_UTIL_EXPECT_TRUE(IsContributingRoute<InetDefinition>("red",
+                                            "red.inet.0", "1.1.1.1/32"));
+
+    // Verify the sandesh
+    VerifyRouteAggregateSandesh("red");
+
+    DeleteRoute<InetDefinition>(peers_[0], "blue.inet.0", "2.2.1.1/32");
+    DeleteRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.1/32");
+    DeleteRoute<InetDefinition>(peers_[0], "red.inet.0", "1.1.1.254/32");
+    task_util::WaitForIdle();
+}
+
 
 //
 // Remove the route-aggregate object from routing instance and ensure that
@@ -1542,6 +1695,103 @@ TEST_F(RouteAggregatorTest, ConfigUpdate_RemoveOverlappingPrefixes) {
 
     DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "2.2.2.1/32");
     DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "2.2.2.2/32");
+    task_util::WaitForIdle();
+}
+
+//
+// With multiple route aggregate config object linked to the routing instance,
+// update the config to remove longer prefix
+// RA-1:
+//   9.0.1.0/24
+// RA-2:
+//   9.0.0.0/8
+//   21.1.1.0/24
+//   21.1.0.0/16
+//   21.0.0.0/8
+// Step 1: Attach RA-1 to routing instance
+// Step 2: Attach RA-2 to routing instance. Now routing instance has both 9.0/16
+// and 9/8 route aggregate prefix
+// Step 3: Remove RA-1. Routing instance is only left with 9/8.
+// Ensure valid route aggregate objects after config update
+//
+TEST_F(RouteAggregatorTest, ConfigUpdate_OverlappingPrefixes_1) {
+    string content =
+        FileRead("controller/src/bgp/testdata/route_aggregate_4c.xml");
+    EXPECT_TRUE(parser_.Parse(content));
+    task_util::WaitForIdle();
+
+    boost::system::error_code ec;
+    peers_.push_back(
+        new BgpPeerMock(Ip4Address::from_string("192.168.0.1", ec)));
+
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "2.2.2.1/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "9.0.1.1/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "9.0.1.10/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.3/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.4/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.5/32", 100);
+    AddRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.0/24", 100);
+    task_util::WaitForIdle();
+
+    // Link the route aggregate config vn_subnet_1 to test
+    ifmap_test_util::IFMapMsgLink(&config_db_, "routing-instance", "test",
+        "route-aggregate", "vn_subnet_1", "route-aggregate-routing-instance");
+    task_util::WaitForIdle();
+
+    VERIFY_EQ(8, RouteCount("test.inet.0"));
+    BgpRoute *rt = RouteLookup<InetDefinition>("test.inet.0", "9.0.1.0/24");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+
+    VerifyRouteAggregateSandesh("test");
+
+    // Link the route aggregate config vn_subnet_2 to test
+    ifmap_test_util::IFMapMsgLink(&config_db_, "routing-instance", "test",
+        "route-aggregate", "vn_subnet_2", "route-aggregate-routing-instance");
+    task_util::WaitForIdle();
+
+
+    VERIFY_EQ(11, RouteCount("test.inet.0"));
+    rt = RouteLookup<InetDefinition>("test.inet.0", "9.0.1.0/24");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    rt = RouteLookup<InetDefinition>("test.inet.0", "9.0.0.0/8");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+
+    // Verify the sandesh
+    VerifyRouteAggregateSandesh("test");
+
+
+    // Unlink the route aggregate config vn_subnet_1 from test
+    ifmap_test_util::IFMapMsgUnlink(&config_db_, "routing-instance", "test",
+        "route-aggregate", "vn_subnet_1", "route-aggregate-routing-instance");
+    task_util::WaitForIdle();
+
+    VERIFY_EQ(10, RouteCount("test.inet.0"));
+    rt = RouteLookup<InetDefinition>("test.inet.0", "9.0.1.0/24");
+    ASSERT_TRUE(rt == NULL);
+    rt = RouteLookup<InetDefinition>("test.inet.0", "9.0.0.0/8");
+    ASSERT_TRUE(rt != NULL);
+    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
+    TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
+    // Verify the sandesh
+    VerifyRouteAggregateSandesh("test");
+
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "2.2.2.1/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "9.0.1.1/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "9.0.1.10/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.3/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.4/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.5/32");
+    DeleteRoute<InetDefinition>(peers_[0], "test.inet.0", "21.1.1.0/24");
     task_util::WaitForIdle();
 }
 
