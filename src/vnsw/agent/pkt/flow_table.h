@@ -128,7 +128,6 @@ struct Inet4FlowKeyCmp {
 
 class FlowTable {
 public:
-    static boost::uuids::random_generator rand_gen_;
 
     typedef std::map<FlowKey, FlowEntry *, Inet4FlowKeyCmp> FlowEntryMap;
     typedef std::pair<FlowKey, FlowEntry *> FlowEntryMapPair;
@@ -191,7 +190,7 @@ public:
 
     static const char *TaskName() { return kTaskFlowEvent; }
     // Sandesh routines
-    void Copy(FlowEntry *lhs, const FlowEntry *rhs);
+    void Copy(FlowEntry *lhs, const FlowEntry *rhs, bool update);
     void SetAclFlowSandeshData(const AclDBEntry *acl, AclFlowResp &data, 
                                const int last_count);
     void SetAceSandeshData(const AclDBEntry *acl, AclFlowCountResp &data, 
@@ -220,6 +219,7 @@ public:
     bool RevaluateSgList(FlowEntry *flow, const AgentRoute *rt,
                          const SecurityGroupList &sg_list);
     bool RevaluateRpfNH(FlowEntry *flow, const AgentRoute *rt);
+    boost::uuids::uuid rand_gen();
 
     void UpdateKSync(FlowEntry *flow, bool update);
     void DeleteKSync(FlowEntry *flow);
@@ -259,6 +259,7 @@ private:
     void GetMutexSeq(tbb::mutex &mutex1, tbb::mutex &mutex2,
                      tbb::mutex **mutex_ptr_1, tbb::mutex **mutex_ptr_2);
     Agent *agent_;
+    boost::uuids::random_generator rand_gen_;
     uint16_t table_index_;
     FlowTableKSyncObject *ksync_object_;
     FlowEntryMap flow_entry_map_;

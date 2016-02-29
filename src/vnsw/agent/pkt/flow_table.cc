@@ -51,13 +51,13 @@ const uint32_t FlowEntryFreeList::kGrowSize;
 const uint32_t FlowEntryFreeList::kMinThreshold;
 
 SandeshTraceBufferPtr FlowTraceBuf(SandeshTraceBufferCreate("Flow", 5000));
-boost::uuids::random_generator FlowTable::rand_gen_;
 
 /////////////////////////////////////////////////////////////////////////////
 // FlowTable constructor/destructor
 /////////////////////////////////////////////////////////////////////////////
 FlowTable::FlowTable(Agent *agent, uint16_t table_index) :
     agent_(agent),
+    rand_gen_(boost::uuids::random_generator()),
     table_index_(table_index),
     ksync_object_(NULL),
     flow_entry_map_(),
@@ -72,7 +72,6 @@ FlowTable::~FlowTable() {
 void FlowTable::Init() {
     flow_task_id_ = agent_->task_scheduler()->GetTaskId(kTaskFlowEvent);
     FlowEntry::Init();
-    rand_gen_ = boost::uuids::random_generator();
     return;
 }
 
@@ -127,10 +126,10 @@ FlowEntry *FlowTable::Find(const FlowKey &key) {
     }
 }
 
-void FlowTable::Copy(FlowEntry *lhs, const FlowEntry *rhs) {
+void FlowTable::Copy(FlowEntry *lhs, const FlowEntry *rhs, bool update) {
     DeleteFlowInfo(lhs);
     if (rhs)
-        lhs->Copy(rhs);
+        lhs->Copy(rhs, update);
 }
 
 FlowEntry *FlowTable::Locate(FlowEntry *flow, uint64_t time) {
@@ -179,12 +178,12 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
     }
 
     if (flow_req != flow) {
-        Copy(flow, flow_req);
+        Copy(flow, flow_req, update);
         flow->set_deleted(false);
     }
 
     if (rflow && rflow_req != rflow) {
-        Copy(rflow, rflow_req);
+        Copy(rflow, rflow_req, update);
         // if the reverse flow was marked delete, reset its flow handle
         // to invalid index to assure it is attempted to reprogram using
         // kInvalidFlowHandle, this also ensures that flow entry wont
@@ -598,6 +597,10 @@ bool FlowTable::RevaluateRpfNH(FlowEntry *flow, const AgentRoute *rt) {
     return false;
 }
 
+boost::uuids::uuid FlowTable::rand_gen() {
+    return rand_gen_();
+}
+
 // Handle flow revaluation on a route change
 // Route change can result in multiple changes to flow
 // InetRoute   : 
@@ -797,13 +800,11 @@ void FlowTable::KSyncSetFlowHandle(FlowEntry *flow, uint32_t flow_handle) {
     if (flow->flow_handle() == flow_handle) {
         return;
     }
-    assert(flow->flow_handle() == FlowEntry::kInvalidFlowHandle);
-    flow->set_flow_handle(flow_handle);
 
     // flow-handle changed. We will need to update ksync-entry for flow with
     // new flow-handle
     KSyncFlowIndexManager *mgr = agent()->ksync()->ksync_flow_index_manager();
-    mgr->UpdateFlowHandle(flow);
+    mgr->UpdateFlowHandle(flow, flow_handle);
     NotifyFlowStatsCollector(flow);
     if (rflow) {
         UpdateKSync(rflow, true);

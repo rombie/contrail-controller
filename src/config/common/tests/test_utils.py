@@ -128,8 +128,12 @@ class FakeCF(object):
         include_timestamp = kwargs.get('include_timestamp', False)
 
         for key in self._rows:
-            yield (key, self.get(key, columns, column_start, column_finish,
-                     column_count, include_timestamp))
+            try:
+                col_dict = self.get(key, columns, column_start, column_finish,
+                                    column_count, include_timestamp)
+                yield (key, col_dict)
+            except pycassa.NotFoundException:
+                pass
     # end get_range
 
     def _column_within_range(self, column_name, column_start, column_finish):
@@ -195,6 +199,8 @@ class FakeCF(object):
                 else:
                     col_dict[col_name] = col_value
 
+        if len(col_dict) == 0:
+            raise pycassa.NotFoundException
         sorted_col_dict = OrderedDict(
             (k, col_dict[k]) for k in sorted(col_dict))
         return sorted_col_dict
@@ -985,6 +991,7 @@ class FakeAuthProtocol(object):
         auth_protocol = conf['auth_protocol']
         auth_host = conf['auth_host']
         auth_port = conf['auth_port']
+        self.delay_auth_decision = conf['delay_auth_decision']
         self.request_uri = '%s://%s:%s' % (auth_protocol, auth_host, auth_port)
         self.auth_uri = self.request_uri
         # print 'FakeAuthProtocol init: auth-uri %s, conf %s' % (self.auth_uri, self.conf)
@@ -1071,6 +1078,9 @@ class FakeAuthProtocol(object):
         if user_token:
             # print '****** user token %s ***** ' % user_token
             pass
+        elif self.delay_auth_decision:
+            self._add_headers(env, {'X-Identity-Status': 'Invalid'})
+            return self.app(env, start_response)
         else:
             # print 'Missing token or Unable to authenticate token'
             return self._reject_request(env, start_response)

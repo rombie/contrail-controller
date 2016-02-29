@@ -42,13 +42,7 @@ void vr_mem_stats_req::Process(SandeshContext *context) {
 int KSyncSandeshContext::VrResponseMsgHandler(vr_response *r) {
     response_code_ = r->get_resp_code();
 
-    if (-response_code_ == EEXIST) {
-        return -response_code_;
-    }
-
     if (response_code_ < 0) {
-        LOG(ERROR, "VrResponseMsg Error: " <<
-            KSyncEntry::VrouterErrorToString(-response_code_));
         return -response_code_;
     }
 
@@ -133,15 +127,20 @@ void KSyncSandeshContext::FlowMsgHandler(vr_flow_req *r) {
         }
     }
 
-    KSyncFlowIndexManager *imgr = flow_ksync_->ksync()->
-        ksync_flow_index_manager();
-    FlowMgmtManager *mgr = flow_ksync_->ksync()->agent()->pkt()->
-        flow_mgmt_manager();
-    FlowEntryPtr evicted_flow = imgr->FindByIndex(r->get_fr_index());
-    if (evicted_flow.get() && evicted_flow->deleted() == false) {
-        mgr->FlowStatsUpdateEvent(evicted_flow.get(), r->get_fr_flow_bytes(),
-                                  r->get_fr_flow_packets(),
-                                  r->get_fr_flow_stats_oflow());
+    // When vrouter allocates a flow-index or changes flow-handle, its possible
+    // that a flow in vrouter is evicted. Update stats for evicted flow
+    if (r->get_fr_index() != (int)FlowEntry::kInvalidFlowHandle &&
+        r->get_fr_index() != (int)flow->flow_handle()) {
+        KSyncFlowIndexManager *imgr = flow_ksync_->ksync()->
+            ksync_flow_index_manager();
+        FlowMgmtManager *mgr = flow_ksync_->ksync()->agent()->pkt()->
+            flow_mgmt_manager();
+        FlowEntryPtr evicted_flow = imgr->FindByIndex(r->get_fr_index());
+        if (evicted_flow.get() && evicted_flow->deleted() == false) {
+            mgr->FlowStatsUpdateEvent(evicted_flow.get(), r->get_fr_flow_bytes(),
+                                      r->get_fr_flow_packets(),
+                                      r->get_fr_flow_stats_oflow());
+        }
     }
     proto->KSyncFlowHandleRequest(ksync_entry, r->get_fr_index());
     return;

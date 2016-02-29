@@ -358,6 +358,17 @@ class TestPolicy(test_case.STTestCase):
                         (vn1_fq_name, vn2_fq_name, fq_name))
 
     @retries(5)
+    def check_acl_action_assign_rules(self, fq_name, vn1_fq_name, vn2_fq_name, sc_ri_fq_name):
+        acl = self._vnc_lib.access_control_list_read(fq_name)
+        for rule in acl.access_control_list_entries.acl_rule:
+            if (rule.match_condition.src_address.virtual_network == vn1_fq_name and
+                rule.match_condition.dst_address.virtual_network == vn2_fq_name):
+                    if rule.action_list.assign_routing_instance == sc_ri_fq_name:
+                        return
+        raise Exception('vrf assign for  nets %s/%s not matched in ACL rules for %s; sc: %s' %
+                        (vn1_fq_name, vn2_fq_name, fq_name, sc_ri_fq_name))
+
+    @retries(5)
     def check_acl_match_sg(self, fq_name, acl_name, sg_id, is_all_rules = False):
         sg_obj = self._vnc_lib.security_group_read(fq_name)
         acls = sg_obj.get_access_control_lists()
@@ -667,6 +678,15 @@ class TestPolicy(test_case.STTestCase):
                                   self.get_ri_name(vn1_obj, sc_ri_name))
         self.check_ri_ref_present(self.get_ri_name(vn2_obj, sc_ri_name),
                                   self.get_ri_name(vn2_obj))
+
+        self.check_acl_action_assign_rules(vn1_obj.get_fq_name(), vn1_obj.get_fq_name_str(),
+                                  vn2_obj.get_fq_name_str(), ':'.join(self.get_ri_name(vn1_obj, sc_ri_name)))
+        self.check_acl_action_assign_rules(vn1_obj.get_fq_name(), vn2_obj.get_fq_name_str(),
+                                  vn1_obj.get_fq_name_str(), ':'.join(self.get_ri_name(vn1_obj, sc_ri_name)))
+        self.check_acl_action_assign_rules(vn2_obj.get_fq_name(), vn2_obj.get_fq_name_str(),
+                                  vn1_obj.get_fq_name_str(), ':'.join(self.get_ri_name(vn2_obj, sc_ri_name)))
+        self.check_acl_action_assign_rules(vn2_obj.get_fq_name(), vn1_obj.get_fq_name_str(),
+                                  vn2_obj.get_fq_name_str(), ':'.join(self.get_ri_name(vn2_obj, sc_ri_name)))
 
         si_name = 'default-domain:default-project:' + service_name
         sci = ServiceChainInfo(prefix = ['10.0.0.0/24'],
@@ -1231,8 +1251,7 @@ class TestPolicy(test_case.STTestCase):
         imp_rtgt_list.add_route_target('target:3:2')
         vn.set_import_route_target_list(imp_rtgt_list)
         self._vnc_lib.virtual_network_update(vn)
-        _match_route_table(rtgt_list.get_route_target() +
-                           imp_rtgt_list.get_route_target())
+        _match_route_table(rtgt_list.get_route_target())
        
         rtgt_list.delete_route_target('target:1:1')
         vn.set_route_target_list(rtgt_list)
@@ -1241,8 +1260,7 @@ class TestPolicy(test_case.STTestCase):
         imp_rtgt_list.delete_route_target('target:3:1')
         vn.set_import_route_target_list(imp_rtgt_list)
         self._vnc_lib.virtual_network_update(vn)
-        _match_route_table(rtgt_list.get_route_target() +
-                           imp_rtgt_list.get_route_target())
+        _match_route_table(rtgt_list.get_route_target())
 
         routes.set_route([])
         rt.set_routes(routes)
@@ -1348,7 +1366,6 @@ class TestPolicy(test_case.STTestCase):
         rt.set_routes(routes)
         self._vnc_lib.route_table_update(rt)
 
-        gevent.sleep(10)
         _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20", False)
         _match_route_table(vn2, "2.2.2.2/0", "20.20.20.20", False)
 
@@ -1364,6 +1381,12 @@ class TestPolicy(test_case.STTestCase):
         self._vnc_lib.virtual_network_update(vn2)
         _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10")
         _match_route_table_cleanup(vn2)
+
+        # delete first route and check vn ri sr entries
+        rt.set_routes(None)
+        self._vnc_lib.route_table_update(rt)
+
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", False)
 
         vn1.del_route_table(rt)
         self._vnc_lib.virtual_network_update(vn1)
@@ -2508,7 +2531,7 @@ class TestPolicy(test_case.STTestCase):
         vn_props.allow_transit = True
         vn1_obj.set_virtual_network_properties(vn_props)
         self._vnc_lib.virtual_network_update(vn1_obj)
-        self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
+        self.check_rt_in_ri(self.get_ri_name(vn1_obj, sc_ri_name),
                             rt_vn1, True, 'export')
 
         #unset transit and check vn1 rt is not in sc ri
@@ -2559,7 +2582,7 @@ class TestPolicy(test_case.STTestCase):
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
                             'target:1:1', True, 'export')
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
-                            'target:2:1', True, 'export')
+                            'target:2:1', False)
 
         #modify external rt
         rtgt_list = RouteTargetList(route_target=['target:1:2'])
@@ -2572,7 +2595,7 @@ class TestPolicy(test_case.STTestCase):
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
                             'target:1:2', True, 'export')
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
-                            'target:2:2', True, 'export')
+                            'target:2:2', False)
 
         #have more than one external rt
         rtgt_list = RouteTargetList(route_target=['target:1:1', 'target:1:2'])
@@ -2587,9 +2610,9 @@ class TestPolicy(test_case.STTestCase):
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
                             'target:1:2', True, 'export')
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
-                            'target:2:1', True, 'export')
+                            'target:2:1', False)
         self.check_rt_in_ri(self.get_ri_name(vn1_obj,sc_ri_name),
-                            'target:2:2', True, 'export')
+                            'target:2:2', False)
 
         #unset external rt
         vn1_obj.set_route_target_list(RouteTargetList())

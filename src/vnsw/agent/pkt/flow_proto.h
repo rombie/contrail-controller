@@ -66,7 +66,7 @@ public:
     void EnqueueFlowEvent(FlowEvent *event);
     void DeleteFlowRequest(const FlowKey &flow_key, bool del_rev_flow,
                            uint32_t table_index);
-    void EvictFlowRequest(FlowEntry *flow, uint32_t flow_handle);
+    void EvictFlowRequest(FlowEntryPtr &flow, uint32_t flow_handle);
     void RetryIndexAcquireRequest(FlowEntry *flow, uint32_t flow_handle);
     void CreateAuditEntry(const FlowKey &key, uint32_t flow_handle);
     bool FlowEventHandler(FlowEvent *req, FlowTable *table);
@@ -91,7 +91,7 @@ private:
     std::vector<FlowEventQueue *> flow_event_queue_;
     std::vector<FlowTable *> flow_table_list_;
     FlowEventQueue flow_update_queue_;
-    tbb::atomic<uint32_t> linklocal_flow_count_;
+    tbb::atomic<int> linklocal_flow_count_;
     FlowStats stats_;
 };
 
