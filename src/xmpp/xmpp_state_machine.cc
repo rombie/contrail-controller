@@ -558,6 +558,8 @@ struct Connect : public sc::state<Connect, XmppStateMachine> {
                                           state_machine, _1, _2));
         boost::system::error_code err;
         session->socket()->bind(connection->local_endpoint(), err);
+        std::cout << "ANANTH Bind to local address " <<
+            connection->local_endpoint() << " : " << err.message() << std::endl;
         if (err) {
             LOG(WARN, "Bind failure for local address " <<
                 connection->local_endpoint() << " : " << err.message());
