@@ -267,10 +267,16 @@ protected:
                        TcpSession::EVENT_NONE);
         }
 
-        void initialize(test::NetworkAgentMock *agent,
+        GRTestParams(BgpPeerTest *peer) {
+            initialize(agent, vector<int>(), vector<int>(),
+                       TcpSession::EVENT_NONE);
+        }
+
+        void initialize(test::NetworkAgentMock *agent, BgpPeerTest *peer,
                         vector<int> instance_ids, vector<int> nroutes,
                         TcpSession::Event skip_tcp_event) {
             this->agent = agent;
+            this->peer = peer;
             this->instance_ids = instance_ids;
             this->nroutes = nroutes;
             this->skip_tcp_event = skip_tcp_event;
@@ -286,7 +292,10 @@ protected:
     };
     void ProcessFlippingAgents(int &total_routes, int remaining_instances,
                                std::vector<GRTestParams> &n_flipping_agents);
+    void ProcessFlippingPeers(int &total_routes, int remaining_instances,
+        vector<GRTestParams> &n_flipping_peers) {
     std::vector<GRTestParams> n_flipped_agents_;
+    std::vector<GRTestParams> n_flipped_peers_;
     std::vector<test::NetworkAgentMock *> n_down_from_agents_;
     std::vector<BgpPeerTest *> n_down_from_peers_;
     std::vector<int> instances_to_delete_before_gr_;
@@ -852,16 +861,11 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
             TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
             agent->SessionUp();
             WaitForAgentToBeEstablished(agent);
-
-            PeerDown(gr_test_param.peer, false);
         }
 
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
             test::NetworkAgentMock *agent = gr_test_param.agent;
             WaitForAgentToBeEstablished(agent);
-
-            BgpPeerTest *peer = gr_test_param.peer;
-            WaitForPeerToBeEstablished(peer);
 
             // Subset of subscriptions after restart
             agent->Subscribe(BgpConfigManager::kMasterInstance, -1);
@@ -892,10 +896,6 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
                                         GetNextHops(agent, instance_id));
                 }
                 total_routes += nroutes;
-
-                int nroutes = gr_test_param.nroutes[i];
-                ProcessVpnRoute(peer, instance_id, nroutes, TRUE);
-                total_routes += nroutes;
             }
         }
 
@@ -911,21 +911,13 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
             test::NetworkAgentMock *agent = gr_test_param.agent;
             WaitForAgentToBeEstablished(agent);
 
-            BgpPeerTest *peer = gr_test_param.peer;
-            WaitForPeerToBeEstablished(peer);
-
             XmppStateMachineTest::set_skip_tcp_event(
                     gr_test_param.skip_tcp_event);
-            StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
 
             agent->SessionDown();
             TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
             TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                                 XmppStateMachineTest::get_skip_tcp_event());
-
-            PeerDown(peer, true);
-            TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
-                                StateMachineTest::get_skip_tcp_event());
 
             for (size_t i = 0; i < gr_test_param.instance_ids.size(); i++) {
                 int instance_id = gr_test_param.instance_ids[i];
@@ -938,7 +930,6 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
                         instances_to_delete_during_gr_.end())
                     continue;
                 int nroutes = gr_test_param.nroutes[i];
-                total_routes -= nroutes;
                 total_routes -= nroutes;
             }
         }
@@ -979,6 +970,134 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
     // Send EoR marker or trigger GR timer for peers which came back up and
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
+        BgpPeerTest *peer = gr_test_param.peer;
+        if (gr_test_param.send_eor && peer->IsEstablished()) {
+            peer->SendEorMarker();
+        } else {
+            PeerCloseManager *pc =
+                bgp_xmpp_channels_[agent->id()]->Peer()->peer_close()->close_manager();
+
+            // If the session is down and TCP down event was meant to be skipped
+            // then we do not expect control-node to be unaware of it. Hold
+            // timer must have expired by then. Trigger the hold-timer expiry
+            // first in order to bring the peer down in the controller and then
+            // call the GR timer callback.
+            if (!peer->IsEstablished()) {
+                if (gr_test_param.skip_tcp_event != TcpSession::EVENT_NONE) {
+                    uint64_t stale = pc->stats().stale;
+                    const StateMachine *sm = bgp_xmpp_channels_[
+                        agent->id()]->channel()->connection()->state_machine();
+                    const_cast<StateMachine *>(sm)->HoldTimerExpired();
+                    TASK_UTIL_EXPECT_EQ(stale + 1, pc->stats().stale);
+                }
+                TASK_UTIL_EXPECT_EQ(false, bgp_xmpp_channels_[
+                                               agent->id()]->Peer()->IsReady());
+                TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
+            }
+            CallStaleTimer(bgp_xmpp_channels_[agent->id()]);
+        }
+    }
+    task_util::WaitForIdle();
+}
+
+void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
+        int remaining_instances, vector<GRTestParams> &n_flipping_peers) {
+    int flipping_count = 3;
+
+    for (int f = 0; f < flipping_count; f++) {
+        BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
+            PeerDown(gr_test_param.peer, false);
+        }
+
+        BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
+            BgpPeerTest *peer = gr_test_param.peer;
+            WaitForPeerToBeEstablished(peer);
+
+            for (size_t i = 0; i < gr_test_param.instance_ids.size(); i++) {
+                int instance_id = gr_test_param.instance_ids[i];
+                if (std::find(instances_to_delete_before_gr_.begin(),
+                          instances_to_delete_before_gr_.end(), instance_id) !=
+                        instances_to_delete_before_gr_.end())
+                    continue;
+                if (std::find(instances_to_delete_during_gr_.begin(),
+                          instances_to_delete_during_gr_.end(), instance_id) !=
+                        instances_to_delete_during_gr_.end())
+                    continue;
+
+                int nroutes = gr_test_param.nroutes[i];
+                ProcessVpnRoute(peer, instance_id, nroutes, TRUE);
+                total_routes += nroutes;
+            }
+        }
+
+        // Bring back half of the flipping peers to established state and send
+        // routes. Rest do not come back up (nested closures and LLGR)
+        int count = n_flipping_peers.size();
+        if (f == flipping_count - 1)
+            count /= 2;
+        int k = 0;
+        BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
+            if (k++ >= count)
+                break;
+
+            BgpPeerTest *peer = gr_test_param.peer;
+            WaitForPeerToBeEstablished(peer);
+            StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
+
+            PeerDown(peer, true);
+            TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
+                                StateMachineTest::get_skip_tcp_event());
+
+            for (size_t i = 0; i < gr_test_param.instance_ids.size(); i++) {
+                int instance_id = gr_test_param.instance_ids[i];
+                if (std::find(instances_to_delete_before_gr_.begin(),
+                          instances_to_delete_before_gr_.end(), instance_id) !=
+                        instances_to_delete_before_gr_.end())
+                    continue;
+                if (std::find(instances_to_delete_during_gr_.begin(),
+                          instances_to_delete_during_gr_.end(), instance_id) !=
+                        instances_to_delete_during_gr_.end())
+                    continue;
+                total_routes -= gr_test_param.nroutes[i];
+            }
+        }
+    }
+
+    // Send EoR marker or trigger GR timer for peers which came back up and
+    // sent desired routes.
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
+        BgpPeerTest *peer = gr_test_param.peer;
+        if (gr_test_param.send_eor && peer->IsEstablished()) {
+            peer->SendEorMarker();
+        } else {
+            PeerCloseManager *pc =
+                bgp_xmpp_channels_[agent->id()]->Peer()->peer_close()->close_manager();
+
+            // If the session is down and TCP down event was meant to be skipped
+            // then we do not expect control-node to be unaware of it. Hold
+            // timer must have expired by then. Trigger the hold-timer expiry
+            // first in order to bring the peer down in the controller and then
+            // call the GR timer callback.
+            if (!peer->IsEstablished()) {
+                if (gr_test_param.skip_tcp_event != TcpSession::EVENT_NONE) {
+                    uint64_t stale = pc->stats().stale;
+                    const XmppStateMachine *sm = bgp_xmpp_channels_[
+                        agent->id()]->channel()->connection()->state_machine();
+                    const_cast<XmppStateMachine *>(sm)->HoldTimerExpired();
+                    TASK_UTIL_EXPECT_EQ(stale + 1, pc->stats().stale);
+                }
+                TASK_UTIL_EXPECT_EQ(false, bgp_xmpp_channels_[
+                                               agent->id()]->Peer()->IsReady());
+                TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
+            }
+            CallStaleTimer(bgp_xmpp_channels_[agent->id()]);
+        }
+    }
+    task_util::WaitForIdle();
+
+    // Send EoR marker or trigger GR timer for peers which came back up and
+    // sent desired routes.
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         if (gr_test_param.send_eor && peer->IsEstablished()) {
             peer->SendEorMarker();
@@ -1058,6 +1177,15 @@ void GracefulRestartTest::GracefulRestartTestRun () {
             n_flipping_agents.push_back(n_flipped_agents_[i]);
     }
 
+    vector<GRTestParams> n_flipped_peers = vector<GRTestParams>();
+    vector<GRTestParams> n_flipping_peers = vector<GRTestParams>();
+    for (size_t i = 0; i < n_flipped_peers_.size(); i++) {
+        if (i < n_flipped_peers_.size()/2)
+            n_flipped_peers.push_back(n_flipped_peers_[i]);
+        else
+            n_flipping_peers.push_back(n_flipped_peers_[i]);
+    }
+
     // Subset of agents flip (Triggered from agents)
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = gr_test_param.agent;
@@ -1073,7 +1201,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     }
 
     // Subset of peers flip (Triggered from peers)
-    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         WaitForPeerToBeEstablished(peer);
         StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
@@ -1094,7 +1222,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
          n_down_from_agents_.size()) * instances_to_delete_during_gr_.size();
 
     total_routes -= n_routes_ *
-        (n_peers_ - n_flipped_agents.size() - n_flipping_agents.size() -
+        (n_peers_ - n_flipped_peers.size() - n_flipping_peers.size() -
          n_down_from_peers_.size()) * instances_to_delete_during_gr_.size();
 
     XmppStateMachineTest::set_skip_tcp_event(TcpSession::EVENT_NONE);
@@ -1106,7 +1234,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         WaitForAgentToBeEstablished(agent);
     }
 
-    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         TASK_UTIL_EXPECT_EQ(false, peer->IsEstablished());
         PeerDown(peer, false);
@@ -1146,7 +1274,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         }
     }
 
-    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.agent;
         WaitForPeerToBeEstablished(agent);
 
@@ -1180,7 +1308,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     // Send EoR marker or trigger GR timer for peers which came back up and
     // sent desired routes.
-    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         if (gr_test_param.send_eor)
             peer->SendEorMarker();
@@ -1190,6 +1318,9 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     // Process agents which keep flipping and trigger LLGR..
     ProcessFlippingAgents(total_routes, remaining_instances, n_flipping_agents);
+
+    // Process peers which keep flipping and trigger LLGR..
+    ProcessFlippingPeers(total_routes, remaining_instances, n_flipping_peers);
 
     // Trigger GR timer for agents which went down permanently.
     BOOST_FOREACH(test::NetworkAgentMock *agent, n_down_from_agents_) {
@@ -1219,6 +1350,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Down_2) {
     GracefulRestartTestStart();
 
     n_down_from_agents_ = xmpp_agents_;
+    n_down_from_peers_ = bgp_peers_;
     GracefulRestartTestRun();
 }
 
@@ -1245,6 +1377,13 @@ TEST_P(GracefulRestartTest, GracefulRestart_Down_4) {
         else
             n_flipped_agents_.push_back(GRTestParams(xmpp_agents_[i]));
     }
+
+    for (size_t i = 0; i < bgp_peers_.size(); i++) {
+        if (i <= bgp_peers_.size()/2)
+            n_down_from_peers_.push_back(bgp_peers_[i]);
+        else
+            n_flipped_peers_.push_back(GRTestParams(bgp_peers_[i]));
+    }
     GracefulRestartTestRun();
 }
 
@@ -1255,6 +1394,9 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_1) {
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         n_flipped_agents_.push_back(GRTestParams(agent));
+    }
+    BOOST_FOREACH(BgpPeerTest *peer, bgp_peers_) {
+        n_flipped_peers_.push_back(GRTestParams(peer));
     }
     GracefulRestartTestRun();
 }
