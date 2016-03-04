@@ -944,10 +944,10 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         SetPeerCloseGraceful(true);
 
 
-    vector<test::NetworkAgentMock *> dont_unsubscribe =
+    vector<test::NetworkAgentMock *> dont_unsubscribe_a =
         vector<test::NetworkAgentMock *>();
 
-    DeleteRoutingInstances(instances_to_delete_before_gr_, dont_unsubscribe);
+    DeleteRoutingInstances(instances_to_delete_before_gr_, dont_unsubscribe_a);
     int remaining_instances = n_instances_;
     remaining_instances -= instances_to_delete_before_gr_.size();
     total_routes -= n_routes_ * (n_agents_ + n_peers_) *
@@ -989,7 +989,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         XmppStateMachineTest::set_skip_tcp_event(
                 agent_test_param.skip_tcp_event);
         agent->SessionDown();
-        dont_unsubscribe.push_back(agent);
+        dont_unsubscribe_a.push_back(agent);
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                             XmppStateMachineTest::get_skip_tcp_event());
@@ -1003,7 +1003,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         XmppStateMachineTest::set_skip_tcp_event(
                 agent_test_param.skip_tcp_event);
         peer->AdminDown(true);
-        dont_unsubscribe.push_back(agent);
+        dont_unsubscribe_a.push_back(agent);
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                             XmppStateMachineTest::get_skip_tcp_event());
@@ -1017,7 +1017,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         XmppStateMachineTest::set_skip_tcp_event(
                 agent_test_param.skip_tcp_event);
         agent->SessionDown();
-        dont_unsubscribe.push_back(agent);
+        dont_unsubscribe_a.push_back(agent);
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                             XmppStateMachineTest::get_skip_tcp_event());
@@ -1027,7 +1027,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     // Delete some of the routing-instances when the agent is still down.
     // It is expected that agents upon restart only subscribe to those that
     // were not deleted.
-    DeleteRoutingInstances(instances_to_delete_during_gr_, dont_unsubscribe);
+    DeleteRoutingInstances(instances_to_delete_during_gr_, dont_unsubscribe_a);
 
     // Account for agents (which do not flip) who usubscribe explicitly
     total_routes -= n_routes_ *
