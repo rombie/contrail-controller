@@ -206,7 +206,6 @@ void PeerCloseManager::TriggerSweepStateActions() {
     sweep_timer_->Cancel();
     sweep_timer_->Start(0,
         boost::bind(&PeerCloseManager::ProcessSweepStateActions, this));
->>>>>>> github/master
 }
 
 // Concurrency: Runs in the context of the BGP peer rib membership task.
@@ -362,26 +361,6 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
     }
 
     table->InputCommonPostProcess(root, rt, notify_rt);
-}
-
-void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) {
-    tbb::recursive_mutex::scoped_lock lock(mutex_);
-
-    PeerCloseInfo peer_close_info;
-    peer_close_info.state = GetStateName(state_);
-    peer_close_info.close_again = close_again_;
-    peer_close_info.init = stats_.init;
-    peer_close_info.close = stats_.close;
-    peer_close_info.nested = stats_.nested;
-    peer_close_info.deletes = stats_.deletes;
-    peer_close_info.stale = stats_.stale;
-    peer_close_info.sweep = stats_.sweep;
-    peer_close_info.gr_timer = stats_.gr_timer;
-    peer_close_info.deleted_state_paths = stats_.deleted_state_paths;
-    peer_close_info.deleted_paths = stats_.deleted_paths;
-    peer_close_info.marked_state_paths = stats_.marked_state_paths;
-
-    resp->set_peer_close_info(peer_close_info);
 }
 
 void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) {
