@@ -52,6 +52,13 @@ const uint32_t FlowEntryFreeList::kMinThreshold;
 
 SandeshTraceBufferPtr FlowTraceBuf(SandeshTraceBufferCreate("Flow", 5000));
 
+#define FLOW_LOCK(flow, rflow) \
+    tbb::mutex tmp_mutex, *mutex_ptr_1, *mutex_ptr_2; \
+    GetMutexSeq(flow->mutex(), rflow ? rflow->mutex() : tmp_mutex, \
+                &mutex_ptr_1, &mutex_ptr_2); \
+    tbb::mutex::scoped_lock lock1(*mutex_ptr_1); \
+    tbb::mutex::scoped_lock lock2(*mutex_ptr_2);
+
 /////////////////////////////////////////////////////////////////////////////
 // FlowTable constructor/destructor
 /////////////////////////////////////////////////////////////////////////////
@@ -126,7 +133,7 @@ FlowEntry *FlowTable::Find(const FlowKey &key) {
     }
 }
 
-void FlowTable::Copy(FlowEntry *lhs, const FlowEntry *rhs, bool update) {
+void FlowTable::Copy(FlowEntry *lhs, FlowEntry *rhs, bool update) {
     DeleteFlowInfo(lhs);
     if (rhs)
         lhs->Copy(rhs, update);
@@ -150,25 +157,39 @@ void FlowTable::Add(FlowEntry *flow, FlowEntry *rflow) {
     uint64_t time = UTCTimestampUsec();
     FlowEntry *new_flow = Locate(flow, time);
     FlowEntry *new_rflow = (rflow != NULL) ? Locate(rflow, time) : NULL;
-    Add(flow, new_flow, rflow, new_rflow, false);
+
+    FLOW_LOCK(new_flow, new_rflow);
+    AddInternal(flow, new_flow, rflow, new_rflow, false, false);
 }
 
 void FlowTable::Update(FlowEntry *flow, FlowEntry *rflow) {
+    bool fwd_flow_update = true;
     FlowEntry *new_flow = Find(flow->key());
+
     FlowEntry *new_rflow = (rflow != NULL) ? Find(rflow->key()) : NULL;
-    Add(flow, new_flow, rflow, new_rflow, true);
+    bool rev_flow_update = true;
+    if (rflow && new_rflow == NULL) {
+        uint64_t time = UTCTimestampUsec();
+        new_rflow = Locate(rflow, time);
+        rev_flow_update = false;
+    }
+
+    FLOW_LOCK(new_flow, new_rflow);
+    AddInternal(flow, new_flow, rflow, new_rflow, fwd_flow_update,
+                rev_flow_update);
 }
 
 void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
                             FlowEntry *rflow_req, FlowEntry *rflow,
-                            bool update) {
+                            bool fwd_flow_update, bool rev_flow_update) {
     // The forward and reverse flow in request are linked. Unlink the flows
     // first. Flow table processing will link them if necessary
     flow_req->set_reverse_flow_entry(NULL);
     if (rflow_req)
         rflow_req->set_reverse_flow_entry(NULL);
 
-    if (update) {
+    bool force_update_rflow = false;
+    if (fwd_flow_update) {
         if (flow == NULL)
             return;
 
@@ -178,22 +199,35 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
     }
 
     if (flow_req != flow) {
-        Copy(flow, flow_req, update);
+        if (flow->flow_handle() == FlowEntry::kInvalidFlowHandle &&
+            !flow->deleted()) {
+            // In this scenario packet trap for forward flow should
+            // not cause eviction of the reverse flow due to add event
+            // so trigger a force update instead of add for reverse flow
+            force_update_rflow = true;
+        }
+        Copy(flow, flow_req, fwd_flow_update);
         flow->set_deleted(false);
     }
 
-    if (rflow && rflow_req != rflow) {
-        Copy(rflow, rflow_req, update);
-        // if the reverse flow was marked delete, reset its flow handle
-        // to invalid index to assure it is attempted to reprogram using
-        // kInvalidFlowHandle, this also ensures that flow entry wont
-        // give fake notion of being available in the flow index tree
-        // delete for which has already happend while triggering delete
-        // for flow entry
-        if (rflow->deleted()) {
-            rflow->flow_handle_ = FlowEntry::kInvalidFlowHandle;
+    if (rflow) {
+        if (rflow_req != rflow) {
+            Copy(rflow, rflow_req, (rev_flow_update || force_update_rflow));
+            // if the reverse flow was marked delete, reset its flow handle
+            // to invalid index to assure it is attempted to reprogram using
+            // kInvalidFlowHandle, this also ensures that flow entry wont
+            // give fake notion of being available in the flow index tree
+            // delete for which has already happend while triggering delete
+            // for flow entry
+            if (rflow->deleted()) {
+                rflow->flow_handle_ = FlowEntry::kInvalidFlowHandle;
+            }
+            rflow->set_deleted(false);
+        } else {
+            // we are creating a new reverse flow, so avoid triggering
+            // force update in this case
+            force_update_rflow = false;
         }
-        rflow->set_deleted(false);
     }
 
     // If the flows are already present, we want to retain the Forward and
@@ -229,27 +263,15 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
     // While the scenario above cannot be totally avoided, programming reverse
     // flow first will reduce the probability
     if (rflow) {
-        UpdateKSync(rflow, update);
+        UpdateKSync(rflow, (rev_flow_update || force_update_rflow));
         AddFlowInfo(rflow);
     }
 
-    UpdateKSync(flow, update);
+    UpdateKSync(flow, fwd_flow_update);
     AddFlowInfo(flow);
 }
 
-void FlowTable::Add(FlowEntry *flow_req, FlowEntry *flow,
-                    FlowEntry *rflow_req, FlowEntry *rflow, bool update) {
-    tbb::mutex tmp_mutex, *mutex_ptr_1, *mutex_ptr_2;
-    GetMutexSeq(flow->mutex(), rflow ? rflow->mutex() : tmp_mutex,
-                &mutex_ptr_1, &mutex_ptr_2);
-    tbb::mutex::scoped_lock lock1(*mutex_ptr_1);
-    tbb::mutex::scoped_lock lock2(*mutex_ptr_2);
-
-    AddInternal(flow_req, flow, rflow_req, rflow, update);
-}
-
-void FlowTable::DeleteInternal(FlowEntryMap::iterator &it, uint64_t time) {
-    FlowEntry *fe = it->second;
+void FlowTable::DeleteInternal(FlowEntry *fe, uint64_t time) {
     if (fe->deleted()) {
         /* Already deleted return from here. */
         return;
@@ -270,35 +292,78 @@ void FlowTable::DeleteInternal(FlowEntryMap::iterator &it, uint64_t time) {
     agent_->stats()->UpdateFlowDelMinMaxStats(time);
 }
 
-bool FlowTable::Delete(const FlowKey &key, bool del_reverse_flow) {
-    FlowEntryMap::iterator it;
-    FlowEntry *fe;
+bool FlowTable::DeleteFlows(FlowEntry *flow, FlowEntry *rflow) {
+    uint64_t time = UTCTimestampUsec();
+    if (flow) {
+        /* Delete the forward flow */
+        DeleteInternal(flow, time);
+    }
 
-    it = flow_entry_map_.find(key);
-    if (it == flow_entry_map_.end()) {
+    if (rflow) {
+        DeleteInternal(rflow, time);
+    }
+    return true;
+}
+
+void FlowTable::PopulateFlowEntriesUsingKey(const FlowKey &key,
+                                            bool reverse_flow,
+                                            FlowEntry** flow,
+                                            FlowEntry** rflow) {
+    *flow = Find(key);
+    *rflow = NULL;
+
+    //No flow entry, nothing to populate
+    if (!(*flow)) {
+        return;
+    }
+
+    //No reverse flow requested, so dont populate rflow
+    if (!reverse_flow) {
+        return;
+    }
+
+    FlowEntry *reverse_flow_entry = (*flow)->reverse_flow_entry();
+    if (reverse_flow_entry) {
+        *rflow = Find(reverse_flow_entry->key());
+    }
+}
+
+//Caller makes sure lock is taken on flow.
+bool FlowTable::DeleteUnLocked(bool del_reverse_flow,
+                               FlowEntry *flow,
+                               FlowEntry *rflow) {
+    if (!flow) {
         return false;
     }
-    fe = it->second;
 
-    FlowEntry *reverse_flow = NULL;
-    if (del_reverse_flow) {
-        reverse_flow = fe->reverse_flow_entry();
+    DeleteFlows(flow, rflow);
+
+    //If deletion of reverse flow is to be done,
+    //make sure that rflow is populated if flow has a reverse flow pointer.
+    //In case rflow is not located with the reverse flow key, consider it as
+    //failure.
+    if (del_reverse_flow && flow->reverse_flow_entry() && !rflow) {
+        return false;
     }
+    return true;
+}
 
-    uint64_t time = UTCTimestampUsec();
-    /* Delete the forward flow */
-    DeleteInternal(it, time);
+//Caller has to ensure lock is taken for flow.
+bool FlowTable::DeleteUnLocked(const FlowKey &key, bool del_reverse_flow) {
+    FlowEntry *flow = NULL;
+    FlowEntry *rflow = NULL;
 
-    if (!reverse_flow) {
-        return true;
-    }
+    PopulateFlowEntriesUsingKey(key, del_reverse_flow, &flow, &rflow);
+    return DeleteUnLocked(del_reverse_flow, flow, rflow);
+}
 
-    it = flow_entry_map_.find(reverse_flow->key());
-    if (it != flow_entry_map_.end()) {
-        DeleteInternal(it, time);
-        return true;
-    }
-    return false;
+bool FlowTable::Delete(const FlowKey &key, bool del_reverse_flow) {
+    FlowEntry *flow = NULL;
+    FlowEntry *rflow = NULL;
+
+    PopulateFlowEntriesUsingKey(key, del_reverse_flow, &flow, &rflow);
+    FLOW_LOCK(flow, rflow);
+    return DeleteUnLocked(del_reverse_flow, flow, rflow);
 }
 
 void FlowTable::DeleteAll() {
@@ -307,12 +372,14 @@ void FlowTable::DeleteAll() {
     it = flow_entry_map_.begin();
     while (it != flow_entry_map_.end()) {
         FlowEntry *entry = it->second;
+        FlowEntry *reverse_entry = NULL;
         ++it;
         if (it != flow_entry_map_.end() &&
             it->second == entry->reverse_flow_entry()) {
+            reverse_entry = it->second;
             ++it;
         }
-        Delete(entry->key(), true);
+        DeleteUnLocked(true, entry, reverse_entry);
     }
 }
 
@@ -373,7 +440,7 @@ void FlowTable::UpdateReverseFlow(FlowEntry *flow, FlowEntry *rflow) {
         //same reverse flow as its is nat'd with fabric sip/dip.
         //To avoid this delete old flow and dont let new flow to be short flow.
         if (rflow_rev) {
-            Delete(rflow_rev->key(), false);
+            DeleteUnLocked(rflow_rev->key(), false);
             rflow_rev = NULL;
         }
     }
@@ -681,13 +748,12 @@ void FlowTable::RevaluateFlow(FlowEntry *flow) {
 // Handle deletion of a Route. Flow management module has identified that route
 // must be deleted
 void FlowTable::DeleteMessage(FlowEntry *flow) {
-    Delete(flow->key(), true);
+    DeleteUnLocked(true, flow, flow->reverse_flow_entry());
     DeleteFlowInfo(flow);
 }
 
-void FlowTable::EvictFlow(FlowEntry *flow) {
-    FlowEntry *reverse_flow = flow->reverse_flow_entry();
-    Delete(flow->key(), false);
+void FlowTable::EvictFlow(FlowEntry *flow, FlowEntry *reverse_flow) {
+    DeleteUnLocked(false, flow, NULL);
     DeleteFlowInfo(flow);
 
     // Reverse flow unlinked with forward flow. Make it short-flow
@@ -698,16 +764,10 @@ void FlowTable::EvictFlow(FlowEntry *flow) {
 }
 
 // Handle events from Flow Management module for a flow
-bool FlowTable::FlowResponseHandler(const FlowEvent *resp) {
-    FlowEntry *flow = resp->flow();
-    FlowEntry *rflow = flow->reverse_flow_entry_.get();
+bool FlowTable::FlowResponseHandlerUnLocked(const FlowEvent *resp,
+                                            FlowEntry *flow,
+                                            FlowEntry *rflow) {
     const DBEntry *entry = resp->db_entry();
-
-    tbb::mutex tmp_mutex, *mutex_ptr_1, *mutex_ptr_2;
-    GetMutexSeq(flow->mutex(), rflow ? rflow->mutex() : tmp_mutex,
-                &mutex_ptr_1, &mutex_ptr_2);
-    tbb::mutex::scoped_lock lock1(*mutex_ptr_1);
-    tbb::mutex::scoped_lock lock2(*mutex_ptr_2);
 
     bool active_flow = true;
     bool deleted_flow = flow->deleted();
@@ -769,6 +829,13 @@ bool FlowTable::FlowResponseHandler(const FlowEvent *resp) {
     return true;
 }
 
+bool FlowTable::FlowResponseHandler(const FlowEvent *resp) {
+    FlowEntry *flow = resp->flow();
+    FlowEntry *rflow = flow->reverse_flow_entry_.get();
+    FLOW_LOCK(flow, rflow);
+    return FlowResponseHandlerUnLocked(resp, flow, rflow);
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // KSync Routines
 /////////////////////////////////////////////////////////////////////////////
@@ -791,13 +858,10 @@ void FlowTable::KSyncSetFlowHandle(FlowEntry *flow, uint32_t flow_handle) {
     FlowEntry *rflow = flow->reverse_flow_entry();
     assert(flow_handle != FlowEntry::kInvalidFlowHandle);
 
-    tbb::mutex tmp_mutex, *mutex_ptr_1, *mutex_ptr_2;
-    GetMutexSeq(flow->mutex(), rflow ? rflow->mutex() : tmp_mutex,
-                &mutex_ptr_1, &mutex_ptr_2);
-    tbb::mutex::scoped_lock lock1(*mutex_ptr_1);
-    tbb::mutex::scoped_lock lock2(*mutex_ptr_2);
-
-    if (flow->flow_handle() == flow_handle) {
+    // compare update of flow_handle against the ksync index entry, since
+    // flow handle in flow can change while before we process the response
+    // from KSync and cause invalid state transition
+    if (flow->ksync_index_entry()->index() == flow_handle) {
         return;
     }
 
@@ -847,6 +911,137 @@ void FlowTable::DelLinkLocalFlowInfo(int fd) {
 void FlowTable::GrowFreeList() {
     free_list_.Grow();
     ksync_object_->GrowFreeList();
+}
+
+bool FlowTable::PopulateFlowPointersFromRequest(const FlowEvent *req,
+                                                FlowEntry **flow,
+                                                FlowEntry **rflow) {
+    //First identify flow and rflow, to take lock.
+    switch (req->event()) {
+    case FlowEvent::DELETE_FLOW: {
+        PopulateFlowEntriesUsingKey(req->get_flow_key(),
+                                    req->get_del_rev_flow(),
+                                    flow, rflow);
+        if (!(*flow)) {
+            return false;
+        }
+        break;
+    }
+
+    case FlowEvent::RETRY_INDEX_ACQUIRE:
+    case FlowEvent::REVALUATE_FLOW:
+    case FlowEvent::EVICT_FLOW: {
+        *flow = req->flow();
+        *rflow = (*flow)->reverse_flow_entry();
+        break;
+    }
+
+    case FlowEvent::FLOW_HANDLE_UPDATE:
+    case FlowEvent::KSYNC_EVENT:
+    case FlowEvent::KSYNC_VROUTER_ERROR: {
+        FlowTableKSyncEntry *ksync_entry =
+            (static_cast<FlowTableKSyncEntry *> (req->ksync_entry()));
+        *flow = ksync_entry->flow_entry().get();
+        *rflow = (*flow)->reverse_flow_entry();
+        break;
+    }
+
+    default: {
+        assert(0);
+        break;
+    }
+    }
+    return true;
+}
+
+bool FlowTable::ProcessFlowEventInternal(const FlowEvent *req,
+                                         FlowEntry *flow,
+                                         FlowEntry *rflow) {
+    //Take lock
+    FLOW_LOCK(flow, rflow);
+
+    //Now process events.
+    switch (req->event()) {
+    case FlowEvent::DELETE_FLOW: {
+        DeleteUnLocked(req->get_del_rev_flow(), flow, rflow);
+        break;
+    }
+
+    // Check if flow-handle changed. This can happen if vrouter tries to
+    // setup the flow which was evicted earlier
+    case FlowEvent::EVICT_FLOW: {
+        if (flow->flow_handle() != req->flow_handle())
+            break;
+        EvictFlow(flow, rflow);
+        break;
+    }
+
+    // Flow was waiting for an index. Index is available now. Retry acquiring
+    // the index
+    case FlowEvent::RETRY_INDEX_ACQUIRE: {
+        if (flow->flow_handle() != req->flow_handle())
+            break;
+        UpdateKSync(flow, false);
+        break;
+    }
+
+    case FlowEvent::FLOW_HANDLE_UPDATE: {
+        KSyncSetFlowHandle(flow, req->flow_handle());
+        break;
+    }
+
+    case FlowEvent::KSYNC_VROUTER_ERROR: {
+        // Mark the flow entry as short flow and update ksync error event
+        // to ksync index manager
+        // For EEXIST error donot mark the flow as ShortFlow since Vrouter
+        // generates EEXIST only for cases where another add should be
+        // coming from the pkt trap from Vrouter
+        if (req->ksync_error() != EEXIST) {
+            flow->MakeShortFlow(FlowEntry::SHORT_FAILED_VROUTER_INSTALL);
+            // Enqueue Add request to flow-stats-collector
+            // to update flow flags in stats collector
+            FlowEntryPtr flow_ptr(flow);
+            agent()->flow_stats_manager()->AddEvent(flow_ptr);
+        }
+        KSyncFlowIndexManager *mgr =
+            agent()->ksync()->ksync_flow_index_manager();
+        mgr->UpdateKSyncError(flow);
+        break;
+    }
+
+    case FlowEvent::KSYNC_EVENT: {
+        FlowTableKSyncEntry *ksync_entry =
+            (static_cast<FlowTableKSyncEntry *> (req->ksync_entry()));
+        FlowTableKSyncObject *ksync_object = static_cast<FlowTableKSyncObject *>
+            (ksync_entry->GetObject());
+        ksync_object->GenerateKSyncEvent(ksync_entry, req->ksync_event());
+        break;
+    }
+
+    case FlowEvent::REVALUATE_FLOW: {
+        FlowResponseHandlerUnLocked(req, flow, rflow);
+        break;
+    }
+
+    default: {
+        assert(0);
+        break;
+    }
+    }
+    return true;
+}
+
+bool FlowTable::ProcessFlowEvent(const FlowEvent *req) {
+    FlowEntry *flow = NULL;
+    FlowEntry *rflow = NULL;
+    if (PopulateFlowPointersFromRequest(req, &flow, &rflow) == false) {
+        return false;
+    }
+    //Take reference of flow and rflow before operating,
+    //especially meant for delete of flow eentry
+    FlowEntryPtr flow_ref_ptr(flow);
+    FlowEntryPtr rflow_ref_ptr(rflow);
+    return ProcessFlowEventInternal(req, flow, rflow);
 }
 
 FlowEntryFreeList::FlowEntryFreeList(FlowTable *table) :

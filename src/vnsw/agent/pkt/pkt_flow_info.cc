@@ -212,6 +212,12 @@ static bool NhDecode(const NextHop *nh, const PktInfo *pkt, PktFlowInfo *info,
             info->ecmp = true;
             const CompositeNH *comp_nh = static_cast<const CompositeNH *>(nh);
 
+            if (pkt->type == PktType::MESSAGE &&
+                info->out_component_nh_idx ==
+                CompositeNH::kInvalidComponentNHIdx) {
+                info->out_component_nh_idx = 0;
+            }
+
             // Compute out_component_nh_idx if,
             // 1. out_compoenent_nh_idx was set, but points to a deleted NH
             //    This can happen if flow is trapped for ECMP resolution from
@@ -1502,11 +1508,13 @@ void PktFlowInfo::ApplyFlowLimits(const PktControlInfo *in,
     }
 
     bool limit_exceeded = false;
-    if (in->vm_ && ((in->vm_->flow_count() + 2) > agent->max_vm_flows())) {
+    if (agent->max_vm_flows() &&
+        (in->vm_ && ((in->vm_->flow_count() + 2) > agent->max_vm_flows()))) {
         limit_exceeded = true;
     }
 
-    if (out->vm_ && ((out->vm_->flow_count() + 2) > agent->max_vm_flows())) {
+    if (agent->max_vm_flows() &&
+        (out->vm_ && ((out->vm_->flow_count() + 2) > agent->max_vm_flows()))) {
         limit_exceeded = true;
     }
 
@@ -1526,9 +1534,13 @@ void PktFlowInfo::ApplyFlowLimits(const PktControlInfo *in,
         limit_exceeded = true;
     }
 
-    if (in->vm_ && in->vm_->linklocal_flow_count() >=
-        agent->params()->linklocal_vm_flows()) {
-        limit_exceeded = true;
+    // Check per-vm linklocal flow-limits if specified
+    if ((agent->params()->linklocal_vm_flows() !=
+         agent->params()->linklocal_system_flows())) {
+        if (in->vm_ && in->vm_->linklocal_flow_count() >=
+            agent->params()->linklocal_vm_flows()) {
+            limit_exceeded = true;
+        }
     }
 
     if (limit_exceeded) {
@@ -1556,7 +1568,7 @@ void PktFlowInfo::LinkLocalPortBind(const PktInfo *pkt,
     if (short_flow)
         return;
 
-    if (flow->in_vm_flow_ref()->AllocateFd(agent, flow, pkt->ip_proto) == false) {
+    if (flow->in_vm_flow_ref()->AllocateFd(agent, pkt->ip_proto) == false) {
         // Could not allocate FD. Make it short flow
         agent->stats()->incr_flow_drop_due_to_max_limit();
         short_flow = true;
@@ -1588,8 +1600,9 @@ void PktFlowInfo::Add(const PktInfo *pkt, PktControlInfo *in,
         UpdateEvictedFlowStats(pkt);
     }
 
-    if (pkt->type == PktType::MESSAGE &&
-        pkt->agent_hdr.cmd == AgentHdr::TRAP_FLOW_MISS) {
+    if ((pkt->type == PktType::MESSAGE &&
+        pkt->agent_hdr.cmd == AgentHdr::TRAP_FLOW_MISS) ||
+        pkt->agent_hdr.cmd == AgentHdr::TRAP_ECMP_RESOLVE) {
         update = true;
     }
 
@@ -1641,7 +1654,7 @@ void PktFlowInfo::Add(const PktInfo *pkt, PktControlInfo *in,
 
     bool swap_flows = false;
     // If this is message processing, then retain forward and reverse flows
-    if (pkt->type == PktType::MESSAGE &&
+    if (pkt->type == PktType::MESSAGE && !short_flow &&
         flow_entry->is_flags_set(FlowEntry::ReverseFlow)) {
         // for cases where we need to swap flows rflow should always
         // be Non-NULL

@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
  */
-#ifndef BGP_BGP_CONFIG_H__
-#define BGP_BGP_CONFIG_H__
+#ifndef SRC_BGP_BGP_CONFIG_H__
+#define SRC_BGP_BGP_CONFIG_H__
 
 #include <algorithm>
 #include <map>
@@ -85,7 +85,7 @@ private:
 // Per address family configuration for a BGP neighbor.
 //
 struct BgpFamilyAttributesConfig {
-    BgpFamilyAttributesConfig(const std::string &family)
+    explicit BgpFamilyAttributesConfig(const std::string &family)
         : family(family), loop_count(0), prefix_limit(0) {
     }
 
@@ -294,7 +294,8 @@ struct StaticRouteConfig {
     IpAddress address;
     int prefix_length;
     IpAddress nexthop;
-    std::vector<std::string> route_target;
+    std::vector<std::string> route_targets;
+    std::vector<std::string> communities;
 };
 
 typedef std::vector<std::string> CommunityList;
@@ -547,7 +548,7 @@ public:
     static const int kDefaultPort;
     static const uint32_t kDefaultAutonomousSystem;
 
-    BgpConfigManager(BgpServer *server);
+    explicit BgpConfigManager(BgpServer *server);
     virtual ~BgpConfigManager();
 
     void RegisterObservers(const Observers &obs) { obs_ = obs; }
@@ -586,4 +587,4 @@ private:
     DISALLOW_COPY_AND_ASSIGN(BgpConfigManager);
 };
 
-#endif  // BGP_BGP_CONFIG_H__
+#endif  // SRC_BGP_BGP_CONFIG_H__

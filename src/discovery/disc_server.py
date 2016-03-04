@@ -79,8 +79,8 @@ class DiscoveryServer():
             'db_upd_hb': 0,
             'throttle_subs':0,
             '503': 0,
-            'count_lb': 0,
-            'auto_lb': 0,
+            'lb_count': 0,
+            'lb_auto': 0,
             'db_exc_unknown': 0,
             'db_exc_info': '',
             'wl_rejects_pub': 0,
@@ -651,21 +651,17 @@ class DiscoveryServer():
                 return True, match_len
         return False, 0
 
-    def match_publishers(self, dsa_rule, pubs):
+    def match_publishers(self, rule_list, pubs):
         result = []
-        rule_pub = dsa_rule['publisher']
 
         for pub in pubs:
-            # include publisher if rule not relevant
-            if rule_pub['ep_type'] != pub['ep_type']:
-                result.append(pub)
-                continue
-            match, mlen = self.match_dsa_rule_ep(rule_pub, pub)
-            if match:
-                result.append(pub)
+            for dsa_rule in rule_list:
+                ok, pfxlen = self.match_dsa_rule_ep(dsa_rule['publisher'], pub)
+                if ok:
+                    result.append(pub)
         return result
 
-    def apply_dsa_config(self, pubs, sub):
+    def apply_dsa_config(self, service_type, pubs, sub):
         if len(pubs) == 0:
             return pubs
 
@@ -675,23 +671,31 @@ class DiscoveryServer():
         # self.syslog('dsa: rules %s' % dsa_rules)
 
         lpm = -1
-        matched_sub_rule = None
+        matched_rules = None
         for rule in dsa_rules:
+            # ignore rule if publisher not relevant
+            if rule['publisher']['ep_type'] != service_type:
+                continue
+
+            # ignore rule if subscriber doesn't match
             matched, matched_len = self.match_subscriber(rule, sub)
             if not matched:
                 continue
             self.syslog('dsa: matched sub %s' % sub)
 
+            # collect matched rules
             if matched_len > lpm:
                 lpm = matched_len
-                matched_sub_rule = rule
+                matched_rules = [rule]
+            elif matched_len == lpm:
+                matched_rules.append(rule)
         # end for
 
         # return original list if there is no sub match
-        if not matched_sub_rule:
+        if not matched_rules:
             return pubs
 
-        matched_pubs = self.match_publishers(matched_sub_rule, pubs)
+        matched_pubs = self.match_publishers(matched_rules, pubs)
         self.syslog('dsa: matched pubs %s' % matched_pubs)
 
         return matched_pubs
@@ -768,7 +772,7 @@ class DiscoveryServer():
         # send short ttl if no publishers
         pubs = self._db_conn.lookup_service(service_type, include_count=True) or []
         pubs_active = [item for item in pubs if not self.service_expired(item)]
-        pubs_active = self.apply_dsa_config(pubs_active, cl_entry)
+        pubs_active = self.apply_dsa_config(service_type, pubs_active, cl_entry)
         pubs_active = self.service_list(service_type, pubs_active)
         plist = dict((entry['service_id'],entry) for entry in pubs_active)
         plist_all = dict((entry['service_id'],entry) for entry in pubs)
@@ -798,39 +802,21 @@ class DiscoveryServer():
         if count == 0:
             count = len(pubs_active)
 
+        # Auto load-balance is triggered if enabled and some servers are
+        # more than 5% off expected average allocation.
+        load_balance = self.get_service_config(service_type, 'load-balance')
+        if load_balance:
+            total_subs = sum([entry['in_use'] for entry in pubs_active])
+            avg = total_subs/len(pubs_active)
+
+        expiry_dict = dict((service_id,expiry) for service_id, expiry in subs or [])
+        policy = self.get_service_config(service_type, 'policy')
+
         # if subscriber in-use-list present, forget previous assignments
-        if len(inuse_list) and subs:
-            for service_id, expired in subs:
-                self._db_conn.delete_subscription(service_type, client_id, service_id)
-            subs = None
-
-        for service_id in inuse_list:
-            entry = plist.get(service_id, None)
-            if entry is None:
-                continue
-            msg = ' in-service-list assign service=%s' % entry['service_id']
-            m = sandesh.dsSubscribe(msg=msg, sandesh=self._sandesh)
-            m.trace_msg(name='dsSubscribeTraceBuf', sandesh=self._sandesh)
-            self.syslog("%s %s" % (cid, msg))
-
-            if assign:
-                assign -= 1
-                self._db_conn.insert_client(service_type, entry['service_id'],
-                    client_id, entry['info'], ttl)
-            r.append(entry)
-            count -= 1
-            assigned_sid.add(service_id)
+        if len(inuse_list):
+            subs = [(service_id, expiry_dict.get(service_id, False)) for service_id in inuse_list]
 
         if subs and count:
-            policy = self.get_service_config(service_type, 'policy')
-
-            # Auto load-balance is triggered if enabled and some servers are
-            # more than 5% off expected average allocation.
-            load_balance = self.get_service_config(service_type, 'load-balance')
-            if load_balance:
-                total_subs = sum([entry['in_use'] for entry in pubs_active])
-                avg = total_subs/len(pubs_active)
-
             for service_id, expired in subs:
                 # expired True if service was marked for deletion by LB command
                 # previously published service is gone
@@ -838,14 +824,16 @@ class DiscoveryServer():
                 entry = plist.get(service_id, None)
                 if entry is None or expired or policy == 'fixed' or (load_balance and entry['in_use'] > int(1.05*avg)):
                     self._db_conn.delete_subscription(service_type, client_id, service_id)
-                    # delete fixed policy server if expired
-                    if policy == 'fixed' and entry is None:
-                        self._db_conn.delete_service(plist_all.get(service_id, None))
                     # load-balance one at at time to avoid churn
                     if load_balance and entry and entry['in_use'] > int(1.05*avg):
-                        self._debug['auto_lb'] += 1
+                        self._debug['lb_auto'] += 1
                         load_balance = False
                     continue
+                msg = ' subs service=%s, assign=%d, count=%d' % (service_id, assign, count)
+                m = sandesh.dsSubscribe(msg=msg, sandesh=self._sandesh)
+                m.trace_msg(name='dsSubscribeTraceBuf', sandesh=self._sandesh)
+                self.syslog("%s %s" % (cid, msg))
+
                 if assign:
                     assign -= 1
                     self._db_conn.insert_client(
@@ -915,8 +903,8 @@ class DiscoveryServer():
         if clients is None:
             return
 
-        self.syslog('Initial load-balance server-list: %s, avg-per-pub %d, clients %d' \
-            % (lb_list, avg_per_pub, len(clients)))
+        self.syslog('%s: Initial load-balance server-list: %s, avg-per-pub %d, clients %d' \
+            % (service_type, lb_list, avg_per_pub, len(clients)))
 
         """
         Walk through all subscribers and mark one publisher per subscriber down
@@ -930,10 +918,11 @@ class DiscoveryServer():
         for client in clients:
             (service_type, client_id, service_id, mtime, ttl) = client
             if client_id not in clients_lb_done and service_id in lb_list and lb_list[service_id] > 0:
+                self.syslog('expire client=%s, service=%s, ttl=%d' % (client_id, service_id, ttl))
                 self._db_conn.mark_delete_subscription(service_type, client_id, service_id)
                 clients_lb_done.append(client_id)
                 lb_list[service_id] -= 1
-                self._debug['count_lb'] += 1
+                self._debug['lb_count'] += 1
         return {}
     # end api_lb_service
 
@@ -1330,6 +1319,7 @@ def parse_args(args_str):
         'policy': None,
         'load-balance': False,
     }
+    service_bool_opts = ['load-balance']
 
     cassandra_opts = {
         'cassandra_user'     : None,
@@ -1360,13 +1350,16 @@ def parse_args(args_str):
             if section == "DEFAULTS":
                 defaults.update(dict(config.items("DEFAULTS")))
                 continue
-            if 'KEYSTONE' in config.sections():
+            if section == "KEYSTONE":
                 keystone_opts.update(dict(config.items("KEYSTONE")))
                 continue
-            service_config[
-                section.lower()] = default_service_opts.copy()
-            service_config[section.lower()].update(
-                dict(config.items(section)))
+            service = section.lower()
+            service_config[service] = default_service_opts.copy()
+            opt_dict = dict(config.items(section))
+            service_config[service].update(opt_dict)
+            for opt in service_bool_opts:
+                if opt in opt_dict:
+                    service_config[service][opt] = config.getboolean(section, opt)
 
     defaults.update(keystone_opts)
     parser.set_defaults(**defaults)
