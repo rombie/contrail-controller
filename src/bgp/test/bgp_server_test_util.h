@@ -268,6 +268,9 @@ public:
         vpn_tables_registered_ = registered;
     }
 
+    const int peer_id() const { return peer_id_; }
+    void set_peer_id(int peer_id) { peer_id_ = peer_id; }
+
     boost::function<bool(const uint8_t *, size_t)> SendUpdate_fnc_;
     boost::function<bool(uint16_t, uint8_t)> MpNlriAllowed_fnc_;
     boost::function<bool()> IsReady_fnc_;
@@ -276,6 +279,7 @@ public:
 
 private:
     static bool verbose_name_;
+    int peer_id_;
 };
 
 class PeerManagerTest : public PeerManager {

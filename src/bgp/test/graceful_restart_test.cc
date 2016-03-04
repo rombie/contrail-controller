@@ -186,6 +186,9 @@ public:
         xmpp_server_->GetIsPeerCloseGraceful_fnc_ =
                     boost::bind(&GracefulRestartTest::IsPeerCloseGraceful, this,
                                 graceful);
+        server_->GetIsPeerCloseGraceful_fnc_ =
+                    boost::bind(&Graceful::IsPeerCloseGraceful, this,
+                                graceful);
     }
 
 protected:
@@ -205,7 +208,6 @@ protected:
     void GracefulRestartTestRun();
     string GetConfig(bool delete_config);
     ExtCommunitySpec *CreateRouteTargets();
-    void AddAgentsWithRoutes(const BgpInstanceConfig *instance_config);
     void AddRoutes();
     void CreateAgents();
     void Subscribe();
@@ -248,18 +250,18 @@ protected:
     int n_peers_;
     int n_targets_;
 
-    struct AgentTestParams {
-        AgentTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
+    struct GRTestParams {
+        GRTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
                         vector<int> nroutes, TcpSession::Event skip_tcp_event) {
             initialize(agent, instance_ids, nroutes, skip_tcp_event);
         }
 
-        AgentTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
+        GRTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
                         vector<int> nroutes) {
             initialize(agent, instance_ids, nroutes, TcpSession::EVENT_NONE);
         }
 
-        AgentTestParams(test::NetworkAgentMock *agent) {
+        GRTestParams(test::NetworkAgentMock *agent) {
             initialize(agent, vector<int>(), vector<int>(),
                        TcpSession::EVENT_NONE);
         }
@@ -275,14 +277,15 @@ protected:
         }
 
         test::NetworkAgentMock *agent;
+        BgpPeerTest *peer;
         vector<int> instance_ids;
         vector<int> nroutes;
         TcpSession::Event skip_tcp_event;
         bool send_eor;
     };
     void ProcessFlippingAgents(int &total_routes, int remaining_instances,
-                               std::vector<AgentTestParams> &n_flipping_agents);
-    std::vector<AgentTestParams> n_flipped_agents_;
+                               std::vector<GRTestParams> &n_flipping_agents);
+    std::vector<GRTestParams> n_flipped_agents_;
     std::vector<test::NetworkAgentMock *> n_down_from_agents_;
     std::vector<int> instances_to_delete_before_gr_;
     std::vector<int> instances_to_delete_during_gr_;
@@ -366,6 +369,7 @@ void GracefulRestartTest::Configure() {
                                 BgpConfigManager::kMasterInstance, uuid));
         BgpPeerTest *peer = bgp_servers_[i]->FindPeerByUuid(
                                 BgpConfigManager::kMasterInstance, uuid);
+        peer->set_peer_id(i);
         bgp_peers_.push_back(peer);
     }
 }
@@ -393,7 +397,8 @@ void GracefulRestartTest::VerifyRoutes(int count) {
     for (int i = 0; i < n_families_; i++) {
         BgpTable *tb = master_instance_->GetTable(familes_[i]);
         if (count && n_agents_ && familes_[i] == Address::INETVPN) {
-            BGP_VERIFY_ROUTE_COUNT(tb, n_agents_ * n_instances_ * count);
+            BGP_VERIFY_ROUTE_COUNT(tb,
+                (n_agents_ + n_peers_) * n_instances_ * count);
         }
     }
 }
@@ -414,8 +419,16 @@ string GracefulRestartTest::GetConfig(bool delete_config) {
         out <<      "</port>";
 
         for (int j = 0; j <= n_peers_; j++) {
+
+            // Do not peer with self
             if (i == j)
                 continue;
+
+            // Peer only with DUT
+            if (i > 0 && j > 0)
+                break;
+
+            // Create a session between DUT and other BgpServers.
             out << "<session to=\'RTR" << j << "\'>\
                         <admin-down>false</admin-down>\
                         <address-families>\
@@ -474,6 +487,10 @@ void GracefulRestartTest::WaitForAgentToBeEstablished(
     TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
 }
 
+void GracefulRestartTest::WaitForPeerToBeEstablished( BgpPeerTest *peer) {
+    TASK_UTIL_EXPECT_EQ(true, peer->IsEstablished());
+}
+
 ExtCommunitySpec *GracefulRestartTest::CreateRouteTargets() {
     auto_ptr<ExtCommunitySpec> commspec(new ExtCommunitySpec());
 
@@ -508,7 +525,7 @@ void GracefulRestartTest::AddRoutes() {
     AddOrDeleteBgpRoutes(true);
     AddOrDeleteXmppRoutes(true);
     task_util::WaitForIdle();
-    VerifyReceivedXmppRoutes(n_instances_ * n_agents_ * n_routes_);
+    VerifyReceivedXmppRoutes(n_instances_ * (n_agents_ + n_peers_) * n_routes_);
 }
 
 void GracefulRestartTest::CreateAgents() {
@@ -571,7 +588,62 @@ test::NextHops GracefulRestartTest::GetNextHops (test::NetworkAgentMock *agent,
 }
 
 void GracefulRestartTest::AddOrDeleteBgpRoutes(bool add, int n_routes,
-                                               int down_agents) {
+                                               int down_peers) {
+    if (n_routes ==-1)
+        n_routes = n_routes_;
+
+    if (down_peers == -1)
+        down_peers = n_peers_;
+
+    boost::scoped_ptr<ExtCommunitySpec> commspec;
+    boost::scoped_ptr<BgpAttrLocalPref> local_pref;
+    DBRequest req;
+
+    BOOST_FOREACH(BgpPeerTest *peer, bgp_peers_) {
+        if (down_peers-- < 1)
+            continue;
+
+        RoutingInstance *rtinstance = static_cast<RoutingInstance *>(
+            peer->server()->routing_instance_mgr()->GetRoutingInstance(
+                BgpConfigManager::kMasterInstance));
+        BgpTable *table = rtinstance->GetTable(Address::INETVPN);
+
+        for (int i = 1; i <= n_instances_; i++) {
+            string instance_name = "instance" + boost::lexical_cast<string>(i);
+
+            InetVpnPrefix vpn_prefix(InetVpnPrefix::FromString(
+                "123:" + boost::lexical_cast<string>(i) + ":" +
+                "20." + boost::lexical_cast<string>(i) + "." +
+                boost::lexical_cast<string>(peer->peer_id()) + ".1/32"));
+
+            BgpAttrSpec attr_spec;
+            local_pref.reset(new BgpAttrLocalPref(100));
+            attr_spec.push_back(local_pref.get());
+
+            BgpAttrNextHop nexthop(0x7f010000 + peer->peer_id());
+            attr_spec.push_back(&nexthop);
+
+            commspec.reset(CreateRouteTargets());
+
+            TunnelEncap tun_encap(std::string("gre"));
+            commspec->communities.push_back(get_value(
+                        tun_encap.GetExtCommunity().begin(), 8));
+            attr_spec.push_back(commspec.get());
+
+            for (int rt = 0; rt < n_routes; rt++,
+                vpn_prefix = task_util::InetVpnPrefixIncrement(vpn_prefix)) {
+                req.key.reset(new InetVpnTable::RequestKey(vpn_prefix, NULL));
+                req.oper = add ? DBRequest::DB_ENTRY_ADD_CHANGE :
+                                 DBRequest::DB_ENTRY_DELETE;
+
+                uint32_t label = 20000 + rt;
+                BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
+                req.data.reset(new InetTable::RequestData(attr, 0, label));
+                table->Enqueue(&req);
+            }
+        }
+    }
+    task_util::WaitForIdle();
 }
 
 void GracefulRestartTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
@@ -692,13 +764,6 @@ void GracefulRestartTest::VerifyRoutingInstances(BgpServer *server) {
                                BgpConfigManager::kMasterInstance));
 }
 
-void GracefulRestartTest::AddAgentsWithRoutes(
-        const BgpInstanceConfig *instance_config) {
-    SetPeerCloseGraceful(false);
-    Configure();
-    AddRoutes();
-}
-
 // Invoke stale timer callbacks directly as evm is not running in this unit test
 void GracefulRestartTest::CallStaleTimer(BgpXmppChannel *channel) {
     channel->Peer()->peer_close()->close_manager()->RestartTimerCallback();
@@ -746,26 +811,28 @@ void GracefulRestartTest::InitParams() {
 //     Subset of routes are [re]advertised after restart
 //     Subset of routing-instances are deleted (during GR)
 void GracefulRestartTest::GracefulRestartTestStart () {
+    SetPeerCloseGraceful(false);
+    Configure();
 
     //  Bring up n_agents_ in n_instances_ and advertise n_routes_ per session
-    AddAgentsWithRoutes(master_cfg_.get());
+    AddRoutes();
     VerifyRoutes(n_routes_);
 }
 
 void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
         int remaining_instances,
-        vector<AgentTestParams> &n_flipping_agents) {
+        vector<GRTestParams> &n_flipping_agents) {
     int flipping_count = 3;
 
     for (int f = 0; f < flipping_count; f++) {
-        BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
+        BOOST_FOREACH(GRTestParams agent_test_param, n_flipping_agents) {
             test::NetworkAgentMock *agent = agent_test_param.agent;
             TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
             agent->SessionUp();
             WaitForAgentToBeEstablished(agent);
         }
 
-        BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
+        BOOST_FOREACH(GRTestParams agent_test_param, n_flipping_agents) {
             test::NetworkAgentMock *agent = agent_test_param.agent;
             WaitForAgentToBeEstablished(agent);
 
@@ -805,7 +872,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
         if (f == flipping_count - 1)
             count /= 2;
         int k = 0;
-        BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
+        BOOST_FOREACH(GRTestParams agent_test_param, n_flipping_agents) {
             if (k++ >= count)
                 break;
             test::NetworkAgentMock *agent = agent_test_param.agent;
@@ -834,7 +901,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
 
     // Send EoR marker or trigger GR timer for agents which came back up and
     // sent desired routes.
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipping_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         if (agent_test_param.send_eor && agent->IsEstablished()) {
             agent->SendEorMarker();
@@ -866,7 +933,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
 }
 
 void GracefulRestartTest::GracefulRestartTestRun () {
-    int total_routes = n_instances_ * n_agents_ * n_routes_;
+    int total_routes = n_instances_ * (n_agents_ + n_peers_) * n_routes_;
 
     //  Verify that n_agents_ * n_instances_ * n_routes_ routes are received in
     //  agent in each instance
@@ -883,7 +950,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     DeleteRoutingInstances(instances_to_delete_before_gr_, dont_unsubscribe);
     int remaining_instances = n_instances_;
     remaining_instances -= instances_to_delete_before_gr_.size();
-    total_routes -= n_routes_ * n_agents_ *
+    total_routes -= n_routes_ * (n_agents_ + n_peers_) *
                     instances_to_delete_before_gr_.size();
 
     // Subset of agents go down permanently (Triggered from agents)
@@ -894,12 +961,20 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         total_routes -= remaining_instances * n_routes_;
     }
 
+    // Subset of peers go down permanently (Triggered from peers)
+    BOOST_FOREACH(BgpPeerTest *peer, n_down_from_peers_) {
+        WaitForPeerToBeEstablished(agent);
+        peer->AdminDown(true);
+        TASK_UTIL_EXPECT_EQ(false, peer->IsEstablished());
+        total_routes -= remaining_instances * n_routes_;
+    }
+
     // Divide flipped agents into two parts. Agents in the first part flip
     // once and come back up (normal GR). Those in the second part keep
     // flipping. Eventually half the second part come back to normal up state.
     // Rest (1/4th overall) remain down triggering LLGR during the whole time.
-    vector<AgentTestParams> n_flipped_agents = vector<AgentTestParams>();
-    vector<AgentTestParams> n_flipping_agents = vector<AgentTestParams>();
+    vector<GRTestParams> n_flipped_agents = vector<GRTestParams>();
+    vector<GRTestParams> n_flipping_agents = vector<GRTestParams>();
     for (size_t i = 0; i < n_flipped_agents_.size(); i++) {
         if (i < n_flipped_agents_.size()/2)
             n_flipped_agents.push_back(n_flipped_agents_[i]);
@@ -908,7 +983,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     }
 
     // Subset of agents flip (Triggered from agents)
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         WaitForAgentToBeEstablished(agent);
         XmppStateMachineTest::set_skip_tcp_event(
@@ -922,7 +997,21 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     }
 
     // Subset of agents flip (Triggered from agents)
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipping_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipped_agents) {
+        BgpPeerTest *peer = agent_test_param.peer;
+        WaitForPeerToBeEstablished(peer);
+        XmppStateMachineTest::set_skip_tcp_event(
+                agent_test_param.skip_tcp_event);
+        peer->AdminDown(true);
+        dont_unsubscribe.push_back(agent);
+        TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
+        TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
+                            XmppStateMachineTest::get_skip_tcp_event());
+        total_routes -= remaining_instances * n_routes_;
+    }
+
+    // Subset of agents flip (Triggered from agents)
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipping_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         WaitForAgentToBeEstablished(agent);
         XmppStateMachineTest::set_skip_tcp_event(
@@ -947,14 +1036,14 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     XmppStateMachineTest::set_skip_tcp_event(TcpSession::EVENT_NONE);
 
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         TASK_UTIL_EXPECT_EQ(false, agent->IsEstablished());
         agent->SessionUp();
         WaitForAgentToBeEstablished(agent);
     }
 
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         WaitForAgentToBeEstablished(agent);
 
@@ -990,7 +1079,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     // Send EoR marker or trigger GR timer for agents which came back up and
     // sent desired routes.
-    BOOST_FOREACH(AgentTestParams agent_test_param, n_flipped_agents) {
+    BOOST_FOREACH(GRTestParams agent_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = agent_test_param.agent;
         if (agent_test_param.send_eor)
             agent->SendEorMarker();
@@ -1046,7 +1135,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Down_4) {
         if (i <= xmpp_agents_.size()/2)
             n_down_from_agents_.push_back(xmpp_agents_[i]);
         else
-            n_flipped_agents_.push_back(AgentTestParams(xmpp_agents_[i]));
+            n_flipped_agents_.push_back(GRTestParams(xmpp_agents_[i]));
     }
     GracefulRestartTestRun();
 }
@@ -1057,7 +1146,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_1) {
     GracefulRestartTestStart();
 
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
-        n_flipped_agents_.push_back(AgentTestParams(agent));
+        n_flipped_agents_.push_back(GRTestParams(agent));
     }
     GracefulRestartTestRun();
 }
@@ -1078,7 +1167,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_2) {
 
         // Trigger the case of compute-node hard reset where in tcp fin event
         // never reaches control-node
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     GracefulRestartTestRun();
@@ -1097,7 +1186,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_3) {
             instance_ids.push_back(i);
             nroutes.push_back(0);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     GracefulRestartTestRun();
@@ -1116,7 +1205,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_4) {
             instance_ids.push_back(i);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     GracefulRestartTestRun();
@@ -1138,7 +1227,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_5) {
 
         // Trigger the case of compute-node hard reset where in tcp fin event
         // never reaches control-node
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes,
                                                     TcpSession::CLOSE));
     }
@@ -1158,7 +1247,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_6) {
             instance_ids.push_back(i);
             nroutes.push_back(0);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes,
                                                     TcpSession::CLOSE));
     }
@@ -1178,7 +1267,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_7) {
             instance_ids.push_back(i);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes,
                                                     TcpSession::CLOSE));
     }
@@ -1193,7 +1282,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_1) {
 
     for (size_t i = 0; i < xmpp_agents_.size()/2; i++) {
         test::NetworkAgentMock *agent = xmpp_agents_[i];
-        n_flipped_agents_.push_back(AgentTestParams(agent));
+        n_flipped_agents_.push_back(GRTestParams(agent));
     }
     GracefulRestartTestRun();
 }
@@ -1211,7 +1300,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_2) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // All flipped agents send EoR.
         n_flipped_agents_[i].send_eor = true;
@@ -1232,7 +1321,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_2_2) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // None of the flipped agents sends EoR.
         n_flipped_agents_[i].send_eor = false;
@@ -1253,7 +1342,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_2_3) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // Only even flipped agents send EoR.
         n_flipped_agents_[i].send_eor = ((i%2) == 0);
@@ -1274,7 +1363,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_3) {
             instance_ids.push_back(j);
             nroutes.push_back(0);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // All flipped agents send EoR.
         n_flipped_agents_[i].send_eor = true;
@@ -1295,7 +1384,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_3_2) {
             instance_ids.push_back(j);
             nroutes.push_back(0);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // None of the flipped agents sends EoR.
         n_flipped_agents_[i].send_eor = false;
@@ -1316,7 +1405,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_3_3) {
             instance_ids.push_back(j);
             nroutes.push_back(0);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
         // Only even flipped agents send EoR.
         n_flipped_agents_[i].send_eor = ((i%2) == 0);
@@ -1337,7 +1426,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_4) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
 
         // All flipped agents send EoR.
@@ -1359,7 +1448,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_4_2) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
 
         // None of the flipped agents sends EoR.
@@ -1381,7 +1470,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Flap_Some_4_3) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
 
         // Only even flipped agents send EoR.
@@ -1485,7 +1574,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Delete_RoutingInstances_4) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     GracefulRestartTestRun();
@@ -1523,7 +1612,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Delete_RoutingInstances_5) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     for (int i = n_instances_/4 + 1; i <= n_instances_/2; i++)
@@ -1563,7 +1652,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Delete_RoutingInstances_6) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     GracefulRestartTestRun();
@@ -1601,7 +1690,7 @@ TEST_P(GracefulRestartTest, GracefulRestart_Delete_RoutingInstances_7) {
             instance_ids.push_back(j);
             nroutes.push_back(n_routes_/2);
         }
-        n_flipped_agents_.push_back(AgentTestParams(agent, instance_ids,
+        n_flipped_agents_.push_back(GRTestParams(agent, instance_ids,
                                                     nroutes));
     }
     for (int i = n_instances_/4 + 1; i <= n_instances_/2; i++)

@@ -184,7 +184,7 @@ void BgpPeerTest::SetDataCollectionKey(BgpPeerInfo *peer_info) const {
 //
 BgpPeerTest::BgpPeerTest(BgpServer *server, RoutingInstance *rtinst,
                          const BgpNeighborConfig *config)
-        : BgpPeer(server, rtinst, config) {
+        : BgpPeer(server, rtinst, config), peer_id_(0) {
     SendUpdate_fnc_ = boost::bind(&BgpPeerTest::BgpPeerSendUpdate, this,
                                   _1, _2);
     MpNlriAllowed_fnc_ = boost::bind(&BgpPeerTest::BgpPeerMpNlriAllowed, this,
