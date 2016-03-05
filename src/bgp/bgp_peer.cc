@@ -54,6 +54,8 @@ class BgpPeer::PeerClose : public IPeerClose {
     virtual bool IsCloseGraceful() {
         if (peer_->IsDeleted() || peer_->IsAdminDown())
             return false;
+        if (peer_->server()->IsDeleted())
+            return false;
         return peer_->server()->IsPeerCloseGraceful();
     }
 
@@ -61,16 +63,14 @@ class BgpPeer::PeerClose : public IPeerClose {
     virtual void GracefulRestartStale() { }
     virtual void GracefulRestartSweep() { }
 
-    // CloseComplete
-    //
     // Close process for this peer is complete. Restart the state machine and
     // attempt to bring up session with the neighbor
-    //
     virtual void CloseComplete() {
-        peer_->server()->decrement_closing_count();
+        // peer_->server()->decrement_closing_count();
         if (!peer_->IsAdminDown())
             peer_->state_machine_->Initialize();
     }
+
     virtual void Delete() {
         if (!peer_->IsDeleted()) {
             CloseComplete();

@@ -328,7 +328,7 @@ BgpServer::BgpServer(EventManager *evm)
 }
 
 BgpServer::~BgpServer() {
-    assert(closing_count_ == 0);
+    // assert(closing_count_ == 0);
     assert(srt_manager_list_.empty());
 }
 
