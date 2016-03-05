@@ -369,8 +369,17 @@ void GracefulRestartTest::TearDown() {
 
     TcpServerManager::DeleteServer(xmpp_server_);
     xmpp_server_ = NULL;
+
+    for (int i = 1; i <= n_instances_; i++) {
+        BOOST_FOREACH(BgpPeerTest *peer, bgp_peers_) {
+            ProcessVpnRoute(peer, i, n_routes_, false);
+        }
+    }
+    task_util::WaitForIdle();
+
     for (int i = 0; i <= n_peers_; i++)
         bgp_servers_[i]->Shutdown();
+
     task_util::WaitForIdle();
     evm_.Shutdown();
     thread_.Join();
