@@ -178,9 +178,22 @@ public:
         keepalive_time_msecs_ = keepalive_time_msecs;
     }
 
+    static TcpSession::Event get_skip_tcp_event() { return skip_tcp_event_; }
+    static void set_skip_tcp_event(TcpSession::Event event) {
+        skip_tcp_event_ = event;
+    }
+
+    virtual void OnSessionEvent(TcpSession *session, TcpSession::Event event) {
+        if (skip_tcp_event_ != event)
+            StateMachine::OnSessionEvent(session, event);
+        else
+            skip_tcp_event_ = TcpSession::EVENT_NONE;
+    }
+
 private:
     static int hold_time_msecs_;
     static int keepalive_time_msecs_;
+    static TcpSession::Event skip_tcp_event_;
 };
 
 class BgpServerTest : public BgpServer {
@@ -259,6 +272,7 @@ public:
   
     bool BgpPeerIsReady();
     void SetDataCollectionKey(BgpPeerInfo *peer_info) const;
+    void SendEorMarker() { }
 
     virtual bool IsReady() const {
         return IsReady_fnc_();
@@ -268,8 +282,8 @@ public:
         vpn_tables_registered_ = registered;
     }
 
-    const int peer_id() const { return peer_id_; }
-    void set_peer_id(int peer_id) { peer_id_ = peer_id; }
+    const int id() const { return id_; }
+    void set_id(int id) { id_ = id; }
 
     boost::function<bool(const uint8_t *, size_t)> SendUpdate_fnc_;
     boost::function<bool(uint16_t, uint8_t)> MpNlriAllowed_fnc_;
@@ -279,7 +293,7 @@ public:
 
 private:
     static bool verbose_name_;
-    int peer_id_;
+    int id_;
 };
 
 class PeerManagerTest : public PeerManager {
