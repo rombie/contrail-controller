@@ -44,7 +44,7 @@ using ::testing::Combine;
 static vector<int>  n_instances = boost::assign::list_of(8);
 static vector<int>  n_routes    = boost::assign::list_of(8);
 static vector<int>  n_agents    = boost::assign::list_of(8);
-static vector<int>  n_peers     = boost::assign::list_of(0);
+static vector<int>  n_peers     = boost::assign::list_of(8);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 
 static char **gargv;
@@ -198,7 +198,8 @@ protected:
     virtual void TearDown();
     void AgentCleanup();
     void Configure();
-    void PeerDown(BgpPeerTest *peer, bool down);
+    void PeerUp(BgpPeerTest *peer);
+    void PeerDown(BgpPeerTest *peer);
 
     XmppChannelConfig *CreateXmppChannelCfg(const char *address, int port,
                                             const string &from,
@@ -880,14 +881,13 @@ void GracefulRestartTest::GracefulRestartTestStart () {
     VerifyRoutes(n_routes_);
 }
 
-void GracefulRestartTest::PeerDown(BgpPeerTest *peer, bool down) {
-    if (!down) {
-        TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
-        peer->SetAdminState(false);
-        TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
-        return;
-    }
+void GracefulRestartTest::PeerUp(BgpPeerTest *peer) {
+    TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
+    peer->SetAdminState(false);
+    TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
+}
 
+void GracefulRestartTest::PeerDown(BgpPeerTest *peer) {
     TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
     peer->SetAdminState(true);
     TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
@@ -1022,7 +1022,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
 
     for (int f = 0; f < flipping_count; f++) {
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
-            PeerDown(gr_test_param.peer, false);
+            PeerUp(gr_test_param.peer);
         }
 
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
@@ -1060,7 +1060,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
             WaitForPeerToBeEstablished(peer);
             StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
 
-            PeerDown(peer, true);
+            PeerDown(peer);
             TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                                 StateMachineTest::get_skip_tcp_event());
 
@@ -1176,7 +1176,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     // Subset of peers go down permanently (Triggered from peers)
     BOOST_FOREACH(BgpPeerTest *peer, n_down_from_peers_) {
         WaitForPeerToBeEstablished(peer);
-        PeerDown(peer, true);
+        PeerDown(peer);
         total_routes -= remaining_instances * n_routes_;
     }
 
@@ -1222,7 +1222,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         BgpPeerTest *peer = gr_test_param.peer;
         WaitForPeerToBeEstablished(peer);
         StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
-        PeerDown(peer, true);
+        PeerDown(peer);
         TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                             StateMachineTest::get_skip_tcp_event());
         total_routes -= remaining_instances * n_routes_;
@@ -1244,7 +1244,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         BgpPeerTest *peer = gr_test_param.peer;
         WaitForPeerToBeEstablished(peer);
         StateMachineTest::set_skip_tcp_event(gr_test_param.skip_tcp_event);
-        PeerDown(peer, true);
+        PeerDown(peer);
         total_routes -= remaining_instances * n_routes_;
     }
 
@@ -1275,7 +1275,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
-        PeerDown(peer, false);
+        PeerUp(peer);
     }
 
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
