@@ -1083,7 +1083,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
-        if (gr_test_param.send_eor && peer->IsReady()) {
+        if (false && gr_test_param.send_eor && peer->IsReady()) {
             peer->SendEorMarker();
         } else {
             PeerCloseManager *pc =
@@ -1104,38 +1104,6 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
                 }
                 TASK_UTIL_EXPECT_EQ(false, bgp_server_peers_[
                                                peer->id()]->IsReady());
-                TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
-            }
-            CallStaleTimer(bgp_server_peers_[peer->id()]);
-        }
-    }
-    task_util::WaitForIdle();
-
-    // Send EoR marker or trigger GR timer for peers which came back up and
-    // sent desired routes.
-    BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
-        BgpPeerTest *peer = gr_test_param.peer;
-        if (gr_test_param.send_eor && peer->IsReady()) {
-            peer->SendEorMarker();
-        } else {
-            PeerCloseManager *pc =
-                bgp_server_peers_[peer->id()]->peer_close()->close_manager();
-
-            // If the session is down and TCP down event was meant to be skipped
-            // then we do not expect control-node to be unaware of it. Hold
-            // timer must have expired by then. Trigger the hold-timer expiry
-            // first in order to bring the peer down in the controller and then
-            // call the GR timer callback.
-            if (!peer->IsReady()) {
-                if (gr_test_param.skip_tcp_event != TcpSession::EVENT_NONE) {
-                    uint64_t stale = pc->stats().stale;
-                    const StateMachine *sm =
-                        bgp_server_peers_[peer->id()]->state_machine();
-                    const_cast<StateMachine *>(sm)->HoldTimerExpired();
-                    TASK_UTIL_EXPECT_EQ(stale + 1, pc->stats().stale);
-                }
-                TASK_UTIL_EXPECT_EQ(false,
-                                    bgp_server_peers_[peer->id()]->IsReady());
                 TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
             }
             CallStaleTimer(bgp_server_peers_[peer->id()]);
@@ -1348,7 +1316,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
-        if (gr_test_param.send_eor)
+        if (false && gr_test_param.send_eor)
             peer->SendEorMarker();
         else
             CallStaleTimer(bgp_server_peers_[peer->id()]);
