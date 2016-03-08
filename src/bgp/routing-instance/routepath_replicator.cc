@@ -171,6 +171,7 @@ RoutePathReplicator::RoutePathReplicator(BgpServer *server,
           boost::bind(&RoutePathReplicator::StartWalk, this),
           TaskScheduler::GetInstance()->GetTaskId("bgp::Config"), 0)),
       trace_buf_(SandeshTraceBufferCreate("RoutePathReplicator", 500)) {
+      count_ = 0;
 }
 
 RoutePathReplicator::~RoutePathReplicator() {
@@ -491,6 +492,7 @@ bool RoutePathReplicator::RouteListener(TableState *ts,
     DBTablePartBase *root, DBEntryBase *entry) {
     CHECK_CONCURRENCY("db::DBTable");
 
+    count_++;
     BgpTable *table = static_cast<BgpTable *>(root->parent());
     BgpRoute *rt = static_cast<BgpRoute *>(entry);
     const RoutingInstance *rtinstance = table->routing_instance();

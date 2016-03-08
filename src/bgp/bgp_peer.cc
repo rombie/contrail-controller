@@ -282,6 +282,10 @@ void BgpPeer::SendEndOfRIB(Address::Family family) {
         " size " << msgsize);
 }
 
+static void BGPPeerInfoSend(BgpPeerInfoData &peer_info) {
+    // BGPPeerInfo::Send(peer_info);
+}
+
 //
 // Callback from PeerRibMembershipManager.
 // Update pending membership request count and send EndOfRib for the family
@@ -304,7 +308,7 @@ void BgpPeer::MembershipRequestCallback(IPeer *ipeer, BgpTable *table) {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_send_state("in sync");
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 
     SendEndOfRIB(table->family());
 }
@@ -314,7 +318,7 @@ bool BgpPeer::ResumeClose() {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_send_state("not advertising");
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
     return true;
 }
 
@@ -392,7 +396,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     peer_info.set_local_id(local_bgp_id_);
     peer_info.set_configured_families(config->GetAddressFamilies());
     peer_info.set_peer_address(peer_key_.endpoint.address().to_string());
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 BgpPeer::~BgpPeer() {
@@ -402,7 +406,7 @@ BgpPeer::~BgpPeer() {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_deleted(true);
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
     BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
 }
@@ -662,7 +666,7 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
 
     // Send the UVE as appropriate.
     if (admin_down_changed || clear_session) {
-        BGPPeerInfo::Send(peer_info);
+        BGPPeerInfoSend(peer_info);
     }
 }
 
@@ -764,7 +768,7 @@ void BgpPeer::Close() {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_send_state("not advertising");
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 IPeerClose *BgpPeer::peer_close() {
@@ -860,7 +864,7 @@ void BgpPeer::RegisterAllTables() {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_send_state("not advertising");
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 
     vector<Address::Family> family_list = list_of
         (Address::INET)(Address::INET6);
@@ -1017,7 +1021,7 @@ bool BgpPeer::SendUpdate(const uint8_t *msg, size_t msgsize) {
         BgpPeerInfoData peer_info;
         peer_info.set_name(ToUVEKey());
         peer_info.set_send_state("not in sync");
-        BGPPeerInfo::Send(peer_info);
+        BGPPeerInfoSend(peer_info);
     }
     return send_ready_;
 }
@@ -1077,7 +1081,7 @@ void BgpPeer::SetCapabilities(const BgpProto::OpenMessage *msg) {
     sort(negotiated_families_.begin(), negotiated_families_.end());
     peer_info.set_negotiated_families(negotiated_families_);
 
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 // Reset capabilities stored inside peer structure.
@@ -1093,7 +1097,7 @@ void BgpPeer::ResetCapabilities() {
     peer_info.set_families(families);
     std::vector<std::string> negotiated_families = std::vector<std::string>();
     peer_info.set_negotiated_families(negotiated_families);
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 bool BgpPeer::MpNlriAllowed(uint16_t afi, uint8_t safi) {
@@ -1414,7 +1418,7 @@ void BgpPeer::SetSendReady() {
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
     peer_info.set_send_state("in sync");
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 void BgpPeer::set_session(BgpSession *session) {
@@ -1902,7 +1906,7 @@ void BgpPeer::increment_flap_count() {
     flap_info.set_flap_count(flap_count_);
     flap_info.set_flap_time(last_flap_);
     peer_info.set_flap_info(flap_info);
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }
 
 void BgpPeer::reset_flap_count() {
@@ -1913,5 +1917,5 @@ void BgpPeer::reset_flap_count() {
     peer_info.set_name(ToUVEKey());
     PeerFlapInfo flap_info;
     peer_info.set_flap_info(flap_info);
-    BGPPeerInfo::Send(peer_info);
+    BGPPeerInfoSend(peer_info);
 }

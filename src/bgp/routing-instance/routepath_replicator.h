@@ -7,6 +7,7 @@
 
 #include <boost/ptr_container/ptr_map.hpp>
 #include <sandesh/sandesh_trace.h>
+#include <tbb/atomic.h>
 #include <tbb/mutex.h>
 
 #include <list>
@@ -323,6 +324,7 @@ private:
     BgpTable *vpn_table_;
     boost::scoped_ptr<TaskTrigger> walk_trigger_;
     SandeshTraceBufferPtr trace_buf_;
+    tbb::atomic<uint64_t> count_;
 
     DISALLOW_COPY_AND_ASSIGN(RoutePathReplicator);
 };

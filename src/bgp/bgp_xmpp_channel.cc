@@ -340,6 +340,9 @@ private:
     BgpXmppChannel *peer_;
 };
 
+static void XMPPPeerInfoSend(XmppPeerInfoData &peer_info) {
+    // XMPPPeerInfo::Send(peer_info);
+}
 
 class BgpXmppChannel::XmppPeer : public IPeer {
 public:
@@ -437,7 +440,7 @@ private:
         XmppPeerInfoData peer_info;
         peer_info.set_name(ToUVEKey());
         peer_info.set_send_state("in sync");
-        XMPPPeerInfo::Send(peer_info);
+        XMPPPeerInfoSend(peer_info);
     }
 
     BgpServer *server_;
@@ -474,7 +477,7 @@ bool BgpXmppChannel::XmppPeer::SendUpdate(const uint8_t *msg, size_t msgsize) {
             XmppPeerInfoData peer_info;
             peer_info.set_name(ToUVEKey());
             peer_info.set_send_state("not in sync");
-            XMPPPeerInfo::Send(peer_info);
+            XMPPPeerInfoSend(peer_info);
         }
         return send_ready_;
     } else {
@@ -2483,7 +2486,7 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
         XmppPeerInfoData peer_info;
         peer_info.set_name(bgp_xmpp_channel->Peer()->ToUVEKey());
         peer_info.set_send_state("not advertising");
-        XMPPPeerInfo::Send(peer_info);
+        XMPPPeerInfoSend(peer_info);
     }
 }
 
