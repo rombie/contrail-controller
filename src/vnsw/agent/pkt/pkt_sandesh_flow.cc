@@ -10,6 +10,8 @@
 
 #include <uve/agent_uve.h>
 #include <vrouter/flow_stats/flow_stats_collector.h>
+#include <vrouter/ksync/ksync_init.h>
+#include <vrouter/ksync/ksync_flow_index_manager.h>
 
 using boost::system::error_code;
 
@@ -25,7 +27,7 @@ using boost::system::error_code;
     std::vector<ActionStr> action_str_l;                                    \
     SetActionStr(fe->match_p().action_info, action_str_l);                  \
     if ((fe->match_p().action_info.action & TrafficAction::DROP_FLAGS) != 0) {\
-        data.set_drop_reason(GetFlowDropReason(fe));                        \
+        data.set_drop_reason(fe->DropReasonStr(fe->data().drop_reason));                        \
     }                                                                       \
     data.set_action_str(action_str_l);                                      \
     std::vector<MirrorActionSpec>::const_iterator mait;                     \
@@ -66,7 +68,7 @@ using boost::system::error_code;
     data.set_implicit_deny(fe->ImplicitDenyFlow() ? "yes" : "no");          \
     data.set_short_flow(                                                    \
             fe->is_flags_set(FlowEntry::ShortFlow) ?                        \
-            string("yes (") + GetShortFlowReason(fe->short_flow_reason()) + \
+            string("yes (") + fe->DropReasonStr(fe->short_flow_reason()) + \
             ")": "no");                                                     \
     data.set_local_flow(fe->is_flags_set(FlowEntry::LocalFlow) ? "yes" : "no");     \
     data.set_src_vn_list(fe->data().SourceVnList());                        \
@@ -94,62 +96,18 @@ using boost::system::error_code;
        data.set_aging_protocol(fe->fsc()->flow_aging_key().proto);\
        data.set_aging_port(fe->fsc()->flow_aging_key().port);\
     }\
+    data.set_l3_flow(fe->l3_flow());\
+    uint16_t id = fe->flow_table()? fe->flow_table()->table_index() : 0xFFFF;\
+    data.set_table_id(id);\
+    data.set_deleted(fe->deleted());\
+    SandeshFlowIndexInfo flow_index_info;\
+    KSyncFlowIndexManager *mgr = agent->ksync()->ksync_flow_index_manager();\
+    fe->ksync_index_entry()->SetSandeshData(mgr, &flow_index_info);\
+    data.set_flow_index_info(flow_index_info);
 
 const std::string PktSandeshFlow::start_key = "0-0-0-0-0-0.0.0.0-0.0.0.0";
 
 ////////////////////////////////////////////////////////////////////////////////
-
-static const char * GetShortFlowReason(uint16_t reason) {
-    switch (reason) {
-    case FlowEntry::SHORT_UNAVIALABLE_INTERFACE:
-        return "Interface unavialable";
-    case FlowEntry::SHORT_IPV4_FWD_DIS:
-        return "Ipv4 forwarding disabled";
-    case FlowEntry::SHORT_UNAVIALABLE_VRF:
-        return "VRF unavailable";
-    case FlowEntry::SHORT_NO_SRC_ROUTE:
-        return "No Source route";
-    case FlowEntry::SHORT_NO_DST_ROUTE:
-        return "No Destination route";
-    case FlowEntry::SHORT_AUDIT_ENTRY:
-        return "Audit Entry";
-    case FlowEntry::SHORT_VRF_CHANGE:
-        return "VRF Change";
-    case FlowEntry::SHORT_NO_REVERSE_FLOW:
-        return "No Reverse flow";
-    case FlowEntry::SHORT_REVERSE_FLOW_CHANGE:
-        return "Reverse flow change";
-    case FlowEntry::SHORT_NAT_CHANGE:
-        return "NAT Changed";
-    case FlowEntry::SHORT_FLOW_LIMIT:
-        return "Flow Limit Reached";
-    case FlowEntry::SHORT_LINKLOCAL_SRC_NAT:
-        return "Linklocal source NAT failed";
-    default:
-        break;
-    }
-    return "Unknown";
-}
-
-static const char * GetFlowDropReason(FlowEntry *fe) {
-    switch (fe->data().drop_reason) {
-    case FlowEntry::DROP_POLICY:
-        return "Policy";
-    case FlowEntry::DROP_OUT_POLICY:
-        return "Out Policy";
-    case FlowEntry::DROP_SG:
-        return "SG";
-    case FlowEntry::DROP_OUT_SG:
-        return "Out SG";
-    case FlowEntry::DROP_REVERSE_SG:
-        return "Reverse SG";
-    case FlowEntry::DROP_REVERSE_OUT_SG:
-        return "Reverse Out SG";
-    default:
-        break;
-    }
-    return GetShortFlowReason(fe->data().drop_reason);;
-}
 
 static void SetOneAclInfo(FlowAclInfo *policy, uint32_t action,
                           const MatchAclParamsList &acl_list)  {
@@ -454,20 +412,31 @@ void FlowAgeTimeReq::HandleRequest() const {
 
     FlowStatsCollector *collector =
         agent->flow_stats_manager()->default_flow_stats_collector();
+    FlowStatsCollector *tcp_col =
+        agent->flow_stats_manager()->tcp_flow_stats_collector();
 
     FlowAgeTimeResp *resp = new FlowAgeTimeResp();
-    if (collector == NULL) {
-        goto done;
-    }
-    resp->set_old_age_time(collector->flow_age_time_intvl_in_secs());
+    if (collector) {
+        resp->set_old_age_time(collector->flow_age_time_intvl_in_secs());
 
-    if (age_time && age_time != resp->get_old_age_time()) {
-        collector->UpdateFlowAgeTimeInSecs(age_time);
-        resp->set_new_age_time(age_time);
-    } else {
-        resp->set_new_age_time(resp->get_old_age_time());
+        if (age_time && age_time != resp->get_old_age_time()) {
+            collector->UpdateFlowAgeTimeInSecs(age_time);
+            resp->set_new_age_time(age_time);
+        } else {
+            resp->set_new_age_time(resp->get_old_age_time());
+        }
     }
-done:
+    if (tcp_col) {
+        resp->set_old_tcp_age_time(tcp_col->flow_age_time_intvl_in_secs());
+
+        if (age_time && age_time != resp->get_old_age_time() &&
+            !tcp_col->user_configured()) {
+            tcp_col->UpdateFlowAgeTimeInSecs(age_time);
+            resp->set_new_tcp_age_time(age_time);
+        } else {
+            resp->set_new_tcp_age_time(resp->get_old_tcp_age_time());
+        }
+    }
     resp->set_context(context());
     resp->set_more(false);
     resp->Response();

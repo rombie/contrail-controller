@@ -689,21 +689,27 @@ class TestPolicy(test_case.STTestCase):
                                   vn2_obj.get_fq_name_str(), ':'.join(self.get_ri_name(vn2_obj, sc_ri_name)))
 
         si_name = 'default-domain:default-project:' + service_name
+        if version == 2:
+            v4_service_chain_address = '10.0.0.251'
+            v6_service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffb'
+        else:
+            v4_service_chain_address = '10.0.0.252'
+            v6_service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffc'
         sci = ServiceChainInfo(prefix = ['10.0.0.0/24'],
                                routing_instance = ':'.join(self.get_ri_name(vn1_obj)),
-                               service_chain_address = '10.0.0.252',
+                               service_chain_address = v4_service_chain_address,
                                service_instance = si_name)
         self.check_service_chain_info(self.get_ri_name(vn2_obj, sc_ri_name), sci)
         sci.prefix = ['1000::/16']
-        sci.service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffc'
+        sci.service_chain_address = v6_service_chain_address
         self.check_v6_service_chain_info(self.get_ri_name(vn2_obj, sc_ri_name), sci)
         sci = ServiceChainInfo(prefix = ['20.0.0.0/24'],
                                routing_instance = ':'.join(self.get_ri_name(vn2_obj)),
-                               service_chain_address = '10.0.0.252',
+                               service_chain_address = v4_service_chain_address,
                                service_instance = si_name)
         self.check_service_chain_info(self.get_ri_name(vn1_obj, sc_ri_name), sci)
         sci.prefix = ['2000::/16']
-        sci.service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffc'
+        sci.service_chain_address = v6_service_chain_address
         self.check_v6_service_chain_info(self.get_ri_name(vn1_obj, sc_ri_name), sci)
 
         vn1_obj.set_multi_policy_service_chains_enabled(True)
@@ -758,7 +764,7 @@ class TestPolicy(test_case.STTestCase):
         self.wait_to_get_object(config_db.RouteAggregateST,
                                 ra.get_fq_name_str())
         ra = self._vnc_lib.route_aggregate_read(id=ra.uuid)
-        self.assertEqual(ra.get_aggregate_route_nexthop(), '10.0.0.252')
+        self.assertEqual(ra.get_aggregate_route_nexthop(), v4_service_chain_address)
         ident_name = self.get_obj_imid(ra)
         self.wait_to_get_link(ident_name, ':'.join(self.get_ri_name(vn1_obj, sc_ri_name)))
         ra.del_service_instance(si_obj)
@@ -781,9 +787,7 @@ class TestPolicy(test_case.STTestCase):
 
     def test_service_policy(self):
         self.service_policy_test_with_version()
-        # TODO: Remove comment after the cleanup issue is resolved
-        # Issue seen after port tuple commit in svc_monitor
-        #self.service_policy_test_with_version(2)
+        self.service_policy_test_with_version(2)
     # end test_service_policy
 
     def test_service_policy_with_any(self):
@@ -1316,33 +1320,42 @@ class TestPolicy(test_case.STTestCase):
         self._vnc_lib.route_table_create(rt)
         vn1.add_route_table(rt)
         self._vnc_lib.virtual_network_update(vn1)
+        comm_attr = CommunityAttributes(community_attribute=['1:1'])
         routes = RouteTableType()
         route = RouteType(prefix="1.1.1.1/0",
-                          next_hop="10.10.10.10", next_hop_type="ip-address")
+                          next_hop="10.10.10.10", next_hop_type="ip-address",
+                          community_attributes=comm_attr)
         routes.add_route(route)
         rt.set_routes(routes)
         self._vnc_lib.route_table_update(rt)
 
         @retries(5)
-        def _match_route_table(vn, prefix, next_hop, should_present=True):
+        def _match_route_table(vn, prefix, next_hop, communities,
+                               should_be_present=True):
             ri = self._vnc_lib.routing_instance_read(
                 fq_name=self.get_ri_name(vn))
             sr_list = ri.get_static_route_entries()
             if sr_list is None:
-                if should_present:
+                if should_be_present:
                     raise Exception("sr is None")
                 else:
                     return
             found = False
             for sr in sr_list.get_route() or []:
-                if sr.prefix == prefix and sr.next_hop == next_hop:
+                if (sr.prefix == prefix and sr.next_hop == next_hop and
+                    sr.community == communities):
                     found = True
                     break
-            if found != should_present:
+            if found != should_be_present:
                 raise Exception("route " + prefix + "" + next_hop + "not found")
             return
 
-        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10")
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", ['1:1'])
+
+        route.community_attributes.community_attribute.append('1:2')
+        rt.set_routes(routes)
+        self._vnc_lib.route_table_update(rt)
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", ['1:1', '1:2'])
 
         route = RouteType(prefix="2.2.2.2/0",
                           next_hop="20.20.20.20", next_hop_type="ip-address")
@@ -1350,24 +1363,24 @@ class TestPolicy(test_case.STTestCase):
         rt.set_routes(routes)
 
         self._vnc_lib.route_table_update(rt)
-        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10")
-        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20")
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", ['1:1', '1:2'])
+        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20", [])
 
         vn2.add_route_table(rt)
         self._vnc_lib.virtual_network_update(vn2)
 
-        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10")
-        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20")
-        _match_route_table(vn2, "1.1.1.1/0", "10.10.10.10")
-        _match_route_table(vn2, "2.2.2.2/0", "20.20.20.20")
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", ['1:1', '1:2'])
+        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20", [])
+        _match_route_table(vn2, "1.1.1.1/0", "10.10.10.10", ['1:1', '1:2'])
+        _match_route_table(vn2, "2.2.2.2/0", "20.20.20.20", [])
 
         # delete second route and check vn ri sr entries
         routes.delete_route(route)
         rt.set_routes(routes)
         self._vnc_lib.route_table_update(rt)
 
-        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20", False)
-        _match_route_table(vn2, "2.2.2.2/0", "20.20.20.20", False)
+        _match_route_table(vn1, "2.2.2.2/0", "20.20.20.20", [], False)
+        _match_route_table(vn2, "2.2.2.2/0", "20.20.20.20", [], False)
 
         @retries(5)
         def _match_route_table_cleanup(vn):
@@ -1379,14 +1392,14 @@ class TestPolicy(test_case.STTestCase):
 
         vn2.del_route_table(rt)
         self._vnc_lib.virtual_network_update(vn2)
-        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10")
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", ['1:1', '1:2'])
         _match_route_table_cleanup(vn2)
 
         # delete first route and check vn ri sr entries
         rt.set_routes(None)
         self._vnc_lib.route_table_update(rt)
 
-        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", False)
+        _match_route_table(vn1, "1.1.1.1/0", "10.10.10.10", [], False)
 
         vn1.del_route_table(rt)
         self._vnc_lib.virtual_network_update(vn1)

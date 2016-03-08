@@ -484,7 +484,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
         vrouter_fq_name = ['default-global-system-config', host_id]
         try:
             vrouter_id = db_conn.fq_name_to_uuid('virtual-router', vrouter_fq_name)
-        except NoIdError:
+        except cfgm_common.exceptions.NoIdError:
             return
 
         #if virtual_machine_refs is an empty list delete vrouter link
@@ -1516,6 +1516,33 @@ class LogicalInterfaceServer(Resource, LogicalInterface):
     # end _check_vlan
 
 # end class LogicalInterfaceServer
+
+class RouteTableServer(Resource, RouteTable):
+
+    @classmethod
+    def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
+        return cls._check_prefixes(obj_dict)
+    # end pre_dbe_create
+
+    @classmethod
+    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+        return cls._check_prefixes(obj_dict)
+    # end pre_dbe_update
+
+    @classmethod
+    def _check_prefixes(cls, obj_dict):
+        routes = obj_dict.get('routes') or {}
+        in_routes = routes.get("route") or []
+        in_prefixes = [r.get('prefix') for r in in_routes]
+        in_prefixes_set = set(in_prefixes)
+        if len(in_prefixes) != len(in_prefixes_set):
+            return (False, (400, 'duplicate prefixes not '
+                                      'allowed: %s' % obj_dict.get('uuid')))
+
+        return (True, "")
+    # end _check_prefixes
+
+# end class RouteTableServer
 
 class PhysicalInterfaceServer(Resource, PhysicalInterface):
 

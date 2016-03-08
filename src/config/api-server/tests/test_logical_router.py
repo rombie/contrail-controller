@@ -81,14 +81,14 @@ class TestLogicalRouter(test_case.ApiServerTestCase):
         vn1 = VirtualNetwork('my-vn-1', project)
         vn1.add_network_ipam(ipam, VnSubnetsType([ipam_sn_v4_vn1, ipam_sn_v6_vn1]))
         self._vnc_lib.virtual_network_create(vn1)
-        logger.debug('Created Virtual Network object for my-vn-1 ', vn1.uuid)
+        logger.debug('Created Virtual Network object for my-vn-1: %s', vn1.uuid)
         net_obj1 = self._vnc_lib.virtual_network_read(id = vn1.uuid)
 
         # Create VN my-vn-2
         vn2 = VirtualNetwork('my-vn-2', project)
         vn2.add_network_ipam(ipam, VnSubnetsType([ipam_sn_v4_vn2, ipam_sn_v6_vn2]))
         self._vnc_lib.virtual_network_create(vn2)
-        logger.debug('Created Virtual Network object for my-vn-2 ', vn2.uuid)
+        logger.debug('Created Virtual Network object for my-vn-2: %s', vn2.uuid)
         net_obj2 = self._vnc_lib.virtual_network_read(id = vn2.uuid)
 
         # Create Logical Router
@@ -229,14 +229,14 @@ class TestLogicalRouter(test_case.ApiServerTestCase):
         vn1 = VirtualNetwork('my-vn-1', project)
         vn1.add_network_ipam(ipam, VnSubnetsType([ipam_sn_v4_vn1, ipam_sn_v6_vn1]))
         self._vnc_lib.virtual_network_create(vn1)
-        logger.debug('Created Virtual Network object for my-vn-1 ', vn1.uuid)
+        logger.debug('Created Virtual Network object for my-vn-1: %s', vn1.uuid)
         net_obj1 = self._vnc_lib.virtual_network_read(id = vn1.uuid)
 
         # Create VN my-vn-2
         vn2 = VirtualNetwork('my-vn-2', project)
         vn2.add_network_ipam(ipam, VnSubnetsType([ipam_sn_v4_vn2, ipam_sn_v6_vn2]))
         self._vnc_lib.virtual_network_create(vn2)
-        logger.debug('Created Virtual Network object for my-vn-2 ', vn2.uuid)
+        logger.debug('Created Virtual Network object for my-vn-2: %s', vn2.uuid)
         net_obj2 = self._vnc_lib.virtual_network_read(id = vn2.uuid)
 
         # Create Logical Router
@@ -348,6 +348,39 @@ class TestLogicalRouter(test_case.ApiServerTestCase):
         self._vnc_lib.domain_delete(id=domain.uuid)
     #end
 
+    def test_route_table_prefixes(self):
+        rt = RouteTable("rt1")
+        routes = RouteTableType()
+        route1 = RouteType(prefix="1.1.1.1/0", next_hop="10.10.10.10", next_hop_type="ip-address")
+        route2 = RouteType(prefix="1.1.1.1/0", next_hop="20.20.20.20", next_hop_type="ip-address")
+        routes.add_route(route1)
+        routes.add_route(route2)
+        rt.set_routes(routes)
+        try:
+            self._vnc_lib.route_table_create(rt)
+            self.assertTrue(False, 'Create succeeded unexpectedly - duplicate prefixe routes')
+        except cfgm_common.exceptions.BadRequest as e:
+            pass
+
+        routes.delete_route(route2)
+        route2 = RouteType(prefix="1.1.1.2/0", next_hop="20.20.20.20", next_hop_type="ip-address")
+        routes.add_route(route2)
+        rt.set_routes(routes)
+        try:
+            self._vnc_lib.route_table_create(rt)
+        except:
+            self.assertTrue(False, 'Create failed')
+
+        routes.delete_route(route2)
+        route2 = RouteType(prefix="1.1.1.1/0", next_hop="20.20.20.20", next_hop_type="ip-address")
+        routes.add_route(route2)
+        rt.set_routes(routes)
+        try:
+            self._vnc_lib.route_table_update(rt)
+            self.assertTrue(False, 'Update succeeded unexpectedly - duplicate prefixe routes')
+        except cfgm_common.exceptions.BadRequest as e:
+            pass
+    #end test_route_table_prefixes
 
 #end 
 

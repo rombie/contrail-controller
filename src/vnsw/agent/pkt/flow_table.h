@@ -128,6 +128,8 @@ struct Inet4FlowKeyCmp {
 
 class FlowTable {
 public:
+    static const uint32_t kPortNatFlowTableInstance = 0;
+    static const uint32_t kInvalidFlowTableInstance = 0xFF;
 
     typedef std::map<FlowKey, FlowEntry *, Inet4FlowKeyCmp> FlowEntryMap;
     typedef std::pair<FlowKey, FlowEntry *> FlowEntryMapPair;
@@ -234,7 +236,7 @@ public:
 
     // Concurrency check to ensure all flow-table and free-list manipulations
     // are done from FlowEvent task context only
-    void ConcurrencyCheck();
+    bool ConcurrencyCheck();
 
     friend class FlowStatsCollector;
     friend class PktSandeshFlow;

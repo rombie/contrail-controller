@@ -162,6 +162,21 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
     // Compute L2/L3 forwarding mode for packet
     pkt_info->l3_forwarding = ComputeForwardingMode(pkt_info);
 
+    pkt_info->vrf = pkt_info->agent_hdr.vrf;
+
+    // Look for DHCP packets if corresponding service is enabled
+    // Service processing over-rides ACL/Flow and forwarding configuration
+    if (intf->dhcp_enabled() && (pkt_type == PktType::UDP)) {
+        if (pkt_info->dport == DHCP_SERVER_PORT ||
+            pkt_info->sport == DHCP_CLIENT_PORT) {
+            return DHCP;
+        }
+        if (pkt_info->dport == DHCPV6_SERVER_PORT ||
+            pkt_info->sport == DHCPV6_CLIENT_PORT) {
+            return DHCPV6;
+        }
+    }
+
     if (intf->type() == Interface::VM_INTERFACE) {
         VmInterface *vm_itf = static_cast<VmInterface *>(intf);
         if (pkt_info->l3_forwarding && vm_itf->layer3_forwarding() == false) {
@@ -178,19 +193,14 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
         }
     }
 
-    pkt_info->vrf = pkt_info->agent_hdr.vrf;
-
     // Handle ARP packet
     if (pkt_type == PktType::ARP) {
         return ARP;
     }
 
-    if (IsFlowPacket(pkt_info)) {
-        CalculatePort(pkt_info);
-    }
-
     // Packets needing flow
     if (IsFlowPacket(pkt_info)) {
+        CalculatePort(pkt_info);
         if ((pkt_info->ip && pkt_info->family == Address::INET) ||
             (pkt_info->ip6 && pkt_info->family == Address::INET6)) {
             return FLOW;
@@ -201,24 +211,8 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
         }
     }
 
-    // Handle ARP packet
-    if (pkt_type == PktType::ARP) {
-        return ARP;
-    }
-
-    // Look for DHCP and DNS packets if corresponding service is enabled
+    // Look for DNS packets if corresponding service is enabled
     // Service processing over-rides ACL/Flow
-    if (intf->dhcp_enabled() && (pkt_type == PktType::UDP)) {
-        if (pkt_info->dport == DHCP_SERVER_PORT ||
-            pkt_info->sport == DHCP_CLIENT_PORT) {
-            return DHCP;
-        }
-        if (pkt_info->dport == DHCPV6_SERVER_PORT ||
-            pkt_info->sport == DHCPV6_CLIENT_PORT) {
-            return DHCPV6;
-        }
-    } 
-    
     if (intf->dns_enabled() && (pkt_type == PktType::UDP)) {
         if (pkt_info->dport == DNS_SERVER_PORT) {
             return DNS;
@@ -958,8 +952,7 @@ PktInfo::PktInfo(PktHandler::PktModuleName mod, InterTaskMsg *msg) :
     pkt(), len(), max_pkt_len(0), data(), ipc(msg), family(Address::UNSPEC),
     type(PktType::MESSAGE), agent_hdr(), ether_type(-1), ip_saddr(), ip_daddr(),
     ip_proto(), sport(), dport(), tcp_ack(false), tunnel(),
-    l3_forwarding(false), l3_label(false), eth(), arp(), ip(), ip6(),
-    packet_buffer_() {
+    l3_forwarding(false), l3_label(false), eth(), arp(), ip(), ip6(), packet_buffer_() {
     transp.tcp = 0;
 }
 
