@@ -535,12 +535,12 @@ bool GracefulRestartTest::IsReady(bool ready) {
 
 void GracefulRestartTest::WaitForAgentToBeEstablished(
         test::NetworkAgentMock *agent) {
-    TASK_UTIL_EXPECT_EQ(true, agent->IsChannelReady());
-    TASK_UTIL_EXPECT_EQ(true, agent->IsEstablished());
+    TASK_UTIL_EXPECT_TRUE(agent->IsChannelReady());
+    TASK_UTIL_EXPECT_TRUE(agent->IsEstablished());
 }
 
 void GracefulRestartTest::WaitForPeerToBeEstablished(BgpPeerTest *peer) {
-    TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
+    TASK_UTIL_EXPECT_TRUE(peer->IsReady());
 }
 
 ExtCommunitySpec *GracefulRestartTest::CreateRouteTargets() {
@@ -882,15 +882,15 @@ void GracefulRestartTest::GracefulRestartTestStart () {
 }
 
 void GracefulRestartTest::PeerUp(BgpPeerTest *peer) {
-    TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
+    TASK_UTIL_EXPECT_FALSE(peer->IsReady());
     peer->SetAdminState(false);
-    TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
+    TASK_UTIL_EXPECT_TRUE(peer->IsReady());
 }
 
 void GracefulRestartTest::PeerDown(BgpPeerTest *peer) {
-    TASK_UTIL_EXPECT_EQ(true, peer->IsReady());
+    TASK_UTIL_EXPECT_TRUE(peer->IsReady());
     peer->SetAdminState(true);
-    TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
+    TASK_UTIL_EXPECT_FALSE(peer->IsReady());
 
     // Also delete the routes
     for (int i = 1; i <= n_instances_; i++)
@@ -1102,7 +1102,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
                     const_cast<StateMachine *>(sm)->HoldTimerExpired();
                     TASK_UTIL_EXPECT_EQ(stale + 1, pc->stats().stale);
                 }
-                TASK_UTIL_EXPECT_EQ(false, bgp_server_peers_[
+                TASK_UTIL_EXPECT_FALSE(bgp_server_peers_[
                                                peer->id()]->IsReady());
                 TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
             }
@@ -1242,7 +1242,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
-        TASK_UTIL_EXPECT_EQ(false, peer->IsReady());
+        TASK_UTIL_EXPECT_FALSE(peer->IsReady());
         PeerUp(peer);
     }
 
