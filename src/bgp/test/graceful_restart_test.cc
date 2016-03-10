@@ -41,10 +41,10 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(8);
-static vector<int>  n_routes    = boost::assign::list_of(8);
-static vector<int>  n_agents    = boost::assign::list_of(8);
-static vector<int>  n_peers     = boost::assign::list_of(8);
+static vector<int>  n_instances = boost::assign::list_of(4);
+static vector<int>  n_routes    = boost::assign::list_of(4);
+static vector<int>  n_agents    = boost::assign::list_of(4);
+static vector<int>  n_peers     = boost::assign::list_of(4);
 static vector<int>  n_targets   = boost::assign::list_of(1);
 
 static char **gargv;
@@ -678,7 +678,7 @@ void GracefulRestartTest::ProcessVpnRoute(BgpPeerTest *peer, int instance,
                     tun_encap.GetExtCommunity().begin(), 8));
         attr_spec.push_back(commspec.get());
         BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
-        server_->extcomm_db()->Verify(attr->ext_community(), true);
+
         req.data.reset(new InetTable::RequestData(attr, 0, 20000 + rt));
         table->Enqueue(&req);
     }

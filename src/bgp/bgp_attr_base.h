@@ -192,13 +192,9 @@ private:
 
             // Check if passed in entry did get into the data base.
             if (ret.second) {
+
                 // Take intrusive pointer, thereby incrementing the refcount.
                 TypePtr ptr = TypePtr(*ret.first);
-
-                // Release redundant refcount taken above to protect this entry
-                // from getting deleted, as we have now bumped up refcount above
-                intrusive_ptr_del_ref(*ret.first);
-                intrusive_ptr_add_ref(*ret.first);
                 return ptr;
             }
 
@@ -220,7 +216,6 @@ private:
                 // Release redundant refcount taken above to protect this entry
                 // from getting deleted, as we have now bumped up refcount above
                 intrusive_ptr_del_ref(*ret.first);
-                intrusive_ptr_add_ref(*ret.first);
                 return ptr;
             }
 
