@@ -844,8 +844,7 @@ BgpPath *ResolverPath::LocateResolvedPath(uint32_t path_id,
     BgpPath::PathSource src = path_->GetSource();
     uint32_t flags =
         (path_->GetFlags() & ~BgpPath::ResolveNexthop) | BgpPath::ResolvedPath;
-    return (new BgpPath(partition_->table()->server(),path_id, src, attr,
-                        flags, label));
+    return (new BgpPath(path_id, src, attr, flags, label));
 }
 
 //

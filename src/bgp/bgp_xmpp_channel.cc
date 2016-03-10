@@ -369,7 +369,7 @@ public:
         return parent_->ToUVEKey();
     }
 
-    virtual BgpServer *server() const {
+    virtual BgpServer *server() {
         return server_;
     }
     virtual IPeerClose *peer_close() {

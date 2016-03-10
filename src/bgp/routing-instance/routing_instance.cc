@@ -895,7 +895,7 @@ void RoutingInstance::AddRTargetRoute(uint32_t asn,
     attr_spec.push_back(&origin);
     BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
 
-    BgpPath *path = new BgpPath(server_, index_, BgpPath::Local, attr);
+    BgpPath *path = new BgpPath(index_, BgpPath::Local, attr);
     route->InsertPath(path);
     tbl_partition->Notify(route);
     BGP_LOG_ROUTE(table, static_cast<IPeer *>(NULL),

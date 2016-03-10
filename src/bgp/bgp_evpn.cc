@@ -176,8 +176,7 @@ void EvpnLocalMcastNode::AddInclusiveMulticastRoute() {
     }
 
     // Add a path with source BgpPath::Local.
-    BgpPath *path = new BgpPath(partition_->server(),
-                                BgpPath::Local, attr_, 0, label_);
+    BgpPath *path = new BgpPath(BgpPath::Local, attr_, 0, label_);
     route->InsertPath(path);
     inclusive_mcast_route_ = route;
     tbl_partition->Notify(inclusive_mcast_route_);

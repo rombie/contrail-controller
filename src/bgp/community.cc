@@ -356,10 +356,6 @@ ExtCommunity::ExtCommunity(ExtCommunityDB *extcomm_db,
     communities_.erase(it, communities_.end());
 }
 
-ExtCommunity::~ExtCommunity() {
-    extcomm_db_->Verify(this, false);
-}
-
 ExtCommunityDB::ExtCommunityDB(BgpServer *server) {
 }
 

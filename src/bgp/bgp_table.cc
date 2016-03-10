@@ -296,8 +296,9 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
             }
         }
 
-        BgpPath *new_path = new BgpPath(peer, path_id, BgpPath::BGP_XMPP,
-                                        attrs, flags, label);
+        BgpPath *new_path;
+        new_path =
+            new BgpPath(peer, path_id, BgpPath::BGP_XMPP, attrs, flags, label);
 
         if (new_path->NeedsResolution()) {
             Address::Family family = new_path->GetAttr()->nexthop_family();

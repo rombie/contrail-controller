@@ -135,7 +135,7 @@ public:
     // Printable name
     virtual std::string ToString() const = 0;
     virtual std::string ToUVEKey() const = 0;
-    virtual BgpServer *server() const = 0;
+    virtual BgpServer *server() = 0;
     virtual IPeerClose *peer_close() = 0;
     virtual IPeerDebugStats *peer_stats() = 0;
     virtual const IPeerDebugStats *peer_stats() const = 0;

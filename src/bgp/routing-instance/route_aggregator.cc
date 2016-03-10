@@ -424,8 +424,8 @@ void AggregateRoute<T>::AddAggregateRoute() {
     extcomm_spec.communities.push_back(origin_vn.GetExtCommunityValue());
     attrs.push_back(&extcomm_spec);
     BgpAttrPtr attr = routing_instance()->server()->attr_db()->Locate(attrs);
-    BgpPath *new_path = new BgpPath(routing_instance()->server(),
-            BgpPath::Aggregate, attr.get(), BgpPath::ResolveNexthop, 0);
+    BgpPath *new_path = new BgpPath(BgpPath::Aggregate,
+                                    attr.get(), BgpPath::ResolveNexthop, 0);
     bgp_table()->path_resolver()->StartPathResolution(partition->index(),
                                                      new_path, aggregate_route);
     aggregate_route->InsertPath(new_path);
@@ -460,8 +460,8 @@ void AggregateRoute<T>::UpdateAggregateRoute() {
     extcomm_spec.communities.push_back(origin_vn.GetExtCommunityValue());
     attrs.push_back(&extcomm_spec);
     BgpAttrPtr attr = routing_instance()->server()->attr_db()->Locate(attrs);
-    BgpPath *new_path = new BgpPath(routing_instance()->server(),
-            BgpPath::Aggregate, attr.get(), BgpPath::ResolveNexthop, 0);
+    BgpPath *new_path = new BgpPath(BgpPath::Aggregate,
+                                    attr.get(), BgpPath::ResolveNexthop, 0);
     bgp_table()->path_resolver()->StartPathResolution(partition->index(),
                                                     new_path, aggregate_route_);
     aggregate_route_->InsertPath(new_path);

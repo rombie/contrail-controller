@@ -156,7 +156,7 @@ public:
 
     explicit ExtCommunity(ExtCommunityDB *extcomm_db,
                           const ExtCommunitySpec spec);
-    virtual ~ExtCommunity();
+    virtual ~ExtCommunity() { }
     virtual void Remove();
     int CompareTo(const ExtCommunity &rhs) const;
 
@@ -169,7 +169,6 @@ public:
     void RemoveOriginVn();
     void RemoveTunnelEncapsulation();
     void RemoveLoadBalance();
-    ExtCommunityDB *attr_db() const { return extcomm_db_; }
 
     // Return vector of communities
     const ExtCommunityList &communities() const {
@@ -287,6 +286,24 @@ private:
     ExtCommunityList communities_;
 };
 
+inline int intrusive_ptr_add_ref(const ExtCommunity *cextcomm) {
+    return cextcomm->refcount_.fetch_and_increment();
+}
+
+inline int intrusive_ptr_del_ref(const ExtCommunity *cextcomm) {
+    return cextcomm->refcount_.fetch_and_decrement();
+}
+
+inline void intrusive_ptr_release(const ExtCommunity *cextcomm) {
+    int prev = cextcomm->refcount_.fetch_and_decrement();
+    if (prev == 1) {
+        ExtCommunity *extcomm = const_cast<ExtCommunity *>(cextcomm);
+        extcomm->Remove();
+        assert(extcomm->refcount_ == 0);
+        delete extcomm;
+    }
+}
+
 typedef boost::intrusive_ptr<const ExtCommunity> ExtCommunityPtr;
 
 struct ExtCommunityCompare {
@@ -325,26 +342,5 @@ public:
 
 private:
 };
-
-inline int intrusive_ptr_add_ref(const ExtCommunity *cextcomm) {
-    tbb::recursive_mutex::scoped_lock lock(cextcomm->attr_db()->mutex(cextcomm));
-    return cextcomm->refcount_.fetch_and_increment();
-}
-
-inline int intrusive_ptr_del_ref(const ExtCommunity *cextcomm) {
-    tbb::recursive_mutex::scoped_lock lock(cextcomm->attr_db()->mutex(cextcomm));
-    return cextcomm->refcount_.fetch_and_decrement();
-}
-
-inline void intrusive_ptr_release(const ExtCommunity *cextcomm) {
-    tbb::recursive_mutex::scoped_lock lock(cextcomm->attr_db()->mutex(cextcomm));
-    int prev = cextcomm->refcount_.fetch_and_decrement();
-    if (prev == 1) {
-        ExtCommunity *extcomm = const_cast<ExtCommunity *>(cextcomm);
-        extcomm->Remove();
-        assert(extcomm->refcount_ == 0);
-        delete extcomm;
-    }
-}
 
 #endif  // SRC_BGP_COMMUNITY_H_

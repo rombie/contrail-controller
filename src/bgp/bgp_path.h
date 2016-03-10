@@ -11,7 +11,6 @@
 #include "base/util.h"
 #include "route/path.h"
 #include "bgp/bgp_attr.h"
-#include "bgp/ipeer.h"
 
 class BgpTable;
 class BgpRoute;
@@ -50,9 +49,9 @@ public:
             const BgpAttrPtr ptr, uint32_t flags, uint32_t label);
     BgpPath(const IPeer *peer, PathSource src, const BgpAttrPtr attr,
             uint32_t flags, uint32_t label);
-    BgpPath(BgpServer *server, uint32_t path_id, PathSource src,
-            const BgpAttrPtr attr, uint32_t flags = 0, uint32_t label = 0);
-    BgpPath(BgpServer *server, PathSource src, const BgpAttrPtr attr,
+    BgpPath(uint32_t path_id, PathSource src, const BgpAttrPtr attr,
+            uint32_t flags = 0, uint32_t label = 0);
+    BgpPath(PathSource src, const BgpAttrPtr attr,
             uint32_t flags = 0, uint32_t label = 0);
     virtual ~BgpPath() {
     }
@@ -80,7 +79,6 @@ public:
     void SetAttr(const BgpAttrPtr attr, const BgpAttrPtr original_attr) {
         attr_ = attr;
         original_attr_ = original_attr;
-        Verify(peer_ ? peer_->server() : NULL);
     }
 
     const BgpAttr *GetAttr() const {
@@ -154,8 +152,6 @@ public:
     int PathCompare(const BgpPath &rhs, bool allow_ecmp) const;
 
 private:
-    void Verify(BgpServer *server);
-
     const IPeer *peer_;
     const uint32_t path_id_;
     const PathSource source_;

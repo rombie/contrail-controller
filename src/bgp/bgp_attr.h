@@ -7,7 +7,6 @@
 
 #include <boost/intrusive_ptr.hpp>
 #include <tbb/atomic.h>
-#include <tbb/recursive_mutex.h>
 
 #include <set>
 #include <string>
@@ -769,7 +768,7 @@ public:
     explicit BgpAttr(BgpAttrDB *attr_db);
     explicit BgpAttr(const BgpAttr &rhs);
     BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec);
-    virtual ~BgpAttr();
+    virtual ~BgpAttr() { }
 
     virtual void Remove();
     int CompareTo(const BgpAttr &rhs) const;
@@ -875,6 +874,24 @@ private:
     BgpOListPtr leaf_olist_;
 };
 
+inline int intrusive_ptr_add_ref(const BgpAttr *cattrp) {
+    return cattrp->refcount_.fetch_and_increment();
+}
+
+inline int intrusive_ptr_del_ref(const BgpAttr *cattrp) {
+    return cattrp->refcount_.fetch_and_decrement();
+}
+
+inline void intrusive_ptr_release(const BgpAttr *cattrp) {
+    int prev = cattrp->refcount_.fetch_and_decrement();
+    if (prev == 1) {
+        BgpAttr *attrp = const_cast<BgpAttr *>(cattrp);
+        attrp->Remove();
+        assert(attrp->refcount_ == 0);
+        delete attrp;
+    }
+}
+
 typedef boost::intrusive_ptr<const BgpAttr> BgpAttrPtr;
 
 struct BgpAttrCompare {
@@ -916,26 +933,5 @@ public:
 private:
     BgpServer *server_;
 };
-
-inline int intrusive_ptr_add_ref(const BgpAttr *cattrp) {
-    tbb::recursive_mutex::scoped_lock lock(cattrp->attr_db()->mutex(cattrp));
-    return cattrp->refcount_.fetch_and_increment();
-}
-
-inline int intrusive_ptr_del_ref(const BgpAttr *cattrp) {
-    tbb::recursive_mutex::scoped_lock lock(cattrp->attr_db()->mutex(cattrp));
-    return cattrp->refcount_.fetch_and_decrement();
-}
-
-inline void intrusive_ptr_release(const BgpAttr *cattrp) {
-    tbb::recursive_mutex::scoped_lock lock(cattrp->attr_db()->mutex(cattrp));
-    int prev = cattrp->refcount_.fetch_and_decrement();
-    if (prev == 1) {
-        BgpAttr *attrp = const_cast<BgpAttr *>(cattrp);
-        attrp->Remove();
-        assert(attrp->refcount_ == 0);
-        delete attrp;
-    }
-}
 
 #endif  // SRC_BGP_BGP_ATTR_H_
