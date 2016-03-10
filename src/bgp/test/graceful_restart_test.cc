@@ -57,7 +57,7 @@ static void process_command_line_args(int argc, char **argv) {
     if (cmd_line_processed) return;
     cmd_line_processed = true;
 
-    int instances = 4, routes = 4, agents = 4, peers = 4, targets = 1;
+    int ninstances = 4, nroutes = 4, nagents = 4, npeers = 4, ntargets = 1;
     bool close_from_control_node = false;
     bool cmd_line_arg_set = false;
 
@@ -94,23 +94,23 @@ static void process_command_line_args(int argc, char **argv) {
     }
 
     if (vm.count("ninstances")) {
-        instances = vm["ninstances"].as<int>();
+        ninstances = vm["ninstances"].as<int>();
         cmd_line_arg_set = true;
     }
     if (vm.count("nroutes")) {
-        routes = vm["nroutes"].as<int>();
+        nroutes = vm["nroutes"].as<int>();
         cmd_line_arg_set = true;
     }
     if (vm.count("nagents")) {
-        agents = vm["nagents"].as<int>();
+        nagents = vm["nagents"].as<int>();
         cmd_line_arg_set = true;
     }
     if (vm.count("npeers")) {
-        peers = vm["npeers"].as<int>();
+        npeers = vm["npeers"].as<int>();
         cmd_line_arg_set = true;
     }
     if (vm.count("ntargets")) {
-        targets = vm["ntargets"].as<int>();
+        ntargets = vm["ntargets"].as<int>();
         cmd_line_arg_set = true;
     }
     if (vm.count("db-walker-wait-usecs")) {
@@ -120,19 +120,19 @@ static void process_command_line_args(int argc, char **argv) {
 
     if (cmd_line_arg_set) {
         n_instances.clear();
-        n_instances.push_back(instances);
+        n_instances.push_back(ninstances);
 
         n_routes.clear();
-        n_routes.push_back(routes);
+        n_routes.push_back(nroutes);
 
         n_targets.clear();
-        n_targets.push_back(targets);
+        n_targets.push_back(ntargets);
 
         n_agents.clear();
-        n_agents.push_back(agents);
+        n_agents.push_back(nagents);
 
         n_peers.clear();
-        n_peers.push_back(peers);
+        n_peers.push_back(npeers);
     }
 }
 

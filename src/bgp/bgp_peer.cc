@@ -44,15 +44,21 @@ class BgpPeer::PeerClose : public IPeerClose {
   public:
     explicit PeerClose(BgpPeer *peer)
         : peer_(peer),
-          is_closed_(false),
-          manager_(BgpObjectFactory::Create<PeerCloseManager>(peer_)) {
-    }
+          manager_(BgpObjectFactory::Create<PeerCloseManager>(peer_)) { }
 
-    virtual ~PeerClose() {
-    }
+    virtual ~PeerClose() { }
+    virtual string ToString() const { return peer_->ToString(); }
+    virtual void CustomClose() { return peer_->CustomClose(); }
+    virtual void GracefulRestartStale() { }
+    virtual void GracefulRestartSweep() { }
+    virtual PeerCloseManager *close_manager() { return manager_.get(); }
+    void Close() { manager_->Close(); }
 
-    virtual string ToString() const {
-        return peer_->ToString();
+    virtual void Delete() {
+        if (peer_->IsDeleted())
+            peer_->RetryDelete();
+        else
+            CloseComplete();
     }
 
     // If the peer is deleted or administratively held down, do not attempt
@@ -65,40 +71,15 @@ class BgpPeer::PeerClose : public IPeerClose {
         return peer_->server()->IsPeerCloseGraceful();
     }
 
-    virtual void CustomClose() { return peer_->CustomClose(); }
-    virtual void GracefulRestartStale() { }
-    virtual void GracefulRestartSweep() { }
-
     // Close process for this peer is complete. Restart the state machine and
     // attempt to bring up session with the neighbor
     virtual void CloseComplete() {
-        // peer_->server()->decrement_closing_count();
-        if (!peer_->IsAdminDown())
+        if (!peer_->IsDeleted() && !peer_->IsAdminDown())
             peer_->state_machine_->Initialize();
-    }
-
-    virtual void Delete() {
-        if (!peer_->IsDeleted()) {
-            CloseComplete();
-            return;
-        }
-        peer_->server()->decrement_closing_count();
-        peer_->deleter()->RetryDelete();
-        is_closed_ = true;
-    }
-
-    bool IsClosed() const { return is_closed_; }
-    virtual PeerCloseManager *close_manager() { return manager_.get(); }
-
-    void Close() {
-        if (!manager_->IsCloseInProgress())
-            peer_->server()->increment_closing_count();
-        manager_->Close();
     }
 
 private:
     BgpPeer *peer_;
-    bool is_closed_;
     boost::scoped_ptr<PeerCloseManager> manager_;
 };
 
@@ -214,7 +195,7 @@ public:
 
     virtual bool MayDelete() const {
         CHECK_CONCURRENCY("bgp::Config");
-        if (!peer_->peer_close_->IsClosed())
+        if (peer_->IsCloseInProgress())
             return false;
         if (!peer_->state_machine_->IsQueueEmpty())
             return false;
@@ -229,6 +210,7 @@ public:
     virtual void Destroy() {
         CHECK_CONCURRENCY("bgp::Config");
         peer_->PostCloseRelease();
+        peer_->server()->decrement_deleting_count();
         peer_->rtinstance_->peer_manager()->DestroyIPeer(peer_);
     }
 
@@ -1589,8 +1571,11 @@ BgpAttrPtr BgpPeer::GetMpNlriNexthop(BgpMpNlri *nlri, BgpAttrPtr attr) {
 }
 
 void BgpPeer::ManagedDelete() {
+    if (deleter_->IsDeleted())
+        return;
     BGP_LOG_PEER(Config, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
                  BGP_PEER_DIR_NA, "Received request for deletion");
+    server()->increment_deleting_count();
     deleter_->Delete();
 }
 
