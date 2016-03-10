@@ -7,7 +7,7 @@
 
 #include <boost/functional/hash.hpp>
 #include <boost/scoped_array.hpp>
-#include <tbb/mutex.h>
+#include <tbb/recursive_mutex.h>
 
 #include <set>
 #include <string>
@@ -121,29 +121,53 @@ public:
     explicit BgpPathAttributeDB(int hash_size = GetHashSize())
         : hash_size_(hash_size),
           set_(new Set[hash_size]),
-          mutex_(new tbb::mutex[hash_size]) {
+          mutex_(new tbb::recursive_mutex[hash_size]) {
     }
 
     size_t Size() {
         size_t size = 0;
 
         for (size_t i = 0; i < hash_size_; i++) {
-            tbb::mutex::scoped_lock lock(mutex_[i]);
+            tbb::recursive_mutex::scoped_lock lock(mutex_[i]);
             size += set_[i].size();
         }
         return size;
     }
 
+    tbb::recursive_mutex &mutex(const Type *attr) {
+        size_t hash = HashCompute(const_cast<Type *>(attr));
+        return mutex_[hash];
+    }
+
     void Delete(Type *attr) {
         size_t hash = HashCompute(attr);
 
-        tbb::mutex::scoped_lock lock(mutex_[hash]);
-        set_[hash].erase(attr);
+        tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
+        typename Set::iterator it = set_[hash].find(attr);
+        assert(it != set_[hash].end());
+        assert(*it == attr);
+        set_[hash].erase(it);
     }
 
     // Locate passed in attribute in the data base based on the attr ptr.
     TypePtr Locate(Type *attr) {
         return LocateInternal(attr);
+    }
+
+    void Verify(const Type *cattr, bool present) {
+        Type *attr = const_cast<Type *>(cattr);
+        size_t hash = HashCompute(attr);
+
+        tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
+        typename Set::iterator it = set_[hash].find(attr);
+
+        if (present) {
+            assert(it != set_[hash].end());
+            assert(*it == attr);
+        } else {
+            if (it != set_[hash].end())
+                assert(*it != attr);
+        }
     }
 
     // Locate passed in attribute in the data base, based on the attr spec.
@@ -179,7 +203,7 @@ private:
         size_t hash = HashCompute(attr);
         while (true) {
             // Grab mutex to keep db access thread safe.
-            tbb::mutex::scoped_lock lock(mutex_[hash]);
+            tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
             std::pair<typename Set::iterator, bool> ret;
 
             // Try to insert the passed entry into the database.
@@ -210,6 +234,7 @@ private:
             // cases, we retry inserting the passed attribute pointer into the
             // data base.
             if (prev > 0) {
+
                 // Free passed in attribute, as it is already in the database.
                 delete attr;
 
@@ -235,7 +260,7 @@ private:
     typedef std::set<Type *, TypeCompare> Set;
     size_t hash_size_;
     boost::scoped_array<Set> set_;
-    boost::scoped_array<tbb::mutex> mutex_;
+    boost::scoped_array<tbb::recursive_mutex> mutex_;
 };
 
 #endif  // SRC_BGP_BGP_ATTR_BASE_H_

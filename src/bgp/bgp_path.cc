@@ -6,6 +6,7 @@
 
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_peer.h"
+#include "bgp/bgp_server.h"
 
 using std::string;
 using std::vector;
@@ -15,28 +16,51 @@ string BgpPath::PathIdString(uint32_t path_id) {
     return addr.to_string();
 }
 
+void BgpPath::Verify(BgpServer *server) {
+    if (!server)
+        return;
+
+    if (attr_) {
+        server->attr_db()->Verify(attr_.get(), true);
+        ExtCommunityPtr ext_comm = attr_->ext_community();
+        if (ext_comm)
+            server->extcomm_db()->Verify(ext_comm.get(), true);
+    }
+
+    if (original_attr_) {
+        server->attr_db()->Verify(original_attr_.get(), true);
+        ExtCommunityPtr ext_comm = attr_->ext_community();
+        if (ext_comm)
+            server->extcomm_db()->Verify(ext_comm.get(), true);
+    }
+}
+
 BgpPath::BgpPath(const IPeer *peer, uint32_t path_id, PathSource src,
                  const BgpAttrPtr ptr, uint32_t flags, uint32_t label)
     : peer_(peer), path_id_(path_id), source_(src), attr_(ptr),
       original_attr_(ptr), flags_(flags), label_(label) {
+          Verify(peer ? peer->server() : NULL);
 }
 
 BgpPath::BgpPath(const IPeer *peer, PathSource src, const BgpAttrPtr ptr,
         uint32_t flags, uint32_t label)
     : peer_(peer), path_id_(0), source_(src), attr_(ptr), original_attr_(ptr),
       flags_(flags), label_(label) {
+          Verify(peer ? peer->server() : NULL);
 }
 
-BgpPath::BgpPath(uint32_t path_id, PathSource src, const BgpAttrPtr ptr,
-        uint32_t flags, uint32_t label)
+BgpPath::BgpPath(BgpServer *server, uint32_t path_id, PathSource src,
+                 const BgpAttrPtr ptr, uint32_t flags, uint32_t label)
     : peer_(NULL), path_id_(path_id), source_(src), attr_(ptr),
       original_attr_(ptr), flags_(flags), label_(label) {
+          Verify(server);
 }
 
-BgpPath::BgpPath(PathSource src, const BgpAttrPtr ptr,
-        uint32_t flags, uint32_t label)
+BgpPath::BgpPath(BgpServer *server, PathSource src, const BgpAttrPtr ptr,
+                 uint32_t flags, uint32_t label)
     : peer_(NULL), path_id_(0), source_(src), attr_(ptr), original_attr_(ptr),
       flags_(flags), label_(label) {
+          Verify(server);
 }
 
 // True is better

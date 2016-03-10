@@ -432,7 +432,8 @@ void StaticRoute<T>::UpdateStaticRoute() {
             attr_db->ReplaceCommunityAndLocate(new_attr.get(), community_);
 
         BgpPath *new_path =
-            new BgpPath(*it, BgpPath::StaticRoute, new_attr.get(),
+            new BgpPath(routing_instance()->server(), *it,
+                        BgpPath::StaticRoute, new_attr.get(),
                         existing_path->GetFlags(), existing_path->GetLabel());
 
         static_route->RemovePath(BgpPath::StaticRoute, NULL, *it);
@@ -524,7 +525,8 @@ void StaticRoute<T>::AddStaticRoute(NexthopPathIdList *old_path_ids) {
         }
 
         BgpPath *new_path =
-            new BgpPath(path_id, BgpPath::StaticRoute, new_attr.get(),
+            new BgpPath(routing_instance()->server(), path_id,
+                        BgpPath::StaticRoute, new_attr.get(),
                 nexthop_route_path->GetFlags(), nexthop_route_path->GetLabel());
         if (is_stale)
             new_path->SetStale();

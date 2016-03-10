@@ -296,9 +296,8 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
             }
         }
 
-        BgpPath *new_path;
-        new_path =
-            new BgpPath(peer, path_id, BgpPath::BGP_XMPP, attrs, flags, label);
+        BgpPath *new_path = new BgpPath(peer, path_id, BgpPath::BGP_XMPP,
+                                        attrs, flags, label);
 
         if (new_path->NeedsResolution()) {
             Address::Family family = new_path->GetAttr()->nexthop_family();
@@ -406,8 +405,7 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
             }
 
             path = rt->FindPath(BgpPath::BGP_XMPP, peer, path_id);
-            if (path && req->oper != DBRequest::DB_ENTRY_DELETE)
-                deleted_paths.erase(path);
+            deleted_paths.erase(path);
 
             if (data->attrs() && count > 0) {
                 BgpAttr *clone = new BgpAttr(*data->attrs());

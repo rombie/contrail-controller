@@ -344,8 +344,12 @@ void PeerCloseManager::ProcessRibIn(DBTablePartBase *root, BgpRoute *rt,
                 // Update attrs with maximum local preference so that this path
                 // is least preferred
                 // TODO(ananth): Check for the right local-pref value to use
+                peer_->server()->extcomm_db()->Verify(
+                        path->GetAttr()->ext_community(), true);
                 attrs = peer_->server()->attr_db()->\
                         ReplaceLocalPreferenceAndLocate(path->GetAttr(), 1);
+                peer_->server()->extcomm_db()->Verify(attrs->ext_community(),
+                                                      true);
                 stale = BgpPath::Stale;
                 break;
 

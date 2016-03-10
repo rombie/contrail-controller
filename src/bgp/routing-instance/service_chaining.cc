@@ -547,7 +547,7 @@ void ServiceChain<T>::AddServiceChainRoute(PrefixT prefix,
         }
 
         BgpPath *new_path =
-            new BgpPath(path_id, BgpPath::ServiceChain, new_attr.get(),
+            new BgpPath(server, path_id, BgpPath::ServiceChain, new_attr.get(),
                         connected_path->GetFlags(), connected_path->GetLabel());
         if (is_stale)
             new_path->SetStale();

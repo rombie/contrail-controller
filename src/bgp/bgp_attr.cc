@@ -838,6 +838,10 @@ BgpAttr::BgpAttr(const BgpAttr &rhs)
     refcount_ = 0;
 }
 
+BgpAttr::~BgpAttr() {
+    attr_db_->Verify(this, false);
+}
+
 void BgpAttr::set_as_path(AsPathPtr aspath) {
     as_path_ = aspath;
 }

@@ -376,7 +376,6 @@ void GracefulRestartTest::TearDown() {
             ProcessVpnRoute(peer, i, n_routes_, false);
         }
     }
-    task_util::WaitForIdle();
 
     for (int i = 0; i <= n_peers_; i++)
         bgp_servers_[i]->Shutdown();
@@ -653,36 +652,37 @@ void GracefulRestartTest::ProcessVpnRoute(BgpPeerTest *peer, int instance,
         "20." + boost::lexical_cast<string>(instance) + "." +
         boost::lexical_cast<string>(peer->id()) + ".1/32"));
 
+    DBRequest req;
     boost::scoped_ptr<BgpAttrLocalPref> local_pref;
-    local_pref.reset(new BgpAttrLocalPref(100));
-
-    BgpAttrSpec attr_spec;
-    attr_spec.push_back(local_pref.get());
-
-    BgpAttrNextHop nexthop(0x7f010000 + peer->id());
-    attr_spec.push_back(&nexthop);
-
     boost::scoped_ptr<ExtCommunitySpec> commspec;
-    commspec.reset(CreateRouteTargets());
-
-    TunnelEncap tun_encap(std::string("gre"));
-    commspec->communities.push_back(get_value(
-                tun_encap.GetExtCommunity().begin(), 8));
-    attr_spec.push_back(commspec.get());
 
     for (int rt = 0; rt < n_routes; rt++,
         vpn_prefix = task_util::InetVpnPrefixIncrement(vpn_prefix)) {
 
-        DBRequest req;
         req.key.reset(new InetVpnTable::RequestKey(vpn_prefix, NULL));
         req.oper = add ? DBRequest::DB_ENTRY_ADD_CHANGE :
                          DBRequest::DB_ENTRY_DELETE;
 
-        uint32_t label = 20000 + rt;
+        local_pref.reset(new BgpAttrLocalPref(100));
+
+        BgpAttrSpec attr_spec;
+        attr_spec.push_back(local_pref.get());
+
+        BgpAttrNextHop nexthop(0x7f010000 + peer->id());
+        attr_spec.push_back(&nexthop);
+
+        commspec.reset(CreateRouteTargets());
+
+        TunnelEncap tun_encap(std::string("gre"));
+        commspec->communities.push_back(get_value(
+                    tun_encap.GetExtCommunity().begin(), 8));
+        attr_spec.push_back(commspec.get());
         BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
-        req.data.reset(new InetTable::RequestData(attr, 0, label));
+        server_->extcomm_db()->Verify(attr->ext_community(), true);
+        req.data.reset(new InetTable::RequestData(attr, 0, 20000 + rt));
         table->Enqueue(&req);
     }
+    task_util::WaitForIdle();
 }
 
 void GracefulRestartTest::AddOrDeleteBgpRoutes(bool add, int n_routes,
@@ -699,7 +699,6 @@ void GracefulRestartTest::AddOrDeleteBgpRoutes(bool add, int n_routes,
         for (int i = 1; i <= n_instances_; i++)
             ProcessVpnRoute(peer, i, n_routes, add);
     }
-    task_util::WaitForIdle();
 }
 
 void GracefulRestartTest::AddOrDeleteXmppRoutes(bool add, int n_routes,
@@ -895,7 +894,6 @@ void GracefulRestartTest::PeerDown(BgpPeerTest *peer) {
     // Also delete the routes
     for (int i = 1; i <= n_instances_; i++)
         ProcessVpnRoute(peer, i, n_routes_, false);
-    task_util::WaitForIdle();
 }
 
 void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
