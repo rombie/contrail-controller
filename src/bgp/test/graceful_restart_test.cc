@@ -57,7 +57,7 @@ static void process_command_line_args(int argc, char **argv) {
     if (cmd_line_processed) return;
     cmd_line_processed = true;
 
-    int instances = 1, routes = 1, agents = 1, peers = 1, targets = 1;
+    int instances = 4, routes = 4, agents = 4, peers = 4, targets = 1;
     bool close_from_control_node = false;
     bool cmd_line_arg_set = false;
 
@@ -65,11 +65,16 @@ static void process_command_line_args(int argc, char **argv) {
     options_description desc("Allowed options");
     desc.add_options()
         ("help", "produce help message")
-        ("nroutes", value<int>(), "set number of routes")
-        ("nagents", value<int>(), "set number of xmpp agents")
-        ("npeers", value<int>(), "set number of bgp peers")
-        ("ninstances", value<int>(), "set number of routing instances")
-        ("ntargets", value<int>(), "set number of route targets")
+        ("nroutes", value<int>()->default_value(nroutes),
+             "set number of routes")
+        ("nagents", value<int>()->default_value(nagents),
+             "set number of xmpp agents")
+        ("npeers", value<int>()->default_value(npeers),
+             "set number of bgp peers")
+        ("ninstances", value<int>()->default_value(ninstances),
+             "set number of routing instances")
+        ("ntargets", value<int>()->default_value(ntargets),
+             "set number of route targets")
         ("db-walker-wait-usecs", value<int>(), "set usecs delay in walker cb")
         ("close-from-control-node", bool_switch(&close_from_control_node),
              "Initiate xmpp session close from control-node")
