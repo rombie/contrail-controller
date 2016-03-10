@@ -1479,10 +1479,6 @@ void  XmppStateMachine::OnEvent(SslSession *session,
     }
 }
 
-static void XMPPPeerInfoSend(XmppPeerInfoData &peer_info) {
-    // XMPPPeerInfo::Send(peer_info);
-}
-
 void XmppStateMachine::set_state(xmsm::XmState state) { 
     last_state_ = state_; 
     state_ = state;
@@ -1497,7 +1493,7 @@ void XmppStateMachine::set_state(xmsm::XmState state) {
     state_info.set_last_state(LastStateName());
     state_info.set_last_state_at(state_since_);
     peer_info.set_state_info(state_info);
-    XMPPPeerInfoSend(peer_info);
+    XMPPPeerInfo::Send(peer_info);
 }
 
 
@@ -1604,7 +1600,7 @@ void XmppStateMachine::set_last_event(const std::string &event) {
     event_info.set_last_event_at(last_event_at_);
     peer_info.set_event_info(event_info);
 
-    XMPPPeerInfoSend(peer_info);
+    XMPPPeerInfo::Send(peer_info);
 }
 
 //

@@ -340,10 +340,6 @@ private:
     BgpXmppChannel *peer_;
 };
 
-static void XMPPPeerInfoSend(XmppPeerInfoData &peer_info) {
-    // XMPPPeerInfo::Send(peer_info);
-}
-
 class BgpXmppChannel::XmppPeer : public IPeer {
 public:
     XmppPeer(BgpServer *server, BgpXmppChannel *channel)
@@ -440,7 +436,7 @@ private:
         XmppPeerInfoData peer_info;
         peer_info.set_name(ToUVEKey());
         peer_info.set_send_state("in sync");
-        XMPPPeerInfoSend(peer_info);
+        parent_->XMPPPeerInfoSend(peer_info);
     }
 
     BgpServer *server_;
@@ -477,7 +473,7 @@ bool BgpXmppChannel::XmppPeer::SendUpdate(const uint8_t *msg, size_t msgsize) {
             XmppPeerInfoData peer_info;
             peer_info.set_name(ToUVEKey());
             peer_info.set_send_state("not in sync");
-            XMPPPeerInfoSend(peer_info);
+            parent_->XMPPPeerInfoSend(peer_info);
         }
         return send_ready_;
     } else {
@@ -535,6 +531,10 @@ BgpXmppChannel::~BgpXmppChannel() {
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
+}
+
+void BgpXmppChannel::XMPPPeerInfoSend(XmppPeerInfoData &peer_info) {
+    XMPPPeerInfo::Send(peer_info);
 }
 
 const XmppSession *BgpXmppChannel::GetSession() const {
@@ -2486,7 +2486,7 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
         XmppPeerInfoData peer_info;
         peer_info.set_name(bgp_xmpp_channel->Peer()->ToUVEKey());
         peer_info.set_send_state("not advertising");
-        XMPPPeerInfoSend(peer_info);
+        bgp_xmpp_channel->XMPPPeerInfoSend(peer_info);
     }
 }
 

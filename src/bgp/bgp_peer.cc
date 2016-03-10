@@ -270,8 +270,8 @@ void BgpPeer::SendEndOfRIB(Address::Family family) {
         " size " << msgsize);
 }
 
-static void BGPPeerInfoSend(BgpPeerInfoData &peer_info) {
-    // BGPPeerInfo::Send(peer_info);
+void BgpPeer::BGPPeerInfoSend(BgpPeerInfoData &peer_info) {
+    BGPPeerInfo::Send(peer_info);
 }
 
 //

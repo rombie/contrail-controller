@@ -1275,11 +1275,6 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
     </xsd:restriction>
 </xsd:simpleType>
 
-<xsd:complexType name="VirtualRouterGracefulRestartSettings">
-    <xsd:element name="enabled" type="boolean" default='true'/>
-    <xsd:element name="cleanup-timer" type="xsd:integer" default='300'/>
-</xsd:complexType>
-
 <xsd:element name="virtual-router-type" type="VirtualRouterType"/>
 <!--#IFMAP-SEMANTICS-IDL
      Property('virtual-router-type', 'virtual-router') -->
@@ -1288,9 +1283,6 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
 <!--#IFMAP-SEMANTICS-IDL
      Property('virtual-router-dpdk-enabled', 'virtual-router') -->
 
-<xsd:element name="virtual-router-graceful-restart-settings" type="VirtualRouterGracefulRestartSettings"/>
-<!--#IFMAP-SEMANTICS-IDL
-     Property('virtual-router-graceful-restart-settings', 'virtual-router') -->
 
 <xsd:element name="physical-router-virtual-router"/>
 <!--#IFMAP-SEMANTICS-IDL

@@ -21,6 +21,7 @@ namespace sc = boost::statechart;
 class BgpPeer;
 class BgpSession;
 class BgpPeerInfo;
+class BgpPeerInfoData;
 class BgpMessage;
 class StateMachine;
 
@@ -199,6 +200,7 @@ private:
 
     void TimerErrorHanlder(std::string name, std::string error) { }
     void DeleteAllTimers();
+    void BGPPeerInfoSend(BgpPeerInfoData &peer_info);
 
     template <typename Ev> bool Enqueue(const Ev &event);
     bool DequeueEvent(EventContainer ec);

@@ -30,13 +30,13 @@
 
 class BgpNeighborConfig;
 class BgpPeerInfo;
+class BgpPeerInfoData;
 class BgpServer;
 class BgpSession;
-class RoutingInstance;
 class BgpSession;
-class BgpPeerInfo;
 class BgpNeighborResp;
 class BgpSandeshContext;
+class RoutingInstance;
 
 //
 // This contains per address family attributes.
@@ -314,8 +314,8 @@ private:
                                    std::string error_message);
 
     virtual void BindLocalEndpoint(BgpSession *session);
-
     void UnregisterAllTables();
+    void BGPPeerInfoSend(BgpPeerInfoData &peer_info);
 
     uint32_t GetPathFlags(Address::Family family, const BgpAttr *attr) const;
     virtual bool MpNlriAllowed(uint16_t afi, uint8_t safi);
