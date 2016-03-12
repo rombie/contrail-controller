@@ -49,7 +49,7 @@ public:
     }
     explicit OriginVnPath(OriginVnPathDB *ovnpath_db,
                           const OriginVnPathSpec spec);
-    virtual ~OriginVnPath() { }
+    virtual ~OriginVnPath();
 
     virtual void Remove();
     void Prepend(const OriginVnValue &value);
@@ -66,13 +66,13 @@ public:
         }
         return hash;
     }
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const OriginVnPath *covnpath);
     friend int intrusive_ptr_del_ref(const OriginVnPath *covnpath);
     friend void intrusive_ptr_release(const OriginVnPath *covnpath);
 
-    mutable tbb::atomic<int> refcount_;
     OriginVnPathDB *ovnpath_db_;
     OriginVnList origin_vns_;
 };

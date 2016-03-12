@@ -288,6 +288,12 @@ public:
     void ClearListenSocketAuthKey();
     void SetSessionSocketAuthKey(TcpSession *session);
 
+protected:
+    std::vector<std::string> &negotiated_families() {
+        return negotiated_families_;
+    }
+    void SendEndOfRIB(Address::Family family);
+
 private:
     friend class BgpConfigTest;
     friend class BgpPeerTest;
@@ -307,7 +313,6 @@ private:
     bool KeepaliveTimerExpired();
 
     void ReceiveEndOfRIB(Address::Family family, size_t msgsize);
-    void SendEndOfRIB(Address::Family family);
     void StartEndOfRibTimer();
     bool EndOfRibTimerExpired();
     void EndOfRibTimerErrorHandler(std::string error_name,

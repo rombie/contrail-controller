@@ -52,7 +52,7 @@ public:
         refcount_ = 0;
     }
     explicit Community(CommunityDB *comm_db, const CommunitySpec spec);
-    virtual ~Community() { }
+    virtual ~Community();
 
     void Append(uint32_t value);
     void Append(const std::vector<uint32_t> &communities);
@@ -72,12 +72,12 @@ public:
         return hash;
     }
 
+    mutable tbb::atomic<int> refcount_;
 private:
     friend int intrusive_ptr_add_ref(const Community *ccomm);
     friend int intrusive_ptr_del_ref(const Community *ccomm);
     friend void intrusive_ptr_release(const Community *ccomm);
 
-    mutable tbb::atomic<int> refcount_;
     CommunityDB *comm_db_;
     std::vector<uint32_t> communities_;
 };
@@ -156,7 +156,7 @@ public:
 
     explicit ExtCommunity(ExtCommunityDB *extcomm_db,
                           const ExtCommunitySpec spec);
-    virtual ~ExtCommunity() { }
+    virtual ~ExtCommunity();
     virtual void Remove();
     int CompareTo(const ExtCommunity &rhs) const;
 
@@ -276,12 +276,12 @@ public:
         return hash;
     }
 
+    mutable tbb::atomic<int> refcount_;
 private:
     friend int intrusive_ptr_add_ref(const ExtCommunity *cextcomm);
     friend int intrusive_ptr_del_ref(const ExtCommunity *cextcomm);
     friend void intrusive_ptr_release(const ExtCommunity *cextcomm);
 
-    mutable tbb::atomic<int> refcount_;
     ExtCommunityDB *extcomm_db_;
     ExtCommunityList communities_;
 };

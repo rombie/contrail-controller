@@ -6,6 +6,7 @@
 #define __BGP_SERVER_TEST_UTIL_H__
 
 #include <boost/any.hpp>
+#include <boost/foreach.hpp>
 #include <boost/shared_ptr.hpp>
 
 #include "base/util.h"
@@ -272,7 +273,11 @@ public:
   
     bool BgpPeerIsReady();
     void SetDataCollectionKey(BgpPeerInfo *peer_info) const;
-    void SendEorMarker() { }
+    void SendEorMarker() {
+        BOOST_FOREACH(std::string family, negotiated_families()) {
+            SendEndOfRIB(Address::FamilyFromString(family));
+        }
+    }
 
     virtual bool IsReady() const {
         return IsReady_fnc_();

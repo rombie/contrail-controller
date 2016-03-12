@@ -171,6 +171,10 @@ ClusterList::ClusterList(ClusterListDB *cluster_list_db,
     refcount_ = 0;
 }
 
+ClusterList::~ClusterList() {
+    cluster_list_db_->Verify(this, false);
+}
+
 void ClusterList::Remove() {
     cluster_list_db_->Delete(this);
 }
@@ -338,6 +342,10 @@ PmsiTunnel::PmsiTunnel(PmsiTunnelDB *pmsi_tunnel_db,
     identifier = pmsi_spec_.GetIdentifier();
 }
 
+PmsiTunnel::~PmsiTunnel() {
+    pmsi_tunnel_db_->Verify(this, false);
+}
+
 void PmsiTunnel::Remove() {
     pmsi_tunnel_db_->Delete(this);
 }
@@ -469,6 +477,7 @@ EdgeDiscovery::EdgeDiscovery(EdgeDiscoveryDB *edge_discovery_db,
 
 EdgeDiscovery::~EdgeDiscovery() {
     STLDeleteValues(&edge_list);
+    edge_discovery_db_->Verify(this, false);
 }
 
 struct EdgeDiscoveryEdgeCompare {
@@ -622,6 +631,7 @@ EdgeForwarding::EdgeForwarding(EdgeForwardingDB *edge_forwarding_db,
 
 EdgeForwarding::~EdgeForwarding() {
     STLDeleteValues(&edge_list);
+    edge_forwarding_db_->Verify(this, false);
 }
 
 struct EdgeForwardingEdgeCompare {
@@ -691,6 +701,7 @@ BgpOList::BgpOList(BgpOListDB *olist_db, const BgpOListSpec &olist_spec)
 
 BgpOList::~BgpOList() {
     STLDeleteValues(&elements);
+    olist_db_->Verify(this, false);
 }
 
 struct BgpOListElementCompare {
@@ -836,6 +847,10 @@ BgpAttr::BgpAttr(const BgpAttr &rhs)
       olist_(rhs.olist_),
       leaf_olist_(rhs.leaf_olist_) {
     refcount_ = 0;
+}
+
+BgpAttr::~BgpAttr() {
+    attr_db_->Verify(this, false);
 }
 
 void BgpAttr::set_as_path(AsPathPtr aspath) {

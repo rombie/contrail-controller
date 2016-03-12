@@ -49,6 +49,10 @@ OriginVnPath::OriginVnPath(OriginVnPathDB *ovnpath_db,
     }
 }
 
+OriginVnPath::~OriginVnPath() {
+    ovnpath_db_->Verify(this, false);
+}
+
 void OriginVnPath::Remove() {
     ovnpath_db_->Delete(this);
 }

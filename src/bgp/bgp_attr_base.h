@@ -138,6 +138,7 @@ public:
         size_t hash = HashCompute(attr);
 
         tbb::mutex::scoped_lock lock(mutex_[hash]);
+        assert(attr->refcount_ == 0);
         set_[hash].erase(attr);
     }
 
@@ -150,6 +151,19 @@ public:
     TypePtr Locate(const TypeSpec &spec) {
         Type *attr = new Type(static_cast<TypeDB *>(this), spec);
         return LocateInternal(attr);
+    }
+
+    void Verify(const Type *cattr, bool present) {
+#if 0
+        Type *attr = const_cast<Type *>(cattr);
+        size_t hash = HashCompute(attr);
+
+        tbb::mutex::scoped_lock lock(mutex_[hash]);
+        typename Set::iterator it = set_[hash].find(attr);
+
+        if (!present && it != set_[hash].end())
+            assert(*it != attr);
+#endif
     }
 
 private:
@@ -192,9 +206,12 @@ private:
 
             // Check if passed in entry did get into the data base.
             if (ret.second) {
-
                 // Take intrusive pointer, thereby incrementing the refcount.
                 TypePtr ptr = TypePtr(*ret.first);
+
+                // Release redundant refcount taken above to protect this entry
+                // from getting deleted, as we have now bumped up refcount above
+                intrusive_ptr_del_ref(*ret.first);
                 return ptr;
             }
 
@@ -207,8 +224,6 @@ private:
             // cases, we retry inserting the passed attribute pointer into the
             // data base.
             if (prev > 0) {
-                // Free passed in attribute, as it is already in the database.
-                delete attr;
 
                 // Take intrusive pointer, thereby incrementing the refcount.
                 TypePtr ptr = TypePtr(*ret.first);
@@ -216,11 +231,17 @@ private:
                 // Release redundant refcount taken above to protect this entry
                 // from getting deleted, as we have now bumped up refcount above
                 intrusive_ptr_del_ref(*ret.first);
+                typename Set::iterator it = set_[hash].find(attr);
+                assert(it != set_[hash].end());
+                assert(*it == *ret.first);
+
+                // Free passed in attribute, as it is already in the database.
+                delete attr;
                 return ptr;
             }
 
             // Decrement the counter bumped up above as we can't use this entry
-            // which is above to be deleted. Instead, retry inserting the passed
+            // which is about to be deleted. Instead, retry inserting the passed
             // entry again, into the database.
             intrusive_ptr_del_ref(*ret.first);
         }

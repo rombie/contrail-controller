@@ -1674,7 +1674,7 @@ int StateMachine::GetConfiguredHoldTime() const {
 }
 
 void StateMachine::BGPPeerInfoSend(BgpPeerInfoData &peer_info) {
-    BGPPeerInfo::Send(peer_info);
+    // BGPPeerInfo::Send(peer_info);
 }
 
 void StateMachine::set_last_event(const std::string &event) {

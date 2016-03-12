@@ -82,6 +82,10 @@ void Community::Set(const std::vector<uint32_t> &communities) {
     }
 }
 
+Community::~Community() {
+    comm_db_->Verify(this, false);
+}
+
 void Community::Remove(const std::vector<uint32_t> &communities) {
     BOOST_FOREACH(uint32_t community, communities) {
         communities_.erase(
@@ -354,6 +358,10 @@ ExtCommunity::ExtCommunity(ExtCommunityDB *extcomm_db,
     ExtCommunityList::iterator it =
         unique(communities_.begin(), communities_.end());
     communities_.erase(it, communities_.end());
+}
+
+ExtCommunity::~ExtCommunity() {
+    extcomm_db_->Verify(this, false);
 }
 
 ExtCommunityDB::ExtCommunityDB(BgpServer *server) {

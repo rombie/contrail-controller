@@ -80,7 +80,7 @@ public:
             }
         }
     }
-    virtual ~AsPath() { }
+    virtual ~AsPath();
     virtual void Remove();
     int AsCount() const {
         int count = 0;
@@ -120,12 +120,12 @@ public:
         return hash;
     }
 
+    mutable tbb::atomic<int> refcount_;
 private:
     friend int intrusive_ptr_add_ref(const AsPath *cpath);
     friend int intrusive_ptr_del_ref(const AsPath *cpath);
     friend void intrusive_ptr_release(const AsPath *cpath);
 
-    mutable tbb::atomic<int> refcount_;
     AsPathDB *aspath_db_;
     AsPathSpec path_;
 };

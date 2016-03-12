@@ -181,7 +181,7 @@ struct ClusterListSpec : public BgpAttribute {
 class ClusterList {
 public:
     ClusterList(ClusterListDB *cluster_list_db, const ClusterListSpec &spec);
-    ~ClusterList() { }
+    virtual ~ClusterList();
     void Remove();
     int CompareTo(const ClusterList &rhs) const {
         return spec_.CompareTo(rhs.cluster_list());
@@ -195,12 +195,12 @@ public:
         return hash;
     }
 
+    mutable tbb::atomic<int> refcount_;
 private:
     friend int intrusive_ptr_add_ref(const ClusterList *ccluster_list);
     friend int intrusive_ptr_del_ref(const ClusterList *ccluster_list);
     friend void intrusive_ptr_release(const ClusterList *ccluster_list);
 
-    mutable tbb::atomic<int> refcount_;
     ClusterListDB *cluster_list_db_;
     ClusterListSpec spec_;
 };
@@ -324,7 +324,7 @@ struct PmsiTunnelSpec : public BgpAttribute {
 class PmsiTunnel {
 public:
     PmsiTunnel(PmsiTunnelDB *pmsi_tunnel_db, const PmsiTunnelSpec &pmsi_spec);
-    virtual ~PmsiTunnel() { }
+    virtual ~PmsiTunnel();
     virtual void Remove();
     int CompareTo(const PmsiTunnel &rhs) const {
         return pmsi_spec_.CompareTo(rhs.pmsi_tunnel());
@@ -344,6 +344,7 @@ public:
     uint8_t tunnel_flags;
     uint8_t tunnel_type;
     Ip4Address identifier;
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const PmsiTunnel *cpmsi_tunnel);
@@ -351,7 +352,6 @@ private:
     friend void intrusive_ptr_release(const PmsiTunnel *cpmsi_tunnel);
 
     uint32_t label;
-    mutable tbb::atomic<int> refcount_;
     PmsiTunnelDB *pmsi_tunnel_db_;
     PmsiTunnelSpec pmsi_spec_;
 };
@@ -448,13 +448,13 @@ public:
     };
 
     EdgeList edge_list;
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const EdgeDiscovery *ediscovery);
     friend int intrusive_ptr_del_ref(const EdgeDiscovery *ediscovery);
     friend void intrusive_ptr_release(const EdgeDiscovery *ediscovery);
 
-    mutable tbb::atomic<int> refcount_;
     EdgeDiscoveryDB *edge_discovery_db_;
     EdgeDiscoverySpec edspec_;
 };
@@ -554,13 +554,13 @@ public:
     };
 
     EdgeList edge_list;
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const EdgeForwarding *ceforwarding);
     friend int intrusive_ptr_del_ref(const EdgeForwarding *ceforwarding);
     friend void intrusive_ptr_release(const EdgeForwarding *ceforwarding);
 
-    mutable tbb::atomic<int> refcount_;
     EdgeForwardingDB *edge_forwarding_db_;
     EdgeForwardingSpec efspec_;
 };
@@ -666,13 +666,13 @@ public:
 
     typedef std::vector<BgpOListElem *> Elements;
     Elements elements;
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const BgpOList *colist);
     friend int intrusive_ptr_del_ref(const BgpOList *colist);
     friend void intrusive_ptr_release(const BgpOList *colist);
 
-    mutable tbb::atomic<int> refcount_;
     BgpOListDB *olist_db_;
     BgpOListSpec olist_spec_;
 };
@@ -768,7 +768,7 @@ public:
     explicit BgpAttr(BgpAttrDB *attr_db);
     explicit BgpAttr(const BgpAttr &rhs);
     BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec);
-    virtual ~BgpAttr() { }
+    virtual ~BgpAttr();
 
     virtual void Remove();
     int CompareTo(const BgpAttr &rhs) const;
@@ -841,6 +841,7 @@ public:
     BgpOListPtr leaf_olist() const { return leaf_olist_; }
     BgpAttrDB *attr_db() const { return attr_db_; }
     uint32_t sequence_number() const;
+    mutable tbb::atomic<int> refcount_;
 
 private:
     friend class BgpAttrDB;
@@ -848,7 +849,6 @@ private:
     friend int intrusive_ptr_del_ref(const BgpAttr *cattrp);
     friend void intrusive_ptr_release(const BgpAttr *cattrp);
 
-    mutable tbb::atomic<int> refcount_;
     BgpAttrDB *attr_db_;
     BgpAttrOrigin::OriginType origin_;
     IpAddress nexthop_;
@@ -887,7 +887,6 @@ inline void intrusive_ptr_release(const BgpAttr *cattrp) {
     if (prev == 1) {
         BgpAttr *attrp = const_cast<BgpAttr *>(cattrp);
         attrp->Remove();
-        assert(attrp->refcount_ == 0);
         delete attrp;
     }
 }

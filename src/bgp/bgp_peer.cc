@@ -271,7 +271,7 @@ void BgpPeer::SendEndOfRIB(Address::Family family) {
 }
 
 void BgpPeer::BGPPeerInfoSend(BgpPeerInfoData &peer_info) {
-    BGPPeerInfo::Send(peer_info);
+    // BGPPeerInfo::Send(peer_info);
 }
 
 //
