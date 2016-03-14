@@ -54,11 +54,6 @@ public:
     explicit Community(CommunityDB *comm_db, const CommunitySpec spec);
     virtual ~Community();
 
-    void Append(uint32_t value);
-    void Append(const std::vector<uint32_t> &communities);
-    void Set(const std::vector<uint32_t> &communities);
-    void Remove(const std::vector<uint32_t> &communities);
-    virtual void Remove();
     int CompareTo(const Community &rhs) const;
     bool ContainsValue(uint32_t value) const;
     void BuildStringList(std::vector<std::string> *list) const;
@@ -77,6 +72,13 @@ private:
     friend int intrusive_ptr_add_ref(const Community *ccomm);
     friend int intrusive_ptr_del_ref(const Community *ccomm);
     friend void intrusive_ptr_release(const Community *ccomm);
+    friend class CommunityDB;
+
+    void Append(uint32_t value);
+    void Append(const std::vector<uint32_t> &communities);
+    void Set(const std::vector<uint32_t> &communities);
+    void Remove(const std::vector<uint32_t> &communities);
+    virtual void Remove();
 
     CommunityDB *comm_db_;
     std::vector<uint32_t> communities_;
@@ -160,15 +162,7 @@ public:
     virtual void Remove();
     int CompareTo(const ExtCommunity &rhs) const;
 
-    void Append(const ExtCommunityValue &value);
-    void Append(const ExtCommunityList &list);
     bool ContainsOriginVn(const ExtCommunityValue &val) const;
-    void RemoveRTarget();
-    void RemoveSGID();
-    void RemoveSiteOfOrigin();
-    void RemoveOriginVn();
-    void RemoveTunnelEncapsulation();
-    void RemoveLoadBalance();
 
     // Return vector of communities
     const ExtCommunityList &communities() const {
@@ -281,6 +275,16 @@ private:
     friend int intrusive_ptr_add_ref(const ExtCommunity *cextcomm);
     friend int intrusive_ptr_del_ref(const ExtCommunity *cextcomm);
     friend void intrusive_ptr_release(const ExtCommunity *cextcomm);
+    friend class ExtCommunityDB;
+
+    void Append(const ExtCommunityValue &value);
+    void Append(const ExtCommunityList &list);
+    void RemoveRTarget();
+    void RemoveSGID();
+    void RemoveSiteOfOrigin();
+    void RemoveOriginVn();
+    void RemoveTunnelEncapsulation();
+    void RemoveLoadBalance();
 
     ExtCommunityDB *extcomm_db_;
     ExtCommunityList communities_;

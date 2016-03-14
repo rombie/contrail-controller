@@ -51,8 +51,6 @@ public:
                           const OriginVnPathSpec spec);
     virtual ~OriginVnPath();
 
-    virtual void Remove();
-    void Prepend(const OriginVnValue &value);
     bool Contains(const OriginVnValue &value) const;
     int CompareTo(const OriginVnPath &rhs) const;
 
@@ -72,6 +70,10 @@ private:
     friend int intrusive_ptr_add_ref(const OriginVnPath *covnpath);
     friend int intrusive_ptr_del_ref(const OriginVnPath *covnpath);
     friend void intrusive_ptr_release(const OriginVnPath *covnpath);
+    friend class OriginVnPathDB;
+
+    void Prepend(const OriginVnValue &value);
+    virtual void Remove();
 
     OriginVnPathDB *ovnpath_db_;
     OriginVnList origin_vns_;

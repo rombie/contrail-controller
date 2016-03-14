@@ -182,7 +182,6 @@ class ClusterList {
 public:
     ClusterList(ClusterListDB *cluster_list_db, const ClusterListSpec &spec);
     virtual ~ClusterList();
-    void Remove();
     int CompareTo(const ClusterList &rhs) const {
         return spec_.CompareTo(rhs.cluster_list());
     }
@@ -200,6 +199,9 @@ private:
     friend int intrusive_ptr_add_ref(const ClusterList *ccluster_list);
     friend int intrusive_ptr_del_ref(const ClusterList *ccluster_list);
     friend void intrusive_ptr_release(const ClusterList *ccluster_list);
+    friend class ClusterListDB;
+
+    void Remove();
 
     ClusterListDB *cluster_list_db_;
     ClusterListSpec spec_;
@@ -325,14 +327,13 @@ class PmsiTunnel {
 public:
     PmsiTunnel(PmsiTunnelDB *pmsi_tunnel_db, const PmsiTunnelSpec &pmsi_spec);
     virtual ~PmsiTunnel();
-    virtual void Remove();
     int CompareTo(const PmsiTunnel &rhs) const {
         return pmsi_spec_.CompareTo(rhs.pmsi_tunnel());
     }
 
     const PmsiTunnelSpec &pmsi_tunnel() const { return pmsi_spec_; }
     uint32_t GetLabel(bool is_vni = false) const {
-        return (is_vni ? label : label >> 4);
+        return (is_vni ? label_ : label_ >> 4);
     }
 
     friend std::size_t hash_value(const PmsiTunnel &pmsi_tunnel) {
@@ -341,17 +342,25 @@ public:
         return hash;
     }
 
-    uint8_t tunnel_flags;
-    uint8_t tunnel_type;
-    Ip4Address identifier;
+    const uint8_t tunnel_flags() const { return tunnel_flags_; }
+    const uint8_t tunnel_type() const { return tunnel_type_; }
+    const Ip4Address identifier() const { return identifier_; }
+    const uint32_t label() const { return label_; }
+
     mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const PmsiTunnel *cpmsi_tunnel);
     friend int intrusive_ptr_del_ref(const PmsiTunnel *cpmsi_tunnel);
     friend void intrusive_ptr_release(const PmsiTunnel *cpmsi_tunnel);
+    friend class PmsiTunnelDB;
 
-    uint32_t label;
+    virtual void Remove();
+
+    uint8_t tunnel_flags_;
+    uint8_t tunnel_type_;
+    Ip4Address identifier_;
+    uint32_t label_;
     PmsiTunnelDB *pmsi_tunnel_db_;
     PmsiTunnelSpec pmsi_spec_;
 };
@@ -421,7 +430,6 @@ public:
     EdgeDiscovery(EdgeDiscoveryDB *edge_discovery_db,
         const EdgeDiscoverySpec &edspec);
     virtual ~EdgeDiscovery();
-    virtual void Remove();
     int CompareTo(const EdgeDiscovery &rhs) const;
 
     const EdgeDiscoverySpec &edge_discovery() const { return edspec_; }
@@ -454,7 +462,9 @@ private:
     friend int intrusive_ptr_add_ref(const EdgeDiscovery *ediscovery);
     friend int intrusive_ptr_del_ref(const EdgeDiscovery *ediscovery);
     friend void intrusive_ptr_release(const EdgeDiscovery *ediscovery);
+    friend class EdgeDiscoveryDB;
 
+    virtual void Remove();
     EdgeDiscoveryDB *edge_discovery_db_;
     EdgeDiscoverySpec edspec_;
 };
@@ -527,7 +537,6 @@ public:
     EdgeForwarding(EdgeForwardingDB *edge_forwarding_db,
         const EdgeForwardingSpec &efspec);
     virtual ~EdgeForwarding();
-    virtual void Remove();
     int CompareTo(const EdgeForwarding &rhs) const;
 
     const EdgeForwardingSpec &edge_forwarding() const { return efspec_; }
@@ -560,6 +569,9 @@ private:
     friend int intrusive_ptr_add_ref(const EdgeForwarding *ceforwarding);
     friend int intrusive_ptr_del_ref(const EdgeForwarding *ceforwarding);
     friend void intrusive_ptr_release(const EdgeForwarding *ceforwarding);
+    friend class EdgeForwardingDB;
+
+    virtual void Remove();
 
     EdgeForwardingDB *edge_forwarding_db_;
     EdgeForwardingSpec efspec_;
@@ -653,7 +665,6 @@ class BgpOList {
 public:
     BgpOList(BgpOListDB *olist_db, const BgpOListSpec &olist_spec);
     virtual ~BgpOList();
-    virtual void Remove();
     int CompareTo(const BgpOList &rhs) const;
 
     const BgpOListSpec &olist() const { return olist_spec_; }
@@ -665,14 +676,19 @@ public:
     }
 
     typedef std::vector<BgpOListElem *> Elements;
-    Elements elements;
+
+    const Elements &elements() const { return elements_; }
     mutable tbb::atomic<int> refcount_;
 
 private:
     friend int intrusive_ptr_add_ref(const BgpOList *colist);
     friend int intrusive_ptr_del_ref(const BgpOList *colist);
     friend void intrusive_ptr_release(const BgpOList *colist);
+    friend class BgpOListDB;
 
+    virtual void Remove();
+
+    Elements elements_;
     BgpOListDB *olist_db_;
     BgpOListSpec olist_spec_;
 };
