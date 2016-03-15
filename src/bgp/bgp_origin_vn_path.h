@@ -70,6 +70,7 @@ private:
     friend int intrusive_ptr_del_ref(const OriginVnPath *covnpath);
     friend void intrusive_ptr_release(const OriginVnPath *covnpath);
     friend class OriginVnPathDB;
+    friend class BgpAttrTest;
 
     void Prepend(const OriginVnValue &value);
     virtual void Remove();

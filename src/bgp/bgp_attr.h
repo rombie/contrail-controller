@@ -858,6 +858,7 @@ public:
 
 private:
     friend class BgpAttrDB;
+    friend class BgpAttrTest;
     friend int intrusive_ptr_add_ref(const BgpAttr *cattrp);
     friend int intrusive_ptr_del_ref(const BgpAttr *cattrp);
     friend void intrusive_ptr_release(const BgpAttr *cattrp);

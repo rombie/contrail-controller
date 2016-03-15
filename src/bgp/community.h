@@ -72,6 +72,7 @@ private:
     friend int intrusive_ptr_del_ref(const Community *ccomm);
     friend void intrusive_ptr_release(const Community *ccomm);
     friend class CommunityDB;
+    friend class BgpAttrTest;
 
     void Append(uint32_t value);
     void Append(const std::vector<uint32_t> &communities);
@@ -275,6 +276,7 @@ private:
     friend int intrusive_ptr_del_ref(const ExtCommunity *cextcomm);
     friend void intrusive_ptr_release(const ExtCommunity *cextcomm);
     friend class ExtCommunityDB;
+    friend class BgpAttrTest;
 
     void Append(const ExtCommunityValue &value);
     void Append(const ExtCommunityList &list);
