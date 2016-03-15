@@ -686,7 +686,6 @@ void GracefulRestartTest::ProcessVpnRoute(BgpPeerTest *peer, int instance,
 
         req.data.reset(new InetTable::RequestData(attr, 0, 20000 + rt));
         table->Enqueue(&req);
-        task_util::WaitForIdle();
     }
     task_util::WaitForIdle();
 }
