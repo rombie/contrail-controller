@@ -57,7 +57,7 @@ static void process_command_line_args(int argc, char **argv) {
     if (cmd_line_processed) return;
     cmd_line_processed = true;
 
-    int ninstances = 4, nroutes = 4, nagents = 4, npeers = 4, ntargets = 1;
+    int ninstances = 1, nroutes = 1, nagents = 1, npeers = 1, ntargets = 1;
     bool close_from_control_node = false;
     bool cmd_line_arg_set = false;
 
@@ -686,6 +686,7 @@ void GracefulRestartTest::ProcessVpnRoute(BgpPeerTest *peer, int instance,
 
         req.data.reset(new InetTable::RequestData(attr, 0, 20000 + rt));
         table->Enqueue(&req);
+        task_util::WaitForIdle();
     }
     task_util::WaitForIdle();
 }

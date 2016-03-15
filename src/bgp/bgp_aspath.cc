@@ -131,10 +131,6 @@ AsPathSpec *AsPathSpec::Add(as_t asn) const {
     return new_spec;
 }
 
-AsPath::~AsPath() {
-    aspath_db_->Verify(this, false);
-}
-
 void AsPath::Remove() {
     aspath_db_->Delete(this);
 }

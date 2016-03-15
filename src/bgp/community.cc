@@ -41,8 +41,7 @@ string CommunitySpec::ToString() const {
 }
 
 Community::Community(CommunityDB *comm_db, const CommunitySpec spec)
-    : comm_db_(comm_db), communities_(spec.communities),
-      destroyed_(false) {
+    : comm_db_(comm_db), communities_(spec.communities) {
     refcount_ = 0;
     sort(communities_.begin(), communities_.end());
     vector<uint32_t>::iterator it =
@@ -81,10 +80,6 @@ void Community::Set(const std::vector<uint32_t> &communities) {
     BOOST_FOREACH(uint32_t community, communities) {
         communities_.push_back(community);
     }
-}
-
-Community::~Community() {
-    comm_db_->Verify(this, false);
 }
 
 void Community::Remove(const std::vector<uint32_t> &communities) {
@@ -347,8 +342,7 @@ int ExtCommunity::GetOriginVnIndex() const {
 }
 
 ExtCommunity::ExtCommunity(ExtCommunityDB *extcomm_db,
-        const ExtCommunitySpec spec) : extcomm_db_(extcomm_db),
-        destroyed_(false) {
+        const ExtCommunitySpec spec) : extcomm_db_(extcomm_db) {
     refcount_ = 0;
     for (vector<uint64_t>::const_iterator it = spec.communities.begin();
          it < spec.communities.end(); ++it) {
@@ -360,10 +354,6 @@ ExtCommunity::ExtCommunity(ExtCommunityDB *extcomm_db,
     ExtCommunityList::iterator it =
         unique(communities_.begin(), communities_.end());
     communities_.erase(it, communities_.end());
-}
-
-ExtCommunity::~ExtCommunity() {
-    extcomm_db_->Verify(this, false);
 }
 
 ExtCommunityDB::ExtCommunityDB(BgpServer *server) {

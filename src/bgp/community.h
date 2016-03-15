@@ -44,16 +44,15 @@ struct CommunitySpec : public BgpAttribute {
 class Community {
 public:
     explicit Community(CommunityDB *comm_db)
-        : comm_db_(comm_db), destroyed_(false) {
+        : comm_db_(comm_db) {
         refcount_ = 0;
     }
     explicit Community(const Community &rhs)
-        : comm_db_(rhs.comm_db_), communities_(rhs.communities_),
-            destroyed_(false) {
+        : comm_db_(rhs.comm_db_), communities_(rhs.communities_) {
         refcount_ = 0;
     }
     explicit Community(CommunityDB *comm_db, const CommunitySpec spec);
-    virtual ~Community();
+    virtual ~Community() { }
 
     int CompareTo(const Community &rhs) const;
     bool ContainsValue(uint32_t value) const;
@@ -68,9 +67,6 @@ public:
         return hash;
     }
 
-    mutable tbb::atomic<int> refcount_;
-    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
-    const bool destroyed() const { return destroyed_; }
 private:
     friend int intrusive_ptr_add_ref(const Community *ccomm);
     friend int intrusive_ptr_del_ref(const Community *ccomm);
@@ -83,9 +79,9 @@ private:
     void Remove(const std::vector<uint32_t> &communities);
     virtual void Remove();
 
+    mutable tbb::atomic<int> refcount_;
     CommunityDB *comm_db_;
     std::vector<uint32_t> communities_;
-    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const Community *ccomm) {
@@ -101,10 +97,8 @@ inline void intrusive_ptr_release(const Community *ccomm) {
     if (prev == 1) {
         Community *comm = const_cast<Community *>(ccomm);
         comm->Remove();
-        assert(!comm->destroyed());
-        comm->set_destroyed(true);
         assert(comm->refcount_ == 0);
-        // delete comm;
+        delete comm;
     }
 }
 
@@ -153,18 +147,18 @@ public:
     typedef std::vector<ExtCommunityValue> ExtCommunityList;
 
     explicit ExtCommunity(ExtCommunityDB *extcomm_db)
-        : extcomm_db_(extcomm_db), destroyed_(false) {
+        : extcomm_db_(extcomm_db) {
         refcount_ = 0;
     }
     explicit ExtCommunity(const ExtCommunity &rhs)
         : extcomm_db_(rhs.extcomm_db_),
-          communities_(rhs.communities_), destroyed_(false) {
+          communities_(rhs.communities_) {
         refcount_ = 0;
     }
 
     explicit ExtCommunity(ExtCommunityDB *extcomm_db,
                           const ExtCommunitySpec spec);
-    virtual ~ExtCommunity();
+    virtual ~ExtCommunity() { }
     virtual void Remove();
     int CompareTo(const ExtCommunity &rhs) const;
 
@@ -276,9 +270,6 @@ public:
         return hash;
     }
 
-    mutable tbb::atomic<int> refcount_;
-    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
-    const bool destroyed() const { return destroyed_; }
 private:
     friend int intrusive_ptr_add_ref(const ExtCommunity *cextcomm);
     friend int intrusive_ptr_del_ref(const ExtCommunity *cextcomm);
@@ -294,9 +285,9 @@ private:
     void RemoveTunnelEncapsulation();
     void RemoveLoadBalance();
 
+    mutable tbb::atomic<int> refcount_;
     ExtCommunityDB *extcomm_db_;
     ExtCommunityList communities_;
-    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const ExtCommunity *cextcomm) {
@@ -312,10 +303,8 @@ inline void intrusive_ptr_release(const ExtCommunity *cextcomm) {
     if (prev == 1) {
         ExtCommunity *extcomm = const_cast<ExtCommunity *>(cextcomm);
         extcomm->Remove();
-        assert(!extcomm->destroyed());
-        extcomm->set_destroyed(true);
         assert(extcomm->refcount_ == 0);
-        // delete extcomm;
+        delete extcomm;
     }
 }
 

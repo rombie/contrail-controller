@@ -7,7 +7,7 @@
 
 #include <boost/functional/hash.hpp>
 #include <boost/scoped_array.hpp>
-#include <tbb/recursive_mutex.h>
+#include <tbb/mutex.h>
 
 #include <set>
 #include <string>
@@ -121,14 +121,14 @@ public:
     explicit BgpPathAttributeDB(int hash_size = GetHashSize())
         : hash_size_(hash_size),
           set_(new Set[hash_size]),
-          mutex_(new tbb::recursive_mutex[hash_size]) {
+          mutex_(new tbb::mutex[hash_size]) {
     }
 
     size_t Size() {
         size_t size = 0;
 
         for (size_t i = 0; i < hash_size_; i++) {
-            tbb::recursive_mutex::scoped_lock lock(mutex_[i]);
+            tbb::mutex::scoped_lock lock(mutex_[i]);
             size += set_[i].size();
         }
         return size;
@@ -137,15 +137,8 @@ public:
     void Delete(Type *attr) {
         size_t hash = HashCompute(attr);
 
-        tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
-
-        AttributesVerify();
-        assert(attr->refcount_ == 0);
-        set_[hash].erase(attr);
-        typename Set::iterator it = set_[hash].find(attr);
-        if (it != set_[hash].end())
-            assert(*it != attr);
-        AttributesVerify();
+        tbb::mutex::scoped_lock lock(mutex_[hash]);
+        assert(set_[hash].erase(attr) == 1);
     }
 
     // Locate passed in attribute in the data base based on the attr ptr.
@@ -157,31 +150,6 @@ public:
     TypePtr Locate(const TypeSpec &spec) {
         Type *attr = new Type(static_cast<TypeDB *>(this), spec);
         return LocateInternal(attr);
-    }
-
-    void Verify(const Type *cattr, bool present) {
-#if 1
-        Type *attr = const_cast<Type *>(cattr);
-        size_t hash = HashCompute(attr);
-
-        tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
-        typename Set::iterator it = set_[hash].find(attr);
-
-        if (!present && it != set_[hash].end())
-            assert(*it != attr);
-#endif
-    }
-
-    void AttributesVerify() {
-        for (typename Set::iterator j = set_[0].begin();
-                j != set_[0].end(); ++j) {
-            assert(!(*j)->destroyed());
-#if 0
-            std::pair<typename Set::iterator, bool> ret = set_[0].insert(*j);
-            assert(!ret.second);
-            assert(*(ret.first) == *j);
-#endif
-        }
     }
 
 private:
@@ -209,36 +177,13 @@ private:
     TypePtr LocateInternal(Type *attr) {
         // Hash attribute contents to to avoid potential mutex contention.
         size_t hash = HashCompute(attr);
-        int i = 0;
         while (true) {
             // Grab mutex to keep db access thread safe.
-            tbb::recursive_mutex::scoped_lock lock(mutex_[hash]);
+            tbb::mutex::scoped_lock lock(mutex_[hash]);
             std::pair<typename Set::iterator, bool> ret;
-
-            i++;
-            AttributesVerify();
-            typename Set::iterator it1 = set_[hash].find(attr);
-            if (it1 != set_[hash].end())
-                assert(*it1 != attr);
 
             // Try to insert the passed entry into the database.
             ret = set_[hash].insert(attr);
-            AttributesVerify();
-
-            if (!ret.second) {
-                typename Set::iterator it = set_[hash].find(attr);
-                assert(*ret.first != attr);
-                assert(it != set_[hash].end());
-
-                if (*it != *ret.first) {
-                    for (typename Set::iterator j =  set_[hash].begin();
-                            j != set_[hash].end(); ++j) {
-                        std::cout << *j << "\n";
-                        std::cout << (uint64_t) (*j) << "\n";
-                    }
-                    assert(*it == *ret.first);
-                }
-            }
 
             // Take a reference to prevent this entry from getting deleted.
             // Counter is automatically incremented, hence we get thread safety
@@ -266,8 +211,7 @@ private:
             // data base.
             if (prev > 0) {
                 // Free passed in attribute, as it is already in the database.
-                attr->set_destroyed(true);
-                // delete attr;
+                delete attr;
 
                 // Take intrusive pointer, thereby incrementing the refcount.
                 TypePtr ptr = TypePtr(*ret.first);
@@ -291,7 +235,7 @@ private:
     typedef std::set<Type *, TypeCompare> Set;
     size_t hash_size_;
     boost::scoped_array<Set> set_;
-    boost::scoped_array<tbb::recursive_mutex> mutex_;
+    boost::scoped_array<tbb::mutex> mutex_;
 };
 
 #endif  // SRC_BGP_BGP_ATTR_BASE_H_

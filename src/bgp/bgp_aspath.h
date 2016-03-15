@@ -69,12 +69,10 @@ class AsPath {
 public:
     explicit AsPath(AsPathDB *aspath_db) : aspath_db_(aspath_db) {
         refcount_ = 0;
-        destroyed_ = false;
     }
     explicit AsPath(AsPathDB *aspath_db, const AsPathSpec &spec)
         : aspath_db_(aspath_db), path_(spec) {
         refcount_ = 0;
-        destroyed_ = false;
         for (size_t i = 0; i < path_.path_segments.size(); i++) {
             AsPathSpec::PathSegment *ps = path_.path_segments[i];
             if (ps->path_segment_type == AsPathSpec::PathSegment::AS_SET) {
@@ -82,7 +80,7 @@ public:
             }
         }
     }
-    virtual ~AsPath();
+    virtual ~AsPath() { }
     virtual void Remove();
     int AsCount() const {
         int count = 0;
@@ -122,17 +120,14 @@ public:
         return hash;
     }
 
-    mutable tbb::atomic<int> refcount_;
-    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
-    const bool destroyed() const { return destroyed_; }
 private:
     friend int intrusive_ptr_add_ref(const AsPath *cpath);
     friend int intrusive_ptr_del_ref(const AsPath *cpath);
     friend void intrusive_ptr_release(const AsPath *cpath);
 
+    mutable tbb::atomic<int> refcount_;
     AsPathDB *aspath_db_;
     AsPathSpec path_;
-    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const AsPath *cpath) {
@@ -148,10 +143,8 @@ inline void intrusive_ptr_release(const AsPath *cpath) {
     if (prev == 1) {
         AsPath *path = const_cast<AsPath *>(cpath);
         path->Remove();
-        assert(!path->destroyed());
-        path->set_destroyed(true);
         assert(path->refcount_ == 0);
-        // delete path;
+        delete path;
     }
 }
 
