@@ -39,7 +39,7 @@ size_t OriginVnPathSpec::EncodeLength() const {
 
 OriginVnPath::OriginVnPath(OriginVnPathDB *ovnpath_db,
     const OriginVnPathSpec spec)
-    : ovnpath_db_(ovnpath_db) {
+    : ovnpath_db_(ovnpath_db), destroyed_(false) {
     refcount_ = 0;
     for (vector<uint64_t>::const_iterator it = spec.origin_vns.begin();
          it < spec.origin_vns.end(); ++it) {

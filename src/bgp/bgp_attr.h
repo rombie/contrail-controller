@@ -195,6 +195,8 @@ public:
     }
 
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 private:
     friend int intrusive_ptr_add_ref(const ClusterList *ccluster_list);
     friend int intrusive_ptr_del_ref(const ClusterList *ccluster_list);
@@ -205,6 +207,7 @@ private:
 
     ClusterListDB *cluster_list_db_;
     ClusterListSpec spec_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const ClusterList *ccluster_list) {
@@ -220,8 +223,10 @@ inline void intrusive_ptr_release(const ClusterList *ccluster_list) {
     if (prev == 1) {
         ClusterList *cluster_list = const_cast<ClusterList *>(ccluster_list);
         cluster_list->Remove();
+        assert(!cluster_list->destroyed());
+        cluster_list->set_destroyed(true);
         assert(cluster_list->refcount_ == 0);
-        delete cluster_list;
+        // delete cluster_list;
     }
 }
 
@@ -348,6 +353,8 @@ public:
     const uint32_t label() const { return label_; }
 
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 
 private:
     friend int intrusive_ptr_add_ref(const PmsiTunnel *cpmsi_tunnel);
@@ -363,6 +370,7 @@ private:
     uint32_t label_;
     PmsiTunnelDB *pmsi_tunnel_db_;
     PmsiTunnelSpec pmsi_spec_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const PmsiTunnel *cpmsi_tunnel) {
@@ -378,8 +386,10 @@ inline void intrusive_ptr_release(const PmsiTunnel *cpmsi_tunnel) {
     if (prev == 1) {
         PmsiTunnel *pmsi_tunnel = const_cast<PmsiTunnel *>(cpmsi_tunnel);
         pmsi_tunnel->Remove();
+        assert(!pmsi_tunnel->destroyed());
+        pmsi_tunnel->set_destroyed(true);
         assert(pmsi_tunnel->refcount_ == 0);
-        delete pmsi_tunnel;
+        // delete pmsi_tunnel;
     }
 }
 
@@ -457,6 +467,8 @@ public:
 
     EdgeList edge_list;
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 
 private:
     friend int intrusive_ptr_add_ref(const EdgeDiscovery *ediscovery);
@@ -467,6 +479,7 @@ private:
     virtual void Remove();
     EdgeDiscoveryDB *edge_discovery_db_;
     EdgeDiscoverySpec edspec_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const EdgeDiscovery *cediscovery) {
@@ -482,8 +495,10 @@ inline void intrusive_ptr_release(const EdgeDiscovery *cediscovery) {
     if (prev == 1) {
         EdgeDiscovery *ediscovery = const_cast<EdgeDiscovery *>(cediscovery);
         ediscovery->Remove();
+        assert(!ediscovery->destroyed());
+        ediscovery->set_destroyed(true);
         assert(ediscovery->refcount_ == 0);
-        delete ediscovery;
+        // delete ediscovery;
     }
 }
 
@@ -564,6 +579,8 @@ public:
 
     EdgeList edge_list;
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 
 private:
     friend int intrusive_ptr_add_ref(const EdgeForwarding *ceforwarding);
@@ -575,6 +592,7 @@ private:
 
     EdgeForwardingDB *edge_forwarding_db_;
     EdgeForwardingSpec efspec_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const EdgeForwarding *ceforwarding) {
@@ -591,8 +609,10 @@ inline void intrusive_ptr_release(const EdgeForwarding *ceforwarding) {
         EdgeForwarding *eforwarding =
             const_cast<EdgeForwarding *>(ceforwarding);
         eforwarding->Remove();
+        assert(!eforwarding->destroyed());
+        eforwarding->set_destroyed(true);
         assert(eforwarding->refcount_ == 0);
-        delete eforwarding;
+        // delete eforwarding;
     }
 }
 
@@ -679,6 +699,8 @@ public:
 
     const Elements &elements() const { return elements_; }
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 
 private:
     friend int intrusive_ptr_add_ref(const BgpOList *colist);
@@ -691,6 +713,7 @@ private:
     Elements elements_;
     BgpOListDB *olist_db_;
     BgpOListSpec olist_spec_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const BgpOList *colist) {
@@ -706,8 +729,10 @@ inline void intrusive_ptr_release(const BgpOList *colist) {
     if (prev == 1) {
         BgpOList *olist = const_cast<BgpOList *>(colist);
         olist->Remove();
+        assert(!olist->destroyed());
+        olist->set_destroyed(true);
         assert(olist->refcount_ == 0);
-        delete olist;
+        // delete olist;
     }
 }
 
@@ -786,7 +811,6 @@ public:
     BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec);
     virtual ~BgpAttr();
 
-    virtual void Remove();
     int CompareTo(const BgpAttr &rhs) const;
 
     void set_origin(BgpAttrOrigin::OriginType org) { origin_ = org; }
@@ -858,12 +882,17 @@ public:
     BgpAttrDB *attr_db() const { return attr_db_; }
     uint32_t sequence_number() const;
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
+    void AttributesVerify();
 
 private:
     friend class BgpAttrDB;
     friend int intrusive_ptr_add_ref(const BgpAttr *cattrp);
     friend int intrusive_ptr_del_ref(const BgpAttr *cattrp);
     friend void intrusive_ptr_release(const BgpAttr *cattrp);
+
+    virtual void Remove();
 
     BgpAttrDB *attr_db_;
     BgpAttrOrigin::OriginType origin_;
@@ -888,6 +917,7 @@ private:
     LabelBlockPtr label_block_;
     BgpOListPtr olist_;
     BgpOListPtr leaf_olist_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const BgpAttr *cattrp) {
@@ -903,7 +933,10 @@ inline void intrusive_ptr_release(const BgpAttr *cattrp) {
     if (prev == 1) {
         BgpAttr *attrp = const_cast<BgpAttr *>(cattrp);
         attrp->Remove();
-        delete attrp;
+        assert(!attrp->destroyed());
+        attrp->set_destroyed(true);
+        attrp->AttributesVerify();
+        // delete attrp;
     }
 }
 

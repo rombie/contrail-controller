@@ -167,7 +167,7 @@ std::string ClusterListSpec::ToString() const {
 ClusterList::ClusterList(ClusterListDB *cluster_list_db,
     const ClusterListSpec &spec)
     : cluster_list_db_(cluster_list_db),
-      spec_(spec) {
+      spec_(spec), destroyed_(false) {
     refcount_ = 0;
 }
 
@@ -334,7 +334,7 @@ std::vector<std::string> PmsiTunnelSpec::GetTunnelFlagsStrings() const {
 PmsiTunnel::PmsiTunnel(PmsiTunnelDB *pmsi_tunnel_db,
     const PmsiTunnelSpec &pmsi_spec)
     : pmsi_tunnel_db_(pmsi_tunnel_db),
-      pmsi_spec_(pmsi_spec) {
+      pmsi_spec_(pmsi_spec), destroyed_(false) {
     refcount_ = 0;
     tunnel_flags_ = pmsi_spec_.tunnel_flags;
     tunnel_type_ = pmsi_spec_.tunnel_type;
@@ -465,7 +465,7 @@ bool EdgeDiscovery::Edge::operator<(const Edge &rhs) const {
 EdgeDiscovery::EdgeDiscovery(EdgeDiscoveryDB *edge_discovery_db,
     const EdgeDiscoverySpec &edspec)
     : edge_discovery_db_(edge_discovery_db),
-      edspec_(edspec) {
+      edspec_(edspec), destroyed_(false) {
     refcount_ = 0;
     for (EdgeDiscoverySpec::EdgeList::const_iterator it =
          edspec_.edge_list.begin(); it != edspec_.edge_list.end(); ++it) {
@@ -619,7 +619,7 @@ bool EdgeForwarding::Edge::operator<(const Edge &rhs) const {
 EdgeForwarding::EdgeForwarding(EdgeForwardingDB *edge_forwarding_db,
     const EdgeForwardingSpec &efspec)
     : edge_forwarding_db_(edge_forwarding_db),
-      efspec_(efspec) {
+      efspec_(efspec), destroyed_(false) {
     refcount_ = 0;
     for (EdgeForwardingSpec::EdgeList::const_iterator it =
          efspec_.edge_list.begin(); it != efspec_.edge_list.end(); ++it) {
@@ -688,7 +688,7 @@ std::string BgpOListSpec::ToString() const {
 
 BgpOList::BgpOList(BgpOListDB *olist_db, const BgpOListSpec &olist_spec)
     : olist_db_(olist_db),
-      olist_spec_(olist_spec) {
+      olist_spec_(olist_spec), destroyed_(false) {
     refcount_ = 0;
     for (BgpOListSpec::Elements::const_iterator it =
          olist_spec_.elements.begin(); it != olist_spec_.elements.end(); ++it) {
@@ -803,14 +803,14 @@ std::string BgpAttrParams::ToString() const {
 BgpAttr::BgpAttr()
     : attr_db_(NULL), origin_(BgpAttrOrigin::INCOMPLETE), nexthop_(),
       med_(0), local_pref_(0), atomic_aggregate_(false),
-      aggregator_as_num_(0), params_(0) {
+      aggregator_as_num_(0), params_(0), destroyed_(false) {
     refcount_ = 0;
 }
 
 BgpAttr::BgpAttr(BgpAttrDB *attr_db)
     : attr_db_(attr_db), origin_(BgpAttrOrigin::INCOMPLETE),
       nexthop_(), med_(0), local_pref_(0), atomic_aggregate_(false),
-      aggregator_as_num_(0), params_(0) {
+      aggregator_as_num_(0), params_(0), destroyed_(false) {
     refcount_ = 0;
 }
 
@@ -819,7 +819,8 @@ BgpAttr::BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec)
       nexthop_(), med_(0),
       local_pref_(BgpAttrLocalPref::kDefault),
       atomic_aggregate_(false),
-      aggregator_as_num_(0), aggregator_address_(), params_(0) {
+      aggregator_as_num_(0), aggregator_address_(), params_(0),
+      destroyed_(false) {
     refcount_ = 0;
     for (std::vector<BgpAttribute *>::const_iterator it = spec.begin();
          it < spec.end(); it++) {
@@ -845,12 +846,18 @@ BgpAttr::BgpAttr(const BgpAttr &rhs)
       edge_forwarding_(rhs.edge_forwarding_),
       label_block_(rhs.label_block_),
       olist_(rhs.olist_),
-      leaf_olist_(rhs.leaf_olist_) {
+      leaf_olist_(rhs.leaf_olist_),
+    destroyed_(false) {
     refcount_ = 0;
 }
 
 BgpAttr::~BgpAttr() {
+    assert(false);
     attr_db_->Verify(this, false);
+}
+
+void BgpAttr::AttributesVerify() {
+    attr_db()->AttributesVerify();
 }
 
 void BgpAttr::set_as_path(AsPathPtr aspath) {

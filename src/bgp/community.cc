@@ -41,7 +41,8 @@ string CommunitySpec::ToString() const {
 }
 
 Community::Community(CommunityDB *comm_db, const CommunitySpec spec)
-    : comm_db_(comm_db), communities_(spec.communities) {
+    : comm_db_(comm_db), communities_(spec.communities),
+      destroyed_(false) {
     refcount_ = 0;
     sort(communities_.begin(), communities_.end());
     vector<uint32_t>::iterator it =
@@ -346,7 +347,8 @@ int ExtCommunity::GetOriginVnIndex() const {
 }
 
 ExtCommunity::ExtCommunity(ExtCommunityDB *extcomm_db,
-        const ExtCommunitySpec spec) : extcomm_db_(extcomm_db) {
+        const ExtCommunitySpec spec) : extcomm_db_(extcomm_db),
+        destroyed_(false) {
     refcount_ = 0;
     for (vector<uint64_t>::const_iterator it = spec.communities.begin();
          it < spec.communities.end(); ++it) {

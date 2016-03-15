@@ -65,6 +65,8 @@ public:
         return hash;
     }
     mutable tbb::atomic<int> refcount_;
+    void set_destroyed(bool destroyed) { destroyed_ = destroyed; }
+    const bool destroyed() const { return destroyed_; }
 
 private:
     friend int intrusive_ptr_add_ref(const OriginVnPath *covnpath);
@@ -77,6 +79,7 @@ private:
 
     OriginVnPathDB *ovnpath_db_;
     OriginVnList origin_vns_;
+    bool destroyed_;
 };
 
 inline int intrusive_ptr_add_ref(const OriginVnPath *covnpath) {
@@ -92,6 +95,8 @@ inline void intrusive_ptr_release(const OriginVnPath *covnpath) {
     if (prev == 1) {
         OriginVnPath *ovnpath = const_cast<OriginVnPath *>(covnpath);
         ovnpath->Remove();
+        assert(!ovnpath->destroyed());
+        ovnpath->set_destroyed(true);
         assert(ovnpath->refcount_ == 0);
         delete ovnpath;
     }
