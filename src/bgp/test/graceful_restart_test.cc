@@ -41,10 +41,10 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static int d_instances = 4;
-static int d_routes = 4;
-static int d_agents = 4;
-static int d_peers = 4;
+static int d_instances = 1;
+static int d_routes = 1;
+static int d_agents = 1;
+static int d_peers = 1;
 static int d_targets = 1;
 
 static vector<int>  n_instances = boost::assign::list_of(d_instances);
