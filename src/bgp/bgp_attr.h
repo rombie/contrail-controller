@@ -182,6 +182,7 @@ class ClusterList {
 public:
     ClusterList(ClusterListDB *cluster_list_db, const ClusterListSpec &spec);
     ~ClusterList() { }
+    void Remove();
     int CompareTo(const ClusterList &rhs) const {
         return spec_.CompareTo(rhs.cluster_list());
     }
@@ -199,8 +200,6 @@ private:
     friend int intrusive_ptr_del_ref(const ClusterList *ccluster_list);
     friend void intrusive_ptr_release(const ClusterList *ccluster_list);
     friend class ClusterListDB;
-
-    void Remove();
 
     mutable tbb::atomic<int> refcount_;
     ClusterListDB *cluster_list_db_;
@@ -327,6 +326,7 @@ class PmsiTunnel {
 public:
     PmsiTunnel(PmsiTunnelDB *pmsi_tunnel_db, const PmsiTunnelSpec &pmsi_spec);
     virtual ~PmsiTunnel() { }
+    virtual void Remove();
     int CompareTo(const PmsiTunnel &rhs) const {
         return pmsi_spec_.CompareTo(rhs.pmsi_tunnel());
     }
@@ -352,8 +352,6 @@ private:
     friend int intrusive_ptr_del_ref(const PmsiTunnel *cpmsi_tunnel);
     friend void intrusive_ptr_release(const PmsiTunnel *cpmsi_tunnel);
     friend class PmsiTunnelDB;
-
-    virtual void Remove();
 
     uint8_t tunnel_flags_;
     uint8_t tunnel_type_;
@@ -429,6 +427,7 @@ public:
     EdgeDiscovery(EdgeDiscoveryDB *edge_discovery_db,
         const EdgeDiscoverySpec &edspec);
     virtual ~EdgeDiscovery();
+    virtual void Remove();
     int CompareTo(const EdgeDiscovery &rhs) const;
 
     const EdgeDiscoverySpec &edge_discovery() const { return edspec_; }
@@ -462,7 +461,6 @@ private:
     friend void intrusive_ptr_release(const EdgeDiscovery *ediscovery);
     friend class EdgeDiscoveryDB;
 
-    virtual void Remove();
     mutable tbb::atomic<int> refcount_;
     EdgeDiscoveryDB *edge_discovery_db_;
     EdgeDiscoverySpec edspec_;
@@ -536,6 +534,7 @@ public:
     EdgeForwarding(EdgeForwardingDB *edge_forwarding_db,
         const EdgeForwardingSpec &efspec);
     virtual ~EdgeForwarding();
+    virtual void Remove();
     int CompareTo(const EdgeForwarding &rhs) const;
 
     const EdgeForwardingSpec &edge_forwarding() const { return efspec_; }
@@ -568,8 +567,6 @@ private:
     friend int intrusive_ptr_del_ref(const EdgeForwarding *ceforwarding);
     friend void intrusive_ptr_release(const EdgeForwarding *ceforwarding);
     friend class EdgeForwardingDB;
-
-    virtual void Remove();
 
     mutable tbb::atomic<int> refcount_;
     EdgeForwardingDB *edge_forwarding_db_;
@@ -664,6 +661,7 @@ class BgpOList {
 public:
     BgpOList(BgpOListDB *olist_db, const BgpOListSpec &olist_spec);
     virtual ~BgpOList();
+    virtual void Remove();
     int CompareTo(const BgpOList &rhs) const;
 
     const BgpOListSpec &olist() const { return olist_spec_; }
@@ -683,8 +681,6 @@ private:
     friend int intrusive_ptr_del_ref(const BgpOList *colist);
     friend void intrusive_ptr_release(const BgpOList *colist);
     friend class BgpOListDB;
-
-    virtual void Remove();
 
     Elements elements_;
     mutable tbb::atomic<int> refcount_;
@@ -784,6 +780,7 @@ public:
     explicit BgpAttr(const BgpAttr &rhs);
     BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec);
     virtual ~BgpAttr() { }
+    virtual void Remove();
 
     int CompareTo(const BgpAttr &rhs) const;
 
@@ -862,8 +859,6 @@ private:
     friend int intrusive_ptr_add_ref(const BgpAttr *cattrp);
     friend int intrusive_ptr_del_ref(const BgpAttr *cattrp);
     friend void intrusive_ptr_release(const BgpAttr *cattrp);
-
-    virtual void Remove();
 
     mutable tbb::atomic<int> refcount_;
     BgpAttrDB *attr_db_;

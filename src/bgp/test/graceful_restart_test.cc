@@ -685,7 +685,7 @@ void GracefulRestartTest::ProcessVpnRoute(BgpPeerTest *peer, int instance,
         BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
 
         req.data.reset(new InetTable::RequestData(attr, 0,
-                                                  1000*instance_id + rt));
+                                                  1000*instance + rt));
         table->Enqueue(&req);
     }
     task_util::WaitForIdle();

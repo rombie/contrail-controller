@@ -50,6 +50,7 @@ public:
     explicit OriginVnPath(OriginVnPathDB *ovnpath_db,
                           const OriginVnPathSpec spec);
     virtual ~OriginVnPath() { }
+    virtual void Remove();
 
     bool Contains(const OriginVnValue &value) const;
     int CompareTo(const OriginVnPath &rhs) const;
@@ -73,7 +74,6 @@ private:
     friend class BgpAttrTest;
 
     void Prepend(const OriginVnValue &value);
-    virtual void Remove();
 
     mutable tbb::atomic<int> refcount_;
     OriginVnPathDB *ovnpath_db_;

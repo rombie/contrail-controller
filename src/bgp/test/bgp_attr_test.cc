@@ -1205,11 +1205,11 @@ TEST_F(BgpAttrTest, PmsiTunnel4a) {
 
     const PmsiTunnel *pmsi_tunnel = attr->pmsi_tunnel();
     EXPECT_EQ(PmsiTunnelSpec::EdgeReplicationSupported,
-        pmsi_tunnel->tunnel_flags);
+        pmsi_tunnel->tunnel_flags());
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
-        pmsi_tunnel->tunnel_type);
+        pmsi_tunnel->tunnel_type());
     EXPECT_EQ(10000, pmsi_tunnel->GetLabel());
-    EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier.to_string());
+    EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel4b) {
@@ -1226,11 +1226,11 @@ TEST_F(BgpAttrTest, PmsiTunnel4b) {
 
     const PmsiTunnel *pmsi_tunnel = attr->pmsi_tunnel();
     EXPECT_EQ(PmsiTunnelSpec::EdgeReplicationSupported,
-        pmsi_tunnel->tunnel_flags);
+        pmsi_tunnel->tunnel_flags());
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
-        pmsi_tunnel->tunnel_type);
+        pmsi_tunnel->tunnel_type());
     EXPECT_EQ(EvpnPrefix::kMaxVni, pmsi_tunnel->GetLabel(true));
-    EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier.to_string());
+    EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel5) {

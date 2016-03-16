@@ -53,6 +53,7 @@ public:
     }
     explicit Community(CommunityDB *comm_db, const CommunitySpec spec);
     virtual ~Community() { }
+    virtual void Remove();
 
     int CompareTo(const Community &rhs) const;
     bool ContainsValue(uint32_t value) const;
@@ -78,7 +79,6 @@ private:
     void Append(const std::vector<uint32_t> &communities);
     void Set(const std::vector<uint32_t> &communities);
     void Remove(const std::vector<uint32_t> &communities);
-    virtual void Remove();
 
     mutable tbb::atomic<int> refcount_;
     CommunityDB *comm_db_;
