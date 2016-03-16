@@ -230,6 +230,28 @@ BgpPeerFamilyAttributes::BgpPeerFamilyAttributes(
         loop_count = config->loop_count();
     }
     prefix_limit = family_config.prefix_limit;
+
+    if (config->router_type() == "bgpaas-client") {
+        if (family_config.family == "inet") {
+            gateway_address = config->gateway_address(Address::INET);
+        } else if (family_config.family == "inet6") {
+            gateway_address = config->gateway_address(Address::INET6);
+        }
+    }
+}
+
+RibExportPolicy BgpPeer::BuildRibExportPolicy(Address::Family family) const {
+    BgpPeerFamilyAttributes *family_attributes =
+        family_attributes_list_[family];
+    if (!family_attributes ||
+        family_attributes->gateway_address.is_unspecified()) {
+        return RibExportPolicy(
+            peer_type_, RibExportPolicy::BGP, peer_as_, -1, 0);
+    } else {
+        IpAddress nexthop = family_attributes->gateway_address;
+        return RibExportPolicy(
+            peer_type_, RibExportPolicy::BGP, peer_as_, nexthop, -1, 0);
+    }
 }
 
 void BgpPeer::ReceiveEndOfRIB(Address::Family family, size_t msgsize) {
@@ -344,9 +366,6 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           peer_bgp_id_(0),
           peer_type_((config->peer_as() == config->local_as()) ?
                          BgpProto::IBGP : BgpProto::EBGP),
-          policy_((config->peer_as() == config->local_as()) ?
-                      BgpProto::IBGP : BgpProto::EBGP,
-                  RibExportPolicy::BGP, config->peer_as(), -1, 0),
           state_machine_(BgpObjectFactory::Create<StateMachine>(this)),
           peer_close_(new PeerClose(this)),
           peer_stats_(new PeerStats(this)),
@@ -600,12 +619,6 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
     }
     ProcessEndpointConfig(config);
 
-    // Check if there is any change in the configured address families.
-    if (ProcessFamilyAttributesConfig(config)) {
-        peer_info.set_configured_families(configured_families_);
-        clear_session = true;
-    }
-
     BgpProto::BgpPeerType old_type = PeerType();
     if (local_as_ != config->local_as()) {
         local_as_ = config->local_as();
@@ -638,8 +651,12 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
     if (old_type != PeerType()) {
         peer_info.set_peer_type(
             PeerType() == BgpProto::IBGP ? "internal" : "external");
-        policy_.type = peer_type_;
-        policy_.as_number = peer_as_;
+        clear_session = true;
+    }
+
+    // Check if there is any change in the configured address families.
+    if (ProcessFamilyAttributesConfig(config)) {
+        peer_info.set_configured_families(configured_families_);
         clear_session = true;
     }
 
@@ -728,6 +745,12 @@ string BgpPeer::transport_address_string() const {
         endpoint = session_->remote_endpoint();
     oss << endpoint;
     return oss.str();
+}
+
+string BgpPeer::gateway_address_string(Address::Family family) const {
+    if (!family_attributes_list_[family])
+        return string();
+    return family_attributes_list_[family]->gateway_address.to_string();
 }
 
 //
@@ -863,8 +886,8 @@ void BgpPeer::RegisterAllTables() {
         BgpTable *table = instance->GetTable(family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
                            table, "Register peer with the table");
-        membership_mgr->Register(this, table, policy_, -1,
-            boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
+        membership_mgr->Register(this, table, BuildRibExportPolicy(family),
+            -1, boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
         membership_req_pending_++;
     }
 
@@ -874,11 +897,12 @@ void BgpPeer::RegisterAllTables() {
         return;
     }
 
-    BgpTable *table = instance->GetTable(Address::RTARGET);
+    Address::Family family = Address::RTARGET;
+    BgpTable *table = instance->GetTable(family);
     BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         table, "Register peer with the table");
-    membership_mgr->Register(this, table, policy_, -1,
-        boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
+    membership_mgr->Register(this, table, BuildRibExportPolicy(family),
+        -1, boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
     membership_req_pending_++;
     StartEndOfRibTimer();
 
@@ -1329,8 +1353,8 @@ void BgpPeer::RegisterToVpnTables() {
         BgpTable *table = instance->GetTable(vpn_family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register peer with the table");
-        membership_mgr->Register(this, table, policy_, -1,
-            boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
+        membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family),
+            -1, boost::bind(&BgpPeer::MembershipRequestCallback, this, _1, _2));
         membership_req_pending_++;
     }
 }
@@ -1691,6 +1715,10 @@ void BgpPeer::FillBgpNeighborFamilyAttributes(BgpNeighborResp *nbr) const {
             family_attributes_list_[idx]->loop_count;
         show_family_attributes.prefix_limit =
             family_attributes_list_[idx]->prefix_limit;
+        if (!family_attributes_list_[idx]->gateway_address.is_unspecified()) {
+            show_family_attributes.gateway_address =
+                family_attributes_list_[idx]->gateway_address.to_string();
+        }
         show_family_attributes_list.push_back(show_family_attributes);
     }
     nbr->set_family_attributes_list(show_family_attributes_list);

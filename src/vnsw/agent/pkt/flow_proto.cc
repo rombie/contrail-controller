@@ -123,7 +123,6 @@ bool FlowProto::Enqueue(boost::shared_ptr<PktInfo> msg) {
     if (Validate(msg.get()) == false) {
         return true;
     }
-    FreeBuffer(msg.get());
     EnqueueFlowEvent(new FlowEvent(FlowEvent::VROUTER_FLOW_MSG, msg));
     return true;
 }
@@ -134,6 +133,10 @@ void FlowProto::DisableFlowEventQueue(uint32_t index, bool disabled) {
 
 void FlowProto::DisableFlowMgmtQueue(bool disabled) {
     flow_update_queue_.set_disable(disabled);
+}
+
+size_t FlowProto::FlowMgmtQueueLength() {
+    return flow_update_queue_.Length();
 }
 
 /////////////////////////////////////////////////////////////////////////////
