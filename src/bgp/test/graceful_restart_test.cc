@@ -41,11 +41,17 @@ using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
 
-static vector<int>  n_instances = boost::assign::list_of(1);
-static vector<int>  n_routes    = boost::assign::list_of(1);
-static vector<int>  n_agents    = boost::assign::list_of(1);
-static vector<int>  n_peers     = boost::assign::list_of(1);
-static vector<int>  n_targets   = boost::assign::list_of(1);
+static int d_instances = 4;
+static int d_routes = 4;
+static int d_agents = 4;
+static int d_peers = 4;
+static int d_targets = 1;
+
+static vector<int>  n_instances = boost::assign::list_of(d_instances);
+static vector<int>  n_routes    = boost::assign::list_of(d_routes);
+static vector<int>  n_agents    = boost::assign::list_of(d_agents);
+static vector<int>  n_peers     = boost::assign::list_of(d_peers);
+static vector<int>  n_targets   = boost::assign::list_of(d_targets);
 
 static char **gargv;
 static int    gargc;
@@ -57,27 +63,24 @@ static void process_command_line_args(int argc, char **argv) {
     if (cmd_line_processed) return;
     cmd_line_processed = true;
 
-    int ninstances = 1, nroutes = 1, nagents = 1, npeers = 1, ntargets = 1;
-    bool close_from_control_node = false;
+    int ninstances, nroutes, nagents, npeers, ntargets;
     bool cmd_line_arg_set = false;
 
     // Declare the supported options.
     options_description desc("Allowed options");
     desc.add_options()
         ("help", "produce help message")
-        ("nroutes", value<int>()->default_value(nroutes),
+        ("nroutes", value<int>()->default_value(d_routes),
              "set number of routes")
-        ("nagents", value<int>()->default_value(nagents),
+        ("nagents", value<int>()->default_value(d_agents),
              "set number of xmpp agents")
-        ("npeers", value<int>()->default_value(npeers),
+        ("npeers", value<int>()->default_value(d_peers),
              "set number of bgp peers")
-        ("ninstances", value<int>()->default_value(ninstances),
+        ("ninstances", value<int>()->default_value(d_instances),
              "set number of routing instances")
-        ("ntargets", value<int>()->default_value(ntargets),
+        ("ntargets", value<int>()->default_value(d_targets),
              "set number of route targets")
         ("db-walker-wait-usecs", value<int>(), "set usecs delay in walker cb")
-        ("close-from-control-node", bool_switch(&close_from_control_node),
-             "Initiate xmpp session close from control-node")
         ;
 
     variables_map vm;
@@ -87,10 +90,6 @@ static void process_command_line_args(int argc, char **argv) {
     if (vm.count("help")) {
         cout << desc << "\n";
         exit(1);
-    }
-
-    if (close_from_control_node) {
-        cmd_line_arg_set = true;
     }
 
     if (vm.count("ninstances")) {

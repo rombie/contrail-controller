@@ -551,13 +551,14 @@ bool RoutePathReplicator::RouteListener(TableState *ts,
         if (rt->BestPath()->PathCompare(*path, true))
             break;
 
-        const BgpAttrPtr attr = BgpAttrPtr(path->GetAttr());
-        const ExtCommunityPtr ext_community =
-            ExtCommunityPtr(attr->ext_community());
-
+        const BgpAttrPtr attrp = BgpAttrPtr(path->GetAttr());
+        const ExtCommunityPtr ext_community_curr =
+            ExtCommunityPtr(attrp->ext_community());
+        const ExtCommunity *ext_community = ext_community_curr.get();
         ExtCommunityPtr extcomm_ptr =
-          UpdateExtCommunity(server(), rtinstance, ext_community.get(), export_list);
-        if (!ext_community.get())
+          UpdateExtCommunity(server(), rtinstance, ext_community, export_list);
+        ext_community = extcomm_ptr.get();
+        if (!ext_community)
             continue;
 
         // Go through all extended communities.
@@ -612,7 +613,7 @@ bool RoutePathReplicator::RouteListener(TableState *ts,
             // If so, we set the origin vn for the replicated route to be the
             // vn for the dest instance.
             if (!vn_index && dest_rtinstance->virtual_network_index() &&
-                dest_rtinstance->HasExportTarget(ext_community.get())) {
+                dest_rtinstance->HasExportTarget(ext_community)) {
                 int dest_vn_index = dest_rtinstance->virtual_network_index();
                 OriginVn origin_vn(server_->autonomous_system(), dest_vn_index);
                 new_extcomm_ptr =
