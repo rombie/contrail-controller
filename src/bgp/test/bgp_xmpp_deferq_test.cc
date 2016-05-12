@@ -13,7 +13,7 @@ using namespace boost::assign;
 #include "base/task_annotations.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_path.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_sandesh.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/bgp_xmpp_channel.h"
@@ -22,11 +22,6 @@ using namespace boost::assign;
 #include "io/test/event_manager_test.h"
 #include "control-node/control_node.h"
 #include "control-node/test/network_agent_mock.h"
-
-
-
-
-
 
 using namespace boost::asio;
 using namespace std;
@@ -124,11 +119,13 @@ public:
         BgpTable *table = rt_instance->GetTable(Address::INET);
         if (table == NULL)
             return false;
-        IPeerRib *rib = a_->membership_mgr()->IPeerRibFind(channel->Peer(), table);
-        if (rib) {
-            if (rib->instance_id() == instance_id) return true;
+        BgpMembershipManager *membership_mgr = a_->membership_mgr();
+        int mm_instance_id;
+        if (!membership_mgr->GetRegistrationInfo(channel->Peer(), table,
+            &mm_instance_id)) {
+            return false;
         }
-        return false;
+        return (mm_instance_id == instance_id);
     }
 
     bool PeerNotRegistered(BgpXmppChannel *channel, std::string instance_name) {
@@ -140,11 +137,8 @@ public:
         BgpTable *table = rt_instance->GetTable(Address::INET);
         if (table == NULL)
             return true;
-        IPeerRib *rib = a_->membership_mgr()->IPeerRibFind(channel->Peer(), table);
-        if (rib) {
-            return false;
-        }
-        return true;
+        BgpMembershipManager *membership_mgr = a_->membership_mgr();
+        return (!membership_mgr->GetRegistrationInfo(channel->Peer(), table));
     }
 
     bool PeerHasPendingInstanceMembershipRequests(BgpXmppChannel *channel) {
@@ -164,11 +158,11 @@ public:
     }
 
     void PausePeerRibMembershipManager() {
-        a_->membership_mgr()->event_queue_->set_disable(true);
+        a_->membership_mgr()->SetQueueDisable(true);
     }
 
     void ResumePeerRibMembershipManager() {
-        a_->membership_mgr()->event_queue_->set_disable(false);
+        a_->membership_mgr()->SetQueueDisable(false);
     }
 
     void PauseBgpXmppChannelManager() {

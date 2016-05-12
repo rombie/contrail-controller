@@ -40,7 +40,6 @@ class LifetimeActor;
 class LifetimeManager;
 class OriginVnPathDB;
 class PmsiTunnelDB;
-class PeerRibMembershipManager;
 class RoutePathReplicator;
 class RoutingInstanceMgr;
 class RoutingPolicyMgr;
@@ -134,13 +133,9 @@ public:
         return NULL;
     }
 
-    PeerRibMembershipManager *membership_mgr() { return membership_mgr_.get(); }
-    const PeerRibMembershipManager *membership_mgr() const {
+    BgpMembershipManager *membership_mgr() { return membership_mgr_.get(); }
+    const BgpMembershipManager *membership_mgr() const {
         return membership_mgr_.get();
-    }
-
-    BgpMembershipManager *bgp_membership_mgr() {
-        return bgp_membership_mgr_.get();
     }
 
     AsPathDB *aspath_db() { return aspath_db_.get(); }
@@ -304,8 +299,7 @@ private:
     boost::scoped_ptr<RoutingInstanceMgr> inst_mgr_;
     boost::scoped_ptr<RoutingPolicyMgr> policy_mgr_;
     boost::scoped_ptr<RTargetGroupMgr> rtarget_group_mgr_;
-    boost::scoped_ptr<BgpMembershipManager> bgp_membership_mgr_;
-    boost::scoped_ptr<PeerRibMembershipManager> membership_mgr_;
+    boost::scoped_ptr<BgpMembershipManager> membership_mgr_;
     boost::scoped_ptr<BgpConditionListener> inet_condition_listener_;
     boost::scoped_ptr<BgpConditionListener> inet6_condition_listener_;
     boost::scoped_ptr<RoutePathReplicator> inetvpn_replicator_;

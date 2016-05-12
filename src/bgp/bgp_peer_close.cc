@@ -6,7 +6,7 @@
 
 
 #include "bgp/bgp_log.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_server.h"
@@ -260,8 +260,7 @@ void PeerCloseManager::ProcessClosure() {
 
     if (state_ == DELETE)
         peer_close_->CustomClose();
-    peer_close_->UnregisterPeer(
-        boost::bind(&PeerCloseManager::UnregisterPeerComplete, this, _1, _2));
+    peer_close_->UnregisterPeer();
 }
 
 void PeerCloseManager::CloseComplete() {

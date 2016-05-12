@@ -268,7 +268,7 @@ public:
         const IPeerDebugStats *peer);
 
     bool ResumeClose();
-    void MembershipRequestCallback(IPeer *ipeer, BgpTable *table);
+    void MembershipRequestCallback(BgpTable *table);
 
     virtual void UpdateRefCount(int count) const { refcount_ += count; }
     virtual tbb::atomic<int> GetRefCount() const { return refcount_; }

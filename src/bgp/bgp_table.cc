@@ -8,7 +8,7 @@
 
 #include "base/task_annotations.h"
 #include "bgp/bgp_log.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_ribout.h"
 #include "bgp/bgp_ribout_updates.h"
 #include "bgp/bgp_route.h"
@@ -434,8 +434,7 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
         // and route add is from the same incarnation of VRF subscription
         //
         if (peer->IsXmppPeer() && peer->IsRegistrationRequired()) {
-            PeerRibMembershipManager *mgr =
-                rtinstance_->server()->membership_mgr();
+            BgpMembershipManager *mgr = rtinstance_->server()->membership_mgr();
             int instance_id = -1;
             uint64_t subscription_gen_id = 0;
             bool is_registered =
@@ -548,6 +547,11 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
     InputCommonPostProcess(root, rt, notify_rt);
 }
 
+//
+// TBD (nsheth) - xxx
+// We should probably get rid of this routine and add code to update/delete the
+// BgpPath to close manager.
+//
 // For graceful-restart, we take mark-and-sweep approach instead of directly
 // deleting the paths. In the first walk, local-preference is lowered so that
 // the paths are least preferred and they are marked stale. After some time, if
@@ -561,111 +565,6 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
 // DBWalker callback routine for each of the RibIn prefix.
 void BgpTable::Input(DBTablePartBase *root, IPeer *peer, BgpRoute *rt,
                      int action_mask) {
-    DBRequest::DBOperation oper;
-    BgpAttrPtr attrs;
-    MembershipRequest::Action  action;
-
-    // Look for the flags that we care about
-    action = static_cast<MembershipRequest::Action>(action_mask &
-                (MembershipRequest::RIBIN_STALE |
-                 MembershipRequest::RIBIN_LLGR_STALE |
-                 MembershipRequest::RIBIN_SWEEP |
-                 MembershipRequest::RIBIN_DELETE));
-
-    if (action == MembershipRequest::INVALID)
-        return;
-
-    bool notify_rt = false;
-
-    // Process all paths sourced from this peer_. Multiple paths could exist
-    // in ecmp cases.
-    for (Route::PathList::iterator it = rt->GetPathList().begin(), next = it;
-         it != rt->GetPathList().end(); it = next) {
-        next++;
-
-        BgpPath *path = static_cast<BgpPath *>(it.operator->());
-
-        // Skip paths from other peers.
-        if (path->GetPeer() != peer)
-            continue;
-
-        // Skip resolved paths - PathResolver is responsible for them.
-        if (path->IsResolved())
-            continue;
-
-        // Skip secondary paths.
-        if (dynamic_cast<BgpSecondaryPath *>(path))
-            continue;
-
-        uint32_t stale = 0;
-        switch (action) {
-            case MembershipRequest::RIBIN_SWEEP:
-
-                // Stale paths must be deleted.
-                if (!path->IsStale() && !path->IsLlgrStale())
-                    return;
-                path->ResetStale();
-                path->ResetLlgrStale();
-                oper = DBRequest::DB_ENTRY_DELETE;
-                attrs = NULL;
-                break;
-
-            case MembershipRequest::RIBIN_DELETE:
-
-                // This path must be deleted. Hence attr is not required.
-                oper = DBRequest::DB_ENTRY_DELETE;
-                attrs = NULL;
-                break;
-
-            case MembershipRequest::RIBIN_STALE:
-
-                // If path is already marked as stale, then there is no need to
-                // process again. This can happen if the session flips while in
-                // GR_TIMER state.
-                if (path->IsStale())
-                    continue;
-
-                // This path must be marked for staling. Update the local
-                // preference and update the route accordingly.
-                oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-                attrs = path->GetAttr();
-                stale = BgpPath::Stale;
-                break;
-
-            case MembershipRequest::RIBIN_LLGR_STALE:
-
-                // If the path has NO_LLGR community, DELETE it.
-                if (path->GetAttr()->community() &&
-                    path->GetAttr()->community()->ContainsValue(
-                        CommunityType::NoLlgr)) {
-                    oper = DBRequest::DB_ENTRY_DELETE;
-                    attrs = NULL;
-                    break;
-                }
-
-                // If path is already marked as llgr_stale, then there is no
-                // need to process again. This can happen if the session flips
-                // while in LLGR_TIMER state.
-                if (path->IsLlgrStale())
-                    continue;
-
-                attrs = path->GetAttr();
-                stale = BgpPath::LlgrStale;
-                oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-                break;
-
-            default:
-                assert(false);
-                break;
-        }
-
-        // Feed the route modify/delete request to the table input process.
-        notify_rt |= InputCommon(root, rt, path, peer, NULL, oper, attrs,
-                                 path->GetPathId(), path->GetFlags() | stale,
-                                 path->GetLabel());
-    }
-
-    InputCommonPostProcess(root, rt, notify_rt);
 }
 
 void BgpTable::InputCommonPostProcess(DBTablePartBase *root,

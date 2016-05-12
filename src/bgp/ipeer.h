@@ -138,8 +138,7 @@ public:
     virtual const int GetGracefulRestartTime() const = 0;
     virtual const int GetLongLivedGracefulRestartTime() const = 0;
     virtual bool IsReady() const = 0;
-    virtual void UnregisterPeer(
-        boost::function<void(IPeer *peer, BgpTable *table)> completion_fn) = 0;
+    virtual void UnregisterPeer() = 0;
     virtual IPeer *peer() const = 0;
 };
 
@@ -171,7 +170,7 @@ public:
     virtual tbb::atomic<int> GetRefCount() const = 0;
     virtual void UpdatePrimaryPathCount(int count) const = 0;
     virtual int GetPrimaryPathCount() const = 0;
-    virtual void MembershipCallback(BgpTable *table) { }
+    virtual void MembershipRequestCallback(BgpTable *table) { }
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
         BgpRoute *route) { return false; }
 };

@@ -11,7 +11,7 @@
 #include "base/test/addr_test_util.h"
 
 #include "bgp/bgp_factory.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/bgp_xmpp_channel.h"
 #include "bgp/inet/inet_table.h"
@@ -579,9 +579,7 @@ void BgpPeerCloseTest::AddAllRoutes() {
         for (int i = 0; i < n_families_; i++) {
             BgpTable *table = rtinstance_->GetTable(familes_[i]);
 
-            server_->membership_mgr()->Register(npeer->peer(), table, policy,
-                    -1, boost::bind(&BgpPeerCloseTest::CreateRibsDone, this, _1,
-                                    _2, npeer));
+            server_->membership_mgr()->Register(npeer->peer(), table, policy);
 
             // Add routes to RibIn
             AddRoutes(table, npeer);

@@ -46,6 +46,7 @@ public:
     BgpProto::BgpPeerType PeerType() const { return BgpProto::IBGP; }
     virtual uint32_t bgp_identifier() const { return 0; }
     RibExportPolicy GetRibExportPolicy() { return policy_; }
+    void MembershipRequestCallback(BgpTable *table) { }
     bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route) {
         path_cb_count_++;
         return false;
@@ -71,7 +72,7 @@ protected:
         evm_.reset(new EventManager());
         server_.reset(new BgpServerTest(evm_.get(), "Local"));
         server_->session_manager()->Initialize(0);
-        mgr_ = server_->bgp_membership_mgr();
+        mgr_ = server_->membership_mgr();
         walker_ = mgr_->walker();
 
         RoutingInstance *rtinstance = NULL;

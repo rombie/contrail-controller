@@ -221,7 +221,7 @@ private:
     void RegisterTable(BgpTable *table, int instance_id);
     void UnregisterTable(BgpTable *table);
     bool MembershipResponseHandler(std::string table_name);
-    void MembershipRequestCallback(IPeer *ipeer, BgpTable *table);
+    void MembershipRequestCallback(BgpTable *table);
     void DequeueRequest(const std::string &table_name, DBRequest *request);
     bool XmppDecodeAddress(int af, const std::string &address,
                            IpAddress *addrp, bool zero_ok = false);
