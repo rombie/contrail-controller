@@ -14,8 +14,9 @@
 #include "bgp/bgp_config.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_peer_close.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_server.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/inet6/inet6_table.h"
 #include "bgp/extended-community/load_balance.h"
@@ -135,10 +136,8 @@ public:
     virtual bool IsReady() const { return parent_->Peer()->IsReady(); }
     virtual IPeer *peer() const { return parent_->Peer(); }
 
-    virtual void UnregisterPeer(
-            MembershipRequest::NotifyCompletionFn completion_fn) {
-        parent_->Peer()->server()->membership_mgr()->UnregisterPeer(
-                parent_->Peer(), completion_fn);
+    // TBD (nsheth) - xxx
+    virtual void UnregisterPeer() {
     }
 
     virtual string ToString() const {
@@ -169,7 +168,7 @@ public:
             parent_->StaleCurrentSubscriptions();
     }
 
-    // Delete all current sbscriptions which are still stale.
+    // Delete all current subscriptions which are still stale.
     // Concurrency: Protected with a mutex from peer close manager
     virtual void GracefulRestartSweep() {
         if (parent_)
@@ -454,6 +453,10 @@ public:
     }
     virtual int GetPrimaryPathCount() const {
          return primary_path_count_;
+    }
+
+    void MembershipRequestCallback(BgpTable *table) {
+        parent_->MembershipRequestCallback(table);
     }
 
 private:
@@ -834,7 +837,7 @@ bool BgpXmppChannel::GetMembershipInfo(BgpTable *table,
         return true;
     } else {
         *req_type = NONE;
-        PeerRibMembershipManager *mgr = bgp_server_->membership_mgr();
+        BgpMembershipManager *mgr = bgp_server_->membership_mgr();
         mgr->GetRegistrationInfo(peer_.get(), table,
                                  instance_id, subscription_gen_id);
         return false;
@@ -1795,7 +1798,7 @@ void BgpXmppChannel::DequeueRequest(const string &table_name,
         return;
     }
 
-    PeerRibMembershipManager *mgr = bgp_server_->membership_mgr();
+    BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     if (mgr) {
         int instance_id = -1;
         uint64_t subscription_gen_id = 0;
@@ -1822,23 +1825,21 @@ bool BgpXmppChannel::ResumeClose() {
 }
 
 void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
-    PeerRibMembershipManager *mgr = bgp_server_->membership_mgr();
+    BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
                  BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
                  "Subscribe to table " << table->name() <<
                  " with id " << instance_id);
-    mgr->Register(peer_.get(), table, bgp_policy_, instance_id,
-        boost::bind(&BgpXmppChannel::MembershipRequestCallback, this, _1, _2));
+    mgr->Register(peer_.get(), table, bgp_policy_, instance_id);
     channel_stats_.table_subscribe++;
 }
 
 void BgpXmppChannel::UnregisterTable(BgpTable *table) {
-    PeerRibMembershipManager *mgr = bgp_server_->membership_mgr();
+    BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
                  BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
                  "Unsubscribe to table " << table->name());
-    mgr->Unregister(peer_.get(), table,
-        boost::bind(&BgpXmppChannel::MembershipRequestCallback, this, _1, _2));
+    mgr->Unregister(peer_.get(), table);
     channel_stats_.table_unsubscribe++;
 }
 
@@ -1883,7 +1884,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
         return true;
     }
 
-    PeerRibMembershipManager *mgr = bgp_server_->membership_mgr();
+    BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     if ((state.current_req == UNSUBSCRIBE) &&
         (state.pending_req == SUBSCRIBE)) {
         // Process pending subscribe now that unsubscribe has completed.
@@ -1910,11 +1911,8 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
         }
         return true;
     } else if (state.pending_req == SUBSCRIBE) {
-        IPeerRib *rib = mgr->IPeerRibFind(peer_.get(), table);
-        if (rib) {
-            rib->set_instance_id(state.instance_id);
-            rib->set_subscription_gen_id(manager_->get_subscription_gen_id());
-        }
+        mgr->SetRegistrationInfo(peer_.get(), table, state.instance_id,
+            manager_->get_subscription_gen_id());
     }
 
     for (DeferQ::iterator it = defer_q_.find(vrf_n_table);
@@ -1927,7 +1925,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     return true;
 }
 
-void BgpXmppChannel::MembershipRequestCallback(IPeer *ipeer, BgpTable *table) {
+void BgpXmppChannel::MembershipRequestCallback(BgpTable *table) {
     membership_response_worker_.Enqueue(table->name());
 }
 

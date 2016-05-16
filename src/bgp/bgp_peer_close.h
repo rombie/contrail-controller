@@ -11,7 +11,6 @@
 #include "db/db_table_walker.h"
 #include "bgp/ipeer.h"
 
-class IPeerRib;
 class BgpNeighborResp;
 class BgpRoute;
 class BgpTable;
@@ -26,7 +25,7 @@ class BgpTable;
 // provides this capability.
 //
 // RibIn and RibOut close are handled by invoking Unregister request with
-// PeerRibMembershipManager class.
+// BgpMembershipManager class.
 //
 // Once RibIns and RibOuts are processed, notification callback function is
 // invoked to signal the completion of close process

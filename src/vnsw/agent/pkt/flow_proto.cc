@@ -297,8 +297,7 @@ bool FlowProto::UpdateFlow(FlowEntry *flow) {
 // Flow Control Event routines
 /////////////////////////////////////////////////////////////////////////////
 void FlowProto::EnqueueFlowEvent(FlowEvent *event) {
-    // Keep UpdateStats in-sync on add of new events
-    UpdateStats(event, &stats_);
+    bool enqueue_done = true;
     switch (event->event()) {
     case FlowEvent::VROUTER_FLOW_MSG: {
         PktInfo *info = event->pkt_info().get();
@@ -359,8 +358,28 @@ void FlowProto::EnqueueFlowEvent(FlowEvent *event) {
         break;
     }
 
-    case FlowEvent::REVALUATE_DBENTRY:
-    case FlowEvent::REVALUATE_FLOW:
+    case FlowEvent::REVALUATE_DBENTRY: {
+        FlowEntry *flow = event->flow();
+        if (flow->flow_table()->SetRevaluatePending(flow)) {
+            flow_update_queue_.Enqueue(event);
+        } else {
+            enqueue_done = false;
+            delete event;
+        }
+        break;
+    }
+
+    case FlowEvent::REVALUATE_FLOW: {
+        FlowEntry *flow = event->flow();
+        if (flow->flow_table()->SetRecomputePending(flow)) {
+            flow_update_queue_.Enqueue(event);
+        } else {
+            enqueue_done = false;
+            delete event;
+        }
+        break;
+    }
+
     case FlowEvent::DELETE_DBENTRY:
     case FlowEvent::FREE_DBENTRY: {
         flow_update_queue_.Enqueue(event);
@@ -378,6 +397,9 @@ void FlowProto::EnqueueFlowEvent(FlowEvent *event) {
         break;
     }
 
+    // Keep UpdateStats in-sync on add of new events
+    if (enqueue_done)
+        UpdateStats(event, &stats_);
     return;
 }
 
@@ -659,13 +681,13 @@ bool FlowProto::ShouldTrace(const FlowEntry *flow, const FlowEntry *rflow) {
 FlowTokenPtr FlowProto::GetToken(FlowEvent::Event event) {
     switch (event) {
     case FlowEvent::VROUTER_FLOW_MSG:
-    case FlowEvent::FLOW_MESSAGE:
     case FlowEvent::AUDIT_FLOW:
     case FlowEvent::KSYNC_EVENT:
     case FlowEvent::REENTRANT:
         return add_tokens_.GetToken(NULL);
         break;
 
+    case FlowEvent::FLOW_MESSAGE:
     case FlowEvent::DELETE_DBENTRY:
     case FlowEvent::REVALUATE_DBENTRY:
     case FlowEvent::REVALUATE_FLOW:
@@ -737,6 +759,9 @@ void UpdateStats(FlowEvent *req, FlowStats *stats) {
     case FlowEvent::REVALUATE_FLOW:
         stats->revaluate_count_++;
         break;
+    case FlowEvent::REVALUATE_DBENTRY:
+        stats->recompute_count_++;
+        break;
     case FlowEvent::KSYNC_EVENT: {
         stats->vrouter_responses_++;
         FlowEventKSync *ksync_event = static_cast<FlowEventKSync *>(req);
@@ -785,6 +810,7 @@ void FlowProto::SetProfileData(ProfileData *data) {
     data->flow_.del_count_ = stats_.delete_count_;
     data->flow_.audit_count_ = stats_.audit_count_;
     data->flow_.reval_count_ = stats_.revaluate_count_;
+    data->flow_.recompute_count_ = stats_.recompute_count_;
     data->flow_.vrouter_responses_ = stats_.vrouter_responses_;
     data->flow_.vrouter_error_ = stats_.vrouter_error_;
 

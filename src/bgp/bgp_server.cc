@@ -14,7 +14,6 @@
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_membership.h"
 #include "bgp/bgp_peer.h"
-#include "bgp/bgp_peer_membership.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/scheduling_group.h"
 #include "bgp/routing-instance/iservice_chain_mgr.h"
@@ -292,13 +291,8 @@ bool BgpServer::IsReadyForDeletion() {
         return false;
     }
 
-    // Check if the IPeer membership manager queue is empty.
+    // Check if the membership manager queue is empty.
     if (!membership_mgr_->IsQueueEmpty()) {
-        return false;
-    }
-
-    // Check if the IPeer membership manager queue is empty.
-    if (!bgp_membership_mgr_->IsQueueEmpty()) {
         return false;
     }
 
@@ -349,8 +343,7 @@ BgpServer::BgpServer(EventManager *evm)
       inst_mgr_(BgpObjectFactory::Create<RoutingInstanceMgr>(this)),
       policy_mgr_(BgpObjectFactory::Create<RoutingPolicyMgr>(this)),
       rtarget_group_mgr_(BgpObjectFactory::Create<RTargetGroupMgr>(this)),
-      bgp_membership_mgr_(new BgpMembershipManager(this)),
-      membership_mgr_(BgpObjectFactory::Create<PeerRibMembershipManager>(this)),
+      membership_mgr_(BgpObjectFactory::Create<BgpMembershipManager>(this)),
       inet_condition_listener_(new BgpConditionListener(this)),
       inet6_condition_listener_(new BgpConditionListener(this)),
       inetvpn_replicator_(new RoutePathReplicator(this, Address::INETVPN)),

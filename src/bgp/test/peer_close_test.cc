@@ -6,8 +6,8 @@
 #include "control-node/control_node.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_peer_close.h"
-#include "bgp/bgp_peer_membership.h"
 
 class PeerCloseManagerTest;
 
@@ -34,21 +34,13 @@ public:
     virtual const int GetGracefulRestartTime() const { return 1; }
     virtual const int GetLongLivedGracefulRestartTime() const { return 1; }
     virtual bool IsReady() const { return is_ready_; }
-    virtual void UnregisterPeer(
-        MembershipRequest::NotifyCompletionFn completion_fn) {
-        completion_fn_ = completion_fn;
-    }
+    virtual void UnregisterPeer() { }
     void TriggerUnregisterPeerCompletion() {
-        EXPECT_FALSE(completion_fn_.empty());
-        completion_fn()(NULL, NULL);
-        completion_fn_.clear();
+        EXPECT_TRUE(false);
     }
 
     void set_close_manager(PeerCloseManagerTest *close_manager) {
         close_manager_ = close_manager;
-    }
-    const MembershipRequest::NotifyCompletionFn completion_fn() const {
-        return completion_fn_;
     }
     bool graceful() const { return graceful_; }
     void set_graceful(bool graceful) { graceful_ = graceful; }
@@ -67,7 +59,6 @@ private:
     bool ll_graceful_;
     bool is_ready_;
     bool close_graceful_;
-    MembershipRequest::NotifyCompletionFn completion_fn_;
 };
 
 class PeerCloseManagerTest : public PeerCloseManager {
@@ -156,7 +147,6 @@ TEST_P(PeerCloseTest, Test) {
             // Peer supports GR and Graceful closure has been triggered.
             break;
         case PeerCloseManagerTest::EOR_RECEIVED:
-            EXPECT_TRUE(peer_close_->completion_fn().empty());
             EXPECT_FALSE(close_manager_->stale_timer()->running());
             EXPECT_FALSE(close_manager_->sweep_timer()->running());
             EXPECT_EQ(PeerCloseManager::NONE, close_manager_->state());

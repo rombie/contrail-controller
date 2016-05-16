@@ -7,7 +7,7 @@
 
 #include "base/task_annotations.h"
 #include "bgp/bgp_factory.h"
-#include "bgp/bgp_peer_membership.h"
+#include "bgp/bgp_membership.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/l3vpn/inetvpn_table.h"
