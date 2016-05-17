@@ -89,8 +89,15 @@ class BgpPeer::PeerClose : public IPeerClose {
         }
     }
 
-    // TBD (nsheth) - xxx
     virtual void UnregisterPeer() {
+        assert(!defer_close_);
+        if (membership_req_pending_) {
+            assert(membership_req_pending_ > 0);
+            BGP_LOG_PEER(Event, peer_, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+                         BGP_PEER_DIR_NA, "Close procedure deferred");
+            defer_close_ = -1;
+            return;
+        }
     }
 
     // Return the time to wait for, in seconds to exit GR_TIMER state.
@@ -414,25 +421,39 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
 // in question.
 //
 void BgpPeer::MembershipRequestCallback(BgpTable *table) {
-    assert(membership_req_pending_);
-    membership_req_pending_--;
+    if (defer_close_ < 1)
+        assert(membership_req_pending_);
+    else
+        assert(membership_req_pending_ < 1);
 
-    // Resume close if it was deferred and this is the last pending callback.
-    // Don't bother sending EndOfRib if close is deferred.
-    if (defer_close_) {
-        if (!membership_req_pending_) {
-            defer_close_ = false;
-            trigger_.Set();
+    if (membership_req_pending_ > 0) {
+        BgpPeerInfoData peer_info;
+        peer_info.set_name(ToUVEKey());
+        peer_info.set_send_state("in sync");
+        BGPPeerInfoSend(peer_info);
+        SendEndOfRIB(table->family());
+
+        if (--membership_req_pending_)
+            return;
+        if (defer_close_) {
+            assert(defer_close_ == -1);
+            defer_close_ = 0;
+            UnregisterPeer();
+            // trigger_.Set();
         }
         return;
     }
 
-    BgpPeerInfoData peer_info;
-    peer_info.set_name(ToUVEKey());
-    peer_info.set_send_state("in sync");
-    BGPPeerInfoSend(peer_info);
+    assert(defer_close_ > 0);
+        
+    if (!--defer_close_) {
+        // Close process walk is complete for all ribs. Inform close manager.
+        // UnregisterPeerComplete();
+    }
 
-    SendEndOfRIB(table->family());
+    // Process pending membership requests.
+    if (membership_req_pending_ < 0) {
+    }
 }
 
 bool BgpPeer::ResumeClose() {
@@ -909,17 +930,6 @@ void BgpPeer::CustomClose() {
 // Close this peer by closing all of it's RIBs.
 //
 void BgpPeer::Close(bool non_graceful) {
-    if (membership_req_pending_) {
-        BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
-            BGP_PEER_DIR_NA, "Close procedure deferred");
-        defer_close_ = true;
-
-        // Note down non-graceful closures. Once a close is non-graceful,
-        // it shall remain as non-graceful.
-        non_graceful_close_ |= non_graceful;
-        return;
-    }
-
     peer_close_->Close(non_graceful);
     BgpPeerInfoData peer_info;
     peer_info.set_name(ToUVEKey());
