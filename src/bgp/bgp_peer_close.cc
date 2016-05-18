@@ -261,7 +261,7 @@ void PeerCloseManager::ProcessClosure() {
 
     if (state_ == DELETE)
         peer_close_->CustomClose();
-    UnregisterPeerInternal();
+    MembershipRequestInternal();
 }
 
 void PeerCloseManager::CloseComplete() {
@@ -295,12 +295,12 @@ void PeerCloseManager::TriggerSweepStateActions() {
         boost::bind(&PeerCloseManager::ProcessSweepStateActions, this));
 }
 
-void PeerCloseManager::UnregisterPeer() {
+void PeerCloseManager::MembershipRequest() {
     tbb::mutex::scoped_lock lock(mutex_);
-    UnregisterPeerInternal();
+    MembershipRequestInternal();
 }
 
-void PeerCloseManager::UnregisterPeerInternal() {
+void PeerCloseManager::MembershipRequestInternal() {
 
     // Pause if membership manager is not ready for usage.
     if (!peer_close_->peer()->CanUseMembershipManager()) {

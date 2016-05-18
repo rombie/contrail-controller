@@ -78,7 +78,7 @@ public:
     void set_state(State state) { state_ = state; }
     void Close(bool non_graceful);
     void ProcessEORMarkerReceived(Address::Family family);
-    void UnregisterPeer();
+    void MembershipRequest();
 
     bool RestartTimerCallback();
     void FillCloseInfo(BgpNeighborResp *resp) const;
@@ -112,7 +112,7 @@ private:
     const std::string GetStateName(State state) const;
     void CloseInternal();
     bool MembershipRequestCallbackInternal();
-    void UnregisterPeerInternal();
+    void MembershipRequestInternal();
 
     IPeerClose *peer_close_;
     Timer *stale_timer_;

@@ -1929,7 +1929,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     // If Close manager is waiting to use membership, try now.
     if (peer_close_->close_manager()->membership_state() ==
             PeerCloseManager::MEMBERSHIP_IN_WAIT)
-        peer_close_->close_manager()->UnregisterPeer();
+        peer_close_->close_manager()->MembershipRequest();
 
     return true;
 }

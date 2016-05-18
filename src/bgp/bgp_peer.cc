@@ -452,7 +452,7 @@ void BgpPeer::MembershipRequestCallback(BgpTable *table) {
     // Resume if CloseManager is waiting to use membership manager.
     if (peer_close_->close_manager()->membership_state() ==
             PeerCloseManager::MEMBERSHIP_IN_WAIT) {
-        peer_close_->close_manager()->UnregisterPeer();
+        peer_close_->close_manager()->MembershipRequest();
     }
 }
 
