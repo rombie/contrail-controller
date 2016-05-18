@@ -312,12 +312,12 @@ void PeerCloseManager::MembershipRequestInternal() {
     std::list<BgpTable *> tables;
     mgr->GetRegisteredRibs(peer_close_->peer(), &tables);
 
+    set_membership_state(MEMBERSHIP_IN_USE);
     if (tables.empty()) {
         MembershipRequestCallbackInternal();
         return;
     }
 
-    set_membership_state(MEMBERSHIP_IN_USE);
     BOOST_FOREACH(BgpTable *table, tables) {
         if (mgr->IsRegistered(peer_close_->peer(), table)) {
             if (state_ == PeerCloseManager::DELETE) {
