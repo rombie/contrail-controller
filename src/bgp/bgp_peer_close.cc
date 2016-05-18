@@ -453,7 +453,7 @@ bool PeerCloseManager::MembershipPathCallback(DBTablePartBase *root,
     }
 
     // Feed the route modify/delete request to the table input process.
-    return table->InputCommon(root, rt, path, peer, NULL, oper, attrs,
-                              path->GetPathId(), path->GetFlags() | stale,
-                              path->GetLabel());
+    return table->InputCommon(root, rt, path, peer_close_->peer(), NULL, oper,
+                              attrs, path->GetPathId(),
+                              path->GetFlags() | stale, path->GetLabel());
 }

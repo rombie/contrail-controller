@@ -86,6 +86,8 @@ public:
         uint64_t llgr_timer;
     };
     const Stats &stats() const { return stats_; }
+    bool MembershipPathCallback(DBTablePartBase *root, BgpRoute *rt,
+                                BgpPath *path);
 
 private:
     friend class PeerCloseManagerTest;
