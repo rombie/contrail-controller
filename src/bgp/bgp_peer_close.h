@@ -44,16 +44,21 @@ public:
         END_STATE = DELETE,
     };
 
-    // Use 5 minutes as the default GR timer expiry duration.
-    static const int kDefaultGracefulRestartTimeSecs = 5 * 60;
-
-    // Use 12 hours as the default LLGR timer expiry duration.
-    static const int kDefaultLongLivedGracefulRestartTimeSecs = 12 * 60 * 60;
+    enum MembershipState {
+        MEMBERSHIP_NONE,
+        MEMBERSHIP_IN_USE,
+        MEMBERSHIP_IN_WAIT
+    };
 
     explicit PeerCloseManager(IPeerClose *peer_close,
                               boost::asio::io_service &io_service);
     explicit PeerCloseManager(IPeerClose *peer_close);
     virtual ~PeerCloseManager();
+
+    MembershipState membership_state() const { return membership_state_; }
+    void set_membership_state(MembershipState state) {
+        membership_state_ = state;
+    }
 
     bool IsCloseInProgress() const {
         tbb::mutex::scoped_lock lock(mutex_);
@@ -73,9 +78,9 @@ public:
     void set_state(State state) { state_ = state; }
     void Close(bool non_graceful);
     void ProcessEORMarkerReceived(Address::Family family);
+    void MembershipRequest();
 
     bool RestartTimerCallback();
-    void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     struct Stats {
@@ -92,6 +97,9 @@ public:
         uint64_t llgr_timer;
     };
     const Stats &stats() const { return stats_; }
+    bool MembershipRequestCallback();
+    bool MembershipPathCallback(DBTablePartBase *root, BgpRoute *rt,
+                                BgpPath *path);
 
 private:
     friend class PeerCloseManagerTest;
@@ -103,6 +111,8 @@ private:
     void TriggerSweepStateActions();
     const std::string GetStateName(State state) const;
     void CloseInternal();
+    bool MembershipRequestCallbackInternal();
+    void MembershipRequestInternal();
 
     IPeerClose *peer_close_;
     Timer *stale_timer_;
@@ -112,6 +122,7 @@ private:
     bool non_graceful_;
     int gr_elapsed_;
     int llgr_elapsed_;
+    MembershipState membership_state_;
     IPeerClose::Families families_;
     Stats stats_;
     mutable tbb::mutex mutex_;

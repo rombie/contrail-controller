@@ -10,6 +10,7 @@
 #include "tbb/atomic.h"
 
 class DBTablePartBase;
+class BgpPath;
 class BgpRoute;
 class BgpServer;
 class BgpTable;
@@ -138,7 +139,6 @@ public:
     virtual const int GetGracefulRestartTime() const = 0;
     virtual const int GetLongLivedGracefulRestartTime() const = 0;
     virtual bool IsReady() const = 0;
-    virtual void UnregisterPeer() = 0;
     virtual IPeer *peer() const = 0;
 };
 
@@ -172,7 +172,9 @@ public:
     virtual int GetPrimaryPathCount() const = 0;
     virtual void MembershipRequestCallback(BgpTable *table) { }
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
-        BgpRoute *route) { return false; }
+        BgpRoute *route, BgpPath *path) { return false; }
+    size_t GetMembershipRequestQueueSize() const { return 0; }
+    bool CanUseMembershipManager() const { return true; }
 };
 
 #endif  // SRC_BGP_IPEER_H_

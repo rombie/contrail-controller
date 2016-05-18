@@ -47,7 +47,8 @@ public:
     virtual uint32_t bgp_identifier() const { return 0; }
     RibExportPolicy GetRibExportPolicy() { return policy_; }
     void MembershipRequestCallback(BgpTable *table) { }
-    bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route) {
+    bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,
+                                BgpPath *path) {
         path_cb_count_++;
         return false;
     }

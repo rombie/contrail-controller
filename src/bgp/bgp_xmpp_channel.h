@@ -26,6 +26,7 @@ namespace pugi {
 class xml_node;
 }
 
+class BgpGlobalSystemConfig;
 class BgpServer;
 struct DBRequest;
 class IPeer;
@@ -34,6 +35,7 @@ class XmppServer;
 class BgpXmppChannelMock;
 class BgpXmppChannelManager;
 class BgpXmppChannelManagerMock;
+class XmppConfigUpdater;
 class XmppPeerInfoData;
 class XmppSession;
 
@@ -95,6 +97,8 @@ public:
     void set_peer_closed(bool flag);
     bool peer_deleted() const;
     uint64_t peer_closed_at() const;
+    bool routingtable_membership_request_map_empty() const;
+    size_t GetMembershipRequestQueueSize() const;
 
     const XmppSession *GetSession() const;
     const Stats &rx_stats() const { return stats_[RX]; }
@@ -112,7 +116,6 @@ public:
     void StaleCurrentSubscriptions();
     void SweepCurrentSubscriptions();
     void XMPPPeerInfoSend(const XmppPeerInfoData &peer_info) const;
-
     const XmppChannel *channel() const { return channel_; }
 
     uint64_t get_rx_route_reach() const { return stats_[RX].reach; }
@@ -231,6 +234,9 @@ private:
     void ProcessDeferredSubscribeRequest(RoutingInstance *rt_instance,
                                          int instance_id);
     void ClearStaledSubscription(SubscriptionState &sub_state);
+    const BgpXmppChannelManager *manager() const { return manager_; }
+    bool ProcessMembershipResponse(BgpTable *table,
+             RoutingTableMembershipRequestMap::iterator loc);
 
     xmps::PeerId peer_id_;
     BgpServer *bgp_server_;
@@ -318,6 +324,7 @@ public:
 
     BgpServer *bgp_server() { return bgp_server_; }
     XmppServer *xmpp_server() { return xmpp_server_; }
+    const XmppServer *xmpp_server() const { return xmpp_server_; }
     uint64_t get_subscription_gen_id() {
         return subscription_gen_id_.fetch_and_increment();
     }

@@ -175,10 +175,8 @@ public:
     }
 
     bool IsFamilyNegotiated(Address::Family family);
-
-    RoutingInstance *GetRoutingInstance() {
-        return rtinstance_;
-    }
+    RoutingInstance *GetRoutingInstance() { return rtinstance_; }
+    RoutingInstance *GetRoutingInstance() const { return rtinstance_; }
 
     int GetIndex() const { return index_; }
     int GetTaskInstance() const;
@@ -200,6 +198,7 @@ public:
     bool IsCloseInProgress() const;
     virtual bool IsReady() const;
     virtual bool IsXmppPeer() const;
+    virtual bool CanUseMembershipManager() const;
 
     void Close(bool non_graceful);
     void Clear(int subcode);
@@ -356,6 +355,8 @@ private:
     void UnregisterAllTables();
     void BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const;
 
+    virtual bool MembershipPathCallback(DBTablePartBase *tpart,
+                                        BgpRoute *route, BgpPath *path);
     uint32_t GetPathFlags(Address::Family family, const BgpAttr *attr) const;
     virtual bool MpNlriAllowed(uint16_t afi, uint8_t safi);
     BgpAttrPtr GetMpNlriNexthop(BgpMpNlri *nlri, BgpAttrPtr attr);

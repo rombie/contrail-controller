@@ -1040,7 +1040,7 @@ bool BgpMembershipManager::Walker::WalkCallback(DBTablePartBase *tpart,
         if (!peer || peer_list_.find(peer) == peer_list_.end())
             continue;
 
-        notify |= peer->MembershipPathCallback(tpart, route);
+        notify |= peer->MembershipPathCallback(tpart, route, path);
     }
 
     rs_->table()->InputCommonPostProcess(tpart, route, notify);

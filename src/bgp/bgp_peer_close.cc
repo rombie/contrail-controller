@@ -4,6 +4,7 @@
 
 #include "bgp/bgp_peer_close.h"
 
+#include <boost/foreach.hpp>
 
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_membership.h"
@@ -30,7 +31,7 @@ PeerCloseManager::PeerCloseManager(IPeerClose *peer_close,
                                    boost::asio::io_service &io_service) :
         peer_close_(peer_close), stale_timer_(NULL), sweep_timer_(NULL),
         state_(NONE), close_again_(false), non_graceful_(false), gr_elapsed_(0),
-        llgr_elapsed_(0) {
+        llgr_elapsed_(0), membership_state_(MEMBERSHIP_NONE) {
     stats_.init++;
     stale_timer_ = TimerManager::CreateTimer(io_service,
         "Graceful Restart StaleTimer",
@@ -92,7 +93,7 @@ const std::string PeerCloseManager::GetStateName(State state) const {
 //
 // Peer IsReady() in GR timer callback (or via reception of all EoRs)
 // RibIn Sweep and Ribout Generation        close_state_: SWEEP
-//   UnregisterPeerComplete                 close_state_: NONE
+//   MembershipRequestCallback                 close_state_: NONE
 //
 // Peer not IsReady() in GR timer callback
 // If LLGR supported                     close_state_: LLGR_STALE
@@ -100,22 +101,22 @@ const std::string PeerCloseManager::GetStateName(State state) const {
 //
 //     Peer not IsReady() in LLGR timer callback
 //       RibIn Delete                           close_state_: DELETE
-//       UnregisterPeerComplete                 close_state_: NONE
+//       MembershipRequestCallback                 close_state_: NONE
 //
 //     Peer IsReady() in LLGR timer callback (or via reception of all EoRs)
 //     RibIn Sweep                              close_state_: SWEEP
-//       UnregisterPeerComplete                 close_state_: NONE
+//       MembershipRequestCallback                 close_state_: NONE
 //
 // If LLGR is not supported
 //     RibIn Delete                           close_state_: DELETE
-//     UnregisterPeerComplete                 close_state_: NONE
+//     MembershipRequestCallback                 close_state_: NONE
 //
 // Close() call during any state other than NONE and DELETE
 //     Cancel GR timer and restart GR Closure all over again
 //
 // NonGraceful                              close_state_ = * (except DELETE)
 // A. RibIn deletion and Ribout deletion    close_state_ = DELETE
-// B. UnregisterPeerComplete => Peers delete/StateMachine restart
+// B. MembershipRequestCallback => Peers delete/StateMachine restart
 //                                          close_state_ = NONE
 //
 // If Close is restarted, account for GR timer's elapsed time.
@@ -260,7 +261,7 @@ void PeerCloseManager::ProcessClosure() {
 
     if (state_ == DELETE)
         peer_close_->CustomClose();
-    peer_close_->UnregisterPeer();
+    MembershipRequestInternal();
 }
 
 void PeerCloseManager::CloseComplete() {
@@ -294,15 +295,66 @@ void PeerCloseManager::TriggerSweepStateActions() {
         boost::bind(&PeerCloseManager::ProcessSweepStateActions, this));
 }
 
+void PeerCloseManager::MembershipRequest() {
+    tbb::mutex::scoped_lock lock(mutex_);
+    MembershipRequestInternal();
+}
+
+void PeerCloseManager::MembershipRequestInternal() {
+
+    // Pause if membership manager is not ready for usage.
+    if (!peer_close_->peer()->CanUseMembershipManager()) {
+        membership_state_ = MEMBERSHIP_IN_WAIT;
+        return;
+    }
+
+    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
+    std::list<BgpTable *> tables;
+    mgr->GetRegisteredRibs(peer_close_->peer(), &tables);
+
+    set_membership_state(MEMBERSHIP_IN_USE);
+    if (tables.empty()) {
+        MembershipRequestCallbackInternal();
+        return;
+    }
+
+    BOOST_FOREACH(BgpTable *table, tables) {
+        if (mgr->IsRegistered(peer_close_->peer(), table)) {
+            if (state_ == PeerCloseManager::DELETE) {
+                mgr->Unregister(peer_close_->peer(), table);
+            } else {
+                mgr->UnregisterRibOut(peer_close_->peer(), table);
+            }
+        } else {
+            assert(mgr->IsRibInRegistered(peer_close_->peer(), table));
+            if (state_ == PeerCloseManager::DELETE) {
+                mgr->UnregisterRibIn(peer_close_->peer(), table);
+            } else {
+                mgr->WalkRibIn(peer_close_->peer(), table);
+            }
+        }
+    }
+}
+
 // Concurrency: Runs in the context of the BGP peer rib membership task.
 //
 // Close process for this peer in terms of walking RibIns and RibOuts are
 // complete. Do the final cleanups necessary and notify interested party
-void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
+bool PeerCloseManager::MembershipRequestCallback() {
     tbb::mutex::scoped_lock lock(mutex_);
+    return MembershipRequestCallbackInternal();
+}
 
+bool PeerCloseManager::MembershipRequestCallbackInternal() {
     assert(state_ == STALE || LLGR_STALE || state_ == SWEEP ||
            state_ == DELETE);
+    assert(membership_state() == MEMBERSHIP_IN_USE);
+
+    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
+    if (mgr->IsPending(peer_close_->peer()))
+            return false;
+
+    set_membership_state(MEMBERSHIP_NONE);
     PEER_CLOSE_MANAGER_LOG("RibWalk completed");
 
     if (state_ == DELETE) {
@@ -313,13 +365,13 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
         stats_.init++;
         close_again_ = false;
         non_graceful_ = false;
-        return;
+        return true;
     }
 
     // Process nested closures.
     if (close_again_) {
         CloseComplete();
-        return;
+        return true;
     }
 
     // If any GR stale timer has to be launched, then to wait for some time
@@ -336,7 +388,7 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
             time = 0;
         StartRestartTimer(time);
         stats_.gr_timer++;
-        return;
+        return true;
     }
 
     // From LLGR_STALE state, switch to LLGR_TIMER state. Typically this would
@@ -355,10 +407,11 @@ void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
             time = 0;
         StartRestartTimer(time);
         stats_.llgr_timer++;
-        return;
+        return true;
     }
 
     TriggerSweepStateActions();
+    return true;
 }
 
 void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {
@@ -377,4 +430,83 @@ void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {
     peer_close_info.gr_timer = stats_.gr_timer;
 
     resp->set_peer_close_info(peer_close_info);
+}
+
+bool PeerCloseManager::MembershipPathCallback(DBTablePartBase *root,
+                                              BgpRoute *rt, BgpPath *path) {
+    DBRequest::DBOperation oper;
+    BgpAttrPtr attrs;
+
+    BgpTable *table = static_cast<BgpTable *>(root->parent());
+    assert(table);
+
+    uint32_t stale = 0;
+
+    tbb::mutex::scoped_lock lock(mutex_);
+    switch (state_) {
+        case NONE:
+        case GR_TIMER:
+        case LLGR_TIMER:
+            return false;
+
+        case SWEEP:
+
+            // Stale paths must be deleted.
+            if (!path->IsStale() && !path->IsLlgrStale())
+                return false;
+            path->ResetStale();
+            path->ResetLlgrStale();
+            oper = DBRequest::DB_ENTRY_DELETE;
+            attrs = NULL;
+            break;
+
+        case DELETE:
+
+            // This path must be deleted. Hence attr is not required.
+            oper = DBRequest::DB_ENTRY_DELETE;
+            attrs = NULL;
+            break;
+
+        case STALE:
+
+            // If path is already marked as stale, then there is no need to
+            // process again. This can happen if the session flips while in
+            // GR_TIMER state.
+            if (path->IsStale())
+                return false;
+
+            // This path must be marked for staling. Update the local
+            // preference and update the route accordingly.
+            oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+            attrs = path->GetAttr();
+            stale = BgpPath::Stale;
+            break;
+
+        case LLGR_STALE:
+
+            // If the path has NO_LLGR community, DELETE it.
+            if (path->GetAttr()->community() &&
+                path->GetAttr()->community()->ContainsValue(
+                    CommunityType::NoLlgr)) {
+                oper = DBRequest::DB_ENTRY_DELETE;
+                attrs = NULL;
+                break;
+            }
+
+            // If path is already marked as llgr_stale, then there is no
+            // need to process again. This can happen if the session flips
+            // while in LLGR_TIMER state.
+            if (path->IsLlgrStale())
+                return false;
+
+            attrs = path->GetAttr();
+            stale = BgpPath::LlgrStale;
+            oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+            break;
+    }
+
+    // Feed the route modify/delete request to the table input process.
+    return table->InputCommon(root, rt, path, peer_close_->peer(), NULL, oper,
+                              attrs, path->GetPathId(),
+                              path->GetFlags() | stale, path->GetLabel());
 }
