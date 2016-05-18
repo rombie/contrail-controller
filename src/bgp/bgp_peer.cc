@@ -42,14 +42,8 @@ using std::vector;
 
 class BgpPeer::PeerClose : public IPeerClose {
   public:
-    enum MembershipState {
-        MEMBERSHIP_NONE,
-        MEMBERSHIP_IN_USE,
-        MEMBERSHIP_IN_WAIT
-    };
-
     explicit PeerClose(BgpPeer *peer)
-        : peer_(peer), membership_state_(MEMBERSHIP_NONE),
+        : peer_(peer),
           manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
     }
 
@@ -65,7 +59,6 @@ class BgpPeer::PeerClose : public IPeerClose {
     virtual PeerCloseManager *close_manager() { return manager_.get(); }
     virtual bool IsReady() const { return peer_->IsReady(); }
     virtual IPeer *peer() const { return peer_; }
-    MembershipState membership_state() const { return membership_state_; }
 
     virtual void Close(bool non_graceful) {
 
@@ -93,24 +86,6 @@ class BgpPeer::PeerClose : public IPeerClose {
             peer_->RetryDelete();
         } else {
             CloseComplete();
-        }
-    }
-
-    virtual void UnregisterPeer() {
-        BgpMembershipManager *mgr = peer()->server()->membership_mgr();
-        std::list<BgpTable *> tables;
-        mgr->GetRegisteredRibs(peer(), &tables);
-
-        if (tables.empty()) {
-            manager_->UnregisterPeerComplete();
-            return;
-        }
-
-        membership_state_ = MEMBERSHIP_IN_USE;
-        BOOST_FOREACH(BgpTable *table, tables) {
-            if (mgr->IsRegistered(peer(), table))
-                mgr->UnregisterRibOut(peer(), table);
-            mgr->WalkRibIn(peer(), table);
         }
     }
 
@@ -206,7 +181,6 @@ class BgpPeer::PeerClose : public IPeerClose {
 
 private:
     BgpPeer *peer_;
-    MembershipState membership_state_;
     boost::scoped_ptr<PeerCloseManager> manager_;
     std::vector<std::string> negotiated_families_;
 };
@@ -430,14 +404,28 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
     BGPPeerInfo::Send(peer_info);
 }
 
+bool BgpPeer::CanUseMembershipManager() const {
+
+    // Make sure that registration is complete for all negotiated families.
+    RoutingInstance *instance = GetRoutingInstance();
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
+    BOOST_FOREACH(string family, negotiated_families_) {
+        BgpTable *table = instance->GetTable(Address::FamilyFromString(family));
+        if (!membership_mgr->IsRegistered(this, table))
+            return false;
+    }
+    return true;
+}
+
 //
 // Callback from BgpMembershipManager.
 // Update pending membership request count and send EndOfRib for the family
 // in question.
 //
 void BgpPeer::MembershipRequestCallback(BgpTable *table) {
-    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_USE) {
-        peer_close_->close_manager()->UnregisterPeerComplete();
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        (void) peer_close_->close_manager()->MembershipRequestCallback();
         return;
     }
 
@@ -460,6 +448,12 @@ void BgpPeer::MembershipRequestCallback(BgpTable *table) {
     BGPPeerInfoSend(peer_info);
 
     SendEndOfRIB(table->family());
+
+    // Resume if CloseManager is waiting to use membership manager.
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT) {
+        peer_close_->close_manager()->UnregisterPeer();
+    }
 }
 
 bool BgpPeer::MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,

@@ -128,47 +128,14 @@ BgpXmppChannel::ChannelStats::ChannelStats()
 
 class BgpXmppChannel::PeerClose : public IPeerClose {
 public:
-    enum MembershipState {
-        MEMBERSHIP_NONE,
-        MEMBERSHIP_IN_USE,
-        MEMBERSHIP_IN_WAIT
-    };
 
     explicit PeerClose(BgpXmppChannel *channel)
-       : parent_(channel), membership_state_(MEMBERSHIP_NONE),
+       : parent_(channel),
          manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
     }
     virtual ~PeerClose() { }
     virtual bool IsReady() const { return parent_->Peer()->IsReady(); }
     virtual IPeer *peer() const { return parent_->Peer(); }
-    MembershipState membership_state() const { return membership_state_; }
-    void set_membership_state(MembershipState state) {
-        membership_state_ = state;
-    }
-    virtual void UnregisterPeer() {
-
-        // Pause if membership manager is already in use.
-        if (parent_->GetMembershipRequestQueueSize()) {
-            membership_state_ = MEMBERSHIP_IN_WAIT;
-            return;
-        }
-
-        BgpMembershipManager *mgr = parent_->bgp_server_->membership_mgr();
-        std::list<BgpTable *> tables;
-        mgr->GetRegisteredRibs(peer(), &tables);
-
-        if (tables.empty()) {
-            manager_->UnregisterPeerComplete();
-            return;
-        }
-
-        membership_state_ = MEMBERSHIP_IN_USE;
-        BOOST_FOREACH(BgpTable *table, tables) {
-            if (mgr->IsRegistered(peer(), table))
-                mgr->UnregisterRibOut(peer(), table);
-            mgr->WalkRibIn(peer(), table);
-        }
-    }
 
     virtual string ToString() const {
         return parent_ ? parent_->ToString() : "";
@@ -281,7 +248,6 @@ public:
 
 private:
     BgpXmppChannel *parent_;
-    MembershipState membership_state_;
     auto_ptr<PeerCloseManager> manager_;
 };
 
@@ -426,6 +392,10 @@ public:
     virtual bool SendUpdate(const uint8_t *msg, size_t msgsize);
     virtual string ToString() const {
         return parent_->ToString();
+    }
+
+    virtual bool CanUseMembershipManager() const {
+        return parent_->GetMembershipRequestQueueSize() == 0;
     }
 
     virtual string ToUVEKey() const {
@@ -704,6 +674,10 @@ void BgpXmppChannel::IdentifierUpdateCallback(Ip4Address old_identifier) {
         RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        it->first, attr, true);
     }
+}
+
+size_t BgpXmppChannel::GetMembershipRequestQueueSize() const {
+    return routingtable_membership_request_map_.size();
 }
 
 void
@@ -1864,7 +1838,8 @@ bool BgpXmppChannel::ResumeClose() {
 void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
 
     // Defer if Membership manager is in use (by close manager).
-    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_USE)
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE)
         return;
 
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
@@ -1879,7 +1854,8 @@ void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
 void BgpXmppChannel::UnregisterTable(BgpTable *table) {
 
     // Defer if Membership manager is in use (by close manager).
-    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_USE)
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE)
         return;
 
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
@@ -1896,9 +1872,10 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     RoutingTableMembershipRequestMap::iterator loc =
         routingtable_membership_request_map_.find(table_name);
 
-    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_USE) {
-        peer_close_->set_membership_state(PeerClose::MEMBERSHIP_NONE);
-        Peer()->peer_close()->close_manager()->UnregisterPeerComplete();
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        if (!Peer()->peer_close()->close_manager()->MembershipRequestCallback())
+            return true;
 
         // Process pending membeship request if one is pending for this table.
         if (loc == routingtable_membership_request_map_.end())
@@ -1950,14 +1927,11 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     ProcessMembershipResponse(table, loc);
 
     // If Close manager is waiting to use membership, try now.
-    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_WAIT)
-        peer_close_->UnregisterPeer();
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT)
+        peer_close_->close_manager()->UnregisterPeer();
 
     return true;
-}
-
-size_t BgpXmppChannel::GetMembershipRequestQueueSize() const {
-    return routingtable_membership_request_map_.size();
 }
 
 bool BgpXmppChannel::ProcessMembershipResponse(BgpTable *table,
