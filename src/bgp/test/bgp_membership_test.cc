@@ -48,7 +48,7 @@ public:
     RibExportPolicy GetRibExportPolicy() { return policy_; }
     void MembershipRequestCallback(BgpTable *table) { }
     bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,
-                                BgpPath *path) {
+        BgpPath *path) {
         path_cb_count_++;
         return false;
     }
@@ -369,7 +369,7 @@ TEST_F(BgpMembershipTest, RibIn) {
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_FALSE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(0, mgr_->GetMembershipCount());
-    TASK_UTIL_EXPECT_EQ(blue_walk_count, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 1, blue_tbl_->walk_complete_count());
 }
 
 //
@@ -415,7 +415,7 @@ TEST_F(BgpMembershipTest, UnregisterRibOutWithPaths) {
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_FALSE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(0, mgr_->GetMembershipCount());
-    TASK_UTIL_EXPECT_EQ(blue_walk_count + 2, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 3, blue_tbl_->walk_complete_count());
 }
 
 //
