@@ -10,6 +10,7 @@
 #include "tbb/atomic.h"
 
 class DBTablePartBase;
+class BgpPath;
 class BgpRoute;
 class BgpServer;
 class BgpTable;

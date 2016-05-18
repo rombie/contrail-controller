@@ -357,7 +357,7 @@ private:
     void BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const;
 
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
-                                        BgpRoute *route);
+                                        BgpRoute *route, BgpPath *path);
     uint32_t GetPathFlags(Address::Family family, const BgpAttr *attr) const;
     virtual bool MpNlriAllowed(uint16_t afi, uint8_t safi);
     BgpAttrPtr GetMpNlriNexthop(BgpMpNlri *nlri, BgpAttrPtr attr);

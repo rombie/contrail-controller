@@ -42,8 +42,14 @@ using std::vector;
 
 class BgpPeer::PeerClose : public IPeerClose {
   public:
+    enum MembershipState {
+        MEMBERSHIP_NONE,
+        MEMBERSHIP_IN_USE,
+        MEMBERSHIP_IN_WAIT
+    };
+
     explicit PeerClose(BgpPeer *peer)
-        : peer_(peer),
+        : peer_(peer), membership_state_(MEMBERSHIP_NONE),
           manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
     }
 
@@ -59,6 +65,7 @@ class BgpPeer::PeerClose : public IPeerClose {
     virtual PeerCloseManager *close_manager() { return manager_.get(); }
     virtual bool IsReady() const { return peer_->IsReady(); }
     virtual IPeer *peer() const { return peer_; }
+    MembershipState membership_state() const { return membership_state_; }
 
     virtual void Close(bool non_graceful) {
 
@@ -94,15 +101,17 @@ class BgpPeer::PeerClose : public IPeerClose {
         std::list<BgpTable *> tables;
         mgr->GetRegisteredRibs(peer(), &tables);
 
+        if (tables.empty()) {
+            manager_->UnregisterPeerComplete();
+            return;
+        }
+
+        membership_state_ = MEMBERSHIP_IN_USE;
         BOOST_FOREACH(BgpTable *table, tables) {
             if (mgr->IsRegistered(peer(), table))
                 mgr->UnregisterRibOut(peer(), table);
             mgr->WalkRibIn(peer(), table);
         }
-    }
-
-    void UnregisterPeerComplete() {
-        manager_->UnregisterPeerComplete();
     }
 
     // Return the time to wait for, in seconds to exit GR_TIMER state.
@@ -197,6 +206,7 @@ class BgpPeer::PeerClose : public IPeerClose {
 
 private:
     BgpPeer *peer_;
+    MembershipState membership_state_;
     boost::scoped_ptr<PeerCloseManager> manager_;
     std::vector<std::string> negotiated_families_;
 };
@@ -426,8 +436,8 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
 // in question.
 //
 void BgpPeer::MembershipRequestCallback(BgpTable *table) {
-    if (peer_close()->membership_state() == PeerClose::MEMBERSHIP_IN_USE) {
-        peer_close()->UnregisterPeerComplete();
+    if (peer_close_->membership_state() == PeerClose::MEMBERSHIP_IN_USE) {
+        peer_close_->close_manager()->UnregisterPeerComplete();
         return;
     }
 
@@ -450,6 +460,12 @@ void BgpPeer::MembershipRequestCallback(BgpTable *table) {
     BGPPeerInfoSend(peer_info);
 
     SendEndOfRIB(table->family());
+}
+
+bool BgpPeer::MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,
+                                     BgpPath *path) {
+    return peer_close_->close_manager()->MembershipPathCallback(tpart, route,
+                                                                path);
 }
 
 bool BgpPeer::ResumeClose() {
@@ -2414,8 +2430,4 @@ void BgpPeer::reset_flap_count() {
     PeerFlapInfo flap_info;
     peer_info.set_flap_info(flap_info);
     BGPPeerInfoSend(peer_info);
-}
-
-virtual bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route) {
-    return peer_close()->close_manager()->MembershipPathCallback(root, route);
 }
