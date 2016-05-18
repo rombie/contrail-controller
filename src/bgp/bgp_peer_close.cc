@@ -298,7 +298,7 @@ void PeerCloseManager::TriggerSweepStateActions() {
 //
 // Close process for this peer in terms of walking RibIns and RibOuts are
 // complete. Do the final cleanups necessary and notify interested party
-void PeerCloseManager::UnregisterPeerComplete(IPeer *ipeer, BgpTable *table) {
+void PeerCloseManager::UnregisterPeerComplete() {
     tbb::mutex::scoped_lock lock(mutex_);
 
     assert(state_ == STALE || LLGR_STALE || state_ == SWEEP ||
@@ -377,4 +377,83 @@ void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {
     peer_close_info.gr_timer = stats_.gr_timer;
 
     resp->set_peer_close_info(peer_close_info);
+}
+
+bool PeerCloseManager::MembershipPathCallback(DBTablePartBase *root,
+                                              BgpRoute *rt, BgpPath *path) {
+    DBRequest::DBOperation oper;
+    BgpAttrPtr attrs;
+
+    BgpTable *table = static_cast<BgpTable *>(root->parent());
+    assert(table);
+
+    uint32_t stale = 0;
+
+    tbb::mutex::scoped_lock lock(mutex_);
+    switch (state_) {
+        case NONE:
+        case GR_TIMER:
+        case LLGR_TIMER:
+            return false;
+
+        case SWEEP:
+
+            // Stale paths must be deleted.
+            if (!path->IsStale() && !path->IsLlgrStale())
+                return false;
+            path->ResetStale();
+            path->ResetLlgrStale();
+            oper = DBRequest::DB_ENTRY_DELETE;
+            attrs = NULL;
+            break;
+
+        case DELETE:
+
+            // This path must be deleted. Hence attr is not required.
+            oper = DBRequest::DB_ENTRY_DELETE;
+            attrs = NULL;
+            break;
+
+        case STALE:
+
+            // If path is already marked as stale, then there is no need to
+            // process again. This can happen if the session flips while in
+            // GR_TIMER state.
+            if (path->IsStale())
+                return false;
+
+            // This path must be marked for staling. Update the local
+            // preference and update the route accordingly.
+            oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+            attrs = path->GetAttr();
+            stale = BgpPath::Stale;
+            break;
+
+        case LLGR_STALE:
+
+            // If the path has NO_LLGR community, DELETE it.
+            if (path->GetAttr()->community() &&
+                path->GetAttr()->community()->ContainsValue(
+                    CommunityType::NoLlgr)) {
+                oper = DBRequest::DB_ENTRY_DELETE;
+                attrs = NULL;
+                break;
+            }
+
+            // If path is already marked as llgr_stale, then there is no
+            // need to process again. This can happen if the session flips
+            // while in LLGR_TIMER state.
+            if (path->IsLlgrStale())
+                return false;
+
+            attrs = path->GetAttr();
+            stale = BgpPath::LlgrStale;
+            oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+            break;
+    }
+
+    // Feed the route modify/delete request to the table input process.
+    return table->InputCommon(root, rt, path, peer, NULL, oper, attrs,
+                              path->GetPathId(), path->GetFlags() | stale,
+                              path->GetLabel());
 }

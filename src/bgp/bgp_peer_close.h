@@ -69,7 +69,7 @@ public:
     void ProcessEORMarkerReceived(Address::Family family);
 
     bool RestartTimerCallback();
-    void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
+    void UnregisterPeerComplete();
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     struct Stats {

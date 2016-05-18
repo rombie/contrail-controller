@@ -234,6 +234,7 @@ private:
                                          int instance_id);
     void ClearStaledSubscription(SubscriptionState &sub_state);
     const BgpXmppChannelManager *manager() const { return manager_; }
+    bool ProcessMembershipResponse(string table_name);
 
     xmps::PeerId peer_id_;
     BgpServer *bgp_server_;

@@ -172,7 +172,7 @@ public:
     virtual int GetPrimaryPathCount() const = 0;
     virtual void MembershipRequestCallback(BgpTable *table) { }
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
-        BgpRoute *route) { return false; }
+        BgpRoute *route, BgpPath *path) { return false; }
 };
 
 #endif  // SRC_BGP_IPEER_H_

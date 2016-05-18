@@ -356,6 +356,8 @@ private:
     void UnregisterAllTables();
     void BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const;
 
+    virtual bool MembershipPathCallback(DBTablePartBase *tpart,
+                                        BgpRoute *route);
     uint32_t GetPathFlags(Address::Family family, const BgpAttr *attr) const;
     virtual bool MpNlriAllowed(uint16_t afi, uint8_t safi);
     BgpAttrPtr GetMpNlriNexthop(BgpMpNlri *nlri, BgpAttrPtr attr);
@@ -426,8 +428,8 @@ private:
     bool resolve_paths_;
     bool as_override_;
 
-    tbb::atomic<int32_t> membership_req_pending_;
-    tbb::atomic<int32_t> defer_close_;
+    uint64_t membership_req_pending_;
+    bool defer_close_;
     bool non_graceful_close_;
     bool vpn_tables_registered_;
     std::vector<BgpProto::OpenMessage::Capability *> capabilities_;
