@@ -599,16 +599,10 @@ void BgpMembershipManager::ProcessWalkRibCompleteEvent(Event *event) {
 }
 
 //
-// Handler for an Event.
+// Internal handler for an Event.
+// Exists so that test code can override it.
 //
-bool BgpMembershipManager::EventCallback(Event *event) {
-    CHECK_CONCURRENCY("bgp::PeerMembership");
-
-    // Mutex should not be required since bgp::PeerMembership is exclusive
-    // with bgp::StateMachine and xmpp::StateMachine. However, it's needed
-    // for unit tests since they use a ConcurrencyScope.
-    tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
-
+bool BgpMembershipManager::EventCallbackInternal(Event *event) {
     switch (event->event_type) {
     case REGISTER_RIB:
         ProcessRegisterRibEvent(event);
@@ -632,6 +626,14 @@ bool BgpMembershipManager::EventCallback(Event *event) {
 
     delete event;
     return true;
+}
+
+//
+// Handler for an Event.
+//
+bool BgpMembershipManager::EventCallback(Event *event) {
+    CHECK_CONCURRENCY("bgp::PeerMembership");
+    return EventCallbackInternal(event);
 }
 
 //
