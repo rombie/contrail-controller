@@ -301,10 +301,11 @@ void PeerCloseManager::MembershipRequest() {
 }
 
 void PeerCloseManager::MembershipRequestInternal() {
+    assert(membership_state() != MEMBERSHIP_IN_USE);
 
     // Pause if membership manager is not ready for usage.
     if (!peer_close_->peer()->CanUseMembershipManager()) {
-        membership_state_ = MEMBERSHIP_IN_WAIT;
+        set_membership_state(MEMBERSHIP_IN_WAIT);
         return;
     }
 

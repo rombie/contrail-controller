@@ -198,7 +198,6 @@ public:
 
         peer_ = static_cast<BgpPeerTest *>
             (rtinstance->peer_manager()->PeerLocate(server, config_.get()));
-        WaitForIdle();
     }
     BgpPeerTest *peer() { return peer_; }
     int peer_id() { return peer_id_; }
@@ -329,6 +328,7 @@ protected:
     ExtCommunitySpec *CreateRouteTargets();
     void AddAllRoutes();
     void AddPeersWithRoutes(const BgpInstanceConfig *instance_config);
+    void AddPeers(const void *args);
     void AddXmppPeersWithRoutes();
     void CreateAgents();
     void Subscribe();
@@ -546,7 +546,8 @@ void BgpPeerCloseTest::AddRoutes(BgpTable *table, BgpNullPeer *npeer) {
         switch (table->family()) {
             case Address::INET:
                 commspec.reset(new ExtCommunitySpec());
-                commspec->communities.push_back(get_value(tun_encap.GetExtCommunity().begin(), 8));
+                commspec->communities.push_back(
+                        get_value(tun_encap.GetExtCommunity().begin(), 8));
                 attr_spec.push_back(commspec.get());
                 req.key.reset(new InetTable::RequestKey(prefix, peer));
                 break;
@@ -556,7 +557,8 @@ void BgpPeerCloseTest::AddRoutes(BgpTable *table, BgpNullPeer *npeer) {
                 if (!commspec.get()) {
                     commspec.reset(new ExtCommunitySpec());
                 }
-                commspec->communities.push_back(get_value(tun_encap.GetExtCommunity().begin(), 8));
+                commspec->communities.push_back(
+                        get_value(tun_encap.GetExtCommunity().begin(), 8));
                 attr_spec.push_back(commspec.get());
                 break;
             default:
@@ -586,8 +588,6 @@ void BgpPeerCloseTest::AddAllRoutes() {
         }
         npeer->peer()->set_vpn_tables_registered(true);
     }
-
-    WaitForIdle();
 }
 
 void BgpPeerCloseTest::AddXmppPeersWithRoutes() {
@@ -764,19 +764,11 @@ void BgpPeerCloseTest::VerifyRoutingInstances() {
                                BgpConfigManager::kMasterInstance));
 }
 
-void BgpPeerCloseTest::AddPeersWithRoutes(
-        const BgpInstanceConfig *instance_config) {
-    Configure();
-
-    //
-    // Add XmppPeers with routes as well
-    //
-    AddXmppPeersWithRoutes();
-
+void BgpPeerCloseTest::AddPeers(const void *args) {
+    ostringstream oss;
+    const BgpInstanceConfig *instance_config =
+        static_cast<const BgpInstanceConfig *>(args);
     for (int p = 1; p <= n_peers_; p++) {
-        ConcurrencyScope scope("bgp::Config");
-        ostringstream oss;
-
         oss << "NullPeer" << p;
         BgpNullPeer *npeer =
             new BgpNullPeer(server_.get(), instance_config, oss.str(),
@@ -795,8 +787,19 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
             boost::bind(&BgpPeerCloseTest::IsReady, this, true);
         peers_.push_back(npeer);
     }
+}
 
-    AddAllRoutes();
+void BgpPeerCloseTest::AddPeersWithRoutes(
+        const BgpInstanceConfig *instance_config) {
+    Configure();
+
+    // Add XmppPeers with routes as well
+    AddXmppPeersWithRoutes();
+
+    task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddPeers, this, _1),
+                        instance_config, "bgp::Config");
+    task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddAllRoutes, this),
+                        "bgp::StateMachine");
     VerifyXmppRouteNextHops();
 }
 

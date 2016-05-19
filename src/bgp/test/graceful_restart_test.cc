@@ -41,6 +41,7 @@ using ::testing::TestWithParam;
 using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
+using task_util::TaskFire;
 
 static int d_instances = 4;
 static int d_routes = 4;
@@ -288,10 +289,8 @@ protected:
     void WaitForAgentToBeEstablished(test::NetworkAgentMock *agent);
     void WaitForPeerToBeEstablished( BgpPeerTest *peer);
     void BgpPeersAdminUpOrDown(bool down);
-    bool CallAgentTimerCallback();
-    bool CallPeerTimerCallback();
-    void CallAgentTimerTrigger(BgpXmppChannel *channel);
-    void CallPeerTimerTrigger(BgpPeerTest *peer);
+    void AgentTimerCallback(const void *args);
+    void PeerTimerCallback(const void *args);
 
     EventManager evm_;
     ServerThread thread_;
@@ -377,10 +376,6 @@ protected:
     std::vector<BgpPeerTest *> n_down_from_peers_;
     std::vector<int> instances_to_delete_before_gr_;
     std::vector<int> instances_to_delete_during_gr_;
-    boost::scoped_ptr<TaskTrigger> agent_timer_trigger_;
-    boost::scoped_ptr<TaskTrigger> peer_timer_trigger_;
-    BgpXmppChannel *timer_channel_;
-    BgpPeerTest *timer_peer_;
 };
 
 void GracefulRestartTest::SetUp() {
@@ -391,13 +386,6 @@ void GracefulRestartTest::SetUp() {
 
     // Disable GR advertisement in DUT to prevent GR in non DUTs.
     server_->set_disable_gr(true);
-
-    agent_timer_trigger_.reset(new TaskTrigger(
-                boost::bind(&GracefulRestartTest::CallAgentTimerCallback, this),
-                TaskScheduler::GetInstance()->GetTaskId("bgp::Config"), 0));
-    peer_timer_trigger_.reset(new TaskTrigger(
-                boost::bind(&GracefulRestartTest::CallPeerTimerCallback, this),
-                TaskScheduler::GetInstance()->GetTaskId("bgp::Config"), 0));
 
     for (int i = 1; i <= n_peers_; i++) {
         bgp_servers_.push_back(
@@ -903,13 +891,6 @@ void GracefulRestartTest::VerifyRoutingInstances(BgpServer *server) {
                                BgpConfigManager::kMasterInstance));
 }
 
-void GracefulRestartTest::CallAgentTimerTrigger(BgpXmppChannel *channel) {
-    timer_channel_ = channel;
-    agent_timer_trigger_->Set();
-    TASK_UTIL_EXPECT_EQ(static_cast<BgpXmppChannel *>(NULL), timer_channel_);
-    TASK_UTIL_EXPECT_FALSE(agent_timer_trigger_->IsSet());
-}
-
 // Invoke stale timer callbacks directly speed up the test.
 void GracefulRestartTest::CallStaleTimer(BgpXmppChannel *channel) {
     if (channel->Peer()->peer_close()->close_manager()->state() !=
@@ -917,28 +898,22 @@ void GracefulRestartTest::CallStaleTimer(BgpXmppChannel *channel) {
         return;
     task_util::WaitForIdle();
     bool is_ready = channel->Peer()->IsReady();
-    CallAgentTimerTrigger(channel);
+    TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
+                         _1), channel, "bgp::Config");
     if (!is_ready) {
         TASK_UTIL_EXPECT_EQ(PeerCloseManager::LLGR_TIMER,
                 channel->Peer()->peer_close()->close_manager()->state());
-        CallAgentTimerTrigger(channel);
+        TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
+                             _1), channel, "bgp::Config");
     }
     task_util::WaitForIdle();
 }
 
-bool GracefulRestartTest::CallAgentTimerCallback() {
+void GracefulRestartTest::AgentTimerCallback(const void *args) {
     CHECK_CONCURRENCY("bgp::Config");
-    timer_channel_->Peer()->peer_close()->close_manager()->
-        RestartTimerCallback();
-    timer_channel_ = NULL;
-    return true;
-}
-
-void GracefulRestartTest::CallPeerTimerTrigger(BgpPeerTest *peer) {
-    timer_peer_ = peer;
-    peer_timer_trigger_->Set();
-    TASK_UTIL_EXPECT_EQ(static_cast<BgpPeer *>(NULL), timer_peer_);
-    TASK_UTIL_EXPECT_FALSE(peer_timer_trigger_->IsSet());
+    const BgpXmppChannel *channel = static_cast<const BgpXmppChannel *>(args);
+    const_cast<BgpXmppChannel *>(channel)->Peer()->
+        peer_close()->close_manager()->RestartTimerCallback();
 }
 
 void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
@@ -949,7 +924,8 @@ void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
     bool is_ready = peer->IsReady();
     uint64_t llgr_stale =
         peer->peer_close()->close_manager()->stats().llgr_stale;
-    CallPeerTimerTrigger(peer);
+    TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this,
+                             _1), peer, "bgp::Config");
     if (!is_ready) {
         TASK_UTIL_EXPECT_EQ(llgr_stale + 1,
                 peer->peer_close()->close_manager()->stats().llgr_stale);
@@ -959,20 +935,22 @@ void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
                               PeerCloseManager::GR_TIMER == pc->state());
         task_util::WaitForIdle();
         if (pc->state() == PeerCloseManager::GR_TIMER) {
-            CallPeerTimerTrigger(peer);
+            TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback,
+                                 this, _1), peer, "bgp::Config");
             task_util::WaitForIdle();
         }
-        CallPeerTimerTrigger(peer);
+        TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this,
+                             _1), peer, "bgp::Config");
     }
     task_util::WaitForIdle();
 }
 
-// Invoke stale timer callbacks directly as evm is not running in this unit test
-bool GracefulRestartTest::CallPeerTimerCallback() {
+// Invoke stale timer callbacks directly to speed up.
+void GracefulRestartTest::PeerTimerCallback(const void *args) {
     CHECK_CONCURRENCY("bgp::Config");
-    timer_peer_->peer_close()->close_manager()->RestartTimerCallback();
-    timer_peer_ = NULL;
-    return true;
+    const BgpPeerTest *peer = static_cast<const BgpPeerTest *>(args);
+    const_cast<BgpPeerTest *>(peer)->peer_close()->
+        close_manager()->RestartTimerCallback();
 }
 
 void GracefulRestartTest::XmppAgentClose(int nagents) {
