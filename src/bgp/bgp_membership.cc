@@ -207,7 +207,8 @@ void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
 // It can also be used in future when re-evaluating import policy for a peer.
 //
 void BgpMembershipManager::WalkRibIn(IPeer *peer, BgpTable *table) {
-    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
+    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
+                      "bgp:PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     current_jobs_count_++;
@@ -1124,7 +1125,7 @@ void BgpMembershipManager::Walker::WalkStart() {
     // Get and remove the first RibState from the RibStateList.
     rs_ = rib_state_list_.front();
     rib_state_list_.pop_front();
-    rib_state_set_.erase(rs_);
+    assert(rib_state_set_.erase(rs_) == 1);
 
     // Process all pending PeerRibStates for chosen RibState.
     // Insert the PeerRibStates into PeerRibList for post processing when
