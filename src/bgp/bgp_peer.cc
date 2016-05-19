@@ -401,7 +401,7 @@ void BgpPeer::SendEndOfRIB(Address::Family family) {
 }
 
 void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
-    // BGPPeerInfo::Send(peer_info);
+    BGPPeerInfo::Send(peer_info);
 }
 
 bool BgpPeer::CanUseMembershipManager() const {

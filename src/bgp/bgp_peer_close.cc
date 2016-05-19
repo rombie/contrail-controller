@@ -45,7 +45,7 @@ PeerCloseManager::PeerCloseManager(IPeerClose *peer_close,
 PeerCloseManager::PeerCloseManager(IPeerClose *peer_close) :
         peer_close_(peer_close), stale_timer_(NULL), sweep_timer_(NULL),
         state_(NONE), close_again_(false), non_graceful_(false), gr_elapsed_(0),
-        llgr_elapsed_(0) {
+        llgr_elapsed_(0), membership_state_(MEMBERSHIP_NONE) {
     stats_.init++;
     if (peer_close->peer() && peer_close->peer()->server()) {
         stale_timer_ = TimerManager::CreateTimer(
