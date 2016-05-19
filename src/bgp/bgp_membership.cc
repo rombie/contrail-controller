@@ -208,7 +208,7 @@ void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
 //
 void BgpMembershipManager::WalkRibIn(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
-                      "bgp:PeerMembership");
+                      "bgp::PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     current_jobs_count_++;
