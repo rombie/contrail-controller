@@ -39,14 +39,14 @@ class TaskFire {
 public:
     typedef boost::function<void(void)> FunctionPtr;
     typedef boost::function<void(const void *)> FunctionPtr1;
-    explicit TaskFire(FunctionPtr func, const std::string task_name,
-                      int task_instance = 0);
-    explicit TaskFire(FunctionPtr1 func, const void *arg1,
-                      const std::string task_name, int task_instance = 0);
-    bool Run();
-    bool Run1();
+    TaskFire(FunctionPtr func, const std::string task_name,
+             int task_instance = 0);
+    TaskFire(FunctionPtr1 func, const void *arg1, const std::string task_name,
+             int task_instance = 0);
 
 private:
+    bool Run();
+    bool Run1();
     FunctionPtr func_;
     FunctionPtr1 func1_;
     const void *arg1_;
