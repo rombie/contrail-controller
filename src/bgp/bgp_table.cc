@@ -353,6 +353,11 @@ bool BgpTable::PathSelection(const Path &path1, const Path &path2) {
     return res;
 }
 
+bool BgpTable::DeletePath(DBTablePartBase *root, BgpRoute *rt, BgpPath *path) {
+    return InputCommon(root, rt, path, path->GetPeer(), NULL,
+        DBRequest::DB_ENTRY_DELETE, NULL, path->GetPathId(), 0, 0);
+}
+
 bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
                            const IPeer *peer, DBRequest *req,
                            DBRequest::DBOperation oper, BgpAttrPtr attrs,
@@ -545,26 +550,6 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
     }
 
     InputCommonPostProcess(root, rt, notify_rt);
-}
-
-//
-// TBD (nsheth) - xxx
-// We should probably get rid of this routine and add code to update/delete the
-// BgpPath to close manager.
-//
-// For graceful-restart, we take mark-and-sweep approach instead of directly
-// deleting the paths. In the first walk, local-preference is lowered so that
-// the paths are least preferred and they are marked stale. After some time, if
-// the peer session does not come back up, we delete all the paths and the peer
-// itself. If the session did come back up, we flush only those paths that were
-// not learned again in the new session.
-//
-// Concurrency: Runs in the context of the DB Walker task launched by peer rib
-// membership manager
-//
-// DBWalker callback routine for each of the RibIn prefix.
-void BgpTable::Input(DBTablePartBase *root, IPeer *peer, BgpRoute *rt,
-                     int action_mask) {
 }
 
 void BgpTable::InputCommonPostProcess(DBTablePartBase *root,
