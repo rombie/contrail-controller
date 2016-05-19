@@ -765,10 +765,10 @@ void BgpPeerCloseTest::VerifyRoutingInstances() {
 }
 
 void BgpPeerCloseTest::AddPeers(const void *args) {
-    ostringstream oss;
     const BgpInstanceConfig *instance_config =
         static_cast<const BgpInstanceConfig *>(args);
     for (int p = 1; p <= n_peers_; p++) {
+        ostringstream oss;
         oss << "NullPeer" << p;
         BgpNullPeer *npeer =
             new BgpNullPeer(server_.get(), instance_config, oss.str(),
