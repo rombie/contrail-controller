@@ -123,6 +123,9 @@ public:
     uint64_t current_jobs_count() const { return current_jobs_count_; }
     uint64_t total_jobs_count() const { return total_jobs_count_; }
 
+protected:
+    mutable tbb::spin_rw_mutex rw_mutex_;
+
 private:
     struct Event;
     class PeerState;
@@ -184,6 +187,7 @@ private:
     void ProcessWalkRibCompleteEvent(Event *event);
 
     void EnqueueEvent(Event *event) { event_queue_->Enqueue(event); }
+    virtual bool EventCallbackInternal(Event *event);
     bool EventCallback(Event *event);
 
     void NotifyPeerRegistration(IPeer *peer, BgpTable *table, bool unregister);
@@ -193,7 +197,6 @@ private:
     Walker *walker() { return walker_.get(); }
 
     BgpServer *server_;
-    mutable tbb::spin_rw_mutex rw_mutex_;
     tbb::atomic<uint64_t> current_jobs_count_;
     tbb::atomic<uint64_t> total_jobs_count_;
     RibStateMap rib_state_map_;

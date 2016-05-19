@@ -600,11 +600,10 @@ void BgpMembershipManager::ProcessWalkRibCompleteEvent(Event *event) {
 }
 
 //
-// Handler for an Event.
+// Internal handler for an Event.
+// Exists so that test code can override it.
 //
-bool BgpMembershipManager::EventCallback(Event *event) {
-    CHECK_CONCURRENCY("bgp::PeerMembership");
-
+bool BgpMembershipManager::EventCallbackInternal(Event *event) {
     switch (event->event_type) {
     case REGISTER_RIB:
         ProcessRegisterRibEvent(event);
@@ -628,6 +627,14 @@ bool BgpMembershipManager::EventCallback(Event *event) {
 
     delete event;
     return true;
+}
+
+//
+// Handler for an Event.
+//
+bool BgpMembershipManager::EventCallback(Event *event) {
+    CHECK_CONCURRENCY("bgp::PeerMembership");
+    return EventCallbackInternal(event);
 }
 
 //

@@ -24,6 +24,17 @@ using tbb::atomic;
 
 static int gbl_index;
 
+class BgpTestMembershipManager : public BgpMembershipManager {
+private:
+    // Mutex is required for unit tests since they use a ConcurrencyScope
+    // to call membership manager APIs and so are not mutually exclusive
+    // with bgp::PeerMembership task.
+    virtual bool EventCallbackInternal(Event *event) {
+        tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+        return BgpMembershipManager::EventCallbackInternal(event);
+    }
+};
+
 class BgpTestPeer : public BgpPeer {
 public:
     BgpTestPeer(BgpServer *server, RoutingInstance *instance,
@@ -1461,6 +1472,8 @@ TEST_F(BgpMembershipTest, WalkWithPendingWalkDeathTest) {
 
 static void SetUp() {
     bgp_log_test::init();
+    BgpObjectFactory::Register<BgpMembershipManager>(
+        boost::factory<BgpTestMembershipManager *>());
     BgpObjectFactory::Register<BgpPeer>(
         boost::factory<BgpTestPeer *>());
     BgpObjectFactory::Register<BgpConfigManager>(
