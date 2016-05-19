@@ -141,9 +141,10 @@ private:
     enum Action {
         NONE,
         RIBOUT_ADD,
-        RIBOUT_DELETE,
+        RIBIN_DELETE,
         RIBIN_WALK,
-        RIBIN_WALK_RIBOUT_DELETE
+        RIBIN_WALK_RIBOUT_DELETE,
+        RIBIN_DELETE_RIBOUT_DELETE
     };
 
     enum EventType {
@@ -330,6 +331,7 @@ public:
     void RegisterRibOut(const RibExportPolicy &policy);
     void UnregisterRibOut();
     void DeactivateRibOut();
+    void UnregisterRibIn();
     void WalkRibIn();
     void ManagedDelete() {}
 
