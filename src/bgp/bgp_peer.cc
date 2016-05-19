@@ -1063,8 +1063,8 @@ void BgpPeer::RegisterAllTables() {
         BgpTable *table = instance->GetTable(family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
                            table, "Register peer with the table");
-        membership_mgr->Register(this, table, BuildRibExportPolicy(family));
         membership_req_pending_++;
+        membership_mgr->Register(this, table, BuildRibExportPolicy(family));
     }
 
     vpn_tables_registered_ = false;
@@ -1077,8 +1077,8 @@ void BgpPeer::RegisterAllTables() {
     BgpTable *table = instance->GetTable(family);
     BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         table, "Register peer with the table");
-    membership_mgr->Register(this, table, BuildRibExportPolicy(family));
     membership_req_pending_++;
+    membership_mgr->Register(this, table, BuildRibExportPolicy(family));
     StartEndOfRibTimer();
 
     vector<Address::Family> vpn_family_list = list_of
@@ -1826,8 +1826,8 @@ void BgpPeer::RegisterToVpnTables() {
         BgpTable *table = instance->GetTable(vpn_family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register peer with the table");
-        membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family));
         membership_req_pending_++;
+        membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family));
     }
 }
 
