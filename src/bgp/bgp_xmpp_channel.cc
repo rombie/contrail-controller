@@ -385,8 +385,14 @@ public:
 
     virtual bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *rt,
                                         BgpPath *path) {
-        return peer_close()->close_manager()->MembershipPathCallback(tpart, rt,
-                                                                     path);
+        PeerCloseManager *close_manager = peer_close()->close_manager();
+        if (close_manager->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+            return close_manager->MembershipPathCallback(tpart, rt, path);
+        } else {
+            BgpTable *table = static_cast<BgpTable *>(tpart->parent());
+            return table->DeletePath(tpart, rt, path);
+        }
     }
 
     virtual bool SendUpdate(const uint8_t *msg, size_t msgsize);
