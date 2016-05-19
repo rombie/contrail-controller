@@ -142,6 +142,7 @@ void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
     assert(prs->ribin_registered());
     prs->set_action(RIBIN_DELETE_RIBOUT_DELETE);
     prs->set_ribin_registered(false);
+    prs->set_instance_id(-1);
     prs->set_subscription_gen_id(0);
     prs->EnqueueToPeerState();
     Event *event = new Event(UNREGISTER_RIB, peer, table);
@@ -160,6 +161,7 @@ void BgpMembershipManager::UnregisterRibIn(IPeer *peer, BgpTable *table) {
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered() && !prs->ribout_registered());
     prs->set_ribin_registered(false);
+    prs->set_instance_id(-1);
     prs->set_subscription_gen_id(0);
     prs->set_action(RIBIN_DELETE);
     prs->UnregisterRibIn();
@@ -182,6 +184,7 @@ void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered());
     assert(prs->ribout_registered());
+    prs->set_instance_id(-1);
     prs->set_subscription_gen_id(0);
     prs->set_action(RIBIN_WALK_RIBOUT_DELETE);
     prs->EnqueueToPeerState();
