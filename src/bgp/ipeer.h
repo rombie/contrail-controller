@@ -173,7 +173,6 @@ public:
     virtual void MembershipRequestCallback(BgpTable *table) { }
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
         BgpRoute *route, BgpPath *path) { return false; }
-    size_t GetMembershipRequestQueueSize() const { return 0; }
     bool CanUseMembershipManager() const { return true; }
 };
 
