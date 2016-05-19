@@ -37,6 +37,7 @@ BgpMembershipManager::BgpMembershipManager(BgpServer *server)
 // Destructor for BgpMembershipManager.
 //
 BgpMembershipManager::~BgpMembershipManager() {
+    assert(current_jobs_count_ == 0);
     assert(rib_state_map_.empty());
     assert(peer_state_map_.empty());
 }
@@ -105,6 +106,8 @@ void BgpMembershipManager::Register(IPeer *peer, BgpTable *table,
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+    current_jobs_count_++;
+    total_jobs_count_++;
     PeerRibState *prs = LocatePeerRibState(peer, table);
     assert(prs->action() == NONE);
     assert(!prs->ribout_registered());
@@ -137,6 +140,8 @@ void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+    current_jobs_count_++;
+    total_jobs_count_++;
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered());
@@ -157,6 +162,8 @@ void BgpMembershipManager::UnregisterRibIn(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+    current_jobs_count_++;
+    total_jobs_count_++;
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered() && !prs->ribout_registered());
@@ -180,6 +187,8 @@ void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+    current_jobs_count_++;
+    total_jobs_count_++;
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered());
@@ -201,6 +210,8 @@ void BgpMembershipManager::WalkRibIn(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+    current_jobs_count_++;
+    total_jobs_count_++;
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered());
@@ -496,6 +507,7 @@ void BgpMembershipManager::ProcessRegisterRibEvent(Event *event) {
         prs->clear_action();
         prs->set_ribout_registered(true);
         peer->MembershipRequestCallback(table);
+        current_jobs_count_--;
         return;
     }
 
@@ -523,6 +535,7 @@ void BgpMembershipManager::ProcessRegisterRibCompleteEvent(Event *event) {
         table, "Register table completed");
     peer->MembershipRequestCallback(table);
     NotifyPeerRegistration(peer, table, false);
+    current_jobs_count_--;
 }
 
 //
@@ -571,6 +584,7 @@ void BgpMembershipManager::ProcessUnregisterRibCompleteEvent(Event *event) {
         table, "Unregister table completed");
     peer->MembershipRequestCallback(table);
     NotifyPeerRegistration(peer, table, true);
+    current_jobs_count_--;
 }
 
 //
@@ -596,6 +610,7 @@ void BgpMembershipManager::ProcessWalkRibCompleteEvent(Event *event) {
     if (!prs->ribin_registered() && !prs->ribout_registered())
         DestroyPeerRibState(prs);
     peer->MembershipRequestCallback(table);
+    current_jobs_count_--;
 }
 
 //
