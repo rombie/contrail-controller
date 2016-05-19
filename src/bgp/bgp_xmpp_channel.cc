@@ -575,7 +575,7 @@ BgpXmppChannel::~BgpXmppChannel() {
 }
 
 void BgpXmppChannel::XMPPPeerInfoSend(const XmppPeerInfoData &peer_info) const {
-    XMPPPeerInfo::Send(peer_info);
+    // XMPPPeerInfo::Send(peer_info);
 }
 
 const XmppSession *BgpXmppChannel::GetSession() const {

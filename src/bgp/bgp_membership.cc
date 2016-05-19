@@ -198,7 +198,8 @@ void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
 // It can also be used in future when re-evaluating import policy for a peer.
 //
 void BgpMembershipManager::WalkRibIn(IPeer *peer, BgpTable *table) {
-    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
+    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
+                      "bgp:PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     PeerRibState *prs = FindPeerRibState(peer, table);
@@ -603,11 +604,6 @@ void BgpMembershipManager::ProcessWalkRibCompleteEvent(Event *event) {
 //
 bool BgpMembershipManager::EventCallback(Event *event) {
     CHECK_CONCURRENCY("bgp::PeerMembership");
-
-    // Mutex should not be required since bgp::PeerMembership is exclusive
-    // with bgp::StateMachine and xmpp::StateMachine. However, it's needed
-    // for unit tests since they use a ConcurrencyScope.
-    tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
 
     switch (event->event_type) {
     case REGISTER_RIB:
