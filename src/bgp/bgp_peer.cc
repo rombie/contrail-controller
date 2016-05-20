@@ -429,13 +429,10 @@ void BgpPeer::MembershipRequestCallback(BgpTable *table) {
         return;
     }
 
-    assert(membership_req_pending_);
-    membership_req_pending_--;
-
     // Resume close if it was deferred and this is the last pending callback.
     // Don't bother sending EndOfRib if close is deferred.
     if (defer_close_) {
-        if (!membership_req_pending_) {
+        if (!server_->membership_mgr()->IsPending(this)) {
             defer_close_ = false;
             trigger_.Set();
         }
@@ -499,7 +496,6 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           passive_(config->passive()),
           resolve_paths_(config->router_type() == "bgpaas-client"),
           as_override_(config->as_override()),
-          membership_req_pending_(0),
           defer_close_(false),
           non_graceful_close_(false),
           vpn_tables_registered_(false),
@@ -936,7 +932,9 @@ void BgpPeer::CustomClose() {
 // Close this peer by closing all of it's RIBs.
 //
 void BgpPeer::Close(bool non_graceful) {
-    if (membership_req_pending_) {
+    if (server_->membership_mgr()->IsPending(this) &&
+            peer_close_->close_manager()->membership_state() !=
+                PeerCloseManager::MEMBERSHIP_IN_USE) {
         BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
             BGP_PEER_DIR_NA, "Close procedure deferred");
         defer_close_ = true;
@@ -1063,7 +1061,6 @@ void BgpPeer::RegisterAllTables() {
         BgpTable *table = instance->GetTable(family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
                            table, "Register peer with the table");
-        membership_req_pending_++;
         membership_mgr->Register(this, table, BuildRibExportPolicy(family));
     }
 
@@ -1077,7 +1074,6 @@ void BgpPeer::RegisterAllTables() {
     BgpTable *table = instance->GetTable(family);
     BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         table, "Register peer with the table");
-    membership_req_pending_++;
     membership_mgr->Register(this, table, BuildRibExportPolicy(family));
     StartEndOfRibTimer();
 
@@ -1826,7 +1822,6 @@ void BgpPeer::RegisterToVpnTables() {
         BgpTable *table = instance->GetTable(vpn_family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register peer with the table");
-        membership_req_pending_++;
         membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family));
     }
 }

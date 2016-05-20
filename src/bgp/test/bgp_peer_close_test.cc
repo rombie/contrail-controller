@@ -201,12 +201,6 @@ public:
     }
     BgpPeerTest *peer() { return peer_; }
     int peer_id() { return peer_id_; }
-    bool ribout_creation_complete(Address::Family family) {
-        return ribout_creation_complete_[family];
-    }
-    void ribout_creation_complete(Address::Family family, bool complete) {
-        ribout_creation_complete_[family] = complete;
-    }
 
     string name_;
     int peer_id_;
@@ -235,10 +229,6 @@ typedef std::tr1::tuple<int, int, int, int, int, bool> TestParams;
 class BgpPeerCloseTest : public ::testing::TestWithParam<TestParams> {
 
 public:
-    void CreateRibsDone(IPeer *ipeer, BgpTable *table, BgpNullPeer *npeer) {
-        npeer->ribout_creation_complete(table->family(), true);
-    }
-
     void DeleteRoutingInstance(RoutingInstance *rtinstance);
 
 protected:
@@ -410,7 +400,9 @@ void BgpPeerCloseTest::VerifyRibOutCreationCompletion() {
 
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
         for (int i = 0; i < n_families_; i++) {
-            EXPECT_TRUE(npeer->ribout_creation_complete(familes_[i]));
+            BgpTable *table = rtinstance_->GetTable(familes_[i]);
+            TASK_UTIL_EXPECT_TRUE(server_->membership_mgr()->IsRegistered(
+                                      npeer->peer(), table));
         }
     }
 }
@@ -574,7 +566,6 @@ void BgpPeerCloseTest::AddRoutes(BgpTable *table, BgpNullPeer *npeer) {
 }
 
 void BgpPeerCloseTest::AddAllRoutes() {
-    ConcurrencyScope scope("bgp::StateMachine");
     RibExportPolicy policy(BgpProto::IBGP, RibExportPolicy::BGP, 1, 0);
 
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
@@ -800,6 +791,7 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
                         instance_config, "bgp::Config");
     task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddAllRoutes, this),
                         "bgp::StateMachine");
+    WaitForIdle();
     VerifyXmppRouteNextHops();
 }
 

@@ -427,7 +427,6 @@ private:
     bool resolve_paths_;
     bool as_override_;
 
-    uint64_t membership_req_pending_;
     bool defer_close_;
     bool non_graceful_close_;
     bool vpn_tables_registered_;
