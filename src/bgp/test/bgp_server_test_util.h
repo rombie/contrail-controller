@@ -286,9 +286,6 @@ public:
 
     const int id() const { return id_; }
     void set_id(int id) { id_ = id; }
-    virtual void Register(BgpTable *table, const RibExportPolicy &policy) {
-        BgpPeer::Register(table, policy);
-    }
 
     virtual void SetAdminState(bool down) {
         if (!ConcurrencyChecker::IsInMainThr()) {
