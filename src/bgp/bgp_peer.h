@@ -324,6 +324,7 @@ protected:
         return long_lived_graceful_restart_families_;
     }
     void SendEndOfRIB(Address::Family family);
+    virtual void Register(BgpTable *table, const RibExportPolicy &policy);
 
 private:
     friend class BgpConfigTest;

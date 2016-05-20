@@ -1031,6 +1031,13 @@ bool BgpPeer::AcceptSession(BgpSession *session) {
     return state_machine_->PassiveOpen(session);
 }
 
+void BgpPeer::Register(BgpTable *table, const RibExportPolicy &policy) {
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
+
+    membership_req_pending_++;
+    membership_mgr->Register(this, table, policy);
+}
+
 //
 // Register to tables for negotiated address families.
 //
@@ -1045,7 +1052,6 @@ bool BgpPeer::AcceptSession(BgpSession *session) {
 // normally before ribout registration to VPN tables is completed.
 //
 void BgpPeer::RegisterAllTables() {
-    BgpMembershipManager *membership_mgr = server_->membership_mgr();
     RoutingInstance *instance = GetRoutingInstance();
 
     BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
@@ -1064,7 +1070,7 @@ void BgpPeer::RegisterAllTables() {
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
                            table, "Register peer with the table");
         membership_req_pending_++;
-        membership_mgr->Register(this, table, BuildRibExportPolicy(family));
+        Register(table, BuildRibExportPolicy(family));
     }
 
     vpn_tables_registered_ = false;
@@ -1077,12 +1083,12 @@ void BgpPeer::RegisterAllTables() {
     BgpTable *table = instance->GetTable(family);
     BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         table, "Register peer with the table");
-    membership_req_pending_++;
-    membership_mgr->Register(this, table, BuildRibExportPolicy(family));
+    Register(table, BuildRibExportPolicy(family));
     StartEndOfRibTimer();
 
     vector<Address::Family> vpn_family_list = list_of
         (Address::INETVPN)(Address::INET6VPN)(Address::ERMVPN)(Address::EVPN);
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
     BOOST_FOREACH(Address::Family vpn_family, vpn_family_list) {
         if (!IsFamilyNegotiated(vpn_family))
             continue;
@@ -1816,7 +1822,6 @@ void BgpPeer::RegisterToVpnTables() {
         return;
     vpn_tables_registered_ = true;
 
-    BgpMembershipManager *membership_mgr = server_->membership_mgr();
     RoutingInstance *instance = GetRoutingInstance();
     vector<Address::Family> vpn_family_list = list_of
         (Address::INETVPN)(Address::INET6VPN)(Address::ERMVPN)(Address::EVPN);
@@ -1827,7 +1832,7 @@ void BgpPeer::RegisterToVpnTables() {
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register peer with the table");
         membership_req_pending_++;
-        membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family));
+        Register(table, BuildRibExportPolicy(vpn_family));
     }
 }
 
