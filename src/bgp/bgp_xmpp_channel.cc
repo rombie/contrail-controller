@@ -2437,10 +2437,11 @@ BgpXmppChannelManager::BgpXmppChannelManager(XmppServer *xmpp_server,
           boost::bind(&BgpXmppChannelManager::DeleteExecutor, this, _1)),
       id_(-1),
       asn_listener_id_(-1),
-      identifier_listener_id_(-1),
-      deleting_count_(0) {
+      identifier_listener_id_(-1) {
+
     // Initialize the gen id counter
     subscription_gen_id_ = 1;
+    deleting_count_ = 0;
 
     if (xmpp_server)
         xmpp_server->CreateConfigUpdater(server->config_manager());
