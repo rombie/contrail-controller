@@ -300,20 +300,35 @@ void PeerCloseManager::MembershipRequest() {
     MembershipRequestInternal();
 }
 
+bool PeerCloseManager::CanUseMembershipManager() const {
+    return peer_close_->peer()->CanUseMembershipManager();
+}
+
+bool PeerCloseManager::IsMembershipPending() const {
+    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
+    return mgr->IsPending(peer_close_->peer());
+}
+
+BgpMembershipManager *PeerCloseManager::membership_mgr() const {
+    return peer_close_->peer()->server()->membership_mgr();
+}
+
 void PeerCloseManager::MembershipRequestInternal() {
     assert(membership_state() != MEMBERSHIP_IN_USE);
 
     // Pause if membership manager is not ready for usage.
-    if (!peer_close_->peer()->CanUseMembershipManager()) {
+    if (!CanUseMembershipManager()) {
         set_membership_state(MEMBERSHIP_IN_WAIT);
         return;
     }
+    set_membership_state(MEMBERSHIP_IN_USE);
+    BgpMembershipManager *mgr = membership_mgr();
+    if (!mgr)
+        return;
 
-    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
     std::list<BgpTable *> tables;
     mgr->GetRegisteredRibs(peer_close_->peer(), &tables);
 
-    set_membership_state(MEMBERSHIP_IN_USE);
     if (tables.empty()) {
         MembershipRequestCallbackInternal();
         return;
@@ -351,9 +366,8 @@ bool PeerCloseManager::MembershipRequestCallbackInternal() {
            state_ == DELETE);
     assert(membership_state() == MEMBERSHIP_IN_USE);
 
-    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
-    if (mgr->IsPending(peer_close_->peer()))
-            return false;
+    if (IsMembershipPending())
+        return false;
 
     set_membership_state(MEMBERSHIP_NONE);
     PEER_CLOSE_MANAGER_LOG("RibWalk completed");

@@ -318,9 +318,12 @@ public:
         return channel_map_.size();
     }
 
-    uint32_t deleting_count() const { return deleting_count_; }
+    int32_t deleting_count() const { return deleting_count_; }
     void increment_deleting_count() { deleting_count_++; }
-    void decrement_deleting_count() { deleting_count_--; }
+    void decrement_deleting_count() {
+        assert(deleting_count_);
+        deleting_count_--;
+    }
 
     BgpServer *bgp_server() { return bgp_server_; }
     XmppServer *xmpp_server() { return xmpp_server_; }
@@ -346,7 +349,7 @@ private:
     int admin_down_listener_id_;
     int asn_listener_id_;
     int identifier_listener_id_;
-    uint32_t deleting_count_;
+    tbb::atomic<int32_t> deleting_count_;
     // Generation number for subscription tracking
     tbb::atomic<uint64_t> subscription_gen_id_;
 

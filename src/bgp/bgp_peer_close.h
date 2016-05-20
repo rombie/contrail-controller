@@ -11,6 +11,7 @@
 #include "db/db_table_walker.h"
 #include "bgp/ipeer.h"
 
+class BgpMembershipManager;
 class BgpNeighborResp;
 class BgpRoute;
 class BgpTable;
@@ -112,7 +113,10 @@ private:
     const std::string GetStateName(State state) const;
     void CloseInternal();
     bool MembershipRequestCallbackInternal();
-    void MembershipRequestInternal();
+    virtual void MembershipRequestInternal();
+    virtual bool CanUseMembershipManager() const;
+    virtual bool IsMembershipPending() const;
+    virtual BgpMembershipManager *membership_mgr() const;
 
     IPeerClose *peer_close_;
     Timer *stale_timer_;

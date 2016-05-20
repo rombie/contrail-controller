@@ -71,12 +71,25 @@ public:
     };
     explicit PeerCloseManagerTest(IPeerClose *peer_close,
             boost::asio::io_service &io_service) :
-        PeerCloseManager(peer_close, io_service) {
+        PeerCloseManager(peer_close, io_service), membership_requested_(false) {
     }
     ~PeerCloseManagerTest() { }
     Timer *stale_timer() const { return stale_timer_; }
     Timer *sweep_timer() const { return sweep_timer_; }
+    bool membership_requested() const { return membership_requested_; }
+    void set_membership_requested(bool flag) { membership_requested_ = flag; }
+
+    virtual void MembershipRequestInternal() {
+        membership_requested_ = true;
+        PeerCloseManager::MembershipRequestInternal();
+    }
+    virtual bool CanUseMembershipManager() const { return true; }
+    virtual bool IsMembershipPending() const { return false; }
+    virtual BgpMembershipManager *membership_mgr() const { return NULL; }
+
 private:
+    friend class PeerCloseTest;
+    bool membership_requested_;
 };
 
 typedef std::tr1::tuple<int, int, bool, bool, bool, bool> TestParams;
@@ -138,8 +151,11 @@ TEST_P(PeerCloseTest, Test) {
                 EXPECT_FALSE(close_manager_->stale_timer()->running());
                 EXPECT_FALSE(close_manager_->sweep_timer()->running());
 
+                // Expect Membership (walk) request.
+                EXPECT_TRUE(close_manager_->membership_requested());
+
                 // Trigger unregister peer rib walks completion.
-                peer_close_->TriggerUnregisterPeerCompletion();
+                close_manager_->MembershipRequestCallback();
                 EXPECT_EQ(PeerCloseManager::NONE, close_manager_->state());
                 break;
             }
