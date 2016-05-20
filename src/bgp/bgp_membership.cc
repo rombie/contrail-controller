@@ -147,6 +147,12 @@ void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered());
+
+    if (!prs->ribout_registered()) {
+        UnregisterRibInUnlocked(prs);
+        return;
+    }
+
     prs->set_action(RIBIN_DELETE_RIBOUT_DELETE);
     prs->set_ribin_registered(false);
     prs->set_instance_id(-1);
@@ -158,7 +164,6 @@ void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
 
 //
 // Unregister the IPeer from the BgpTable for RIBIN.
-// The action is set to RIBIN_DELETE.
 //
 void BgpMembershipManager::UnregisterRibIn(IPeer *peer, BgpTable *table) {
     CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
@@ -169,14 +174,21 @@ void BgpMembershipManager::UnregisterRibIn(IPeer *peer, BgpTable *table) {
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == NONE);
     assert(prs->ribin_registered() && !prs->ribout_registered());
+    UnregisterRibInUnlocked(prs);
+}
+
+//
+// Common routine to handle unregister of IPeer from Table for RIBIN.
+//
+void BgpMembershipManager::UnregisterRibInUnlocked(PeerRibState *prs) {
     prs->set_ribin_registered(false);
     prs->set_instance_id(-1);
     prs->set_subscription_gen_id(0);
     prs->set_action(RIBIN_DELETE);
     prs->UnregisterRibIn();
     prs->EnqueueToPeerState();
-    BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Unregister table requested");
+    BGP_LOG_PEER_TABLE(prs->peer(), SandeshLevel::SYS_DEBUG,
+        BGP_LOG_FLAG_SYSLOG, prs->table(), "Unregister table requested");
 }
 
 //
@@ -275,6 +287,16 @@ bool BgpMembershipManager::IsRibInRegistered(const IPeer *peer,
     tbb::spin_rw_mutex::scoped_lock read_lock(rw_mutex_, false);
     const PeerRibState *prs = FindPeerRibState(peer, table);
     return (prs && prs->ribin_registered());
+}
+
+//
+// Return true if the IPeer is registered to the BgpTable for RibOut.
+//
+bool BgpMembershipManager::IsRibOutRegistered(const IPeer *peer,
+    const BgpTable *table) const {
+    tbb::spin_rw_mutex::scoped_lock read_lock(rw_mutex_, false);
+    const PeerRibState *prs = FindPeerRibState(peer, table);
+    return (prs && prs->ribout_registered());
 }
 
 //
@@ -504,18 +526,17 @@ void BgpMembershipManager::ProcessRegisterRibEvent(Event *event) {
     PeerRibState *prs = FindPeerRibState(peer, table);
     assert(prs && prs->action() == RIBOUT_ADD);
     assert(prs->ribin_registered());
+    prs->set_instance_id(event->instance_id);
 
     // Notify completion right away if the table is marked for deletion.
     if (table->IsDeleted()) {
         prs->clear_action();
-        prs->set_ribout_registered(true);
         peer->MembershipRequestCallback(table);
         current_jobs_count_--;
         return;
     }
 
     prs->RegisterRibOut(event->policy);
-    prs->set_instance_id(event->instance_id);
     BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
         table, "Register table requested");
 }

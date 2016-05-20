@@ -108,6 +108,7 @@ public:
 
     bool IsRegistered(const IPeer *peer, const BgpTable *table) const;
     bool IsRibInRegistered(const IPeer *peer, const BgpTable *table) const;
+    bool IsRibOutRegistered(const IPeer *peer, const BgpTable *table) const;
 
     void GetRegisteredRibs(const IPeer *peer,
         std::list<BgpTable *> *table_list) const;
@@ -162,6 +163,8 @@ private:
     typedef std::map<const IPeer *, PeerState *> PeerStateMap;
     typedef std::map<const BgpTable *, RibState *> RibStateMap;
     typedef std::set<PeerRibState *> PeerRibList;
+
+    void UnregisterRibInUnlocked(PeerRibState *prs);
 
     PeerState *LocatePeerState(IPeer *peer);
     PeerState *FindPeerState(const IPeer *peer);
@@ -341,11 +344,13 @@ public:
     void EnqueueToPeerState();
     void DequeueFromPeerState();
 
+    const IPeer *peer() const { return ps_->peer(); }
     PeerState *peer_state() { return ps_; }
     const PeerState *peer_state() const { return ps_; }
     RibState *rib_state() { return rs_; }
     RibOut *ribout() const { return ribout_; }
     int ribout_index() const { return ribout_index_; }
+    const BgpTable *table() const { return rs_->table(); }
 
     BgpMembershipManager::Action action() const { return action_; }
     void set_action(BgpMembershipManager::Action action) { action_ = action; }
