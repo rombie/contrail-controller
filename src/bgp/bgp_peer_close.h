@@ -113,7 +113,8 @@ private:
     void CloseComplete();
     bool ProcessSweepStateActions();
     void TriggerSweepStateActions();
-    const std::string GetStateName(State state) const;
+    std::string GetStateName(State state) const;
+    std::string GetMembershipStateName(MembershipState state) const;
     void CloseInternal();
     bool MembershipRequestCallbackInternal();
     void MembershipRequestInternal();
