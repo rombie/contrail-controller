@@ -312,15 +312,6 @@ void BgpMembershipManager::GetRegisteredRibs(const IPeer *peer,
 }
 
 //
-// Return true if the IPeer has any pending PeerRibStates.
-//
-bool BgpMembershipManager::IsPending(const IPeer *peer) const {
-    tbb::spin_rw_mutex::scoped_lock read_lock(rw_mutex_, false);
-    const PeerState *ps = FindPeerState(peer);
-    return (ps && ps->IsPending());
-}
-
-//
 //
 // Fill membership introspect information for a BgpTable.
 //
@@ -772,13 +763,6 @@ void BgpMembershipManager::PeerState::EnqueuePeerRibState(PeerRibState *prs) {
 //
 void BgpMembershipManager::PeerState::DequeuePeerRibState(PeerRibState *prs) {
     pending_rib_list_.erase(prs);
-}
-
-//
-// Return true if the pending PeerRibStateList is non-empty.
-//
-bool BgpMembershipManager::PeerState::IsPending() const {
-    return !pending_rib_list_.empty();
 }
 
 //

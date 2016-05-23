@@ -575,6 +575,9 @@ BgpXmppChannel::~BgpXmppChannel() {
         manager_->decrement_deleting_count();
     STLDeleteElements(&defer_q_);
     assert(peer_deleted());
+    assert(peer_->peer_close()->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
+    assert(routingtable_membership_request_map_.empty());
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
@@ -1883,7 +1886,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
         if (!Peer()->peer_close()->close_manager()->MembershipRequestCallback())
             return true;
 
-        // Process pending membeship request if one is pending for this table.
+        // Process pending membership request if one is pending for this table.
         if (loc == routingtable_membership_request_map_.end())
             return true;
 

@@ -571,8 +571,7 @@ void BgpPeerCloseTest::AddAllRoutes() {
     BOOST_FOREACH(BgpNullPeer *npeer, peers_) {
         for (int i = 0; i < n_families_; i++) {
             BgpTable *table = rtinstance_->GetTable(familes_[i]);
-
-            server_->membership_mgr()->Register(npeer->peer(), table, policy);
+            npeer->peer()->Register(table, policy);
 
             // Add routes to RibIn
             AddRoutes(table, npeer);

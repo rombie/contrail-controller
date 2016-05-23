@@ -33,6 +33,7 @@ PeerCloseManager::PeerCloseManager(IPeerClose *peer_close,
         state_(NONE), close_again_(false), non_graceful_(false), gr_elapsed_(0),
         llgr_elapsed_(0), membership_state_(MEMBERSHIP_NONE) {
     stats_.init++;
+    membership_req_pending_ = 0;
     stale_timer_ = TimerManager::CreateTimer(io_service,
         "Graceful Restart StaleTimer",
         TaskScheduler::GetInstance()->GetTaskId("bgp::Config"), 0);
@@ -47,6 +48,7 @@ PeerCloseManager::PeerCloseManager(IPeerClose *peer_close) :
         state_(NONE), close_again_(false), non_graceful_(false), gr_elapsed_(0),
         llgr_elapsed_(0), membership_state_(MEMBERSHIP_NONE) {
     stats_.init++;
+    membership_req_pending_ = 0;
     if (peer_close->peer() && peer_close->peer()->server()) {
         stale_timer_ = TimerManager::CreateTimer(
             *peer_close->peer()->server()->ioservice(),
@@ -304,11 +306,6 @@ bool PeerCloseManager::CanUseMembershipManager() const {
     return peer_close_->peer()->CanUseMembershipManager();
 }
 
-bool PeerCloseManager::IsMembershipPending() const {
-    BgpMembershipManager *mgr = peer_close_->peer()->server()->membership_mgr();
-    return mgr->IsPending(peer_close_->peer());
-}
-
 BgpMembershipManager *PeerCloseManager::membership_mgr() const {
     return peer_close_->peer()->server()->membership_mgr();
 }
@@ -322,6 +319,8 @@ void PeerCloseManager::MembershipRequestInternal() {
         return;
     }
     set_membership_state(MEMBERSHIP_IN_USE);
+    assert(!membership_req_pending_);
+    membership_req_pending_++;
     BgpMembershipManager *mgr = membership_mgr();
     if (!mgr)
         return;
@@ -330,11 +329,14 @@ void PeerCloseManager::MembershipRequestInternal() {
     mgr->GetRegisteredRibs(peer_close_->peer(), &tables);
 
     if (tables.empty()) {
-        MembershipRequestCallbackInternal();
+        assert(MembershipRequestCallbackInternal());
         return;
     }
 
+    // Account for extra increment above.
+    membership_req_pending_--;
     BOOST_FOREACH(BgpTable *table, tables) {
+        membership_req_pending_++;
         if (mgr->IsRegistered(peer_close_->peer(), table)) {
             if (state_ == PeerCloseManager::DELETE) {
                 mgr->Unregister(peer_close_->peer(), table);
@@ -366,7 +368,8 @@ bool PeerCloseManager::MembershipRequestCallbackInternal() {
            state_ == DELETE);
     assert(membership_state() == MEMBERSHIP_IN_USE);
 
-    if (IsMembershipPending())
+    assert(membership_req_pending_ > 0);
+    if (--membership_req_pending_)
         return false;
 
     set_membership_state(MEMBERSHIP_NONE);
@@ -457,7 +460,6 @@ bool PeerCloseManager::MembershipPathCallback(DBTablePartBase *root,
 
     uint32_t stale = 0;
 
-    tbb::mutex::scoped_lock lock(mutex_);
     switch (state_) {
         case NONE:
         case GR_TIMER:
