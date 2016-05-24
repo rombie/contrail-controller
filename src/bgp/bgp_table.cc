@@ -591,7 +591,10 @@ bool BgpTable::MayDelete() const {
 
     // Check the base class at the end so that we add custom checks
     // before this if needed and to get more informative log message.
-    return DBTableBase::MayDelete();
+    if (!DBTableBase::MayDelete())
+        return false;
+
+    return true;
 }
 
 void BgpTable::Shutdown() {

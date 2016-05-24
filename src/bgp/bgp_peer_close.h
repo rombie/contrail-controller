@@ -102,6 +102,9 @@ public:
     bool MembershipPathCallback(DBTablePartBase *root, BgpRoute *rt,
                                 BgpPath *path);
 
+protected:
+    tbb::atomic<int> membership_req_pending_;
+
 private:
     friend class PeerCloseManagerTest;
 
@@ -110,12 +113,12 @@ private:
     void CloseComplete();
     bool ProcessSweepStateActions();
     void TriggerSweepStateActions();
-    const std::string GetStateName(State state) const;
+    std::string GetStateName(State state) const;
+    std::string GetMembershipStateName(MembershipState state) const;
     void CloseInternal();
     bool MembershipRequestCallbackInternal();
-    virtual void MembershipRequestInternal();
+    void MembershipRequestInternal();
     virtual bool CanUseMembershipManager() const;
-    virtual bool IsMembershipPending() const;
     virtual BgpMembershipManager *membership_mgr() const;
 
     IPeerClose *peer_close_;

@@ -112,7 +112,6 @@ public:
 
     void GetRegisteredRibs(const IPeer *peer,
         std::list<BgpTable *> *table_list) const;
-    bool IsPending(const IPeer *peer) const;
 
     void FillRoutingInstanceTableInfo(ShowRoutingInstanceTable *srit,
         const BgpTable *table) const;
@@ -257,7 +256,6 @@ public:
 
     void EnqueuePeerRibState(PeerRibState *prs);
     void DequeuePeerRibState(PeerRibState *prs);
-    bool IsPending() const;
 
     void GetRegisteredRibs(std::list<BgpTable *> *table_list) const;
     size_t GetMembershipCount() const { return rib_map_.size(); }

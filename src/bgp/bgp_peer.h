@@ -305,6 +305,8 @@ public:
     }
     bool SkipNotificationSend(int code, int subcode) const;
     bool SkipNotificationReceive(int code, int subcode) const;
+    void Register(BgpTable *table, const RibExportPolicy &policy);
+    void Register(BgpTable *table);
 
 protected:
     const std::vector<std::string> &negotiated_families() const {
@@ -324,6 +326,7 @@ protected:
         return long_lived_graceful_restart_families_;
     }
     void SendEndOfRIB(Address::Family family);
+    int membership_req_pending() const { return membership_req_pending_; }
 
 private:
     friend class BgpConfigTest;
@@ -427,6 +430,7 @@ private:
     bool resolve_paths_;
     bool as_override_;
 
+    tbb::atomic<int> membership_req_pending_;
     bool defer_close_;
     bool non_graceful_close_;
     bool vpn_tables_registered_;
