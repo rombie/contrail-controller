@@ -26,6 +26,7 @@ class BgpServer;
 class BgpTable;
 class IPeer;
 class RibOut;
+class ShowMembershipPeerInfo;
 class ShowRoutingInstanceTable;
 class TaskTrigger;
 
@@ -124,10 +125,13 @@ public:
     uint64_t total_jobs_count() const { return total_jobs_count_; }
 
 protected:
+    struct Event;
+
+    virtual bool EventCallbackInternal(Event *event);
+
     mutable tbb::spin_rw_mutex rw_mutex_;
 
 private:
-    struct Event;
     class PeerState;
     class PeerRibState;
     class RibState;
@@ -189,7 +193,6 @@ private:
     void ProcessWalkRibCompleteEvent(Event *event);
 
     void EnqueueEvent(Event *event) { event_queue_->Enqueue(event); }
-    virtual bool EventCallbackInternal(Event *event);
     bool EventCallback(Event *event);
 
     void NotifyPeerRegistration(IPeer *peer, BgpTable *table, bool unregister);
@@ -243,7 +246,6 @@ class BgpMembershipManager::PeerState {
 public:
     typedef BgpMembershipManager::RibState RibState;
     typedef BgpMembershipManager::PeerRibState PeerRibState;
-    typedef BgpMembershipManager::PeerRibList PeerRibList;
     typedef std::map<const RibState *, PeerRibState *> PeerRibStateMap;
 
     PeerState(BgpMembershipManager *manager, IPeer *peer);
@@ -253,9 +255,6 @@ public:
     PeerRibState *FindPeerRibState(const RibState *rs);
     const PeerRibState *FindPeerRibState(const RibState *rs) const;
     bool RemovePeerRibState(PeerRibState *prs);
-
-    void EnqueuePeerRibState(PeerRibState *prs);
-    void DequeuePeerRibState(PeerRibState *prs);
 
     void GetRegisteredRibs(std::list<BgpTable *> *table_list) const;
     size_t GetMembershipCount() const { return rib_map_.size(); }
@@ -268,7 +267,6 @@ private:
     BgpMembershipManager *manager_;
     IPeer *peer_;
     PeerRibStateMap rib_map_;
-    PeerRibList pending_rib_list_;
 
     DISALLOW_COPY_AND_ASSIGN(PeerState);
 };
@@ -305,10 +303,13 @@ public:
     void FillRoutingInstanceTableInfo(ShowRoutingInstanceTable *srit) const;
 
     BgpTable *table() const { return table_; }
+    void increment_walk_count() { walk_count_++; }
 
 private:
     BgpMembershipManager *manager_;
     BgpTable *table_;
+    uint32_t request_count_;
+    uint32_t walk_count_;
     PeerRibList peer_rib_list_;
     PeerRibList pending_peer_rib_list_;
 
@@ -339,8 +340,7 @@ public:
     void WalkRibIn();
     void ManagedDelete() {}
 
-    void EnqueueToPeerState();
-    void DequeueFromPeerState();
+    void FillMembershipInfo(ShowMembershipPeerInfo *smpi) const;
 
     const IPeer *peer() const { return ps_->peer(); }
     PeerState *peer_state() { return ps_; }

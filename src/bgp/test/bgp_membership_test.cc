@@ -25,6 +25,11 @@ using tbb::atomic;
 static int gbl_index;
 
 class BgpTestMembershipManager : public BgpMembershipManager {
+public:
+    BgpTestMembershipManager(BgpServer *server)
+        : BgpMembershipManager(server) {
+    }
+
 private:
     // Mutex is required for unit tests since they use a ConcurrencyScope
     // to call membership manager APIs and so are not mutually exclusive
