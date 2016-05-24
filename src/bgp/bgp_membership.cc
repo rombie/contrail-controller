@@ -817,7 +817,9 @@ void BgpMembershipManager::PeerState::FillPeerMembershipInfo(
 BgpMembershipManager::RibState::RibState(BgpMembershipManager *manager,
     BgpTable *table)
     : manager_(manager),
-      table_(table) {
+      table_(table),
+      request_count_(0),
+      walk_count_(0) {
 }
 
 //
@@ -832,6 +834,7 @@ BgpMembershipManager::RibState::~RibState() {
 // Enqueue given PeerRibState into the pending PeerRibStateList.
 //
 void BgpMembershipManager::RibState::EnqueuePeerRibState(PeerRibState *prs) {
+    request_count_++;
     pending_peer_rib_list_.insert(prs);
     manager_->EnqueueRibState(this);
 }
@@ -863,14 +866,19 @@ bool BgpMembershipManager::RibState::RemovePeerRibState(PeerRibState *prs) {
 //
 void BgpMembershipManager::RibState::FillRoutingInstanceTableInfo(
     ShowRoutingInstanceTable *srit) const {
-    vector<string> peers;
+    ShowTableMembershipInfo stmi;
+    stmi.set_requests(request_count_);
+    stmi.set_walks(walk_count_);
+    vector<ShowMembershipPeerInfo> peers;
     for (PeerRibList::const_iterator it = peer_rib_list_.begin();
          it != peer_rib_list_.end(); ++it) {
         const PeerRibState *prs = *it;
-        peers.push_back(prs->peer_state()->peer()->ToString());
+        ShowMembershipPeerInfo smpi;
+        prs->FillMembershipInfo(&smpi);
+        peers.push_back(smpi);
     }
-    if (!peers.empty())
-        srit->set_peers(peers);
+    stmi.set_peers(peers);
+    srit->set_membership(stmi);
 }
 
 //
@@ -997,6 +1005,18 @@ void BgpMembershipManager::PeerRibState::EnqueueToPeerState() {
 //
 void BgpMembershipManager::PeerRibState::DequeueFromPeerState() {
     ps_->DequeuePeerRibState(this);
+}
+
+//
+// Fill introspect information.
+//
+void BgpMembershipManager::PeerRibState::FillMembershipInfo(
+    ShowMembershipPeerInfo *smpi) const {
+    smpi->set_peer(ps_->peer()->ToString());
+    smpi->set_ribin_registered(ribin_registered_);
+    smpi->set_ribout_registered(ribout_registered_);
+    smpi->set_instance_id(instance_id_);
+    smpi->set_generation_id(subscription_gen_id_);
 }
 
 //
@@ -1192,6 +1212,7 @@ void BgpMembershipManager::Walker::WalkStart() {
     rs_->ClearPeerRibStateList();
 
     // Start the walk.
+    rs_->increment_walk_count();
     BgpTable *table = rs_->table();
     DBTableWalker *walker = table->database()->GetWalker();
     walk_id_ = walker->WalkTable(table, NULL,

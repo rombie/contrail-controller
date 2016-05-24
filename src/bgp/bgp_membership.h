@@ -26,6 +26,7 @@ class BgpServer;
 class BgpTable;
 class IPeer;
 class RibOut;
+class ShowMembershipPeerInfo;
 class ShowRoutingInstanceTable;
 class TaskTrigger;
 
@@ -307,10 +308,13 @@ public:
     void FillRoutingInstanceTableInfo(ShowRoutingInstanceTable *srit) const;
 
     BgpTable *table() const { return table_; }
+    void increment_walk_count() { walk_count_++; }
 
 private:
     BgpMembershipManager *manager_;
     BgpTable *table_;
+    uint32_t request_count_;
+    uint32_t walk_count_;
     PeerRibList peer_rib_list_;
     PeerRibList pending_peer_rib_list_;
 
@@ -343,6 +347,7 @@ public:
 
     void EnqueueToPeerState();
     void DequeueFromPeerState();
+    void FillMembershipInfo(ShowMembershipPeerInfo *smpi) const;
 
     const IPeer *peer() const { return ps_->peer(); }
     PeerState *peer_state() { return ps_; }
