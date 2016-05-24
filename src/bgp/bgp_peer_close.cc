@@ -356,7 +356,7 @@ void PeerCloseManager::MembershipRequestInternal() {
     mgr->GetRegisteredRibs(peer_close_->peer(), &tables);
 
     if (tables.empty()) {
-        assert(MembershipRequestCallbackInternal());
+        assert(MembershipRequestCompleteCallbackInternal());
         return;
     }
 
@@ -394,10 +394,10 @@ void PeerCloseManager::MembershipRequestInternal() {
 // complete. Do the final cleanups necessary and notify interested party
 bool PeerCloseManager::MembershipRequestCallback() {
     tbb::mutex::scoped_lock lock(mutex_);
-    return MembershipRequestCallbackInternal();
+    return MembershipRequestCompleteCallbackInternal();
 }
 
-bool PeerCloseManager::MembershipRequestCallbackInternal() {
+bool PeerCloseManager::MembershipRequestCompleteCallbackInternal() {
     assert(state_ == STALE || LLGR_STALE || state_ == SWEEP ||
            state_ == DELETE);
     assert(membership_state() == MEMBERSHIP_IN_USE);

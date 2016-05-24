@@ -404,6 +404,8 @@ public:
         return parent_->GetMembershipRequestQueueSize() == 0;
     }
 
+    virtual bool IsRegistrationRequired() const { return true; }
+
     virtual string ToUVEKey() const {
         return parent_->ToUVEKey();
     }

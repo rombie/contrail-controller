@@ -116,7 +116,7 @@ private:
     std::string GetStateName(State state) const;
     std::string GetMembershipStateName(MembershipState state) const;
     void CloseInternal();
-    bool MembershipRequestCallbackInternal();
+    bool MembershipRequestCompleteCallbackInternal();
     void MembershipRequestInternal();
     virtual bool CanUseMembershipManager() const;
     virtual BgpMembershipManager *membership_mgr() const;
