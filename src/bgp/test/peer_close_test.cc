@@ -13,8 +13,7 @@ class PeerCloseManagerTest;
 
 class IPeerCloseTest : public IPeerClose {
 public:
-    explicit IPeerCloseTest() :
-            graceful_(false), ll_graceful_(false), is_ready_(false) {
+    IPeerCloseTest() : graceful_(false), ll_graceful_(false), is_ready_(false) {
     }
     virtual ~IPeerCloseTest() { }
 
@@ -70,8 +69,8 @@ public:
         END_EVENT = EOR_RECEIVED
     };
 
-    explicit PeerCloseManagerTest(IPeerClose *peer_close,
-                                  boost::asio::io_service &io_service) :
+    PeerCloseManagerTest(IPeerClose *peer_close,
+                         boost::asio::io_service &io_service) :
             PeerCloseManager(peer_close, io_service) {
     }
     ~PeerCloseManagerTest() { }

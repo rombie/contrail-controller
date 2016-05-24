@@ -1057,7 +1057,6 @@ void BgpPeer::Register(BgpTable *table) {
             PeerCloseManager::MEMBERSHIP_IN_WAIT)
         assert(membership_req_pending_ > 0);
     BgpMembershipManager *membership_mgr = server_->membership_mgr();
-    membership_req_pending_++;
     membership_mgr->RegisterRibIn(this, table);
 }
 
