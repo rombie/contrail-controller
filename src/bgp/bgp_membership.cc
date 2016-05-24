@@ -139,7 +139,8 @@ void BgpMembershipManager::RegisterRibIn(IPeer *peer, BgpTable *table) {
 // Post an UNREGISTER_RIB event to deal with concurrency issues with RibOut.
 //
 void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
-    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
+    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
+                      "bgp::PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     current_jobs_count_++;
@@ -166,7 +167,8 @@ void BgpMembershipManager::Unregister(IPeer *peer, BgpTable *table) {
 // Unregister the IPeer from the BgpTable for RIBIN.
 //
 void BgpMembershipManager::UnregisterRibIn(IPeer *peer, BgpTable *table) {
-    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
+    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
+                      "bgp::PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     current_jobs_count_++;
@@ -198,7 +200,8 @@ void BgpMembershipManager::UnregisterRibInUnlocked(PeerRibState *prs) {
 // This API is to be used when handling graceful restart of the peer.
 //
 void BgpMembershipManager::UnregisterRibOut(IPeer *peer, BgpTable *table) {
-    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine");
+    CHECK_CONCURRENCY("bgp::Config", "bgp::StateMachine", "xmpp::StateMachine",
+                      "bgp::PeerMembership");
 
     tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
     current_jobs_count_++;

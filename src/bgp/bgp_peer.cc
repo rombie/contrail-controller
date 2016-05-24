@@ -43,7 +43,7 @@ using std::vector;
 class BgpPeer::PeerClose : public IPeerClose {
   public:
     explicit PeerClose(BgpPeer *peer)
-        : peer_(peer),
+        : peer_(peer), flap_count_(0),
           manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
     }
 
@@ -62,9 +62,15 @@ class BgpPeer::PeerClose : public IPeerClose {
 
     virtual void Close(bool non_graceful) {
 
-        // Process closure through close manager only if this is a flip.
-        if (!manager_->IsInGracefulRestartTimerWait() ||
-            peer_->state_machine()->get_state() == StateMachine::ESTABLISHED) {
+        // Abort GR-Closuree if this request is for non-graceful closure.
+        // Reset GR-Closure if previous closure is still in progress or if
+        // this is a flip (from established state).
+        if (non_graceful || !manager_->IsInGracefulRestartTimerWait() ||
+            flap_count_ != peer_->sticky_flap_count()) {
+            if (flap_count_ != peer_->sticky_flap_count()) {
+                flap_count_++;
+                assert(peer_->sticky_flap_count() == flap_count_);
+            }
             manager_->Close(non_graceful);
             return;
         }
@@ -181,6 +187,7 @@ class BgpPeer::PeerClose : public IPeerClose {
 
 private:
     BgpPeer *peer_;
+    uint64_t flap_count_;
     boost::scoped_ptr<PeerCloseManager> manager_;
     std::vector<std::string> negotiated_families_;
 };
@@ -408,9 +415,15 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
 }
 
 bool BgpPeer::CanUseMembershipManager() const {
+    if (!IsReady()) {
+        assert(!membership_req_pending_);
+        return true;
+    }
+
     if (membership_req_pending_)
         return false;
 
+#if 0
     // Make sure that registration is complete for all negotiated families.
     RoutingInstance *instance = GetRoutingInstance();
     BgpMembershipManager *membership_mgr = server_->membership_mgr();
@@ -419,6 +432,7 @@ bool BgpPeer::CanUseMembershipManager() const {
         if (!membership_mgr->IsRegistered(this, table))
             return false;
     }
+#endif
     return true;
 }
 
@@ -520,6 +534,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           deleter_(new DeleteActor(this)),
           instance_delete_ref_(this, instance->deleter()),
           flap_count_(0),
+          sticky_flap_count_(0),
           last_flap_(0),
           inuse_authkey_type_(AuthenticationData::NIL) {
     membership_req_pending_ = 0;
@@ -1057,7 +1072,6 @@ void BgpPeer::Register(BgpTable *table) {
             PeerCloseManager::MEMBERSHIP_IN_WAIT)
         assert(membership_req_pending_ > 0);
     BgpMembershipManager *membership_mgr = server_->membership_mgr();
-    membership_req_pending_++;
     membership_mgr->RegisterRibIn(this, table);
 }
 
@@ -2429,6 +2443,7 @@ string BgpPeer::last_flap_at() const {
 
 void BgpPeer::increment_flap_count() {
     flap_count_++;
+    sticky_flap_count_++;
     last_flap_ = UTCTimestampUsec();
 
     BgpPeerInfoData peer_info;
