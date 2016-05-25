@@ -317,6 +317,8 @@ protected:
     void BgpPeersAdminUpOrDown(bool down);
     void AgentTimerCallback(const void *args);
     void PeerTimerCallback(const void *args);
+    bool SkipNotificationReceive(BgpPeerTest *peer, int code,
+                                 int subcode) const;
 
     void SandeshStartup();
     void SandeshShutdown();
@@ -467,7 +469,7 @@ void GracefulRestartTest::SandeshStartup() {
 
     // Initialize SandeshServer.
     sandesh_server_ = new SandeshServerTest(&evm_);
-    sandesh_server_->Initialize(0);
+    sandesh_server_->Initialize(45758);
 
     boost::system::error_code error;
     string hostname(boost::asio::ip::host_name(error));
@@ -566,6 +568,9 @@ void GracefulRestartTest::Configure() {
         BgpPeerTest *peer = bgp_servers_[0]->FindPeerByUuid(
                                 BgpConfigManager::kMasterInstance, uuid);
         peer->set_id(i-1);
+        peer->skip_notification_recv_fnc_ =
+            boost::bind(&GracefulRestartTest::SkipNotificationReceive, this,
+                        peer, _1, _2);
         bgp_server_peers_.push_back(peer);
     }
 }
@@ -974,6 +979,14 @@ void GracefulRestartTest::VerifyRoutingInstances(BgpServer *server) {
     TASK_UTIL_EXPECT_NE(static_cast<RoutingInstance *>(NULL),
                         server->routing_instance_mgr()->GetRoutingInstance(
                                BgpConfigManager::kMasterInstance));
+}
+
+bool GracefulRestartTest::SkipNotificationReceive(BgpPeerTest *peer,
+                                                  int code, int subcode) const {
+    if (code == BgpProto::Notification::Cease &&
+            subcode == BgpProto::Notification::AdminShutdown)
+        return true;
+    return peer->SkipNotificationReceiveDefault(code, subcode);
 }
 
 // Invoke stale timer callbacks directly speed up the test.

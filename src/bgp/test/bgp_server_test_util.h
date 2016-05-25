@@ -267,7 +267,7 @@ public:
     virtual bool MpNlriAllowed(uint16_t afi, uint8_t safi) {
         return MpNlriAllowed_fnc_(afi, safi);
     }
-  
+
     bool BgpPeerIsReady();
     void SetDataCollectionKey(BgpPeerInfo *peer_info) const;
     void SendEorMarker() {
@@ -276,14 +276,8 @@ public:
         }
     }
 
-    virtual bool IsReady() const {
-        return IsReady_fnc_();
-    }
-
-    void set_vpn_tables_registered(bool registered) {
-        vpn_tables_registered_ = registered;
-    }
-
+    virtual bool IsReady() const { return is_ready_fnc_(); }
+    void set_vpn_tables_registered(bool flag) { vpn_tables_registered_ = flag; }
     const int id() const { return id_; }
     void set_id(int id) { id_ = id; }
 
@@ -302,9 +296,20 @@ public:
         cond_var_.wait(lock);
     }
 
+    bool SkipNotificationReceiveDefault(int code, int subcode) const {
+        return BgpPeer::SkipNotificationReceive(code, subcode);
+    }
+
+    virtual bool SkipNotificationReceive(int code, int subcode) const {
+        if (skip_notification_recv_fnc_.empty())
+            return SkipNotificationReceiveDefault(code, subcode);
+        return skip_notification_recv_fnc_(code, subcode);
+    }
+
     boost::function<bool(const uint8_t *, size_t)> SendUpdate_fnc_;
     boost::function<bool(uint16_t, uint8_t)> MpNlriAllowed_fnc_;
-    boost::function<bool()> IsReady_fnc_;
+    boost::function<bool()> is_ready_fnc_;
+    boost::function<bool(int, int)> skip_notification_recv_fnc_;
 
     BgpTestUtil util_;
 

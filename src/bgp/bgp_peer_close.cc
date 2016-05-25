@@ -471,6 +471,8 @@ void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {
 
     PeerCloseInfo peer_close_info;
     peer_close_info.state = GetStateName(state_);
+    peer_close_info.membership_state =
+        GetMembershipStateName(membership_state_);
     peer_close_info.close_again = close_again_;
     peer_close_info.non_graceful = non_graceful_;
     peer_close_info.init = stats_.init;

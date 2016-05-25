@@ -2287,6 +2287,7 @@ void BgpPeer::FillNeighborInfo(const BgpSandeshContext *bsc,
     BgpMembershipManager *mgr = server_->membership_mgr();
     mgr->FillPeerMembershipInfo(this, bnr);
     bnr->set_routing_instances(vector<BgpNeighborRoutingInstance>());
+    FillCloseInfo(bnr);
 }
 
 void BgpPeer::inc_rx_open() {

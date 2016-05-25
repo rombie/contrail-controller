@@ -306,7 +306,7 @@ public:
         return llgr_params_;
     }
     bool SkipNotificationSend(int code, int subcode) const;
-    bool SkipNotificationReceive(int code, int subcode) const;
+    virtual bool SkipNotificationReceive(int code, int subcode) const;
     void Register(BgpTable *table, const RibExportPolicy &policy);
     void Register(BgpTable *table);
 
