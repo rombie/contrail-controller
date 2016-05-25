@@ -192,7 +192,7 @@ BgpPeerTest::BgpPeerTest(BgpServer *server, RoutingInstance *rtinst,
                                   _1, _2);
     MpNlriAllowed_fnc_ = boost::bind(&BgpPeerTest::BgpPeerMpNlriAllowed, this,
                                      _1, _2);
-    is_ready_fnc_ = boost::bind(&BgpPeerTest::BgpPeerIsReady, this);
+    IsReady_fnc_ = boost::bind(&BgpPeerTest::BgpPeerIsReady, this);
 }
 
 BgpPeerTest::~BgpPeerTest() {

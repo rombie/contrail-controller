@@ -276,7 +276,7 @@ public:
         }
     }
 
-    virtual bool IsReady() const { return is_ready_fnc_(); }
+    virtual bool IsReady() const { return IsReady_fnc_(); }
     void set_vpn_tables_registered(bool flag) { vpn_tables_registered_ = flag; }
     const int id() const { return id_; }
     void set_id(int id) { id_ = id; }
@@ -308,7 +308,7 @@ public:
 
     boost::function<bool(const uint8_t *, size_t)> SendUpdate_fnc_;
     boost::function<bool(uint16_t, uint8_t)> MpNlriAllowed_fnc_;
-    boost::function<bool()> is_ready_fnc_;
+    boost::function<bool()> IsReady_fnc_;
     boost::function<bool(int, int)> skip_notification_recv_fnc_;
 
     BgpTestUtil util_;
