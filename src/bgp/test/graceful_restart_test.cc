@@ -13,8 +13,10 @@
 #include "bgp/bgp_config_parser.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_membership.h"
+#include "bgp/bgp_sandesh.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/bgp_xmpp_channel.h"
+#include "bgp/bgp_xmpp_sandesh.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/l3vpn/inetvpn_table.h"
 #include "bgp/bgp_session_manager.h"
@@ -25,6 +27,8 @@
 #include "control-node/control_node.h"
 #include "control-node/test/network_agent_mock.h"
 #include "io/test/event_manager_test.h"
+#include "sandesh/sandesh.h"
+#include "sandesh/sandesh_server.h"
 #include "xmpp/xmpp_connection.h"
 #include "xmpp/xmpp_factory.h"
 
@@ -48,6 +52,8 @@ static int d_routes = 4;
 static int d_agents = 4;
 static int d_peers = 4;
 static int d_targets = 1;
+static int d_http_port_ = 0;
+static bool d_no_sandesh_server_ = false;
 
 static string d_log_category_ = "";
 static string d_log_level_ = "SYS_WARN";
@@ -64,6 +70,14 @@ static vector<int>  n_targets   = boost::assign::list_of(d_targets);
 static char **gargv;
 static int    gargc;
 static int    n_db_walker_wait_usecs = 0;
+
+#define GR_TEST_LOG(str)                                         \
+do {                                                             \
+    log4cplus::Logger logger = log4cplus::Logger::getRoot();     \
+    LOG4CPLUS_DEBUG(logger, "GR_TEST_LOG: "                      \
+                    << __FILE__  << ":"  << __FUNCTION__ << "()" \
+                    << ":"  << __LINE__ << " " << str);          \
+} while (false)
 
 static void process_command_line_args(int argc, char **argv) {
     static bool cmd_line_processed;
@@ -245,6 +259,18 @@ public:
 
 typedef std::tr1::tuple<int, int, int, int, int> TestParams;
 
+class SandeshServerTest : public SandeshServer {
+public:
+    SandeshServerTest(EventManager *evm) : SandeshServer(evm) { }
+    virtual ~SandeshServerTest() { }
+    virtual bool ReceiveSandeshMsg(SandeshSession *session,
+                       const SandeshMessage *msg, bool rsc) {
+        return true;
+    }
+
+private:
+};
+
 class GracefulRestartTest : public ::testing::TestWithParam<TestParams> {
 protected:
     GracefulRestartTest() : thread_(&evm_) { }
@@ -292,16 +318,20 @@ protected:
     void AgentTimerCallback(const void *args);
     void PeerTimerCallback(const void *args);
 
+    void SandeshStartup();
+    void SandeshShutdown();
+    void Pause(string message);
+
     EventManager evm_;
     ServerThread thread_;
-    boost::scoped_ptr<BgpServerTest> server_;
+    boost::shared_ptr<BgpServerTest> server_;
     XmppServerTest *xmpp_server_;
     boost::scoped_ptr<BgpXmppChannelManagerMock> channel_manager_;
     scoped_ptr<BgpInstanceConfigTest> master_cfg_;
     RoutingInstance *master_instance_;
     std::vector<test::NetworkAgentMock *> xmpp_agents_;
     std::vector<BgpPeerTest *> bgp_peers_;
-    std::vector<BgpServerTest *> bgp_servers_;
+    std::vector<boost::shared_ptr<BgpServerTest> > bgp_servers_;
     std::vector<BgpXmppChannel *> bgp_xmpp_channels_;
     std::vector<BgpPeerTest *> bgp_server_peers_;
     int n_families_;
@@ -311,6 +341,8 @@ protected:
     int n_agents_;
     int n_peers_;
     int n_targets_;
+    SandeshServerTest *sandesh_server_;
+    boost::scoped_ptr<BgpSandeshContext> sandesh_context_;
 
     struct GRTestParams {
         GRTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
@@ -378,18 +410,29 @@ protected:
     std::vector<int> instances_to_delete_during_gr_;
 };
 
+static int d_wait_for_idle_ = 30; // Seconds
+static void WaitForIdle() {
+    if (d_wait_for_idle_) {
+        usleep(10);
+        task_util::WaitForIdle(d_wait_for_idle_);
+    }
+}
+
 void GracefulRestartTest::SetUp() {
     InitParams();
+    SandeshStartup();
 
     server_.reset(new BgpServerTest(&evm_, "RTR0"));
-    bgp_servers_.push_back(server_.get());
+    bgp_servers_.push_back(server_);
 
     // Disable GR advertisement in DUT to prevent GR in non DUTs.
     server_->set_disable_gr(true);
 
     for (int i = 1; i <= n_peers_; i++) {
-        bgp_servers_.push_back(
-            new BgpServerTest(&evm_, "RTR" + boost::lexical_cast<string>(i)));
+        boost::shared_ptr<BgpServerTest> server;
+        server.reset(new BgpServerTest(&evm_,
+                                       "RTR" + boost::lexical_cast<string>(i)));
+        bgp_servers_.push_back(server);
     }
 
     xmpp_server_ = new XmppServerTest(&evm_, XMPP_CONTROL_SERV);
@@ -407,7 +450,47 @@ void GracefulRestartTest::SetUp() {
     for (int i = 0; i <= n_peers_; i++)
         bgp_servers_[i]->session_manager()->Initialize(0);
     xmpp_server_->Initialize(0, false);
+
+    sandesh_context_->bgp_server = bgp_servers_[0].get();
+    sandesh_context_->xmpp_peer_manager = channel_manager_.get();
     thread_.Start();
+}
+
+void GracefulRestartTest::SandeshStartup() {
+    sandesh_context_.reset(new BgpSandeshContext());
+    RegisterSandeshShowXmppExtensions(sandesh_context_.get());
+    if (d_no_sandesh_server_) {
+        Sandesh::set_client_context(sandesh_context_.get());
+        sandesh_server_ = NULL;
+        return;
+    }
+
+    // Initialize SandeshServer.
+    sandesh_server_ = new SandeshServerTest(&evm_);
+    sandesh_server_->Initialize(0);
+
+    boost::system::error_code error;
+    string hostname(boost::asio::ip::host_name(error));
+    Sandesh::InitGenerator("BgpUnitTestSandeshClient", hostname,
+                           "BgpTest", "Test", &evm_,
+                            d_http_port_, sandesh_context_.get());
+    Sandesh::ConnectToCollector("127.0.0.1",
+                                sandesh_server_->GetPort());
+    GR_TEST_LOG("Introspect at http://localhost:" << Sandesh::http_port());
+}
+
+void GracefulRestartTest::SandeshShutdown() {
+    if (d_no_sandesh_server_)
+        return;
+
+    Sandesh::Uninit();
+    WaitForIdle();
+    // TASK_UTIL_EXPECT_FALSE(sandesh_server_->HasSessions());
+    sandesh_server_->Shutdown();
+    WaitForIdle();
+    TcpServerManager::DeleteServer(sandesh_server_);
+    sandesh_server_ = NULL;
+    WaitForIdle();
 }
 
 void GracefulRestartTest::TearDown() {
@@ -447,6 +530,8 @@ void GracefulRestartTest::TearDown() {
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         delete agent;
     }
+    SandeshShutdown();
+    WaitForIdle();
 }
 
 void GracefulRestartTest::Configure() {
@@ -456,7 +541,7 @@ void GracefulRestartTest::Configure() {
     task_util::WaitForIdle();
 
     for (int i = 0; i <= n_peers_; i++)
-        VerifyRoutingInstances(bgp_servers_[i]);
+        VerifyRoutingInstances(bgp_servers_[i].get());
 
     // Get peers to DUT (RTR0) to bgp_peers_ vector.
     for (int i = 1; i <= n_peers_; i++) {
