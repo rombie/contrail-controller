@@ -96,6 +96,7 @@ static void process_command_line_args(int argc, char **argv) {
     options_description desc("Allowed options");
     desc.add_options()
         ("help", "produce help message")
+        ("http-port", value<int>(), "set http introspect server port number")
         ("log-category", value<string>()->default_value(d_log_category_),
             "set log category")
         ("log-disable", bool_switch(&d_log_enable_),
@@ -116,6 +117,8 @@ static void process_command_line_args(int argc, char **argv) {
              "Enable local logging")
         ("log-trace-enable", bool_switch(&d_log_trace_enable_),
              "Enable logging traces")
+        ("no-sandesh-server", bool_switch(&d_no_sandesh_server_),
+             "Do not add multicast routes")
         ("nroutes", value<int>()->default_value(d_routes),
              "set number of routes")
         ("nagents", value<int>()->default_value(d_agents),
@@ -161,6 +164,10 @@ static void process_command_line_args(int argc, char **argv) {
     if (vm.count("db-walker-wait-usecs")) {
         n_db_walker_wait_usecs = vm["db-walker-wait-usecs"].as<int>();
         cmd_line_arg_set = true;
+    }
+
+    if (vm.count("http-port")) {
+        d_http_port_ = vm["http-port"].as<int>();
     }
 
     if (cmd_line_arg_set) {
@@ -469,7 +476,7 @@ void GracefulRestartTest::SandeshStartup() {
 
     // Initialize SandeshServer.
     sandesh_server_ = new SandeshServerTest(&evm_);
-    sandesh_server_->Initialize(45758);
+    sandesh_server_->Initialize(0);
 
     boost::system::error_code error;
     string hostname(boost::asio::ip::host_name(error));

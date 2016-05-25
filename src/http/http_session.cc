@@ -151,6 +151,7 @@ public:
     }
 
     ~RequestHandler() {
+        HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO, "RequestHandler destructor");
     }
 
     void NotFound(HttpSession *session, const HttpRequest *request) {
@@ -174,6 +175,8 @@ public:
         return !session_->request_queue_.try_pop(r);
     }
     virtual bool Run() {
+        HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO,
+                     "RequestHandler execute");
         HttpRequest *request = NULL;
         bool del_session = false;
         HttpServer *server = static_cast<HttpServer *>(session_->server());
@@ -181,6 +184,8 @@ public:
             request = NULL;
             session_->req_queue_empty_ = FromQ(request);
             if (!request) break;
+            HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO,
+                         "URL is " + request->ToString());
             if (request->ToString().empty()) {
                 if (session_->event_cb_ && !session_->event_cb_.empty()) {
                     session_->event_cb_(session_.get(), request->Event());
@@ -200,6 +205,8 @@ public:
             }
         }
         if (del_session) {
+            HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO, "DeleteSession "
+                + session_->ToString());
             session_->set_observer(NULL);
             server->DeleteSession(session_.get());
         }
@@ -232,6 +239,8 @@ void HttpSession::AcceptSession() {
     tbb::mutex::scoped_lock lock(map_mutex_);
     context_str_ = "http%" + ToString();
     GetMap()->insert(std::make_pair(context_str_, HttpSessionPtr(this)));
+    HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO,
+        "Created Session " + context_str_);
 }
 
 void HttpSession::RegisterEventCb(SessionEventCb cb) {
@@ -247,7 +256,13 @@ void HttpSession::OnSessionEvent(TcpSession *session,
     case TcpSession::CLOSE:
         {
             tbb::mutex::scoped_lock lock(map_mutex_);
-            GetMap()->erase(h_session->context_str_);
+            if (GetMap()->erase(h_session->context_str_)) {
+                HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO,
+                    "Removed Session " + h_session->context_str_);
+            } else {
+                HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_INFO,
+                    "Not Removed Session " + h_session->context_str_);                
+            }
             lock.release();
             h_session->context_str_ = "";
             HttpRequest *request = new HttpRequest();
@@ -272,6 +287,10 @@ void HttpSession::OnSessionEvent(TcpSession *session,
 void HttpSession::OnRead(Buffer buffer) {
     const u_int8_t *data = BufferData(buffer);
     size_t size = BufferSize(buffer);
+    std::stringstream msg;
+
+    msg << "HttpSession::Read " << size << " bytes";
+    HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_DEBUG, msg.str());
 
     if (context_str_.size() == 0) {
         ReleaseBuffer(buffer);
@@ -283,6 +302,7 @@ void HttpSession::OnRead(Buffer buffer) {
     request_builder_->Parse(data, size);
     if (request_builder_->complete()) {
         HttpRequest *request = request_builder_->GetRequest();
+        HTTP_SYS_LOG("HttpSession", SandeshLevel::UT_DEBUG, request->ToString());
         request_queue_.push(request);
         // Enqueue new RequestHandler task if needed
         if (req_queue_empty_) {
