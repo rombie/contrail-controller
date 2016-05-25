@@ -217,7 +217,7 @@ public:
     void increment_flap_count();
     void reset_flap_count();
     uint64_t flap_count() const { return flap_count_; }
-    uint64_t sticky_flap_count() const { return sticky_flap_count_; }
+    uint64_t total_flap_count() const { return total_flap_count_; }
 
     std::string last_flap_at() const;
 
@@ -456,7 +456,7 @@ private:
     mutable tbb::atomic<int> refcount_;
     mutable tbb::atomic<int> primary_path_count_;
     uint64_t flap_count_;
-    uint64_t sticky_flap_count_;
+    uint64_t total_flap_count_;
     uint64_t last_flap_;
     AuthenticationData auth_data_;
     AuthenticationKey inuse_auth_key_;

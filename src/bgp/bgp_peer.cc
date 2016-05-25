@@ -66,10 +66,10 @@ class BgpPeer::PeerClose : public IPeerClose {
         // Reset GR-Closure if previous closure is still in progress or if
         // this is a flip (from established state).
         if (non_graceful || !manager_->IsInGracefulRestartTimerWait() ||
-            flap_count_ != peer_->sticky_flap_count()) {
-            if (flap_count_ != peer_->sticky_flap_count()) {
+            flap_count_ != peer_->total_flap_count()) {
+            if (flap_count_ != peer_->total_flap_count()) {
                 flap_count_++;
-                assert(peer_->sticky_flap_count() == flap_count_);
+                assert(peer_->total_flap_count() == flap_count_);
             }
             manager_->Close(non_graceful);
             return;
@@ -534,7 +534,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           deleter_(new DeleteActor(this)),
           instance_delete_ref_(this, instance->deleter()),
           flap_count_(0),
-          sticky_flap_count_(0),
+          total_flap_count_(0),
           last_flap_(0),
           inuse_authkey_type_(AuthenticationData::NIL) {
     membership_req_pending_ = 0;
@@ -2444,7 +2444,7 @@ string BgpPeer::last_flap_at() const {
 
 void BgpPeer::increment_flap_count() {
     flap_count_++;
-    sticky_flap_count_++;
+    total_flap_count_++;
     last_flap_ = UTCTimestampUsec();
 
     BgpPeerInfoData peer_info;

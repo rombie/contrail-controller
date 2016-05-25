@@ -26,7 +26,7 @@ public:
     ~TaskSchedulerLock();
 };
 
-// Fire user routine through task-triger inline and return after the task i   s
+// Fire user routine through task-triger inline and return after the task is
 // complete.
 //
 // Usage example:
