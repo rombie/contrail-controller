@@ -128,6 +128,7 @@ BgpXmppChannel::ChannelStats::ChannelStats()
 
 class BgpXmppChannel::PeerClose : public IPeerClose {
 public:
+
     explicit PeerClose(BgpXmppChannel *channel)
        : parent_(channel),
          manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
@@ -135,10 +136,6 @@ public:
     virtual ~PeerClose() { }
     virtual bool IsReady() const { return parent_->Peer()->IsReady(); }
     virtual IPeer *peer() const { return parent_->Peer(); }
-
-    // TBD (nsheth) - xxx
-    virtual void UnregisterPeer() {
-    }
 
     virtual string ToString() const {
         return parent_ ? parent_->ToString() : "";
@@ -386,10 +383,28 @@ public:
         assert(GetRefCount() == 0);
     }
 
+    virtual bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *rt,
+                                        BgpPath *path) {
+        PeerCloseManager *close_manager = peer_close()->close_manager();
+        if (close_manager->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+            return close_manager->MembershipPathCallback(tpart, rt, path);
+        } else {
+            BgpTable *table = static_cast<BgpTable *>(tpart->parent());
+            return table->DeletePath(tpart, rt, path);
+        }
+    }
+
     virtual bool SendUpdate(const uint8_t *msg, size_t msgsize);
     virtual string ToString() const {
         return parent_->ToString();
     }
+
+    virtual bool CanUseMembershipManager() const {
+        return parent_->GetMembershipRequestQueueSize() == 0;
+    }
+
+    virtual bool IsRegistrationRequired() const { return true; }
 
     virtual string ToUVEKey() const {
         return parent_->ToUVEKey();
@@ -562,6 +577,9 @@ BgpXmppChannel::~BgpXmppChannel() {
         manager_->decrement_deleting_count();
     STLDeleteElements(&defer_q_);
     assert(peer_deleted());
+    assert(peer_->peer_close()->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
+    assert(routingtable_membership_request_map_.empty());
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
@@ -667,6 +685,10 @@ void BgpXmppChannel::IdentifierUpdateCallback(Ip4Address old_identifier) {
         RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        it->first, attr, true);
     }
+}
+
+size_t BgpXmppChannel::GetMembershipRequestQueueSize() const {
+    return routingtable_membership_request_map_.size();
 }
 
 void
@@ -1825,6 +1847,12 @@ bool BgpXmppChannel::ResumeClose() {
 }
 
 void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
+
+    // Defer if Membership manager is in use (by close manager).
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE)
+        return;
+
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
                  BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
@@ -1835,6 +1863,12 @@ void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
 }
 
 void BgpXmppChannel::UnregisterTable(BgpTable *table) {
+
+    // Defer if Membership manager is in use (by close manager).
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE)
+        return;
+
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
                  BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
@@ -1844,8 +1878,32 @@ void BgpXmppChannel::UnregisterTable(BgpTable *table) {
 }
 
 bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
+    BgpTable *table = static_cast<BgpTable *>
+        (bgp_server_->database()->FindTable(table_name));
     RoutingTableMembershipRequestMap::iterator loc =
         routingtable_membership_request_map_.find(table_name);
+
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        if (!Peer()->peer_close()->close_manager()->MembershipRequestCallback())
+            return true;
+
+        // Process pending membership request if one is pending for this table.
+        if (loc == routingtable_membership_request_map_.end())
+            return true;
+
+        MembershipRequestState state = loc->second;
+        if (state.current_req == SUBSCRIBE) {
+            bgp_server_->membership_mgr()->Register(peer_.get(), table,
+                                                    bgp_policy_,
+                                                    state.instance_id);
+        } else {
+            assert(state.current_req = UNSUBSCRIBE);
+            bgp_server_->membership_mgr()->Unregister(peer_.get(), table);
+        }
+        return true;
+    }
+
     if (loc == routingtable_membership_request_map_.end()) {
         BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_WARN,
                      BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
@@ -1877,14 +1935,25 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
         return true;
     }
 
-    BgpTable *table = static_cast<BgpTable *>
-        (bgp_server_->database()->FindTable(table_name));
+    ProcessMembershipResponse(table, loc);
+
+    // If Close manager is waiting to use membership, try now.
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT)
+        peer_close_->close_manager()->MembershipRequest();
+
+    return true;
+}
+
+bool BgpXmppChannel::ProcessMembershipResponse(BgpTable *table,
+        RoutingTableMembershipRequestMap::iterator loc) {
     if (!table) {
         routingtable_membership_request_map_.erase(loc);
         return true;
     }
-
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
+    MembershipRequestState state = loc->second;
+
     if ((state.current_req == UNSUBSCRIBE) &&
         (state.pending_req == SUBSCRIBE)) {
         // Process pending subscribe now that unsubscribe has completed.
@@ -1902,7 +1971,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     routingtable_membership_request_map_.erase(loc);
 
     string vrf_name = table->routing_instance()->name();
-    VrfTableName vrf_n_table = make_pair(vrf_name, table_name);
+    VrfTableName vrf_n_table = make_pair(vrf_name, table->name());
 
     if (state.pending_req == UNSUBSCRIBE) {
         if (vrf_membership_request_map_.find(vrf_name) ==
@@ -1916,8 +1985,8 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     }
 
     for (DeferQ::iterator it = defer_q_.find(vrf_n_table);
-         it != defer_q_.end() && it->first.second == table_name; ++it) {
-        DequeueRequest(table_name, it->second);
+         it != defer_q_.end() && it->first.second == table->name(); ++it) {
+        DequeueRequest(table->name(), it->second);
     }
 
     // Erase all elements for the table
@@ -2373,10 +2442,11 @@ BgpXmppChannelManager::BgpXmppChannelManager(XmppServer *xmpp_server,
           boost::bind(&BgpXmppChannelManager::DeleteExecutor, this, _1)),
       id_(-1),
       asn_listener_id_(-1),
-      identifier_listener_id_(-1),
-      deleting_count_(0) {
+      identifier_listener_id_(-1) {
+
     // Initialize the gen id counter
     subscription_gen_id_ = 1;
+    deleting_count_ = 0;
 
     if (xmpp_server)
         xmpp_server->CreateConfigUpdater(server->config_manager());

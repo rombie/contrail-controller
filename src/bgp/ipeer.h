@@ -10,6 +10,7 @@
 #include "tbb/atomic.h"
 
 class DBTablePartBase;
+class BgpPath;
 class BgpRoute;
 class BgpServer;
 class BgpTable;
@@ -138,7 +139,6 @@ public:
     virtual const int GetGracefulRestartTime() const = 0;
     virtual const int GetLongLivedGracefulRestartTime() const = 0;
     virtual bool IsReady() const = 0;
-    virtual void UnregisterPeer() = 0;
     virtual IPeer *peer() const = 0;
 };
 
@@ -159,9 +159,7 @@ public:
     // before it could push the route to VRF.
     // Control is mostly required in MockPeer in unit tests.
     //
-    virtual bool IsRegistrationRequired() const {
-        return true;
-    }
+    virtual bool IsRegistrationRequired() const = 0;
     virtual void Close(bool non_graceful) = 0;
     virtual BgpProto::BgpPeerType PeerType() const = 0;
     virtual uint32_t bgp_identifier() const = 0;
@@ -170,9 +168,10 @@ public:
     virtual tbb::atomic<int> GetRefCount() const = 0;
     virtual void UpdatePrimaryPathCount(int count) const = 0;
     virtual int GetPrimaryPathCount() const = 0;
-    virtual void MembershipRequestCallback(BgpTable *table) { }
+    virtual void MembershipRequestCallback(BgpTable *table) = 0;
     virtual bool MembershipPathCallback(DBTablePartBase *tpart,
-        BgpRoute *route) { return false; }
+        BgpRoute *route, BgpPath *path) = 0;
+    virtual bool CanUseMembershipManager() const = 0;
 };
 
 #endif  // SRC_BGP_IPEER_H_

@@ -24,6 +24,22 @@ using tbb::atomic;
 
 static int gbl_index;
 
+class BgpTestMembershipManager : public BgpMembershipManager {
+public:
+    BgpTestMembershipManager(BgpServer *server)
+        : BgpMembershipManager(server) {
+    }
+
+private:
+    // Mutex is required for unit tests since they use a ConcurrencyScope
+    // to call membership manager APIs and so are not mutually exclusive
+    // with bgp::PeerMembership task.
+    virtual bool EventCallbackInternal(Event *event) {
+        tbb::spin_rw_mutex::scoped_lock write_lock(rw_mutex_, true);
+        return BgpMembershipManager::EventCallbackInternal(event);
+    }
+};
+
 class BgpTestPeer : public BgpPeer {
 public:
     BgpTestPeer(BgpServer *server, RoutingInstance *instance,
@@ -47,7 +63,8 @@ public:
     virtual uint32_t bgp_identifier() const { return 0; }
     RibExportPolicy GetRibExportPolicy() { return policy_; }
     void MembershipRequestCallback(BgpTable *table) { }
-    bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route) {
+    bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,
+        BgpPath *path) {
         path_cb_count_++;
         return false;
     }
@@ -356,19 +373,39 @@ TEST_F(BgpMembershipTest, MultipleTables3) {
 //
 TEST_F(BgpMembershipTest, RibIn) {
     ConcurrencyScope scope("bgp::StateMachine");
+    static const int kRouteCount = 8;
     uint64_t blue_walk_count = blue_tbl_->walk_complete_count();
 
+    // Register RibIn.
     mgr_->RegisterRibIn(peers_[0], blue_tbl_);
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_TRUE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(1, mgr_->GetMembershipCount());
     TASK_UTIL_EXPECT_EQ(blue_walk_count, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(0, peers_[0]->path_cb_count());
 
+    // Add paths from peer.
+    for (int idx = 0; idx < kRouteCount; idx++) {
+        AddRoute(peers_[0], blue_tbl_, BuildPrefix(idx), "192.168.1.0");
+    }
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(kRouteCount, blue_tbl_->Size());
+
+    // Unregister RibIn.
     mgr_->UnregisterRibIn(peers_[0], blue_tbl_);
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_FALSE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(0, mgr_->GetMembershipCount());
-    TASK_UTIL_EXPECT_EQ(blue_walk_count, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 1, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(kRouteCount, peers_[0]->path_cb_count());
+
+    // Delete paths from peer.
+    // The paths would normally be deleted during RibIn walk by the client.
+    for (int idx = 0; idx < kRouteCount; idx++) {
+        DeleteRoute(peers_[0], blue_tbl_, BuildPrefix(idx));
+    }
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(0, blue_tbl_->Size());
 }
 
 //
@@ -414,7 +451,7 @@ TEST_F(BgpMembershipTest, UnregisterRibOutWithPaths) {
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_FALSE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(0, mgr_->GetMembershipCount());
-    TASK_UTIL_EXPECT_EQ(blue_walk_count + 2, blue_tbl_->walk_complete_count());
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 3, blue_tbl_->walk_complete_count());
 }
 
 //
@@ -1172,13 +1209,16 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn2DeathTest) {
 
 //
 // Duplicate register for ribin causes assertion.
+// Duplicate register happens after original is fully processed.
 // First register is also for ribin.
 //
 TEST_F(BgpMembershipTest, DuplicateRegisterRibIn3DeathTest) {
     ConcurrencyScope scope("bgp::StateMachine");
+    uint64_t blue_walk_count = blue_tbl_->walk_complete_count();
 
     // Register for ribin to blue.
     mgr_->RegisterRibIn(peers_[0], blue_tbl_);
+    task_util::WaitForIdle();
     TASK_UTIL_EXPECT_TRUE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
     TASK_UTIL_EXPECT_EQ(1, mgr_->GetMembershipCount());
 
@@ -1189,6 +1229,39 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn3DeathTest) {
     // Unregister from blue.
     mgr_->UnregisterRibIn(peers_[0], blue_tbl_);
     task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 1, blue_tbl_->walk_complete_count());
+}
+
+//
+// Duplicate register for ribin causes assertion.
+// Duplicate register happens before original is fully processed.
+// First register is also for ribin.
+//
+TEST_F(BgpMembershipTest, DuplicateRegisterRibIn4DeathTest) {
+    ConcurrencyScope scope("bgp::StateMachine");
+    uint64_t blue_walk_count = blue_tbl_->walk_complete_count();
+
+    // Disable membership manager.
+    SetQueueDisable(true);
+
+    // Register for ribin to blue.
+    mgr_->RegisterRibIn(peers_[0], blue_tbl_);
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_TRUE(mgr_->GetRegistrationInfo(peers_[0], blue_tbl_));
+    TASK_UTIL_EXPECT_EQ(1, mgr_->GetMembershipCount());
+
+    // Register for ribin to blue again.
+    // Note that this happens only in the cloned/forked child.
+    EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
+
+    // Enable membership manager.
+    SetQueueDisable(false);
+    task_util::WaitForIdle();
+
+    // Unregister for ribin from blue.
+    mgr_->UnregisterRibIn(peers_[0], blue_tbl_);
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(blue_walk_count + 1, blue_tbl_->walk_complete_count());
 }
 
 //
@@ -1404,6 +1477,8 @@ TEST_F(BgpMembershipTest, WalkWithPendingWalkDeathTest) {
 
 static void SetUp() {
     bgp_log_test::init();
+    BgpObjectFactory::Register<BgpMembershipManager>(
+        boost::factory<BgpTestMembershipManager *>());
     BgpObjectFactory::Register<BgpPeer>(
         boost::factory<BgpTestPeer *>());
     BgpObjectFactory::Register<BgpConfigManager>(

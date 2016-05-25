@@ -86,7 +86,7 @@ do {                                                                       \
 
 #define BGP_LOG_PEER_INTERNAL(type, peer, level, flags, ...)               \
 do {                                                                       \
-    IPeer *_peer = dynamic_cast<IPeer *>(peer);                            \
+    const IPeer *_peer = dynamic_cast<const IPeer *>(peer);                \
     std::string _peer_name;                                                \
     if (_peer)  {                                                          \
         _peer_name = _peer->ToUVEKey();                                    \
@@ -150,7 +150,7 @@ do {                                                                       \
 #define BGP_LOG_TABLE(table, level, flags, arg)                            \
 do {                                                                       \
     if (LoggingDisabled()) break;                                          \
-    BGP_LOG_SERVER((IPeer *) 0, table);                                    \
+    BGP_LOG_SERVER((const IPeer *) 0, table);                              \
     std::ostringstream _os;                                                \
     _os << arg;                                                            \
     BGP_LOG(BgpTable, level, flags, (table) ? (table)->name() : "",        \

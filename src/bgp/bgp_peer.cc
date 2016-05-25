@@ -43,7 +43,7 @@ using std::vector;
 class BgpPeer::PeerClose : public IPeerClose {
   public:
     explicit PeerClose(BgpPeer *peer)
-        : peer_(peer),
+        : peer_(peer), flap_count_(0),
           manager_(BgpObjectFactory::Create<PeerCloseManager>(this)) {
     }
 
@@ -62,9 +62,15 @@ class BgpPeer::PeerClose : public IPeerClose {
 
     virtual void Close(bool non_graceful) {
 
-        // Process closure through close manager only if this is a flip.
-        if (!manager_->IsInGracefulRestartTimerWait() ||
-            peer_->state_machine()->get_state() == StateMachine::ESTABLISHED) {
+        // Abort GR-Closuree if this request is for non-graceful closure.
+        // Reset GR-Closure if previous closure is still in progress or if
+        // this is a flip (from established state).
+        if (non_graceful || !manager_->IsInGracefulRestartTimerWait() ||
+            flap_count_ != peer_->sticky_flap_count()) {
+            if (flap_count_ != peer_->sticky_flap_count()) {
+                flap_count_++;
+                assert(peer_->sticky_flap_count() == flap_count_);
+            }
             manager_->Close(non_graceful);
             return;
         }
@@ -87,10 +93,6 @@ class BgpPeer::PeerClose : public IPeerClose {
         } else {
             CloseComplete();
         }
-    }
-
-    // TBD (nsheth) - xxx
-    virtual void UnregisterPeer() {
     }
 
     // Return the time to wait for, in seconds to exit GR_TIMER state.
@@ -185,6 +187,7 @@ class BgpPeer::PeerClose : public IPeerClose {
 
 private:
     BgpPeer *peer_;
+    uint64_t flap_count_;
     boost::scoped_ptr<PeerCloseManager> manager_;
     std::vector<std::string> negotiated_families_;
 };
@@ -321,6 +324,9 @@ public:
         } else {
             peer_->server()->decrement_deleting_count();
         }
+        assert(!peer_->membership_req_pending());
+        assert(peer_->peer_close()->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
         peer_->rtinstance_->peer_manager()->DestroyIPeer(peer_);
     }
 
@@ -408,13 +414,41 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
     BGPPeerInfo::Send(peer_info);
 }
 
+bool BgpPeer::CanUseMembershipManager() const {
+    if (!IsReady()) {
+        assert(!membership_req_pending_);
+        return true;
+    }
+
+    if (membership_req_pending_)
+        return false;
+
+#if 0
+    // Make sure that registration is complete for all negotiated families.
+    RoutingInstance *instance = GetRoutingInstance();
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
+    BOOST_FOREACH(string family, negotiated_families_) {
+        BgpTable *table = instance->GetTable(Address::FamilyFromString(family));
+        if (!membership_mgr->IsRegistered(this, table))
+            return false;
+    }
+#endif
+    return true;
+}
+
 //
 // Callback from BgpMembershipManager.
 // Update pending membership request count and send EndOfRib for the family
 // in question.
 //
 void BgpPeer::MembershipRequestCallback(BgpTable *table) {
-    assert(membership_req_pending_);
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        (void) peer_close_->close_manager()->MembershipRequestCallback();
+        return;
+    }
+
+    assert(membership_req_pending_ > 0);
     membership_req_pending_--;
 
     // Resume close if it was deferred and this is the last pending callback.
@@ -433,6 +467,18 @@ void BgpPeer::MembershipRequestCallback(BgpTable *table) {
     BGPPeerInfoSend(peer_info);
 
     SendEndOfRIB(table->family());
+
+    // Resume if CloseManager is waiting to use membership manager.
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT) {
+        peer_close_->close_manager()->MembershipRequest();
+    }
+}
+
+bool BgpPeer::MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *route,
+                                     BgpPath *path) {
+    return peer_close_->close_manager()->MembershipPathCallback(tpart, route,
+                                                                path);
 }
 
 bool BgpPeer::ResumeClose() {
@@ -472,7 +518,6 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           passive_(config->passive()),
           resolve_paths_(config->router_type() == "bgpaas-client"),
           as_override_(config->as_override()),
-          membership_req_pending_(0),
           defer_close_(false),
           non_graceful_close_(false),
           vpn_tables_registered_(false),
@@ -489,8 +534,10 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           deleter_(new DeleteActor(this)),
           instance_delete_ref_(this, instance->deleter()),
           flap_count_(0),
+          sticky_flap_count_(0),
           last_flap_(0),
           inuse_authkey_type_(AuthenticationData::NIL) {
+    membership_req_pending_ = 0;
     BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Created");
     if (peer_name_.find(rtinstance_->name()) == 0) {
@@ -909,7 +956,10 @@ void BgpPeer::CustomClose() {
 // Close this peer by closing all of it's RIBs.
 //
 void BgpPeer::Close(bool non_graceful) {
-    if (membership_req_pending_) {
+    if (membership_req_pending_ &&
+        peer_close_->close_manager()->membership_state() !=
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+
         BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
             BGP_PEER_DIR_NA, "Close procedure deferred");
         defer_close_ = true;
@@ -1004,6 +1054,27 @@ bool BgpPeer::AcceptSession(BgpSession *session) {
     return state_machine_->PassiveOpen(session);
 }
 
+void BgpPeer::Register(BgpTable *table, const RibExportPolicy &policy) {
+    assert(peer_close_->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT)
+        assert(membership_req_pending_ > 0);
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
+    membership_req_pending_++;
+    membership_mgr->Register(this, table, policy);
+}
+
+void BgpPeer::Register(BgpTable *table) {
+    assert(peer_close_->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_WAIT)
+        assert(membership_req_pending_ > 0);
+    BgpMembershipManager *membership_mgr = server_->membership_mgr();
+    membership_mgr->RegisterRibIn(this, table);
+}
+
 //
 // Register to tables for negotiated address families.
 //
@@ -1018,7 +1089,6 @@ bool BgpPeer::AcceptSession(BgpSession *session) {
 // normally before ribout registration to VPN tables is completed.
 //
 void BgpPeer::RegisterAllTables() {
-    BgpMembershipManager *membership_mgr = server_->membership_mgr();
     RoutingInstance *instance = GetRoutingInstance();
 
     BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
@@ -1036,8 +1106,7 @@ void BgpPeer::RegisterAllTables() {
         BgpTable *table = instance->GetTable(family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
                            table, "Register peer with the table");
-        membership_mgr->Register(this, table, BuildRibExportPolicy(family));
-        membership_req_pending_++;
+        Register(table, BuildRibExportPolicy(family));
     }
 
     vpn_tables_registered_ = false;
@@ -1050,8 +1119,7 @@ void BgpPeer::RegisterAllTables() {
     BgpTable *table = instance->GetTable(family);
     BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         table, "Register peer with the table");
-    membership_mgr->Register(this, table, BuildRibExportPolicy(family));
-    membership_req_pending_++;
+    Register(table, BuildRibExportPolicy(family));
     StartEndOfRibTimer();
 
     vector<Address::Family> vpn_family_list = list_of
@@ -1062,7 +1130,7 @@ void BgpPeer::RegisterAllTables() {
         BgpTable *table = instance->GetTable(vpn_family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register ribin for peer with the table");
-        membership_mgr->RegisterRibIn(this, table);
+        Register(table);
     }
 }
 
@@ -1789,7 +1857,6 @@ void BgpPeer::RegisterToVpnTables() {
         return;
     vpn_tables_registered_ = true;
 
-    BgpMembershipManager *membership_mgr = server_->membership_mgr();
     RoutingInstance *instance = GetRoutingInstance();
     vector<Address::Family> vpn_family_list = list_of
         (Address::INETVPN)(Address::INET6VPN)(Address::ERMVPN)(Address::EVPN);
@@ -1799,8 +1866,7 @@ void BgpPeer::RegisterToVpnTables() {
         BgpTable *table = instance->GetTable(vpn_family);
         BGP_LOG_PEER_TABLE(this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_TRACE,
             table, "Register peer with the table");
-        membership_mgr->Register(this, table, BuildRibExportPolicy(vpn_family));
-        membership_req_pending_++;
+        Register(table, BuildRibExportPolicy(vpn_family));
     }
 }
 
@@ -2377,6 +2443,7 @@ string BgpPeer::last_flap_at() const {
 
 void BgpPeer::increment_flap_count() {
     flap_count_++;
+    sticky_flap_count_++;
     last_flap_ = UTCTimestampUsec();
 
     BgpPeerInfoData peer_info;

@@ -41,6 +41,7 @@ using ::testing::TestWithParam;
 using ::testing::Bool;
 using ::testing::ValuesIn;
 using ::testing::Combine;
+using task_util::TaskFire;
 
 static int d_instances = 4;
 static int d_routes = 4;
@@ -288,6 +289,8 @@ protected:
     void WaitForAgentToBeEstablished(test::NetworkAgentMock *agent);
     void WaitForPeerToBeEstablished( BgpPeerTest *peer);
     void BgpPeersAdminUpOrDown(bool down);
+    void AgentTimerCallback(const void *args);
+    void PeerTimerCallback(const void *args);
 
     EventManager evm_;
     ServerThread thread_;
@@ -890,34 +893,39 @@ void GracefulRestartTest::VerifyRoutingInstances(BgpServer *server) {
 
 // Invoke stale timer callbacks directly speed up the test.
 void GracefulRestartTest::CallStaleTimer(BgpXmppChannel *channel) {
-    ConcurrencyScope scope("bgp::Config");
     if (channel->Peer()->peer_close()->close_manager()->state() !=
             PeerCloseManager::GR_TIMER)
         return;
-
     task_util::WaitForIdle();
     bool is_ready = channel->Peer()->IsReady();
-    channel->Peer()->peer_close()->close_manager()->RestartTimerCallback();
+    TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
+                         _1), channel, "bgp::Config");
     if (!is_ready) {
         TASK_UTIL_EXPECT_EQ(PeerCloseManager::LLGR_TIMER,
                 channel->Peer()->peer_close()->close_manager()->state());
-        channel->Peer()->peer_close()->close_manager()->RestartTimerCallback();
+        TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
+                             _1), channel, "bgp::Config");
     }
     task_util::WaitForIdle();
 }
 
-// Invoke stale timer callbacks directly as evm is not running in this unit test
+void GracefulRestartTest::AgentTimerCallback(const void *args) {
+    CHECK_CONCURRENCY("bgp::Config");
+    const BgpXmppChannel *channel = static_cast<const BgpXmppChannel *>(args);
+    const_cast<BgpXmppChannel *>(channel)->Peer()->
+        peer_close()->close_manager()->RestartTimerCallback();
+}
+
 void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
-    ConcurrencyScope scope("bgp::Config");
     if (peer->peer_close()->close_manager()->state() !=
             PeerCloseManager::GR_TIMER)
         return;
-
     task_util::WaitForIdle();
     bool is_ready = peer->IsReady();
     uint64_t llgr_stale =
         peer->peer_close()->close_manager()->stats().llgr_stale;
-    peer->peer_close()->close_manager()->RestartTimerCallback();
+    TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this,
+                             _1), peer, "bgp::Config");
     if (!is_ready) {
         TASK_UTIL_EXPECT_EQ(llgr_stale + 1,
                 peer->peer_close()->close_manager()->stats().llgr_stale);
@@ -927,12 +935,22 @@ void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
                               PeerCloseManager::GR_TIMER == pc->state());
         task_util::WaitForIdle();
         if (pc->state() == PeerCloseManager::GR_TIMER) {
-            pc->RestartTimerCallback();
+            TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback,
+                                 this, _1), peer, "bgp::Config");
             task_util::WaitForIdle();
         }
-        peer->peer_close()->close_manager()->RestartTimerCallback();
+        TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this,
+                             _1), peer, "bgp::Config");
     }
     task_util::WaitForIdle();
+}
+
+// Invoke stale timer callbacks directly to speed up.
+void GracefulRestartTest::PeerTimerCallback(const void *args) {
+    CHECK_CONCURRENCY("bgp::Config");
+    const BgpPeerTest *peer = static_cast<const BgpPeerTest *>(args);
+    const_cast<BgpPeerTest *>(peer)->peer_close()->
+        close_manager()->RestartTimerCallback();
 }
 
 void GracefulRestartTest::XmppAgentClose(int nagents) {

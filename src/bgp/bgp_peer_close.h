@@ -11,6 +11,7 @@
 #include "db/db_table_walker.h"
 #include "bgp/ipeer.h"
 
+class BgpMembershipManager;
 class BgpNeighborResp;
 class BgpRoute;
 class BgpTable;
@@ -44,10 +45,21 @@ public:
         END_STATE = DELETE,
     };
 
+    enum MembershipState {
+        MEMBERSHIP_NONE,
+        MEMBERSHIP_IN_USE,
+        MEMBERSHIP_IN_WAIT
+    };
+
     explicit PeerCloseManager(IPeerClose *peer_close,
                               boost::asio::io_service &io_service);
     explicit PeerCloseManager(IPeerClose *peer_close);
     virtual ~PeerCloseManager();
+
+    MembershipState membership_state() const { return membership_state_; }
+    void set_membership_state(MembershipState state) {
+        membership_state_ = state;
+    }
 
     bool IsCloseInProgress() const {
         tbb::mutex::scoped_lock lock(mutex_);
@@ -67,9 +79,9 @@ public:
     void set_state(State state) { state_ = state; }
     void Close(bool non_graceful);
     void ProcessEORMarkerReceived(Address::Family family);
+    void MembershipRequest();
 
     bool RestartTimerCallback();
-    void UnregisterPeerComplete(IPeer *ipeer, BgpTable *table);
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     struct Stats {
@@ -86,6 +98,12 @@ public:
         uint64_t llgr_timer;
     };
     const Stats &stats() const { return stats_; }
+    bool MembershipRequestCallback();
+    bool MembershipPathCallback(DBTablePartBase *root, BgpRoute *rt,
+                                BgpPath *path);
+
+protected:
+    tbb::atomic<int> membership_req_pending_;
 
 private:
     friend class PeerCloseManagerTest;
@@ -95,8 +113,13 @@ private:
     void CloseComplete();
     bool ProcessSweepStateActions();
     void TriggerSweepStateActions();
-    const std::string GetStateName(State state) const;
+    std::string GetStateName(State state) const;
+    std::string GetMembershipStateName(MembershipState state) const;
     void CloseInternal();
+    bool MembershipRequestCompleteCallbackInternal();
+    void MembershipRequestInternal();
+    virtual bool CanUseMembershipManager() const;
+    virtual BgpMembershipManager *membership_mgr() const;
 
     IPeerClose *peer_close_;
     Timer *stale_timer_;
@@ -106,6 +129,7 @@ private:
     bool non_graceful_;
     int gr_elapsed_;
     int llgr_elapsed_;
+    MembershipState membership_state_;
     IPeerClose::Families families_;
     Stats stats_;
     mutable tbb::mutex mutex_;
