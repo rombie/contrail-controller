@@ -811,6 +811,8 @@ void GracefulRestartTest::CreateAgents() {
     }
     BOOST_FOREACH(boost::shared_ptr<XmppServerTest> xmpp_server,
                   xmpp_servers_) {
+        if (xmpp_server_ == xmpp_server.get())
+            continue;
         xmpp_server_agents_.insert(make_pair(xmpp_server.get(),
                                    vector<test::NetworkAgentMock *>()));
         for (int i = 0; i < n_agents_; i++) {
