@@ -480,8 +480,10 @@ void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {
     peer_close_info.nested = stats_.nested;
     peer_close_info.deletes = stats_.deletes;
     peer_close_info.stale = stats_.stale;
+    peer_close_info.llgr_stale = stats_.llgr_stale;
     peer_close_info.sweep = stats_.sweep;
     peer_close_info.gr_timer = stats_.gr_timer;
+    peer_close_info.llgr_timer = stats_.llgr_timer;
 
     resp->set_peer_close_info(peer_close_info);
 }

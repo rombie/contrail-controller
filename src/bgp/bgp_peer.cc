@@ -65,8 +65,7 @@ class BgpPeer::PeerClose : public IPeerClose {
         // Abort GR-Closuree if this request is for non-graceful closure.
         // Reset GR-Closure if previous closure is still in progress or if
         // this is a flip (from established state).
-        if (non_graceful || !manager_->IsInGracefulRestartTimerWait() ||
-            flap_count_ != peer_->total_flap_count()) {
+        if (non_graceful || flap_count_ != peer_->total_flap_count()) {
             if (flap_count_ != peer_->total_flap_count()) {
                 flap_count_++;
                 assert(peer_->total_flap_count() == flap_count_);
