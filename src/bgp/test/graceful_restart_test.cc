@@ -60,12 +60,14 @@ static string d_log_level_ = "SYS_WARN";
 static bool d_log_local_enable_ = false;
 static bool d_log_trace_enable_ = false;
 static bool d_log_enable_ = false;
+static int d_flip_count_ = 3;
 
 static vector<int>  n_instances = boost::assign::list_of(d_instances);
 static vector<int>  n_routes    = boost::assign::list_of(d_routes);
 static vector<int>  n_agents    = boost::assign::list_of(d_agents);
 static vector<int>  n_peers     = boost::assign::list_of(d_peers);
 static vector<int>  n_targets   = boost::assign::list_of(d_targets);
+static vector<int>  n_flip_count = boost::assign::list_of(d_flip_count_);
 
 static char **gargv;
 static int    gargc;
@@ -85,7 +87,7 @@ static void process_command_line_args(int argc, char **argv) {
     if (cmd_line_processed) return;
     cmd_line_processed = true;
 
-    int ninstances, nroutes, nagents, npeers, ntargets;
+    int ninstances, nroutes, nagents, npeers, ntargets, flip_count;
     bool cmd_line_arg_set = false;
     const unsigned long log_file_size = 1*1024*1024*1024; // 1GB
     const unsigned int log_file_index = 10;
@@ -127,8 +129,8 @@ static void process_command_line_args(int argc, char **argv) {
              "set number of bgp peers")
         ("ninstances", value<int>()->default_value(d_instances),
              "set number of routing instances")
-        ("ntargets", value<int>()->default_value(d_targets),
-             "set number of route targets")
+        ("flip-count", value<int>()->default_value(d_flip_count_),
+             "set number of peer and agent flips")
         ("db-walker-wait-usecs", value<int>(), "set usecs delay in walker cb")
         ;
 
@@ -161,6 +163,10 @@ static void process_command_line_args(int argc, char **argv) {
         ntargets = vm["ntargets"].as<int>();
         cmd_line_arg_set = true;
     }
+    if (vm.count("flip-count")) {
+        flip_count = vm["flip-count"].as<int>();
+        cmd_line_arg_set = true;
+    }
     if (vm.count("db-walker-wait-usecs")) {
         n_db_walker_wait_usecs = vm["db-walker-wait-usecs"].as<int>();
         cmd_line_arg_set = true;
@@ -179,6 +185,9 @@ static void process_command_line_args(int argc, char **argv) {
 
         n_targets.clear();
         n_targets.push_back(ntargets);
+
+        n_flip_count.clear();
+        n_flip_count.push_back(flip_count);
 
         n_agents.clear();
         n_agents.push_back(nagents);
@@ -242,6 +251,11 @@ static vector<int> GetTargetParameters() {
     return n_targets;
 }
 
+static vector<int> GetFlipCountParameters() {
+    process_command_line_args(gargc, gargv);
+    return n_flip_count;
+}
+
 class PeerCloseManagerTest : public PeerCloseManager {
 public:
     explicit PeerCloseManagerTest(IPeerClose *peer_close) :
@@ -264,7 +278,7 @@ public:
     BgpXmppChannel *channel_;
 };
 
-typedef std::tr1::tuple<int, int, int, int, int> TestParams;
+typedef std::tr1::tuple<int, int, int, int, int, int> TestParams;
 
 class SandeshServerTest : public SandeshServer {
 public:
@@ -350,6 +364,7 @@ protected:
     int n_agents_;
     int n_peers_;
     int n_targets_;
+    int flip_count_;
     SandeshServerTest *sandesh_server_;
     boost::scoped_ptr<BgpSandeshContext> sandesh_context_;
 
@@ -1082,6 +1097,7 @@ void GracefulRestartTest::InitParams() {
     n_agents_    = ::std::tr1::get<2>(GetParam());
     n_peers_     = ::std::tr1::get<3>(GetParam());
     n_targets_   = ::std::tr1::get<4>(GetParam());
+    flip_count_   = ::std::tr1::get<5>(GetParam());
 }
 
 // Bring up n_agents_ in n_instances_ and advertise
@@ -1115,9 +1131,7 @@ void GracefulRestartTest::BgpPeerUp(BgpPeerTest *peer) {
 void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
         int remaining_instances,
         vector<GRTestParams> &n_flipping_agents) {
-    int flipping_count = 3;
-
-    for (int f = 0; f < flipping_count; f++) {
+    for (int f = 0; f < flip_count_; f++) {
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
             test::NetworkAgentMock *agent = gr_test_param.agent;
             TASK_UTIL_EXPECT_FALSE(agent->IsEstablished());
@@ -1164,7 +1178,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
         // Bring back half of the flipping agents to established state and send
         // routes. Rest do not come back up (nested closures and LLGR)
         int count = n_flipping_agents.size();
-        if (f == flipping_count - 1)
+        if (f == flip_count_ - 1)
             count /= 2;
         int k = 0;
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
@@ -1263,9 +1277,7 @@ void GracefulRestartTest::BgpPeerDown(BgpPeerTest *peer,
 
 void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
         int remaining_instances, vector<GRTestParams> &n_flipping_peers) {
-    int flipping_count = 3;
-
-    for (int f = 0; f < flipping_count; f++) {
+    for (int f = 0; f < flip_count_; f++) {
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
             BgpPeerUp(gr_test_param.peer);
         }
@@ -1294,7 +1306,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
         // Bring back half of the flipping peers to established state and send
         // routes. Rest do not come back up (nested closures and LLGR)
         int count = n_flipping_peers.size();
-        if (f == flipping_count - 1)
+        if (f == flip_count_ - 1)
             count /= 2;
         int k = 0;
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
@@ -2512,7 +2524,8 @@ TEST_P(GracefulRestartTest, GracefulRestart_Delete_RoutingInstances_7) {
             ValuesIn(GetRouteParameters()),                         \
             ValuesIn(GetAgentParameters()),                         \
             ValuesIn(GetPeerParameters()),                          \
-            ValuesIn(GetTargetParameters()))                        \
+            ValuesIn(GetTargetParameters()),                        \
+            ValuesIn(GetFlipCountParameters()))                     \
 
 
 INSTANTIATE_TEST_CASE_P(GracefulRestartTestWithParams, GracefulRestartTest,
