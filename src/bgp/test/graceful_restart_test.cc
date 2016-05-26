@@ -5,7 +5,10 @@
 #include <boost/assign/list_of.hpp>
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
+#include <fstream>
+#include <iostream>
 #include <list>
+#include <signal.h>
 
 #include "base/task_annotations.h"
 #include "base/test/addr_test_util.h"
@@ -278,6 +281,15 @@ public:
 private:
 };
 
+boost::scoped_ptr<BgpSandeshContext> sandesh_context_;
+std::vector<boost::shared_ptr<BgpServerTest> > bgp_servers_;
+std::vector<boost::shared_ptr<XmppServerTest> > xmpp_servers_;
+std::vector<boost::shared_ptr<BgpXmppChannelManagerMock> > channel_managers_;
+
+typedef std::map<XmppServerTest *, std::vector<test::NetworkAgentMock *> >
+    XmppAgentsType;
+XmppAgentsType xmpp_server_agents_;
+
 class GracefulRestartTest : public ::testing::TestWithParam<TestParams> {
 protected:
     GracefulRestartTest() : thread_(&evm_) { }
@@ -334,12 +346,11 @@ protected:
     ServerThread thread_;
     boost::shared_ptr<BgpServerTest> server_;
     XmppServerTest *xmpp_server_;
-    boost::scoped_ptr<BgpXmppChannelManagerMock> channel_manager_;
+    boost::shared_ptr<BgpXmppChannelManagerMock> channel_manager_;
     scoped_ptr<BgpInstanceConfigTest> master_cfg_;
     RoutingInstance *master_instance_;
     std::vector<test::NetworkAgentMock *> xmpp_agents_;
     std::vector<BgpPeerTest *> bgp_peers_;
-    std::vector<boost::shared_ptr<BgpServerTest> > bgp_servers_;
     std::vector<BgpXmppChannel *> bgp_xmpp_channels_;
     std::vector<BgpPeerTest *> bgp_server_peers_;
     int n_families_;
@@ -350,7 +361,6 @@ protected:
     int n_peers_;
     int n_targets_;
     SandeshServerTest *sandesh_server_;
-    boost::scoped_ptr<BgpSandeshContext> sandesh_context_;
 
     struct GRTestParams {
         GRTestParams(test::NetworkAgentMock *agent, vector<int> instance_ids,
@@ -426,26 +436,46 @@ static void WaitForIdle() {
     }
 }
 
+static void SignalHandler (int sig) {
+    if (sig != SIGUSR1)
+        return;
+    ifstream infile("/tmp/.gr_test_bgp_server_index");
+    if (!infile)
+        return;
+
+    int i;
+    infile >> i;
+    sandesh_context_->bgp_server = bgp_servers_[i].get();
+    sandesh_context_->xmpp_peer_manager = channel_managers_[i].get();
+}
+
 void GracefulRestartTest::SetUp() {
     InitParams();
     SandeshStartup();
 
-    server_.reset(new BgpServerTest(&evm_, "RTR0"));
-    bgp_servers_.push_back(server_);
-
-    // Disable GR advertisement in DUT to prevent GR in non DUTs.
-    server_->set_disable_gr(true);
-
-    for (int i = 1; i <= n_peers_; i++) {
+    for (int i = 0; i <= n_peers_; i++) {
         boost::shared_ptr<BgpServerTest> server;
         server.reset(new BgpServerTest(&evm_,
                                        "RTR" + boost::lexical_cast<string>(i)));
         bgp_servers_.push_back(server);
+
+        boost::shared_ptr<XmppServerTest> xmpp_server;
+        xmpp_server.reset(new XmppServerTest(&evm_, XMPP_CONTROL_SERV));
+        xmpp_servers_.push_back(xmpp_server);
+
+        boost::shared_ptr<BgpXmppChannelManagerMock> channel_manager;
+        channel_manager.reset(new BgpXmppChannelManagerMock(xmpp_server.get(),
+                                                            server.get()));
+        channel_managers_.push_back(channel_manager);
     }
 
-    xmpp_server_ = new XmppServerTest(&evm_, XMPP_CONTROL_SERV);
-    channel_manager_.reset(new BgpXmppChannelManagerMock(
-                                   xmpp_server_, server_.get()));
+    server_ = bgp_servers_[0];
+    xmpp_server_ = xmpp_servers_[0].get();
+    channel_manager_ = channel_managers_[0];
+
+    // Disable GR advertisement in DUT to prevent GR in non DUTs.
+    server_->set_disable_gr(true);
+
     master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
         BgpConfigManager::kMasterInstance, "", ""));
     master_instance_ = static_cast<RoutingInstance *>(
@@ -455,12 +485,14 @@ void GracefulRestartTest::SetUp() {
     familes_.push_back(Address::INET);
     familes_.push_back(Address::INETVPN);
 
-    for (int i = 0; i <= n_peers_; i++)
+    for (int i = 0; i <= n_peers_; i++) {
         bgp_servers_[i]->session_manager()->Initialize(0);
-    xmpp_server_->Initialize(0, false);
+        xmpp_servers_[i]->Initialize(0, false);
+    }
 
-    sandesh_context_->bgp_server = bgp_servers_[1].get();
-    sandesh_context_->xmpp_peer_manager = channel_manager_.get();
+    sandesh_context_->bgp_server = bgp_servers_[0].get();
+    sandesh_context_->xmpp_peer_manager = channel_managers_[0].get();
+
     thread_.Start();
 }
 
@@ -509,7 +541,9 @@ void GracefulRestartTest::TearDown() {
             ProcessVpnRoute(peer, i, n_routes_, false);
         }
     }
-    xmpp_server_->Shutdown();
+
+    for (int i = 0; i <= n_peers_; i++)
+        xmpp_servers_[i]->Shutdown();
     XmppAgentClose();
     task_util::WaitForIdle();
 
@@ -520,8 +554,10 @@ void GracefulRestartTest::TearDown() {
         TASK_UTIL_EXPECT_EQ(0, xmpp_server_->connection_map().size());
     }
     AgentCleanup();
-    TASK_UTIL_EXPECT_EQ(0, channel_manager_->channel_map().size());
-    channel_manager_.reset();
+    for (int i = 0; i <= n_peers_; i++) {
+        TASK_UTIL_EXPECT_EQ(0, channel_managers_[i]->channel_map().size());
+        channel_managers_[i].reset();
+    }
     task_util::WaitForIdle();
 
     TcpServerManager::DeleteServer(xmpp_server_);
@@ -540,6 +576,11 @@ void GracefulRestartTest::TearDown() {
     }
     SandeshShutdown();
     WaitForIdle();
+    sandesh_context_.reset();
+    bgp_servers_.clear();
+    xmpp_servers_.clear();
+    channel_managers_.clear();
+    xmpp_server_agents_.clear();
 }
 
 void GracefulRestartTest::Configure() {
@@ -597,6 +638,12 @@ XmppChannelConfig *GracefulRestartTest::CreateXmppChannelCfg(
 void GracefulRestartTest::AgentCleanup() {
     BOOST_FOREACH(test::NetworkAgentMock *agent, xmpp_agents_) {
         agent->Delete();
+    }
+
+    BOOST_FOREACH(XmppAgentsType::value_type &i, xmpp_server_agents_) {
+        BOOST_FOREACH(test::NetworkAgentMock *agent, i.second) {
+            agent->Delete();
+        }
     }
 }
 
@@ -750,8 +797,7 @@ void GracefulRestartTest::CreateAgents() {
         test::NetworkAgentMock *agent = new test::NetworkAgentMock(&evm_,
             "agent" + boost::lexical_cast<string>(i) +
                 "@vnsw.contrailsystems.com",
-            xmpp_server_->GetPort(),
-            prefix.ip4_addr().to_string());
+            xmpp_server_->GetPort(), prefix.ip4_addr().to_string());
         agent->set_id(i);
         xmpp_agents_.push_back(agent);
         task_util::WaitForIdle();
@@ -761,8 +807,28 @@ void GracefulRestartTest::CreateAgents() {
                           "Waiting for channel_manager_->channel_ to be set");
         bgp_xmpp_channels_.push_back(channel_manager_->channel_);
         channel_manager_->channel_ = NULL;
-
         prefix = task_util::Ip4PrefixIncrement(prefix);
+    }
+    BOOST_FOREACH(boost::shared_ptr<XmppServerTest> xmpp_server,
+                  xmpp_servers_) {
+        xmpp_server_agents_.insert(make_pair(xmpp_server.get(),
+                                   vector<test::NetworkAgentMock *>()));
+        for (int i = 0; i < n_agents_; i++) {
+
+            // Create a dummy agent for other bgp speakers too.
+            test::NetworkAgentMock *agent = new test::NetworkAgentMock(&evm_,
+                "dummy_agent" + boost::lexical_cast<string>(i) +
+                "@vnsw.contrailsystems.com",
+                xmpp_server->GetPort(), prefix.ip4_addr().to_string());
+            WaitForAgentToBeEstablished(agent);
+            for (int i = 1; i <= n_instances_; i++) {
+                string instance_name =
+                    "instance" + boost::lexical_cast<string>(i);
+                agent->Subscribe(instance_name, i);
+            }
+            xmpp_server_agents_[xmpp_server.get()].push_back(agent);
+            prefix = task_util::Ip4PrefixIncrement(prefix);
+        }
     }
 }
 
@@ -2547,6 +2613,7 @@ static void TearDown() {
 }
 
 int main(int argc, char **argv) {
+    signal(SIGUSR1, SignalHandler);
     gargc = argc;
     gargv = argv;
 
