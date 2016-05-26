@@ -626,7 +626,8 @@ string GracefulRestartTest::GetConfig(bool delete_config) {
     for (int i = 0; i <= n_peers_; i++) {
         out << "<bgp-router name=\'RTR" << i << "\'>\
                     <identifier>192.168.0." << i << "</identifier>\
-                    <address>127.0.0.1</address>\
+                    <address>127.0.0.1</address>" <<
+                    "<autonomous-system>" << (i+1) << "</autonomous-system>\
                     <port>" << bgp_servers_[i]->session_manager()->GetPort();
         out <<      "</port>";
 
