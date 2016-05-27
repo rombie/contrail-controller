@@ -154,6 +154,8 @@ public:
     bool IsDeleted() const;
     bool IsReadyForDeletion();
     void RetryDelete();
+    bool logging_disabled() const { return logging_disabled_; }
+    void set_logging_disabled(bool flag) { logging_disabled_ = flag; }
 
     bool destroyed() const { return destroyed_; }
     void set_destroyed() { destroyed_  = true; }
@@ -286,6 +288,7 @@ private:
     boost::scoped_ptr<LifetimeManager> lifetime_manager_;
     boost::scoped_ptr<DeleteActor> deleter_;
     bool destroyed_;
+    bool logging_disabled_;
 
     // databases
     boost::scoped_ptr<AsPathDB> aspath_db_;

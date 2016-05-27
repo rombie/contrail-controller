@@ -75,6 +75,7 @@ public:
     virtual BgpServer *server() {
         return NULL;
     }
+    virtual BgpServer *server() const { return NULL; }
     virtual IPeerClose *peer_close() {
         return NULL;
     }

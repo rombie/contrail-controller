@@ -40,8 +40,9 @@ const int StateMachine::kJitter = 10;                   // percentage
 
 #define SM_LOG(level, _Msg)                                    \
     do {                                                       \
-        ostringstream out;                                \
+        ostringstream out;                                     \
         out << _Msg;                                           \
+        if (LoggingDisabled()) break;                          \
         BGP_LOG_SERVER(peer_, (BgpTable *) 0);                 \
         BGP_LOG(BgpPeerStateMachine, level,                    \
                 BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_NA,          \

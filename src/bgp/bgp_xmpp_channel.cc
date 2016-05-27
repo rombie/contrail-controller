@@ -410,9 +410,8 @@ public:
         return parent_->ToUVEKey();
     }
 
-    virtual BgpServer *server() {
-        return server_;
-    }
+    virtual BgpServer *server() { return server_; }
+    virtual BgpServer *server() const { return server_; }
     virtual IPeerClose *peer_close() {
         return parent_->peer_close_.get();
     }

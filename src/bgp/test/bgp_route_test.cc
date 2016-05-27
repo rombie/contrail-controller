@@ -32,6 +32,7 @@ public:
     }
     virtual bool SendUpdate(const uint8_t *msg, size_t msgsize) { return true; }
     virtual BgpServer *server() { return NULL; }
+    virtual BgpServer *server() const { return NULL; }
     virtual IPeerClose *peer_close() { return NULL; }
     virtual IPeerDebugStats *peer_stats() { return NULL; }
     virtual const IPeerDebugStats *peer_stats() const { return NULL; }

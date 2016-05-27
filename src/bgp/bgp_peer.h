@@ -134,7 +134,7 @@ public:
 
     // accessors
     virtual BgpServer *server() { return server_; }
-    const BgpServer *server() const { return server_; }
+    virtual BgpServer *server() const { return server_; }
 
     uint32_t PeerAddress() const { return peer_key_.address(); }
     const std::string peer_address_string() const {

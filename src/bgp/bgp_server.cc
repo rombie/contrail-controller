@@ -328,6 +328,7 @@ BgpServer::BgpServer(EventManager *evm)
           TaskScheduler::GetInstance()->GetTaskId("bgp::Config"))),
       deleter_(new DeleteActor(this)),
       destroyed_(false),
+      logging_disabled_(false),
       aspath_db_(new AsPathDB(this)),
       olist_db_(new BgpOListDB(this)),
       cluster_list_db_(new ClusterListDB(this)),

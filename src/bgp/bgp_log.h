@@ -12,6 +12,7 @@
 #include "sandesh/common/vns_types.h"
 #include "base/logging.h"
 #include "bgp/bgp_log_types.h"
+#include "bgp/bgp_server.h"
 #include "bgp/ipeer.h"
 #include "bgp/bgp_table.h"
 
@@ -73,11 +74,11 @@ do {                                                                       \
 // XXX Only used in unit tests. In production, there is only one BgpServer per
 // control-node daemon
 #define BGP_LOG_SERVER(peer, table)                                        \
-do {                                                                       \
-    if (LoggingDisabled()) break;                                          \
+    if ((peer) && dynamic_cast<const IPeer *>(peer)->server() &&           \
+        dynamic_cast<const IPeer *>(peer)->server()->logging_disabled())   \
+        break;                                                             \
     bgp_log_test::LogServerName(dynamic_cast<const IPeer *>(peer),         \
                                 dynamic_cast<const BgpTable *>(table));    \
-} while (false)
 
 // BgpPeer specific logging macros
 #define BGP_PEER_DIR_OUT "SEND"

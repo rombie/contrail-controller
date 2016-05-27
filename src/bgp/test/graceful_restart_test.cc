@@ -62,7 +62,7 @@ static string d_log_category_ = "";
 static string d_log_level_ = "SYS_WARN";
 static bool d_log_local_enable_ = false;
 static bool d_log_trace_enable_ = false;
-static bool d_log_enable_ = false;
+static bool d_log_disable_ = false;
 
 static vector<int>  n_instances = boost::assign::list_of(d_instances);
 static vector<int>  n_routes    = boost::assign::list_of(d_routes);
@@ -102,7 +102,7 @@ static void process_command_line_args(int argc, char **argv) {
         ("http-port", value<int>(), "set http introspect server port number")
         ("log-category", value<string>()->default_value(d_log_category_),
             "set log category")
-        ("log-disable", bool_switch(&d_log_enable_),
+        ("log-disable", bool_switch(&d_log_disable_),
              "Disable logging")
         ("log-file", value<string>()->default_value(log_file),
              "Filename for the logs to be written to")
@@ -190,7 +190,7 @@ static void process_command_line_args(int argc, char **argv) {
         n_peers.push_back(npeers);
     }
 
-    if (!d_log_enable_) {
+    if (d_log_disable_) {
         SetLoggingDisabled(true);
     }
 
@@ -216,7 +216,7 @@ static void process_command_line_args(int argc, char **argv) {
                 vm["log-file-size"].as<unsigned long>() : log_file_size,
             vm.count("log-file-index") ?
                 vm["log-file-index"].as<unsigned int>() : log_file_index,
-                d_log_enable_, d_log_level_, module_name, d_log_level_);
+                !d_log_disable_, d_log_level_, module_name, d_log_level_);
     }
 }
 
@@ -485,9 +485,14 @@ void GracefulRestartTest::SetUp() {
     familes_.push_back(Address::INET);
     familes_.push_back(Address::INETVPN);
 
-    for (int i = 0; i <= n_peers_; i++) {
-        bgp_servers_[i]->session_manager()->Initialize(0);
+    server_->session_manager()->Initialize(0);
+    xmpp_server_->Initialize(0, false);
+    for (int i = 1; i <= n_peers_; i++) {
         xmpp_servers_[i]->Initialize(0, false);
+        bgp_servers_[i]->session_manager()->Initialize(0);
+
+        // Disable logging in non dut bgp servers.
+        server_->set_logging_disabled(true);
     }
 
     sandesh_context_->bgp_server = bgp_servers_[0].get();
