@@ -369,6 +369,9 @@ void PeerCloseManager::MembershipRequestInternal() {
                 PEER_CLOSE_MANAGER_TABLE_LOG(
                     "MembershipManager::Unregister");
                 mgr->Unregister(peer_close_->peer(), table);
+            } else if (state_ == PeerCloseManager::SWEEP) {
+                PEER_CLOSE_MANAGER_TABLE_LOG("MembershipManager::WalkRibIn");
+                mgr->WalkRibIn(peer_close_->peer(), table);
             } else {
                 PEER_CLOSE_MANAGER_TABLE_LOG(
                     "MembershipManager::UnregisterRibOut");

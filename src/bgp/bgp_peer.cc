@@ -74,6 +74,11 @@ class BgpPeer::PeerClose : public IPeerClose {
             return;
         }
 
+        // Ignore if close is already in progress.
+        if (close_manager()->IsCloseInProgress() &&
+                !close_manager()->IsInGracefulRestartTimerWait())
+            return;
+
         if (peer_->IsDeleted()) {
             peer_->RetryDelete();
         } else {

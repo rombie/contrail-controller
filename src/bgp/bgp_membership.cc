@@ -187,7 +187,8 @@ void BgpMembershipManager::UnregisterRibInUnlocked(PeerRibState *prs) {
     prs->set_action(RIBIN_DELETE);
     prs->UnregisterRibIn();
     BGP_LOG_PEER_TABLE(prs->peer(), SandeshLevel::SYS_DEBUG,
-        BGP_LOG_FLAG_SYSLOG, prs->table(), "Unregister table requested");
+        BGP_LOG_FLAG_SYSLOG, prs->table(),
+        "Unregister table requested for action " << prs->action());
 }
 
 //
@@ -232,7 +233,7 @@ void BgpMembershipManager::WalkRibIn(IPeer *peer, BgpTable *table) {
     prs->set_action(RIBIN_WALK);
     prs->WalkRibIn();
     BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Walk table requested");
+        table, "Walk table requested for action " << prs->action());
 }
 
 //
@@ -527,7 +528,7 @@ void BgpMembershipManager::ProcessRegisterRibEvent(Event *event) {
 
     prs->RegisterRibOut(event->policy);
     BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Register table requested");
+        table, "Register table requested for action " << prs->action());
 }
 
 
@@ -541,10 +542,9 @@ void BgpMembershipManager::ProcessRegisterRibCompleteEvent(Event *event) {
     assert(prs && prs->action() == RIBOUT_ADD);
     assert(prs->ribin_registered());
     assert(prs->ribout_registered());
-    prs->clear_action();
-
     BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Register table completed");
+        table, "Register table completed for action " << prs->action());
+    prs->clear_action();
     peer->MembershipRequestCallback(table);
     NotifyPeerRegistration(peer, table, false);
     current_jobs_count_--;
@@ -568,7 +568,7 @@ void BgpMembershipManager::ProcessUnregisterRibEvent(Event *event) {
 
     prs->DeactivateRibOut();
     BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Unregister table requested");
+        table, "Unregister table requested for action " << prs->action());
 }
 
 //
@@ -587,12 +587,12 @@ void BgpMembershipManager::ProcessUnregisterRibCompleteEvent(Event *event) {
         assert(prs->ribin_registered());
 
     prs->UnregisterRibOut();
+    BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
+        table, "Unregister table completed for action " << prs->action());
     prs->clear_action();
     if (!prs->ribin_registered() && !prs->ribout_registered())
         DestroyPeerRibState(prs);
 
-    BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-        table, "Unregister table completed");
     peer->MembershipRequestCallback(table);
     NotifyPeerRegistration(peer, table, true);
     current_jobs_count_--;
@@ -610,11 +610,11 @@ void BgpMembershipManager::ProcessWalkRibCompleteEvent(Event *event) {
     if (prs->action() == RIBIN_WALK) {
         assert(prs->ribin_registered());
         BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-            table, "Walk table completed");
+            table, "Walk table completed for action " << prs->action());
     } else {
         assert(!prs->ribin_registered());
         BGP_LOG_PEER_TABLE(peer, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_SYSLOG,
-            table, "Unregister table completed");
+            table, "Unregister table completed for action " << prs->action());
     }
     prs->clear_action();
     if (!prs->ribin_registered() && !prs->ribout_registered())

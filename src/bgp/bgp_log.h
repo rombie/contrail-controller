@@ -74,6 +74,7 @@ do {                                                                       \
 // XXX Only used in unit tests. In production, there is only one BgpServer per
 // control-node daemon
 #define BGP_LOG_SERVER(peer, table)                                        \
+    if (LoggingDisabled()) break;                                          \
     if ((peer) && dynamic_cast<const IPeer *>(peer)->server() &&           \
         dynamic_cast<const IPeer *>(peer)->server()->logging_disabled())   \
         break;                                                             \
