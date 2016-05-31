@@ -194,6 +194,10 @@ public:
         families->insert(Address::UNSPEC);
     }
 
+    virtual void ReceiveEndOfRIB(Address::Family family) {
+        close_manager()->ProcessEORMarkerReceived(family);
+    }
+
     virtual void CustomClose() {
         if (!parent_ || parent_->rtarget_routes_.empty())
             return;
@@ -2390,8 +2394,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 
                 // Empty items-list can be considered as EOR Marker for all afis
                 if (item == 0) {
-                    peer_close_->close_manager()->ProcessEORMarkerReceived(
-                            Address::UNSPEC);
+                    peer_close_->ReceiveEndOfRIB(Address::UNSPEC);
                     return;
                 }
                 for (; item; item = item.next_sibling()) {

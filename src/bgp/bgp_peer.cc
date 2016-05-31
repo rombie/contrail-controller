@@ -109,6 +109,10 @@ class BgpPeer::PeerClose : public IPeerClose {
         return peer_->llgr_params_.time;
     }
 
+    virtual void ReceiveEndOfRIB(Address::Family family) {
+        peer_->ReceiveEndOfRIB(family, 0);
+    }
+
     bool IsGRReady() const {
         // Check if GR is supported by the peer.
         if (peer_->gr_params().families.empty())

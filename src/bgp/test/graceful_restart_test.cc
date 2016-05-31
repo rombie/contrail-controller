@@ -248,15 +248,18 @@ static vector<int> GetTargetParameters() {
 class PeerCloseManagerTest : public PeerCloseManager {
 public:
     explicit PeerCloseManagerTest(IPeerClose *peer_close) :
-            PeerCloseManager(peer_close) {
+            PeerCloseManager(peer_close), gr_timer_fired_(false) {
     }
     ~PeerCloseManagerTest() { last_stats_ = stats(); }
     static Stats &last_stats() { return last_stats_; }
     static void reset_last_stats() {
         memset(&last_stats_, 0, sizeof(PeerCloseManagerTest::last_stats()));
     }
+    virtual bool GRTimerFired() const { return gr_timer_fired_; }
+    void set_gr_timer_fired(bool flag) { gr_timer_fired_ = flag; }
 
 private:
+    bool gr_timer_fired_;
     static Stats last_stats_;
 };
 
@@ -993,7 +996,8 @@ void GracefulRestartTest::VerifyReceivedXmppRoutes(int routes) {
             if (!agent->HasSubscribed(instance_name))
                 continue;
             TASK_UTIL_EXPECT_EQ_MSG(routes, agent->RouteCount(instance_name),
-                                    "Wait for routes in " + instance_name);
+                                    "Agent " + agent->ToString() +
+                                    ": Wait for routes in " + instance_name);
         }
     }
     task_util::WaitForIdle();
@@ -1083,8 +1087,14 @@ bool GracefulRestartTest::SkipNotificationReceive(BgpPeerTest *peer,
 // Invoke stale timer callbacks directly to speed up.
 void GracefulRestartTest::GRTimerCallback(const void *args) {
     CHECK_CONCURRENCY("bgp::Config");
-    const PeerCloseManager *pc = static_cast<const PeerCloseManager *>(args);
-    const_cast<PeerCloseManager *>(pc)->RestartTimerCallback();
+    const PeerCloseManagerTest *pc =
+        static_cast<const PeerCloseManagerTest *>(args);
+
+    // Fire the timer.
+    const_cast<PeerCloseManagerTest *>(pc)->set_gr_timer_fired(true);
+    if (const_cast<PeerCloseManagerTest *>(pc)->RestartTimerCallback())
+        assert(!const_cast<PeerCloseManagerTest *>(pc)->RestartTimerCallback());
+    const_cast<PeerCloseManagerTest *>(pc)->set_gr_timer_fired(false);
 }
 
 void GracefulRestartTest::FireGRTimer(PeerCloseManager *pc, bool is_ready) {

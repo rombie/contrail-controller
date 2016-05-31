@@ -121,6 +121,7 @@ private:
     void MembershipRequestInternal();
     virtual bool CanUseMembershipManager() const;
     virtual BgpMembershipManager *membership_mgr() const;
+    virtual bool GRTimerFired() const;
 
     IPeerClose *peer_close_;
     Timer *stale_timer_;
