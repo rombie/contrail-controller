@@ -1926,15 +1926,13 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
 
     if (defer_peer_close_) {
         routingtable_membership_request_map_.erase(loc);
-        if (routingtable_membership_request_map_.size()) {
+        if (routingtable_membership_request_map_.size())
             return true;
-        }
         defer_peer_close_ = false;
         ResumeClose();
-        return true;
+    } else {
+        ProcessMembershipResponse(table, loc);
     }
-
-    ProcessMembershipResponse(table, loc);
 
     // If Close manager is waiting to use membership, try now.
     if (peer_close_->close_manager()->membership_state() ==

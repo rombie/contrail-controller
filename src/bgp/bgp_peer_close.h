@@ -101,6 +101,7 @@ public:
     bool MembershipRequestCallback();
     bool MembershipPathCallback(DBTablePartBase *root, BgpRoute *rt,
                                 BgpPath *path);
+    IPeerClose *peer_close() const { return peer_close_; }
 
 protected:
     tbb::atomic<int> membership_req_pending_;

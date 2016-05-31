@@ -250,9 +250,17 @@ public:
     explicit PeerCloseManagerTest(IPeerClose *peer_close) :
             PeerCloseManager(peer_close) {
     }
-    ~PeerCloseManagerTest() { }
-    const State state() const { return state_; }
+    ~PeerCloseManagerTest() { last_stats_ = stats(); }
+    static Stats &last_stats() { return last_stats_; }
+    static void reset_last_stats() {
+        memset(&last_stats_, 0, sizeof(PeerCloseManagerTest::last_stats()));
+    }
+
+private:
+    static Stats last_stats_;
 };
+
+PeerCloseManager::Stats PeerCloseManagerTest::last_stats_;
 
 class BgpXmppChannelManagerMock : public BgpXmppChannelManager {
 public:
@@ -327,16 +335,16 @@ protected:
     void VerifyDeletedRoutingInstnaces(vector<int> instances);
     void VerifyRoutingInstances(BgpServer *server);
     void XmppAgentClose(int nagents = -1);
-    void CallStaleTimer(BgpXmppChannel *channel);
-    void CallStaleTimer(BgpPeerTest *peer);
+    void FireGRTimer(PeerCloseManager *pc, bool is_ready);
+    void FireGRTimer(BgpPeerTest *peer);
+    void FireGRTimer(BgpXmppChannel *channel);
+    void GRTimerCallback(const void *args);
     void InitParams();
     void VerifyRoutes(int count);
     bool IsReady(bool ready);
     void WaitForAgentToBeEstablished(test::NetworkAgentMock *agent);
     void WaitForPeerToBeEstablished( BgpPeerTest *peer);
     void BgpPeersAdminUpOrDown(bool down);
-    void AgentTimerCallback(const void *args);
-    void PeerTimerCallback(const void *args);
     bool SkipNotificationReceive(BgpPeerTest *peer, int code,
                                  int subcode) const;
 
@@ -1072,68 +1080,51 @@ bool GracefulRestartTest::SkipNotificationReceive(BgpPeerTest *peer,
     return peer->SkipNotificationReceiveDefault(code, subcode);
 }
 
-// Invoke stale timer callbacks directly speed up the test.
-void GracefulRestartTest::CallStaleTimer(BgpXmppChannel *channel) {
-    PeerCloseManager *pc = channel->Peer()->peer_close()->close_manager();
-    if (pc->state() != PeerCloseManager::GR_TIMER)
-        return;
-    bool is_ready = channel->Peer()->IsReady();
-    uint64_t llgr_stale = pc->stats().llgr_stale;
-    uint64_t sweep = pc->stats().sweep;
-    uint64_t deletes = pc->stats().deletes;
-    TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
-                         _1), channel, "bgp::Config");
-    if (!is_ready) {
-        TASK_UTIL_EXPECT_EQ(llgr_stale + 1, pc->stats().llgr_stale);
-        TASK_UTIL_EXPECT_EQ(PeerCloseManager::LLGR_TIMER, pc->state());
-        task_util::WaitForIdle();
-        TaskFire(boost::bind(&GracefulRestartTest::AgentTimerCallback, this,
-                             _1), channel, "bgp::Config");
-        TASK_UTIL_EXPECT_EQ(deletes + 1, pc->stats().deletes);
-    } else {
-        TASK_UTIL_EXPECT_EQ(sweep + 1, pc->stats().sweep);
-    }
-    TASK_UTIL_EXPECT_EQ(PeerCloseManager::NONE, pc->state());
-    task_util::WaitForIdle();
-}
-
-void GracefulRestartTest::AgentTimerCallback(const void *args) {
-    CHECK_CONCURRENCY("bgp::Config");
-    const BgpXmppChannel *channel = static_cast<const BgpXmppChannel *>(args);
-    const_cast<BgpXmppChannel *>(channel)->Peer()->
-        peer_close()->close_manager()->RestartTimerCallback();
-}
-
-void GracefulRestartTest::CallStaleTimer(BgpPeerTest *peer) {
-    PeerCloseManager *pc = peer->peer_close()->close_manager();
-    if (pc->state() != PeerCloseManager::GR_TIMER)
-        return;
-    bool is_ready = peer->IsReady();
-    uint64_t llgr_stale = pc->stats().llgr_stale;
-    uint64_t sweep = pc->stats().sweep;
-    uint64_t deletes = pc->stats().deletes;
-    TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this,
-                             _1), peer, "bgp::Config");
-    if (!is_ready) {
-        TASK_UTIL_EXPECT_EQ(llgr_stale + 1, pc->stats().llgr_stale);
-        TASK_UTIL_EXPECT_EQ(PeerCloseManager::LLGR_TIMER, pc->state());
-        task_util::WaitForIdle();
-        TaskFire(boost::bind(&GracefulRestartTest::PeerTimerCallback, this, _1),
-                 peer, "bgp::Config");
-        TASK_UTIL_EXPECT_EQ(deletes + 1, pc->stats().deletes);
-    } else {
-        TASK_UTIL_EXPECT_EQ(sweep + 1, pc->stats().sweep);
-    }
-    TASK_UTIL_EXPECT_EQ(PeerCloseManager::NONE, pc->state());
-    task_util::WaitForIdle();
-}
-
 // Invoke stale timer callbacks directly to speed up.
-void GracefulRestartTest::PeerTimerCallback(const void *args) {
+void GracefulRestartTest::GRTimerCallback(const void *args) {
     CHECK_CONCURRENCY("bgp::Config");
-    const BgpPeerTest *peer = static_cast<const BgpPeerTest *>(args);
-    const_cast<BgpPeerTest *>(peer)->peer_close()->
-        close_manager()->RestartTimerCallback();
+    const PeerCloseManager *pc = static_cast<const PeerCloseManager *>(args);
+    const_cast<PeerCloseManager *>(pc)->RestartTimerCallback();
+}
+
+void GracefulRestartTest::FireGRTimer(PeerCloseManager *pc, bool is_ready) {
+    if (pc->state() != PeerCloseManager::GR_TIMER)
+        return;
+    if (is_ready) {
+        uint64_t sweep = pc->stats().sweep;
+        TaskFire(boost::bind(&GracefulRestartTest::GRTimerCallback, this, _1),
+                 pc, "bgp::Config");
+        TASK_UTIL_EXPECT_EQ(sweep + 1, pc->stats().sweep);
+        TASK_UTIL_EXPECT_EQ(PeerCloseManager::NONE, pc->state());
+        task_util::WaitForIdle();
+        return;
+    }
+
+    uint64_t deletes = pc->stats().deletes;
+    PeerCloseManager::Stats stats;
+    bool is_xmpp = pc->peer_close()->peer()->IsXmppPeer();
+    task_util::WaitForIdle();
+    PeerCloseManagerTest::reset_last_stats();
+    while (true) {
+        if (pc->state() == PeerCloseManager::GR_TIMER ||
+                pc->state() == PeerCloseManager::LLGR_TIMER)
+            TaskFire(boost::bind(&GracefulRestartTest::GRTimerCallback,
+                                 this, _1), pc, "bgp::Config");
+        task_util::WaitForIdle();
+        stats = is_xmpp ? PeerCloseManagerTest::last_stats() : pc->stats();
+        if (stats.deletes > deletes)
+            break;
+    }
+    EXPECT_GT(stats.deletes, deletes);
+}
+
+void GracefulRestartTest::FireGRTimer(BgpPeerTest *peer) {
+    FireGRTimer(peer->peer_close()->close_manager(), peer->IsReady());
+}
+
+void GracefulRestartTest::FireGRTimer(BgpXmppChannel *channel) {
+    FireGRTimer(channel->Peer()->peer_close()->close_manager(),
+                channel->Peer()->IsReady());
 }
 
 void GracefulRestartTest::XmppAgentClose(int nagents) {
@@ -1193,7 +1184,7 @@ void GracefulRestartTest::BgpPeerUp(BgpPeerTest *peer) {
 void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
         int remaining_instances,
         vector<GRTestParams> &n_flipping_agents) {
-    int flipping_count = 1;
+    int flipping_count = 3;
 
     for (int f = 0; f < flipping_count; f++) {
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
@@ -1302,7 +1293,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
                         bgp_xmpp_channels_[agent->id()]->Peer()->IsReady());
                 TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
             }
-            CallStaleTimer(bgp_xmpp_channels_[agent->id()]);
+            FireGRTimer(bgp_xmpp_channels_[agent->id()]);
         }
     }
     task_util::WaitForIdle();
@@ -1341,7 +1332,7 @@ void GracefulRestartTest::BgpPeerDown(BgpPeerTest *peer,
 
 void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
         int remaining_instances, vector<GRTestParams> &n_flipping_peers) {
-    int flipping_count = 1;
+    int flipping_count = 3;
 
     /*
     std::cout << __LINE__ << std::endl;
@@ -1434,7 +1425,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
                                                peer->id()]->IsReady());
                 TASK_UTIL_EXPECT_EQ(PeerCloseManager::GR_TIMER, pc->state());
             }
-            CallStaleTimer(bgp_server_peers_[peer->id()]);
+            FireGRTimer(bgp_server_peers_[peer->id()]);
         }
     }
     task_util::WaitForIdle();
@@ -1626,7 +1617,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         if (gr_test_param.send_eor)
             agent->SendEorMarker();
         else
-            CallStaleTimer(bgp_xmpp_channels_[agent->id()]);
+            FireGRTimer(bgp_xmpp_channels_[agent->id()]);
     }
 
     // Send EoR marker or trigger GR timer for peers which came back up and
@@ -1636,7 +1627,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
         if (gr_test_param.send_eor)
             peer->SendEorMarker();
         else
-            CallStaleTimer(bgp_server_peers_[peer->id()]);
+            FireGRTimer(bgp_server_peers_[peer->id()]);
     }
 
     // Process agents which keep flipping and trigger LLGR..
@@ -1647,12 +1638,12 @@ void GracefulRestartTest::GracefulRestartTestRun () {
 
     // Trigger GR timer for agents which went down permanently.
     BOOST_FOREACH(test::NetworkAgentMock *agent, n_down_from_agents_) {
-        CallStaleTimer(bgp_xmpp_channels_[agent->id()]);
+        FireGRTimer(bgp_xmpp_channels_[agent->id()]);
     }
 
     // Trigger GR timer for peers which went down permanently.
     BOOST_FOREACH(BgpPeerTest *peer, n_down_from_peers_) {
-        CallStaleTimer(bgp_server_peers_[peer->id()]);
+        FireGRTimer(bgp_server_peers_[peer->id()]);
     }
 
     VerifyReceivedXmppRoutes(total_routes);
