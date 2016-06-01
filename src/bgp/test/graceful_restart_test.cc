@@ -844,14 +844,20 @@ void GracefulRestartTest::CreateAgents() {
                 "dummy_agent" + boost::lexical_cast<string>(i) +
                 "@vnsw.contrailsystems.com",
                 xmpp_servers_[j]->GetPort(), prefix.ip4_addr().to_string());
-            WaitForAgentToBeEstablished(agent);
-            for (int i = 1; i <= n_instances_; i++) {
-                string instance_name =
-                    "instance" + boost::lexical_cast<string>(i);
-                agent->Subscribe(instance_name, i);
-            }
             xmpp_server_agents_[xmpp_servers_[j]].push_back(agent);
             prefix = task_util::Ip4PrefixIncrement(prefix);
+        }
+    }
+
+    for (int j = 1; j <= n_peers_; j++) {
+        BOOST_FOREACH(test::NetworkAgentMock *agent,
+                xmpp_server_agents_[xmpp_servers_[j]]) {
+            WaitForAgentToBeEstablished(agent);
+            for (int k = 1; k <= n_instances_; k++) {
+                string instance_name =
+                    "instance" + boost::lexical_cast<string>(k);
+                agent->Subscribe(instance_name, k);
+            }
         }
     }
 }

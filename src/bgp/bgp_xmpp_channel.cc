@@ -1874,8 +1874,11 @@ void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
 
     // Defer if Membership manager is in use (by close manager).
     if (peer_close_->close_manager()->membership_state() ==
-            PeerCloseManager::MEMBERSHIP_IN_USE)
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        BGP_LOG_PEER_TABLE(Peer(), SandeshLevel::SYS_DEBUG,
+                           BGP_LOG_FLAG_ALL, table, "RegisterTable deferred");
         return;
+    }
 
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
@@ -1890,8 +1893,11 @@ void BgpXmppChannel::UnregisterTable(BgpTable *table) {
 
     // Defer if Membership manager is in use (by close manager).
     if (peer_close_->close_manager()->membership_state() ==
-            PeerCloseManager::MEMBERSHIP_IN_USE)
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        BGP_LOG_PEER_TABLE(Peer(), SandeshLevel::SYS_DEBUG,
+                           BGP_LOG_FLAG_ALL, table, "UnregisterTable deferred");
         return;
+    }
 
     BgpMembershipManager *mgr = bgp_server_->membership_mgr();
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
