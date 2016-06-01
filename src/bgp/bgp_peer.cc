@@ -82,6 +82,7 @@ class BgpPeer::PeerClose : public IPeerClose {
         if (peer_->IsDeleted()) {
             peer_->RetryDelete();
         } else {
+            CustomClose();
             CloseComplete();
         }
     }
