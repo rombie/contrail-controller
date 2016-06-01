@@ -145,6 +145,7 @@ void Agent::SetAgentTaskPolicy() {
         AGENT_INIT_TASKNAME,
         AGENT_SANDESH_TASKNAME,
         kTaskConfigManager
+        INSTANCE_MANAGER_TASK_NAME
     };
     SetTaskPolicyOne("db::DBTable", db_exclude_list, 
                      sizeof(db_exclude_list) / sizeof(char *));
@@ -389,6 +390,10 @@ void Agent::CopyConfig(AgentParam *params) {
     tor_agent_enabled_ = params_->isTorAgent();
     flow_thread_count_ = params_->flow_thread_count();
     flow_trace_enable_ = params_->flow_trace_enable();
+    flow_add_tokens_ = params_->flow_add_tokens();
+    flow_ksync_tokens_ = params_->flow_ksync_tokens();
+    flow_del_tokens_ = params_->flow_del_tokens();
+    flow_update_tokens_ = params_->flow_update_tokens();
     tbb_keepawake_timeout_ = params_->tbb_keepawake_timeout();
 }
 

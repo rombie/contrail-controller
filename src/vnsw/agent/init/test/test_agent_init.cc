@@ -67,6 +67,7 @@ TEST_F(FlowTest, Agent_Conf_file_1) {
     const std::vector<uint16_t> &ports = param.bgp_as_a_service_port_range_value();
     EXPECT_EQ(ports[0], 100);
     EXPECT_EQ(ports[1], 199);
+    EXPECT_EQ(param.services_queue_limit(), 8192);
 
     // By default, flow-tracing must be enabled
     EXPECT_TRUE(param.flow_trace_enable());
@@ -100,6 +101,7 @@ TEST_F(FlowTest, Agent_Conf_file_2) {
     EXPECT_EQ(param.mirror_client_port(), 8097);
     // Default value for pkt0_tx_buffer_count
     EXPECT_EQ(param.pkt0_tx_buffer_count(), 1000);
+    EXPECT_EQ(param.services_queue_limit(), 1024);
 }
 
 TEST_F(FlowTest, Agent_Flows_Option_1) {
@@ -116,10 +118,14 @@ TEST_F(FlowTest, Agent_Flows_Option_1) {
     EXPECT_EQ(param.linklocal_system_flows(), 1024);
     EXPECT_EQ(param.linklocal_vm_flows(), 512);
     EXPECT_FALSE(param.flow_trace_enable());
+    EXPECT_EQ(param.flow_add_tokens(), 1000);
+    EXPECT_EQ(param.flow_ksync_tokens(), 1000);
+    EXPECT_EQ(param.flow_del_tokens(), 1000);
+    EXPECT_EQ(param.flow_update_tokens(), 500);
 }
 
 TEST_F(FlowTest, Agent_Flows_Option_Arguments) {
-    int argc = 11;
+    int argc = 19;
     char *argv[] = {
         (char *) "",
         (char *) "--FLOWS.thread_count",                   (char *)"8",
@@ -127,6 +133,10 @@ TEST_F(FlowTest, Agent_Flows_Option_Arguments) {
         (char *) "--FLOWS.max_system_linklocal_flows",     (char *)"24",
         (char *) "--FLOWS.max_vm_linklocal_flows",         (char *)"20",
         (char *) "--FLOWS.trace_enable",                   (char *)"true",
+        (char *) "--FLOWS.add_tokens",                     (char *)"2000",
+        (char *) "--FLOWS.ksync_tokens",                   (char *)"2000",
+        (char *) "--FLOWS.del_tokens",                     (char *)"2000",
+        (char *) "--FLOWS.update_tokens",                  (char *)"1000",
     };
 
     AgentParam param;
@@ -138,6 +148,10 @@ TEST_F(FlowTest, Agent_Flows_Option_Arguments) {
     EXPECT_EQ(param.linklocal_system_flows(), 24);
     EXPECT_EQ(param.linklocal_vm_flows(), 20);
     EXPECT_TRUE(param.flow_trace_enable());
+    EXPECT_EQ(param.flow_add_tokens(), 2000);
+    EXPECT_EQ(param.flow_ksync_tokens(), 2000);
+    EXPECT_EQ(param.flow_del_tokens(), 2000);
+    EXPECT_EQ(param.flow_update_tokens(), 1000);
 }
 
 TEST_F(FlowTest, Agent_Tbb_Option_1) {

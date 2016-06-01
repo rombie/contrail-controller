@@ -18,7 +18,7 @@ from lxml import etree
 import StringIO
 
 import socket
-from netaddr import IPNetwork
+from netaddr import IPNetwork, IPAddress, IPSet
 
 from cfgm_common.uve.vnc_api.ttypes import *
 from cfgm_common import ignore_exceptions
@@ -249,6 +249,13 @@ class VncIfmapClient(object):
 
     def object_create(self, obj_ids, obj_dict):
         obj_type = obj_ids['type'].replace('-', '_')
+        # Update notification might be received before create notify,
+        # so reading the object from database and publishing to IFMAP.
+        try:
+            (ok, result) = self._db_client_mgr.dbe_read(obj_ids['type'], obj_ids)
+            obj_dict = result
+        except NoIdError as e:
+            pass
 
         if not 'parent_type' in obj_dict:
             # parent is config-root
@@ -285,6 +292,10 @@ class VncIfmapClient(object):
         obj_cls = self._db_client_mgr.get_resource_class(res_type)
         # read in refs from ifmap to determine which ones become inactive after update
         existing_metas = self._object_read_to_meta_index(ifmap_id)
+
+        if not existing_metas:
+            # UPDATE notify queued before CREATE notify, Skip publish to IFMAP.
+            return (True, '')
 
         # remove properties that are no longer active
         props = obj_cls.prop_field_metas
@@ -735,7 +746,7 @@ class VncIfmapClient(object):
                     # the search query. To determine the success of the query
                     # we verify whether the response has a 'metadata' child
                     # and that in turn has "perms" sub children, then we can assume
-                    # that the query has succeeded. If not, we raise an 
+                    # that the query has succeeded. If not, we raise an
                     # exception that the IFMAP does not contain basic Contrail
                     # entities.
                     for each_result in result_items:
@@ -877,20 +888,16 @@ class VncServerCassandraClient(VncCassandraClient):
     # end _relax_ref_for_delete
 
     def get_relaxed_refs(self, obj_uuid):
-        try:
-            relaxed_cols = self._obj_uuid_cf.get(obj_uuid,
-                column_start='relaxbackref:',
-                column_finish='relaxbackref;')
-        except pycassa.NotFoundException:
+        relaxed_cols = self.get(self._OBJ_UUID_CF_NAME, obj_uuid,
+                                start='relaxbackref:', finish='relaxbackref;')
+        if not relaxed_cols:
             return []
 
         return [col.split(':')[1] for col in relaxed_cols]
     # end get_relaxed_refs
 
     def is_latest(self, id, tstamp):
-        id_perms_json = self._obj_uuid_cf.get(
-            id, columns=['prop:id_perms'])['prop:id_perms']
-        id_perms = json.loads(id_perms_json)
+        id_perms = self.uuid_to_obj_perms(id)
         if id_perms['last_modified'] == tstamp:
             return True
         else:
@@ -908,32 +915,19 @@ class VncServerCassandraClient(VncCassandraClient):
         bch.send()
 
     def uuid_to_obj_dict(self, id):
-        try:
-            obj_cols = self._obj_uuid_cf.get(id, column_count=self._MAX_COL)
-        except pycassa.NotFoundException:
+        obj_cols = self.get(self._OBJ_UUID_CF_NAME, id)
+        if not obj_cols:
             raise NoIdError(id)
         return obj_cols
     # end uuid_to_obj_dict
 
     def uuid_to_obj_perms(self, id):
-        try:
-            id_perms_json = self._obj_uuid_cf.get(
-                id, columns=['prop:id_perms'])['prop:id_perms']
-            id_perms = json.loads(id_perms_json)
-        except pycassa.NotFoundException:
-            raise NoIdError(id)
-        return id_perms
+        return self.get_one_col(self._OBJ_UUID_CF_NAME, id, 'prop:id_perms')
     # end uuid_to_obj_perms
 
     # fetch perms2 for an object
     def uuid_to_obj_perms2(self, id):
-        try:
-            perms2_json = self._obj_uuid_cf.get(
-                id, columns=['prop:perms2'])['prop:perms2']
-            perms2 = json.loads(perms2_json)
-        except pycassa.NotFoundException:
-            raise NoIdError(id)
-        return perms2
+        return self.get_one_col(self._OBJ_UUID_CF_NAME, id, 'prop:perms2')
     # end uuid_to_obj_perms2
 
     def useragent_kv_store(self, key, value):
@@ -964,12 +958,9 @@ class VncServerCassandraClient(VncCassandraClient):
     # end useragent_kv_delete
 
     def walk(self, fn):
-        walk_results = []
-        obj_infos = [x for x in self._obj_uuid_cf.get_range(
-                                          columns=['type', 'fq_name'],
-                                          column_count=self._MAX_COL)]
         type_to_object = {}
-        for obj_uuid, obj_col in obj_infos:
+        for obj_uuid, obj_col in self._obj_uuid_cf.get_range(
+                columns=['type', 'fq_name']):
             try:
                 obj_type = json.loads(obj_col['type'])
                 obj_fq_name = json.loads(obj_col['fq_name'])
@@ -985,6 +976,7 @@ class VncServerCassandraClient(VncCassandraClient):
                                 level=SandeshLevel.SYS_ERR)
                 continue
 
+        walk_results = []
         for obj_type, uuid_list in type_to_object.items():
             try:
                 self.config_log('Resync: obj_type %s len %s'
@@ -1570,6 +1562,32 @@ class VncDbClient(object):
             self._cassandra_db.object_update('bgp_router', obj_uuid, obj_dict)
     # end update_bgp_router_type
 
+    def iip_update_subnet_uuid(self, iip_dict):
+        """ Set the subnet uuid as instance-ip attribute """
+        if iip_dict.get('subnet_uuid'):
+            return
+
+        for vn_ref in iip_dict.get('virtual_network_refs', []):
+            (ok, results) = self._cassandra_db.object_read(
+                'virtual_network', [vn_ref['uuid']],
+                field_names=['network_ipam_refs'])
+            if not ok:
+                return
+            vn_dict = results[0]
+            for ipam in vn_dict.get('network_ipam_refs', []):
+                subnets = ipam['attr']['ipam_subnets']
+                for subnet in subnets:
+                    pfx = subnet['subnet']['ip_prefix']
+                    pfx_len = subnet['subnet']['ip_prefix_len']
+                    cidr = '%s/%s' % (pfx, pfx_len)
+                    if (IPAddress(iip_dict['instance_ip_address']) in
+                            IPSet([cidr])):
+                        iip_dict['subnet_uuid'] = subnet['subnet_uuid']
+                        self._cassandra_db.object_update('instance-ip',
+                                                         iip_dict['uuid'],
+                                                         iip_dict)
+                        return
+
     def _dbe_resync(self, obj_type, obj_uuids):
         obj_class = cfgm_common.utils.obj_type_to_vnc_class(obj_type, __name__)
         obj_fields = list(obj_class.prop_fields) + list(obj_class.ref_fields)
@@ -1597,9 +1615,13 @@ class VncDbClient(object):
                 if (obj_type == 'virtual_network' and
                         'network_ipam_refs' in obj_dict):
                     self.update_subnet_uuid(obj_dict, do_update=True)
+
                 if (obj_type == 'bgp_router' and
                         'bgp_router_parameters' in obj_dict):
                     self.update_bgp_router_type(obj_dict)
+
+                if obj_type == 'instance_ip':
+                    self.iip_update_subnet_uuid(obj_dict)
 
                 # Ifmap alloc
                 parent_type = obj_dict.get('parent_type', None)

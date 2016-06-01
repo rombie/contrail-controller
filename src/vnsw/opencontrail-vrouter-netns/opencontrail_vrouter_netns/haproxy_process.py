@@ -10,7 +10,8 @@ try:
 except ImportError:
     pass
 
-HAPROXY_DIR = "/var/lib/contrail/loadbalancer/haproxy"
+LBAAS_DIR = "/var/lib/contrail/loadbalancer"
+HAPROXY_DIR = LBAAS_DIR + "/" + "haproxy"
 HAPROXY_PROCESS = 'haproxy'
 HAPROXY_PROCESS_CONF = HAPROXY_PROCESS + ".conf"
 SUPERVISOR_BASE_DIR = '/etc/contrail/supervisord_vrouter_files/lbaas-haproxy-'
@@ -45,41 +46,57 @@ def create_haproxy_dir(base_dir, loadbalancer_id):
     p.communicate()
     return dir_name
 
-def update_ssl_config(haproxy_config, dir_name):
-    config = ConfigParser.SafeConfigParser()
-    config.read('/etc/contrail/contrail-vrouter-agent.conf')
-    haproxy_ssl_cert_path = config.get('SERVICE-INSTANCE', 'haproxy_ssl_cert_path')
+def update_ssl_config(haproxy_config,
+             haproxy_ssl_cert_path, dir_name):
     search_string = 'haproxy_ssl_cert_path'
     for line in haproxy_config.split('\n'):
         if search_string in line:
-            haproxy_config = haproxy_config.replace(search_string, haproxy_ssl_cert_path)
+            haproxy_config = haproxy_config.replace(
+                             search_string, haproxy_ssl_cert_path)
             break
     return haproxy_config
 
 def get_haproxy_config_file(cfg_file, dir_name):
-    lb_version = ''
-    haproxy_config = ''
     f = open(cfg_file)
     content = f.read()
     f.close()
+
+    lb_ssl_cert_path = ''
+    lbaas_auth_conf = '/etc/contrail/contrail-lbaas-auth.conf'
     kvps = content.split(':::::')
     for kvp in kvps or []:
         KeyValue = kvp.split('::::')
-        if (KeyValue[0] == 'lb_version'):
+        if (KeyValue[0] == 'lb_uuid'):
+            lb_uuid = KeyValue[1]
+        elif (KeyValue[0] == 'lb_version'):
             lb_version = KeyValue[1]
         elif (KeyValue[0] == 'haproxy_config'):
             haproxy_config = KeyValue[1]
-        if lb_version and haproxy_config:
-            break;
-    haproxy_cfg_file = dir_name + "/" + HAPROXY_PROCESS_CONF
+        elif (KeyValue[0] == 'lb_ssl_cert_path'):
+            lb_ssl_cert_path = KeyValue[1]
+        elif (KeyValue[0] == 'lbaas_auth_conf'):
+            lbaas_auth_conf = KeyValue[1]
     if 'ssl crt' in haproxy_config:
         if lb_version == 'v1':
-            haproxy_config = update_ssl_config(haproxy_config, dir_name);
+            if not (os.path.isfile(lb_ssl_cert_path)):
+                msg = "%s is missing for "\
+                      "Loadbalancer-ID %s" %(lb_ssl_cert_path, lb_uuid)
+                logging.error(msg)
+                return None
+            haproxy_config = update_ssl_config(haproxy_config,
+                             lb_ssl_cert_path, dir_name);
         else:
-            haproxy_config = barbican_cert_mgr.update_ssl_config(haproxy_config, dir_name)
+            if not (os.path.isfile(lbaas_auth_conf)):
+                msg = "%s is missing for "\
+                      "Loadbalancer-ID %s" %(lbaas_auth_conf, lb_uuid)
+                logging.error(msg)
+                return None
+            haproxy_config = barbican_cert_mgr.update_ssl_config(
+                             haproxy_config, lbaas_auth_conf, dir_name)
         if haproxy_config is None:
             return None
 
+    haproxy_cfg_file = dir_name + "/" + HAPROXY_PROCESS_CONF
     f = open(haproxy_cfg_file, 'w+')
     f.write(haproxy_config)
     f.close()
@@ -91,7 +108,65 @@ def get_pid_file_from_conf_file(conf_file):
     pid_file = dir_name + "/" + "haproxy.pid"
     return pid_file
 
+def remove_unmovable_files(scheme, loadbalancer_id):
+    if (scheme == "1"):
+        # remove the haproxy.sock file
+        haproxy_sock = LBAAS_DIR + "/" + loadbalancer_id + "." + "haproxy.sock"
+        cmd = "rm -rf " + haproxy_sock
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+
+def transform_oldscheme_to_newscheme(loadbalancer_id):
+    scheme = ""
+    haproxy_json_conf =  LBAAS_DIR + "/" + loadbalancer_id + "." + "conf.json"
+    old_haproxy_dir = LBAAS_DIR + "/" + loadbalancer_id
+    new_haproxy_dir = HAPROXY_DIR + "/" + loadbalancer_id
+    if (os.path.isfile(haproxy_json_conf)): #check for old scheme1
+        scheme = "1"
+        cmd = "mkdir -p " + new_haproxy_dir
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+        # move the json.conf file to new scheme haproxy dir
+        cmd = "mv " + haproxy_json_conf + " " + new_haproxy_dir
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+        # move the haproxy.pid file to new scheme haproxy dir
+        haproxy_pid = LBAAS_DIR + "/" + loadbalancer_id + "." + "haproxy.pid"
+        new_haproxy_pid = new_haproxy_dir + "/haproxy.pid"
+        if (os.path.isfile(new_haproxy_pid)):
+            cmd = "rm -rf " + haproxy_pid
+        else:
+            cmd = "mv " + haproxy_pid + " " +  new_haproxy_pid
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+        # move the haproxy.conf file to new scheme haproxy dir
+        haproxy_conf = LBAAS_DIR + "/" + loadbalancer_id + "." + "haproxy.conf"
+        new_haproxy_conf = new_haproxy_dir + "/haproxy.conf"
+        cmd = "mv " + haproxy_conf + " " +  new_haproxy_conf
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+    elif (os.path.isdir(old_haproxy_dir)): #check for old scheme2
+        scheme = "2"
+        cmd = "mkdir -p " + HAPROXY_DIR
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+        if (os.path.isdir(new_haproxy_dir)):
+            cmd = "rm -rf " + old_haproxy_dir
+        else:
+            cmd = "mv " + old_haproxy_dir + " " + HAPROXY_DIR
+        cmd_list = shlex.split(cmd)
+        p = subprocess.Popen(cmd_list)
+        p.communicate()
+    return scheme
+
 def stop_haproxy(loadbalancer_id, daemon_mode=False):
+    old_scheme = transform_oldscheme_to_newscheme(loadbalancer_id)
     conf_file = HAPROXY_DIR + "/" +  loadbalancer_id + "/" + HAPROXY_PROCESS_CONF
     try:
         if daemon_mode:
@@ -107,6 +182,8 @@ def stop_haproxy(loadbalancer_id, daemon_mode=False):
         logging.error(e.message)
 
     delete_haproxy_dir(HAPROXY_DIR, loadbalancer_id)
+    if (old_scheme):
+        remove_unmovable_files(old_scheme, loadbalancer_id)
 
 def start_update_haproxy(loadbalancer_id, cfg_file,
         netns, daemon_mode=False, keystone_auth_conf_file=None):

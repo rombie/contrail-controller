@@ -975,18 +975,11 @@ class VncApiServer(object):
         else:
             req_fields = []
 
-        filter_params = get_request().query.filters
-        if filter_params:
-            try:
-                ff_key_vals = filter_params.split(',')
-                ff_names = [ff.split('==')[0] for ff in ff_key_vals]
-                ff_values = [ff.split('==')[1] for ff in ff_key_vals]
-                filters = {'field_names': ff_names, 'field_values': ff_values}
-            except Exception as e:
-                raise cfgm_common.exceptions.HttpError(
-                    400, 'Invalid filter ' + filter_params)
-        else:
-            filters = None
+        try:
+            filters = utils.get_filters(get_request().query.filters)
+        except Exception as e:
+            raise cfgm_common.exceptions.HttpError(
+                400, 'Invalid filter ' + get_request().query.filters)
 
         return self._list_collection(resource_type,
             parent_uuids, back_ref_uuids, obj_uuids, is_count, is_detail,
@@ -1120,7 +1113,7 @@ class VncApiServer(object):
             if not child_cls.generate_default_instance:
                 continue
             # first locate default child then delete it")
-            default_child_name = 'default-%s' %(child_cls().get_type())
+            default_child_name = 'default-%s' %(child_type)
             child_infos = parent_dict.get(child_field, [])
             for child_info in child_infos:
                 if child_info['to'][-1] == default_child_name:
@@ -2309,18 +2302,11 @@ class VncApiServer(object):
         is_count = get_request().json.get('count', False)
         is_detail = get_request().json.get('detail', False)
 
-        filter_params = get_request().json.get('filters', {})
-        if filter_params:
-            try:
-               ff_key_vals = filter_params.split(',')
-               ff_names = [ff.split('==')[0] for ff in ff_key_vals]
-               ff_values = [ff.split('==')[1] for ff in ff_key_vals]
-               filters = {'field_names': ff_names, 'field_values': ff_values}
-            except Exception as e:
-               raise cfgm_common.exceptions.HttpError(
-                   400, 'Invalid filter ' + filter_params)
-        else:
-            filters = None
+        try:
+            filters = utils.get_filters(get_request().json.get('filters'))
+        except Exception as e:
+            raise cfgm_common.exceptions.HttpError(
+                400, 'Invalid filter ' + get_request().json.get('filters'))
 
         req_fields = get_request().json.get('fields', [])
         if req_fields:
@@ -2664,12 +2650,6 @@ class VncApiServer(object):
         if is_count:
             return {'%ss' %(resource_type): {'count': result}}
 
-        # filter out items not authorized
-        for fq_name, uuid in result:
-            (ok, status) = self._permissions.check_perms_read(get_request(), uuid)
-            if not ok and status[0] == 403:
-                result.remove((fq_name, uuid))
-
         # include objects shared with tenant
         env = get_request().headers.environ
         tenant_name = env.get(hdr_server_tenant(), 'default-project')
@@ -2702,6 +2682,12 @@ class VncApiServer(object):
                     raise cfgm_common.exceptions.HttpError(404, result)
                 for obj_result in result:
                     if obj_result['id_perms'].get('user_visible', True):
+                        # skip items not authorized
+                        (ok, status) = self._permissions.check_perms_read(
+                                get_request(), obj_result['uuid'],
+                                obj_result['id_perms'])
+                        if not ok and status[0] == 403:
+                            continue
                         obj_dict = {}
                         obj_dict['uuid'] = obj_result['uuid']
                         obj_dict['href'] = self.generate_url(resource_type,
@@ -2763,6 +2749,12 @@ class VncApiServer(object):
                     continue
                 if (obj_dict['id_perms'].get('user_visible', True) or
                     self.is_admin_request()):
+                    # skip items not authorized
+                    (ok, status) = self._permissions.check_perms_read(
+                            get_request(), obj_result['uuid'],
+                            obj_result['id_perms'])
+                    if not ok and status[0] == 403:
+                        continue
                     obj_dicts.append({resource_type: obj_dict})
 
         return {'%ss' %(resource_type): obj_dicts}
