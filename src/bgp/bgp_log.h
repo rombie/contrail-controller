@@ -75,7 +75,8 @@ do {                                                                       \
 // control-node daemon
 #define BGP_LOG_SERVER(peer, table)                                        \
     if (LoggingDisabled()) break;                                          \
-    if ((peer) && dynamic_cast<const IPeer *>(peer)->server() &&           \
+    if (dynamic_cast<const IPeer *>(peer) &&                               \
+            dynamic_cast<const IPeer *>(peer)->server() &&                 \
         dynamic_cast<const IPeer *>(peer)->server()->logging_disabled())   \
         break;                                                             \
     bgp_log_test::LogServerName(dynamic_cast<const IPeer *>(peer),         \
