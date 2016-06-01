@@ -1347,10 +1347,6 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
         int remaining_instances, vector<GRTestParams> &n_flipping_peers) {
     int flipping_count = 3;
 
-    /*
-    std::cout << __LINE__ << std::endl;
-    TaskUtilPauseTest();
-    */
     for (int f = 0; f < flipping_count; f++) {
         BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
             BgpPeerUp(gr_test_param.peer);

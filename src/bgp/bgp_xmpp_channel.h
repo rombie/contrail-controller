@@ -43,7 +43,7 @@ class XmppSession;
 
 class BgpXmppChannel {
 public:
-    static const int kEndOfRibTime = 30 * 1000; // 30s
+    static const int kEndOfRibTime = 30; // seconds
     enum StatsIndex {
         RX,
         TX,

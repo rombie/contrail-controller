@@ -84,6 +84,7 @@ public:
     bool IsPeerCloseGraceful() const;
     const uint16_t GetGracefulRestartTime() const;
     const uint32_t GetLongLivedGracefulRestartTime() const;
+    const uint32_t GetEndOfRibReceiveTime() const;
 
 protected:
     virtual SslSession *AllocSession(SslSocket *socket);

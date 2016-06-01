@@ -62,6 +62,7 @@ public:
             return;
         server_->global_config()->set_gr_time(system->gr_time());
         server_->global_config()->set_llgr_time(system->llgr_time());
+        server_->global_config()->set_eor_time(system->eor_time());
 
         RoutingInstanceMgr *ri_mgr = server_->routing_instance_mgr();
         RoutingInstance *rti =
@@ -501,6 +502,10 @@ uint16_t BgpServer::GetGracefulRestartTime() const {
 
 uint32_t BgpServer::GetLongLivedGracefulRestartTime() const {
     return global_config_->llgr_time();
+}
+
+uint32_t BgpServer::GetEndOfRibReceiveTime() const {
+    return global_config_->eor_time();
 }
 
 uint32_t BgpServer::num_routing_instance() const {

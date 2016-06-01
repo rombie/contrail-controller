@@ -2408,13 +2408,12 @@ bool BgpXmppChannel::EndOfRibTimerExpired() {
 }
 
 void BgpXmppChannel::StartEndOfRibTimer() {
-    uint32_t timeout = kEndOfRibTime;
-    static char *time_str = getenv("XMPP_EOR_TIME");
-    if (time_str) {
-        timeout = strtoul(time_str, NULL, 0);
-    }
+    uint32_t timeout = manager() && manager()->xmpp_server() ?
+                           manager()->xmpp_server()->GetEndOfRibReceiveTime() :
+                           kEndOfRibTime;
+
     end_of_rib_timer_->Cancel();
-    end_of_rib_timer_->Start(timeout,
+    end_of_rib_timer_->Start(timeout * 1000,
         boost::bind(&BgpXmppChannel::EndOfRibTimerExpired, this),
         boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
 }

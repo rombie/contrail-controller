@@ -143,9 +143,6 @@ struct http_parser_settings HttpSession::RequestBuilder::settings_ = {
     OnMessageComplete
 };
 
-#undef HTTP_SYS_LOG
-#define HTTP_SYS_LOG(...)
-
 class HttpSession::RequestHandler : public Task {
 public:
     explicit RequestHandler(HttpSession *session)

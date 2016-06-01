@@ -1906,12 +1906,12 @@ bool BgpPeer::KeepaliveTimerExpired() {
 }
 
 void BgpPeer::StartEndOfRibTimer() {
-    uint32_t timeout = 30 * 1000;
+    uint32_t timeout = server_->GetEndOfRibReceiveTime();
     char *time_str = getenv("BGP_RTFILTER_EOR_TIMEOUT");
     if (time_str) {
         timeout = strtoul(time_str, NULL, 0);
     }
-    end_of_rib_timer_->Start(timeout,
+    end_of_rib_timer_->Start(timeout * 1000,
         boost::bind(&BgpPeer::EndOfRibTimerExpired, this),
         boost::bind(&BgpPeer::EndOfRibTimerErrorHandler, this, _1, _2));
 }

@@ -63,6 +63,7 @@ public:
 
     uint16_t GetGracefulRestartTime() const;
     uint32_t GetLongLivedGracefulRestartTime() const;
+    uint32_t GetEndOfRibReceiveTime() const;
 
     int RegisterPeer(BgpPeer *peer);
     void UnregisterPeer(BgpPeer *peer);

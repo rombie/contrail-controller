@@ -1147,12 +1147,16 @@ bool StateMachine::IsQueueEmpty() const {
     return work_queue_.IsQueueEmpty();
 }
 
-template <typename Ev, int code>
-void StateMachine::OnIdle(const Ev &event) {
+void StateMachine::UpdateFlapCount() {
     if (get_state() == StateMachine::ESTABLISHED) {
         peer_->increment_flap_count();
         peer_->peer_stats()->Clear();
     }
+}
+
+template <typename Ev, int code>
+void StateMachine::OnIdle(const Ev &event) {
+    UpdateFlapCount();
 
     // Release all resources.
     SendNotificationAndClose(peer_->session(), code);
@@ -1160,10 +1164,7 @@ void StateMachine::OnIdle(const Ev &event) {
 
 template <typename Ev>
 void StateMachine::OnIdleCease(const Ev &event) {
-    if (get_state() == StateMachine::ESTABLISHED) {
-        peer_->increment_flap_count();
-        peer_->peer_stats()->Clear();
-    }
+    UpdateFlapCount();
 
     // Release all resources.
     SendNotificationAndClose(
@@ -1176,20 +1177,14 @@ void StateMachine::OnIdleCease(const Ev &event) {
 //
 template <typename Ev, int code>
 void StateMachine::OnIdleError(const Ev &event) {
-    if (get_state() == StateMachine::ESTABLISHED) {
-        peer_->increment_flap_count();
-        peer_->peer_stats()->Clear();
-    }
+    UpdateFlapCount();
 
     // Release all resources.
     SendNotificationAndClose(event.session, code, event.subcode, event.data);
 }
 
 void StateMachine::OnIdleNotification(const fsm::EvBgpNotification &event) {
-    if (get_state() == StateMachine::ESTABLISHED) {
-        peer_->increment_flap_count();
-        peer_->peer_stats()->Clear();
-    }
+    UpdateFlapCount();
 
     // Release all resources.
     SendNotificationAndClose(peer()->session(), 0);
