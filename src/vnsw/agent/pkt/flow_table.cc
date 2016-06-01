@@ -193,11 +193,6 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
     if (rflow_req)
         rflow_req->set_reverse_flow_entry(NULL);
 
-    if (flow)
-        flow->GetPendingAction()->SetRecompute(false);
-    if (rflow)
-        rflow->GetPendingAction()->SetRecompute(false);
-
     bool force_update_rflow = false;
     if (fwd_flow_update) {
         if (flow == NULL)
@@ -220,21 +215,6 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
         flow->set_deleted(false);
     }
 
-    if (flow) {
-        if (fwd_flow_update) {
-            flow->set_last_event(FlowEvent::FLOW_MESSAGE);
-        } else {
-            flow->set_last_event(FlowEvent::VROUTER_FLOW_MSG);
-        }
-    }
-    if (rflow) {
-        if (rev_flow_update) {
-            rflow->set_last_event(FlowEvent::FLOW_MESSAGE);
-        } else {
-            rflow->set_last_event(FlowEvent::VROUTER_FLOW_MSG);
-        }
-    }
-
     if (rflow) {
         if (rflow_req != rflow) {
             Copy(rflow, rflow_req, (rev_flow_update || force_update_rflow));
@@ -254,6 +234,21 @@ void FlowTable::AddInternal(FlowEntry *flow_req, FlowEntry *flow,
             // we are creating a new reverse flow, so avoid triggering
             // force update in this case
             force_update_rflow = false;
+        }
+    }
+
+    if (flow) {
+        if (fwd_flow_update) {
+            flow->set_last_event(FlowEvent::FLOW_MESSAGE);
+        } else {
+            flow->set_last_event(FlowEvent::VROUTER_FLOW_MSG);
+        }
+    }
+    if (rflow) {
+        if (rev_flow_update) {
+            rflow->set_last_event(FlowEvent::FLOW_MESSAGE);
+        } else {
+            rflow->set_last_event(FlowEvent::VROUTER_FLOW_MSG);
         }
     }
 
@@ -510,26 +505,12 @@ void FlowTable::DeleteFlowInfo(FlowEntry *fe, const RevFlowDepParams &params) {
 /////////////////////////////////////////////////////////////////////////////
 // Flow revluation routines. Processing will vary based on DBEntry type
 /////////////////////////////////////////////////////////////////////////////
-void FlowTable::ResyncAFlow(FlowEntry *fe) {
-    fe->ResyncFlow();
-
-    // If this is forward flow, the SG action could potentially have changed
-    // due to reflexive nature. Update KSync for reverse flow first
-    FlowEntry *rflow = (fe->is_flags_set(FlowEntry::ReverseFlow) == false) ?
-        fe->reverse_flow_entry() : NULL;
-    if (rflow) {
-        UpdateKSync(rflow, true);
-    }
-
-    UpdateKSync(fe, true);
-}
-
 boost::uuids::uuid FlowTable::rand_gen() {
     return rand_gen_();
 }
 
-// Enqueue message to revaluate a flow
-void FlowTable::RevaluateFlow(FlowEntry *flow) {
+// Enqueue message to recompute a flow
+void FlowTable::RecomputeFlow(FlowEntry *flow) {
     if (flow->is_flags_set(FlowEntry::ShortFlow))
         return;
 
@@ -538,7 +519,7 @@ void FlowTable::RevaluateFlow(FlowEntry *flow) {
         flow = flow->reverse_flow_entry();
     }
 
-    agent_->pkt()->get_flow_proto()->MessageRequest(new FlowTaskMsg(flow));
+    agent_->pkt()->get_flow_proto()->MessageRequest(flow);
 }
 
 // Handle deletion of a Route. Flow management module has identified that route
@@ -559,15 +540,6 @@ void FlowTable::EvictFlow(FlowEntry *flow, FlowEntry *reverse_flow) {
 
 void FlowTable::HandleRevaluateDBEntry(const DBEntry *entry, FlowEntry *flow,
                                        bool active_flow, bool deleted_flow) {
-    // Check if re-valuate still pending on flow
-    if (flow->GetPendingAction()->revaluate() == false)
-        return;
-    flow->GetPendingAction()->SetRevaluate(false);
-
-    FlowEntry *rflow = flow->reverse_flow_entry();
-    if (rflow)
-        rflow->GetPendingAction()->SetRevaluate(false);
-
     // Ignore revluate of deleted/short flows
     if (flow->IsShortFlow())
         return;
@@ -575,6 +547,7 @@ void FlowTable::HandleRevaluateDBEntry(const DBEntry *entry, FlowEntry *flow,
     if (flow->deleted())
         return;
 
+    FlowEntry *rflow = flow->reverse_flow_entry();
     // Update may happen for reverse-flow. We act on both forward and
     // reverse-flow. Get both forward and reverse flows
     if (flow->is_flags_set(FlowEntry::ReverseFlow)) {
@@ -612,8 +585,15 @@ void FlowTable::HandleRevaluateDBEntry(const DBEntry *entry, FlowEntry *flow,
     flow->GetPolicyInfo();
     rflow->GetPolicyInfo();
 
-    // Resync of forward flow, will resync reverse flow also
-    ResyncAFlow(flow);
+    // Resync reverse flow first and then forward flow
+    // as forward flow resync will try to update reverse flow
+    rflow->ResyncFlow();
+    flow->ResyncFlow();
+
+    // the SG action could potentially have changed
+    // due to reflexive nature. Update KSync for reverse flow first
+    UpdateKSync(rflow, true);
+    UpdateKSync(flow, true);
 
     // Update flow-mgmt with new values
     AddFlowInfo(flow);
@@ -789,7 +769,7 @@ bool FlowTable::ProcessFlowEvent(const FlowEvent *req, FlowEntry *flow,
     //Now process events.
     switch (req->event()) {
     case FlowEvent::DELETE_FLOW: {
-        DeleteUnLocked(req->get_del_rev_flow(), flow, rflow);
+        DeleteUnLocked(true, flow, rflow);
         break;
     }
 
@@ -804,9 +784,9 @@ bool FlowTable::ProcessFlowEvent(const FlowEvent *req, FlowEntry *flow,
         break;
     }
 
-    case FlowEvent::REVALUATE_FLOW: {
+    case FlowEvent::RECOMPUTE_FLOW: {
         if (active_flow)
-            RevaluateFlow(flow);
+            RecomputeFlow(flow);
         break;
     }
 
@@ -856,30 +836,6 @@ bool FlowTable::ProcessFlowEvent(const FlowEvent *req, FlowEntry *flow,
         break;
     }
     }
-    return true;
-}
-
-bool FlowTable::SetRecomputePending(FlowEntry *flow) {
-    tbb::mutex::scoped_lock mutext(flow->mutex());
-    if (flow->deleted() || flow->IsShortFlow())
-        return false;
-
-    if (flow->GetPendingAction()->recompute())
-        return false;
-
-    flow->GetPendingAction()->SetRecompute(true);
-    return true;
-}
-
-bool FlowTable::SetRevaluatePending(FlowEntry *flow) {
-    tbb::mutex::scoped_lock mutext(flow->mutex());
-    if (flow->deleted() || flow->IsShortFlow())
-        return false;
-
-    if (flow->GetPendingAction()->revaluate())
-        return false;
-
-    flow->GetPendingAction()->SetRevaluate(true);
     return true;
 }
 

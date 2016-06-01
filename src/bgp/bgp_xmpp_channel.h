@@ -27,6 +27,7 @@ class xml_node;
 }
 
 class BgpGlobalSystemConfig;
+class BgpRouterState;
 class BgpServer;
 struct DBRequest;
 class IPeer;
@@ -298,6 +299,7 @@ public:
     }
 
     void VisitChannels(BgpXmppChannelManager::VisitorFn);
+    void VisitChannels(BgpXmppChannelManager::VisitorFn) const;
     BgpXmppChannel *FindChannel(const XmppChannel *channel);
     BgpXmppChannel *FindChannel(std::string client);
     void RemoveChannel(XmppChannel *channel);
@@ -339,6 +341,7 @@ public:
     uint64_t get_subscription_gen_id() {
         return subscription_gen_id_.fetch_and_increment();
     }
+    bool CollectStats(BgpRouterState *state, bool first) const;
 
 protected:
     virtual BgpXmppChannel *CreateChannel(XmppChannel *channel);
@@ -346,6 +349,8 @@ protected:
 private:
     friend class BgpXmppChannelManagerMock;
     friend class BgpXmppUnitTest;
+
+    void FillPeerStats(const BgpXmppChannel *channel) const;
 
     XmppServer *xmpp_server_;
     BgpServer *bgp_server_;

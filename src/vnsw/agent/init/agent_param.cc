@@ -519,6 +519,11 @@ void AgentParam::ParseFlows() {
         flow_thread_count_ = Agent::kDefaultFlowThreadCount;
     }
 
+    if (!GetValueFromTree<uint16_t>(flow_latency_limit_,
+                                    "FLOWS.latency_limit")) {
+        flow_latency_limit_ = Agent::kDefaultFlowLatencyLimit;
+    }
+
     if (!GetValueFromTree<bool>(flow_trace_enable_, "FLOWS.trace_enable")) {
         flow_trace_enable_ = true;
     }
@@ -539,6 +544,10 @@ void AgentParam::ParseFlows() {
         flow_index_sm_log_count_ = Agent::kDefaultFlowIndexSmLogCount;
     }
 
+    GetValueFromTree<uint32_t>(flow_add_tokens_, "FLOWS.add_tokens");
+    GetValueFromTree<uint32_t>(flow_ksync_tokens_, "FLOWS.ksync_tokens");
+    GetValueFromTree<uint32_t>(flow_del_tokens_, "FLOWS.del_tokens");
+    GetValueFromTree<uint32_t>(flow_update_tokens_, "FLOWS.update_tokens");
 }
 
 void AgentParam::ParseHeadlessMode() {
@@ -594,6 +603,8 @@ void AgentParam::ParseServiceInstance() {
                          "SERVICE-INSTANCE.lb_ssl_cert_path");
     GetValueFromTree<string>(si_lb_keystone_auth_conf_path_,
                          "SERVICE-INSTANCE.lb_keystone_auth_conf_path");
+    GetValueFromTree<string>(si_lbaas_auth_conf_,
+                         "SERVICE-INSTANCE.lbaas_auth_conf");
 }
 
 void AgentParam::ParseNexthopServer() {
@@ -608,9 +619,10 @@ void AgentParam::ParseNexthopServer() {
     }
 }
 
-void AgentParam::ParseBgpAsAServicePortRange() {
+void AgentParam::ParseServices() {
     GetValueFromTree<string>(bgp_as_a_service_port_range_,
                              "SERVICES.bgp_as_a_service_port_range");
+    GetValueFromTree<uint32_t>(services_queue_limit_, "SERVICES.queue_limit");
 }
 
 void AgentParam::ParseCollectorArguments
@@ -769,6 +781,8 @@ void AgentParam::ParseFlowArguments
     (const boost::program_options::variables_map &var_map) {
     GetOptValue<uint16_t>(var_map, flow_thread_count_,
                           "FLOWS.thread_count");
+    GetOptValue<uint16_t>(var_map, flow_latency_limit_,
+                          "FLOWS.latency_limit");
     GetOptValue<bool>(var_map, flow_trace_enable_, "FLOWS.trace_enable");
     uint16_t val = 0;
     if (GetOptValue<uint16_t>(var_map, val, "FLOWS.max_vm_flows")) {
@@ -781,6 +795,14 @@ void AgentParam::ParseFlowArguments
                           "FLOWS.max_vm_linklocal_flows");
     GetOptValue<uint16_t>(var_map, flow_index_sm_log_count_,
                           "FLOWS.index_sm_log_count");
+    GetOptValue<uint32_t>(var_map, flow_add_tokens_,
+                          "FLOWS.add_tokens");
+    GetOptValue<uint32_t>(var_map, flow_ksync_tokens_,
+                          "FLOWS.ksync_tokens");
+    GetOptValue<uint32_t>(var_map, flow_del_tokens_,
+                          "FLOWS.del_tokens");
+    GetOptValue<uint32_t>(var_map, flow_update_tokens_,
+                          "FLOWS.update_tokens");
 }
 
 void AgentParam::ParseHeadlessModeArguments
@@ -811,6 +833,8 @@ void AgentParam::ParseServiceInstanceArguments
     GetOptValue<int>(var_map, si_netns_timeout_, "SERVICE-INSTANCE.netns_timeout");
     GetOptValue<string>(var_map, si_lb_ssl_cert_path_,
                         "SERVICE-INSTANCE.lb_ssl_cert_path");
+    GetOptValue<string>(var_map, si_lbaas_auth_conf_,
+                        "SERVICE-INSTANCE.lbaas_auth_conf");
 
 }
 
@@ -848,10 +872,11 @@ void AgentParam::ParsePlatformArguments
     }
 }
 
-void AgentParam::ParseBgpAsAServicePortRangeArguments
+void AgentParam::ParseServicesArguments
     (const boost::program_options::variables_map &v) {
     GetOptValue<string>(v, bgp_as_a_service_port_range_,
                         "SERVICES.bgp_as_a_service_port_range");
+    GetOptValue<uint32_t>(v, services_queue_limit_, "SERVICES.queue_limit");
 }
 
 // Initialize hypervisor mode based on system information
@@ -901,7 +926,7 @@ void AgentParam::InitFromConfig() {
     ParseAgentInfo();
     ParseNexthopServer();
     ParsePlatform();
-    ParseBgpAsAServicePortRange();
+    ParseServices();
     cout << "Config file <" << config_file_ << "> parsing completed.\n";
     return;
 }
@@ -925,7 +950,7 @@ void AgentParam::InitFromArguments() {
     ParseAgentInfoArguments(var_map_);
     ParseNexthopServerArguments(var_map_);
     ParsePlatformArguments(var_map_);
-    ParseBgpAsAServicePortRangeArguments(var_map_);
+    ParseServicesArguments(var_map_);
     return;
 }
 
@@ -1186,7 +1211,12 @@ void AgentParam::LogConfig() const {
     LOG(DEBUG, "Linklocal Max Vm Flows      : " << linklocal_vm_flows_);
     LOG(DEBUG, "Flow cache timeout          : " << flow_cache_timeout_);
     LOG(DEBUG, "Flow thread count           : " << flow_thread_count_);
+    LOG(DEBUG, "Flow latency limit          : " << flow_latency_limit_);
     LOG(DEBUG, "Flow index-mgr sm log count : " << flow_index_sm_log_count_);
+    LOG(DEBUG, "Flow add-tokens             : " << flow_add_tokens_);
+    LOG(DEBUG, "Flow ksync-tokens           : " << flow_ksync_tokens_);
+    LOG(DEBUG, "Flow del-tokens             : " << flow_del_tokens_);
+    LOG(DEBUG, "Flow update-tokens          : " << flow_update_tokens_);
 
     if (agent_mode_ == VROUTER_AGENT)
         LOG(DEBUG, "Agent Mode                  : Vrouter");
@@ -1205,7 +1235,9 @@ void AgentParam::LogConfig() const {
     LOG(DEBUG, "Service instance workers    : " << si_netns_workers_);
     LOG(DEBUG, "Service instance timeout    : " << si_netns_timeout_);
     LOG(DEBUG, "Service instance lb ssl     : " << si_lb_ssl_cert_path_);
+    LOG(DEBUG, "Service instance lbaas auth : " << si_lbaas_auth_conf_);
     LOG(DEBUG, "Bgp as a service port range : " << bgp_as_a_service_port_range_);
+    LOG(DEBUG, "Services queue limit        : " << services_queue_limit_);
     if (hypervisor_mode_ == MODE_KVM) {
     LOG(DEBUG, "Hypervisor mode             : kvm");
         return;
@@ -1283,6 +1315,10 @@ AgentParam::AgentParam(bool enable_flow_options,
         metadata_proxy_port_(0), max_vm_flows_(),
         linklocal_system_flows_(), linklocal_vm_flows_(),
         flow_cache_timeout_(), flow_index_sm_log_count_(),
+        flow_add_tokens_(Agent::kFlowAddTokens),
+        flow_ksync_tokens_(Agent::kFlowKSyncTokens),
+        flow_del_tokens_(Agent::kFlowDelTokens),
+        flow_update_tokens_(Agent::kFlowUpdateTokens),
         config_file_(), program_name_(),
         log_file_(), log_local_(false), log_flow_(false), log_level_(),
         log_category_(), use_syslog_(false),
@@ -1298,7 +1334,7 @@ AgentParam::AgentParam(bool enable_flow_options,
         xmpp_dns_auth_enable_(false),
         simulate_evpn_tor_(false), si_netns_command_(),
         si_docker_command_(), si_netns_workers_(0),
-        si_netns_timeout_(0), si_lb_ssl_cert_path_(),
+        si_netns_timeout_(0), si_lb_ssl_cert_path_(), si_lbaas_auth_conf_(),
         vmware_mode_(ESXI_NEUTRON), nexthop_server_endpoint_(),
         nexthop_server_add_pid_(0),
         vrouter_on_nic_mode_(false),
@@ -1310,7 +1346,9 @@ AgentParam::AgentParam(bool enable_flow_options,
         send_ratelimit_(sandesh_send_rate_limit()),
         flow_thread_count_(Agent::kDefaultFlowThreadCount),
         flow_trace_enable_(true),
+        flow_latency_limit_(Agent::kDefaultFlowLatencyLimit),
         subnet_hosts_resolvable_(true),
+        services_queue_limit_(1024),
         tbb_thread_count_(Agent::kMaxTbbThreads),
         tbb_exec_delay_(0),
         tbb_schedule_delay_(0),
@@ -1427,6 +1465,14 @@ AgentParam::AgentParam(bool enable_flow_options,
              "Maximum number of link-local flows allowed per VM")
             ("FLOWS.trace_enable", opt::value<bool>(),
              "Enable flow tracing")
+            ("FLOWS.add_tokens", opt::value<uint32_t>(),
+             "Number of add-tokens")
+            ("FLOWS.ksync_tokens", opt::value<uint32_t>(),
+             "Number of ksync-tokens")
+            ("FLOWS.del_tokens", opt::value<uint32_t>(),
+             "Number of delete-tokens")
+            ("FLOWS.update_tokens", opt::value<uint32_t>(),
+             "Number of update-tokens")
             ;
         options_.add(flow);
     }

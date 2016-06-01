@@ -96,12 +96,8 @@ public:
     virtual const string GetStateName() const {
         return "";
     }
-    virtual void UpdateRefCount(int count) const { }
-    virtual tbb::atomic<int> GetRefCount() const {
-        tbb::atomic<int> count;
-        count = 0;
-        return count;
-    }
+    virtual void UpdateTotalPathCount(int count) const { }
+    virtual int GetTotalPathCount() const { return 0; }
     virtual void UpdatePrimaryPathCount(int count) const { }
     virtual int GetPrimaryPathCount() const { return 0; }
     virtual bool IsRegistrationRequired() const { return true; }
@@ -778,12 +774,12 @@ protected:
     }
 
     void VerifyStaticRouteCount(uint32_t count) {
-        ConcurrencyScope scope("bgp::Config");
+        ConcurrencyScope scope("bgp::Uve");
         TASK_UTIL_EXPECT_EQ(count, bgp_server_->num_static_routes());
     }
 
     void VerifyDownStaticRouteCount(uint32_t count) {
-        ConcurrencyScope scope("bgp::Config");
+        ConcurrencyScope scope("bgp::Uve");
         TASK_UTIL_EXPECT_EQ(count, bgp_server_->num_down_static_routes());
     }
 

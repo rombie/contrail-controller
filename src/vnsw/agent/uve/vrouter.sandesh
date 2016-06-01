@@ -166,7 +166,6 @@ struct AgentDropStats {
     29: u64   ds_pcow_fail;
     30: u64   ds_flood;
     31: u64   ds_mcast_clone_fail;
-    32: u64   ds_composite_invalid_interface;
     33: u64   ds_rewrite_fail;
     34: u64   ds_misc;
     35: u64   ds_invalid_packet;
@@ -181,7 +180,8 @@ struct AgentDropStats {
     44: u64   ds_arp_no_where_to_go;
     45: u64   ds_arp_no_route;
     46: u64   ds_l2_no_route;
-    47: u64   ds_arp_reply_no_route;
+    48: u64   ds_vlan_fwd_tx;
+    49: u64   ds_vlan_fwd_enq;
 }
 
 /**
@@ -261,6 +261,9 @@ struct VrouterStatsAgent {  // Agent stats
     22: optional u64 aged_flows; 
     23: optional u64 aged_flows_dp; 
     24: optional u64 active_flows_dp; 
+    47: optional u64 flow_export_disable_drops; /* Number of flow samples dropped because of disable of flow exports */ 
+    48: optional u64 flow_export_sampling_drops; /* Number of flow samples dropped after subjecting them to sampling algorithm */
+    49: optional u64 flow_export_drops; /* Number of flows which are never exported */
 
         //Dataplane stats
     25: optional u64 in_kernel_ipc_msgs; 
@@ -335,6 +338,9 @@ struct NodeStatus {
     6: optional list<process_info.DiskPartitionUsageStats> disk_usage_info (tags="")
     7: optional string description
     8: optional list<string> all_core_file_list
+   10: optional list<cpuinfo.ProcessCpuInfo> process_mem_cpu_usage (aggtype="union")
+   11: optional cpuinfo.SystemMemCpuUsage system_mem_cpu_usage
+   12: optional cpuinfo.SystemCpuInfo system_cpu_info
 }
 
 /**

@@ -300,12 +300,7 @@ void FlowStatsCollector::UpdateStatsAndExportFlow(FlowExportInfo *info,
 void FlowStatsCollector::FlowDeleteEnqueue(FlowExportInfo *info,
                                            uint64_t t) {
     FlowEntry *fe = info->flow();
-    uint16_t idx = 0;
-    if (fe->flow_table()) {
-        idx = fe->flow_table()->table_index();
-    }
-    agent_uve_->agent()->pkt()->get_flow_proto()->DeleteFlowRequest
-        (fe->key(), true, idx);
+    agent_uve_->agent()->pkt()->get_flow_proto()->DeleteFlowRequest(fe);
     info->set_delete_enqueue_time(t);
     FlowEntry *rflow = info->reverse_flow();
     if (rflow) {
@@ -658,7 +653,7 @@ void FlowStatsCollector::ExportFlow(FlowExportInfo *info,
     FlowEntry *flow = info->flow();
     FlowEntry *rflow = info->reverse_flow();
 
-    uint32_t cfg_rate = agent_uve_->agent()->oper_db()->global_vrouter()->
+    int32_t cfg_rate = agent_uve_->agent()->oper_db()->global_vrouter()->
                         flow_export_rate();
     /* We should always try to export flows with Action as LOG regardless of
      * configured flow-export-rate */
@@ -676,9 +671,14 @@ void FlowStatsCollector::ExportFlow(FlowExportInfo *info,
      * a. if Log is not configured as action for flow
      * b. actual flow-export-rate is >= 80% of configured flow-export-rate
      * c. diff_bytes is lesser than the threshold
+     * d. Flow-sampling is not disabled
+     * e. Flow-sample does not have teardown time or the sample for the flow is
+     *    not exported earlier.
      */
     bool subject_flows_to_algorithm = false;
     if (!info->IsActionLog() && (diff_bytes < threshold()) &&
+        (cfg_rate != GlobalVrouter::kDisableSampling) &&
+        (!info->teardown_time() || !info->exported_atleast_once()) &&
         flow_stats_manager_->flow_export_rate() >= ((double)cfg_rate) * 0.8) {
         subject_flows_to_algorithm = true;
     }
@@ -692,6 +692,14 @@ void FlowStatsCollector::ExportFlow(FlowExportInfo *info,
             flow_stats_manager_->flow_export_sampling_drops_++;
             info->set_prev_diff_bytes(diff_bytes);
             info->set_prev_diff_packets(diff_pkts);
+            /* The second part of the if condition below is not required but
+             * added for better readability. It is not required because
+             * exported_atleast_once() will always be false if teardown time is
+             * set. If both teardown_time and exported_atleast_once are true we
+             * will never be here */
+            if (info->teardown_time() && !info->exported_atleast_once()) {
+                flow_stats_manager_->flow_export_drops_++;
+            }
             return;
         }
         /* Normalize the diff_bytes and diff_packets reported using the
@@ -706,6 +714,9 @@ void FlowStatsCollector::ExportFlow(FlowExportInfo *info,
     /* Reset diff stats since flow will be exported now */
     info->set_prev_diff_bytes(0);
     info->set_prev_diff_packets(0);
+
+    /* Mark the flow as exported */
+    info->set_exported_atleast_once(true);
 
     FlowLogData &s_flow = msg_list_[GetFlowMsgIdx()];
 
@@ -745,6 +756,9 @@ void FlowStatsCollector::ExportFlow(FlowExportInfo *info,
     GetFlowSandeshActionParams(flow->data().match_p.action_info, action_str);
     s_flow.set_action(action_str);
     s_flow.set_setup_time(info->setup_time());
+    if (info->teardown_time()) {
+        s_flow.set_teardown_time(info->teardown_time());
+    }
     SetUnderlayInfo(info, s_flow);
     info->set_changed(false);
 

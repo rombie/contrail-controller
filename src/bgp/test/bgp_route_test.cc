@@ -42,12 +42,8 @@ public:
     virtual const string GetStateName() const { return "Established"; }
     BgpProto::BgpPeerType PeerType() const { return peer_type_; }
     virtual uint32_t bgp_identifier() const { return address_.to_ulong(); }
-    virtual void UpdateRefCount(int count) const { }
-    virtual tbb::atomic<int> GetRefCount() const {
-        tbb::atomic<int> count;
-        count = 0;
-        return count;
-    }
+    virtual void UpdateTotalPathCount(int count) const { }
+    virtual int GetTotalPathCount() const { return 0; }
     virtual void UpdatePrimaryPathCount(int count) const { }
     virtual int GetPrimaryPathCount() const { return 0; }
     virtual bool IsRegistrationRequired() const { return true; }
@@ -128,6 +124,48 @@ TEST_F(BgpRouteTest, Paths) {
     route.RemovePath(&peer);
     route.RemovePath(&peer);
     route.RemovePath(&peer);
+}
+
+//
+// Path with shorter AS Path is better - even when building ECMP nexthops.
+//
+TEST_F(BgpRouteTest, PathCompareAsPathLength) {
+    boost::system::error_code ec;
+    BgpAttrDB *db = server_.attr_db();
+
+    BgpAttrSpec spec1;
+    BgpAttrMultiExitDisc med_spec1(100);
+    spec1.push_back(&med_spec1);
+    AsPathSpec aspath_spec1;
+    AsPathSpec::PathSegment *ps1 = new AsPathSpec::PathSegment;
+    ps1->path_segment_type = AsPathSpec::PathSegment::AS_SEQUENCE;
+    ps1->path_segment.push_back(64512);
+    ps1->path_segment.push_back(64512);
+    aspath_spec1.path_segments.push_back(ps1);
+    spec1.push_back(&aspath_spec1);
+    BgpAttrPtr attr1 = db->Locate(spec1);
+    PeerMock peer1(BgpProto::EBGP, Ip4Address::from_string("10.1.1.2", ec));
+    BgpPath path1(&peer1, BgpPath::BGP_XMPP, attr1, 0, 0);
+
+    BgpAttrSpec spec2;
+    BgpAttrMultiExitDisc med_spec2(100);
+    spec2.push_back(&med_spec2);
+    AsPathSpec aspath_spec2;
+    AsPathSpec::PathSegment *ps2 = new AsPathSpec::PathSegment;
+    ps2->path_segment_type = AsPathSpec::PathSegment::AS_SEQUENCE;
+    ps2->path_segment.push_back(64512);
+    ps2->path_segment.push_back(64512);
+    ps2->path_segment.push_back(64512);
+    aspath_spec2.path_segments.push_back(ps2);
+    spec2.push_back(&aspath_spec2);
+    BgpAttrPtr attr2 = db->Locate(spec2);
+    PeerMock peer2(BgpProto::EBGP, Ip4Address::from_string("10.1.1.1", ec));
+    BgpPath path2(&peer2, BgpPath::BGP_XMPP, attr2, 0, 0);
+
+    EXPECT_EQ(-1, path1.PathCompare(path2, false));
+    EXPECT_EQ(1, path2.PathCompare(path1, false));
+    EXPECT_EQ(-1, path1.PathCompare(path2, true));
+    EXPECT_EQ(1, path2.PathCompare(path1, true));
 }
 
 //
@@ -352,6 +390,7 @@ TEST_F(BgpRouteTest, PathCompareClusterList2) {
 
 //
 // Path with lower med is better.
+// Paths with different MEDs are not considered ECMP.
 //
 TEST_F(BgpRouteTest, PathCompareMed1) {
     boost::system::error_code ec;
@@ -387,12 +426,15 @@ TEST_F(BgpRouteTest, PathCompareMed1) {
 
     EXPECT_EQ(-1, path1.PathCompare(path2, false));
     EXPECT_EQ(1, path2.PathCompare(path1, false));
+    EXPECT_EQ(-1, path1.PathCompare(path2, true));
+    EXPECT_EQ(1, path2.PathCompare(path1, true));
 }
 
 //
 // Paths with different neighbor as are not compared w.r.t med.
 // Path with higher med happens to win since it has lower router id.
 // Both paths have as paths, but the leftmost as is different.
+// Paths with different MEDs are considered ECMP as leftmost AS is different.
 //
 TEST_F(BgpRouteTest, PathCompareMed2) {
     boost::system::error_code ec;
@@ -428,12 +470,15 @@ TEST_F(BgpRouteTest, PathCompareMed2) {
 
     EXPECT_EQ(1, path1.PathCompare(path2, false));
     EXPECT_EQ(-1, path2.PathCompare(path1, false));
+    EXPECT_EQ(0, path1.PathCompare(path2, true));
+    EXPECT_EQ(0, path2.PathCompare(path1, true));
 }
 
 //
 // Paths with different neighbor as are not compared w.r.t med.
 // Path with higher med happens to win since it has lower router id.
 // Both paths have nil as path.
+// Paths with different MEDs are considered ECMP as leftmost AS is 0.
 //
 TEST_F(BgpRouteTest, PathCompareMed3) {
     boost::system::error_code ec;
@@ -459,12 +504,15 @@ TEST_F(BgpRouteTest, PathCompareMed3) {
 
     EXPECT_EQ(1, path1.PathCompare(path2, false));
     EXPECT_EQ(-1, path2.PathCompare(path1, false));
+    EXPECT_EQ(0, path1.PathCompare(path2, true));
+    EXPECT_EQ(0, path2.PathCompare(path1, true));
 }
 
 //
 // Paths with 0 neighbor as are not compared w.r.t med.
 // Path with higher med happens to win since it has lower router id.
 // First segment in both paths is an AS_SET.
+// Paths with different MEDs are considered ECMP as leftmost AS is 0.
 //
 TEST_F(BgpRouteTest, PathCompareMed4) {
     boost::system::error_code ec;
@@ -500,6 +548,8 @@ TEST_F(BgpRouteTest, PathCompareMed4) {
 
     EXPECT_EQ(1, path1.PathCompare(path2, false));
     EXPECT_EQ(-1, path2.PathCompare(path1, false));
+    EXPECT_EQ(0, path1.PathCompare(path2, true));
+    EXPECT_EQ(0, path2.PathCompare(path1, true));
 }
 
 //

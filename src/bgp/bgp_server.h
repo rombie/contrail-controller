@@ -29,6 +29,7 @@ class BgpGlobalSystemConfig;
 class BgpMembershipManager;
 class BgpOListDB;
 class BgpPeer;
+class BgpRouterState;
 class BgpSessionManager;
 class ClusterListDB;
 class CommunityDB;
@@ -244,6 +245,7 @@ public:
     BgpGlobalSystemConfig *global_config() { return global_config_.get(); }
     bool disable_gr() const { return disable_gr_; }
     void set_disable_gr(bool disable_gr) { disable_gr_ = disable_gr; }
+    bool CollectStats(BgpRouterState *state, bool first) const;
 
 private:
     class ConfigUpdater;
@@ -257,6 +259,8 @@ private:
     typedef std::map<TcpSession::Endpoint, BgpPeer *> EndpointToBgpPeerList;
 
     void RoutingInstanceMgrDeletionComplete(RoutingInstanceMgr *mgr);
+    uint32_t SendTableStatsUve(bool first) const;
+    void FillPeerStats(const BgpPeer *peer) const;
 
     // base config variables
     tbb::spin_rw_mutex rw_mutex_;
