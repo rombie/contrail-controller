@@ -418,6 +418,9 @@ protected:
             this->send_eor = true;
         }
 
+        // TODO: Enable tests for EoR.
+        bool should_send_eor() const { return true || send_eor; }
+
         test::NetworkAgentMock *agent;
         BgpPeerTest *peer;
         vector<int> instance_ids;
@@ -1280,7 +1283,7 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
         test::NetworkAgentMock *agent = gr_test_param.agent;
-        if (gr_test_param.send_eor && agent->IsEstablished()) {
+        if (gr_test_param.should_send_eor() && agent->IsEstablished()) {
             agent->SendEorMarker();
         } else {
             PeerCloseManager *pc =
@@ -1412,7 +1415,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
-        if (gr_test_param.send_eor && peer->IsReady()) {
+        if (gr_test_param.should_send_eor() && peer->IsReady()) {
             peer->SendEorMarker();
         } else {
             PeerCloseManager *pc =
@@ -1624,7 +1627,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_agents) {
         test::NetworkAgentMock *agent = gr_test_param.agent;
-        if (gr_test_param.send_eor)
+        if (gr_test_param.should_send_eor())
             agent->SendEorMarker();
         else
             FireGRTimer(bgp_xmpp_channels_[agent->id()]);
@@ -1634,7 +1637,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
-        if (gr_test_param.send_eor)
+        if (gr_test_param.should_send_eor())
             peer->SendEorMarker();
         else
             FireGRTimer(bgp_server_peers_[peer->id()]);
