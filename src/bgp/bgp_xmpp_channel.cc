@@ -195,7 +195,7 @@ public:
     }
 
     virtual void ReceiveEndOfRIB(Address::Family family) {
-        close_manager()->ProcessEORMarkerReceived(family);
+        parent_->ReceiveEndOfRIB(family);
     }
 
     virtual void CustomClose() {
@@ -218,6 +218,7 @@ public:
         }
         parent_->routing_instances_.clear();
         parent_->rtarget_routes_.clear();
+        parent_->end_of_rib_timer_->Cancel();
     }
 
     virtual void CloseComplete() {
@@ -558,11 +559,19 @@ BgpXmppChannel::BgpXmppChannel(XmppChannel *channel, BgpServer *bgp_server,
       delete_in_progress_(false),
       deleted_(false),
       defer_peer_close_(false),
+      end_of_rib_timer_(NULL),
       membership_response_worker_(
             TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
             channel->GetTaskInstance(),
             boost::bind(&BgpXmppChannel::MembershipResponseHandler, this, _1)),
       lb_mgr_(new LabelBlockManager()) {
+    if (bgp_server) {
+        end_of_rib_timer_ = TimerManager::CreateTimer(*bgp_server->ioservice(),
+                                "EndOfRib timer",
+                                TaskScheduler::GetInstance()->GetTaskId(
+                                    "xmpp::StateMachine"),
+                                channel->GetTaskInstance());
+    }
     channel_->RegisterReceive(peer_id_,
          boost::bind(&BgpXmppChannel::ReceiveUpdate, this, _1));
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
@@ -583,6 +592,7 @@ BgpXmppChannel::~BgpXmppChannel() {
     assert(peer_->peer_close()->close_manager()->membership_state() !=
                PeerCloseManager::MEMBERSHIP_IN_USE);
     assert(routingtable_membership_request_map_.empty());
+    TimerManager::DeleteTimer(end_of_rib_timer_);
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
@@ -2366,6 +2376,38 @@ void BgpXmppChannel::ProcessSubscriptionRequest(
     }
 }
 
+void BgpXmppChannel::ReceiveEndOfRIB(Address::Family family) {
+    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+                 BGP_PEER_DIR_IN, "EndOfRib marker family " <<
+                                  Address::FamilyToString(family));
+    end_of_rib_timer_->Cancel();
+    peer_close_->close_manager()->ProcessEORMarkerReceived(family);
+}
+
+void BgpXmppChannel::EndOfRibTimerErrorHandler(string error_name,
+                                               string error_message) {
+    BGP_LOG_PEER(Timer, Peer(), SandeshLevel::SYS_CRIT, BGP_LOG_FLAG_ALL,
+                 BGP_PEER_DIR_NA,
+                 "Timer error: " << error_name << " " << error_message);
+}
+
+bool BgpXmppChannel::EndOfRibTimerExpired() {
+    ReceiveEndOfRIB(Address::UNSPEC);
+    return false;
+}
+
+void BgpXmppChannel::StartEndOfRibTimer() {
+    uint32_t timeout = kEndOfRibTime;
+    static char *time_str = getenv("XMPP_EOR_TIME");
+    if (time_str) {
+        timeout = strtoul(time_str, NULL, 0);
+    }
+    end_of_rib_timer_->Cancel();
+    end_of_rib_timer_->Start(timeout,
+        boost::bind(&BgpXmppChannel::EndOfRibTimerExpired, this),
+        boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
+}
+
 void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
     CHECK_CONCURRENCY("xmpp::StateMachine");
 
@@ -2394,7 +2436,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 
                 // Empty items-list can be considered as EOR Marker for all afis
                 if (item == 0) {
-                    peer_close_->ReceiveEndOfRIB(Address::UNSPEC);
+                    ReceiveEndOfRIB(Address::UNSPEC);
                     return;
                 }
                 for (; item; item = item.next_sibling()) {
@@ -2602,6 +2644,7 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
             if (bgp_xmpp_channel->peer_deleted())
                 return;
         }
+        bgp_xmpp_channel->StartEndOfRibTimer();
     } else if (state == xmps::NOT_READY) {
         if (it != channel_map_.end()) {
             bgp_xmpp_channel = (*it).second;

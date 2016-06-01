@@ -35,12 +35,14 @@ class XmppServer;
 class BgpXmppChannelMock;
 class BgpXmppChannelManager;
 class BgpXmppChannelManagerMock;
+class Timer;
 class XmppConfigUpdater;
 class XmppPeerInfoData;
 class XmppSession;
 
 class BgpXmppChannel {
 public:
+    static const int kEndOfRibTime = 30 * 1000; // 30s
     enum StatsIndex {
         RX,
         TX,
@@ -117,6 +119,7 @@ public:
     void SweepCurrentSubscriptions();
     void XMPPPeerInfoSend(const XmppPeerInfoData &peer_info) const;
     const XmppChannel *channel() const { return channel_; }
+    void StartEndOfRibTimer();
 
     uint64_t get_rx_route_reach() const { return stats_[RX].reach; }
     uint64_t get_rx_route_unreach() const { return stats_[RX].unreach; }
@@ -237,6 +240,10 @@ private:
     const BgpXmppChannelManager *manager() const { return manager_; }
     bool ProcessMembershipResponse(BgpTable *table,
              RoutingTableMembershipRequestMap::iterator loc);
+    void ReceiveEndOfRIB(Address::Family family);
+    void EndOfRibTimerErrorHandler(std::string error_name,
+                                   std::string error_message);
+    bool EndOfRibTimerExpired();
 
     xmps::PeerId peer_id_;
     BgpServer *bgp_server_;
@@ -254,6 +261,7 @@ private:
     bool delete_in_progress_;
     bool deleted_;
     bool defer_peer_close_;
+    Timer *end_of_rib_timer_;
     WorkQueue<std::string> membership_response_worker_;
     SubscribedRoutingInstanceList routing_instances_;
     PublishedRTargetRoutes rtarget_routes_;
