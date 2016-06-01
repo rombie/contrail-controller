@@ -34,6 +34,7 @@ public:
     virtual const int GetLongLivedGracefulRestartTime() const { return 1; }
     virtual bool IsReady() const { return is_ready_; }
     virtual void UnregisterPeer() { }
+    virtual void ReceiveEndOfRIB(Address::Family family) { }
     void TriggerUnregisterPeerCompletion() {
         EXPECT_TRUE(false);
     }
