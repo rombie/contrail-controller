@@ -129,7 +129,7 @@ protected:
     }
 
     void ResumePeerRibMembershipManager(BgpServer *server) {
-        server->membership_mgr()->SetQueueDisable(true);
+        server->membership_mgr()->SetQueueDisable(false);
         task_util::WaitForIdle();
     }
 
