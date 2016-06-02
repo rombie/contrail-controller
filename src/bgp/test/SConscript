@@ -548,6 +548,7 @@ test_suite = [
     bgp_export_uplist_test,
     bgp_ip_test1,
     bgp_ip_test2,
+    bgp_membership_test,
     bgp_msg_builder_test,
     bgp_multicast_test,
     bgp_peer_close_test,
