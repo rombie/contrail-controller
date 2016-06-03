@@ -427,6 +427,8 @@ void PeerCloseManager::MembershipRequestInternal() {
 //
 // Close process for this peer in terms of walking RibIns and RibOuts are
 // complete. Do the final cleanups necessary and notify interested party
+//
+// Retrun true if we are done using membership manager, false otherwise.
 bool PeerCloseManager::MembershipRequestCallback() {
     tbb::mutex::scoped_lock lock(mutex_);
     return MembershipRequestCompleteCallbackInternal();
@@ -439,9 +441,12 @@ bool PeerCloseManager::MembershipRequestCompleteCallbackInternal() {
     assert(membership_req_pending_ > 0);
 
     PEER_CLOSE_MANAGER_LOG("MembershipRequestCallback");
+    bool ret = false;
     if (--membership_req_pending_)
-        return false;
+        return ret;
 
+    // Indicate to the caller that we are done using the membership manager.
+    ret = true;
     set_membership_state(MEMBERSHIP_NONE);
 
     if (state_ == DELETE) {
@@ -452,13 +457,13 @@ bool PeerCloseManager::MembershipRequestCompleteCallbackInternal() {
         stats_.init++;
         close_again_ = false;
         non_graceful_ = false;
-        return true;
+        return ret;
     }
 
     // Process nested closures.
     if (close_again_) {
         CloseComplete();
-        return true;
+        return ret;
     }
 
     // If any GR stale timer has to be launched, then to wait for some time
@@ -475,7 +480,7 @@ bool PeerCloseManager::MembershipRequestCompleteCallbackInternal() {
             time = 0;
         StartRestartTimer(time);
         stats_.gr_timer++;
-        return true;
+        return ret;
     }
 
     // From LLGR_STALE state, switch to LLGR_TIMER state. Typically this would
@@ -494,11 +499,11 @@ bool PeerCloseManager::MembershipRequestCompleteCallbackInternal() {
             time = 0;
         StartRestartTimer(time);
         stats_.llgr_timer++;
-        return true;
+        return ret;
     }
 
     TriggerSweepStateActions();
-    return true;
+    return ret;
 }
 
 void PeerCloseManager::FillCloseInfo(BgpNeighborResp *resp) const {

@@ -225,10 +225,11 @@ private:
                                     const XmppStanza::XmppMessageIq *iq,
                                     bool add_change);
 
-    void RegisterTable(BgpTable *table, int instance_id);
-    void UnregisterTable(BgpTable *table);
+    void RegisterTable(int line, BgpTable *table, int instance_id);
+    void UnregisterTable(int line, BgpTable *table);
     bool MembershipResponseHandler(std::string table_name);
     void MembershipRequestCallback(BgpTable *table);
+    void ProcessPendingSubscriptions();
     void DequeueRequest(const std::string &table_name, DBRequest *request);
     bool XmppDecodeAddress(int af, const std::string &address,
                            IpAddress *addrp, bool zero_ok = false);
@@ -237,9 +238,10 @@ private:
     void FlushDeferQ(std::string vrf_name, std::string table_name);
     void ProcessDeferredSubscribeRequest(RoutingInstance *rt_instance,
                                          int instance_id);
-    void ClearStaledSubscription(SubscriptionState &sub_state);
+    void ClearStaledSubscription(std::string instance_name,
+                                 SubscriptionState &sub_state);
     const BgpXmppChannelManager *manager() const { return manager_; }
-    bool ProcessMembershipResponse(BgpTable *table,
+    bool ProcessMembershipResponse(std::string table_name,
              RoutingTableMembershipRequestMap::iterator loc);
     void ReceiveEndOfRIB(Address::Family family);
     void EndOfRibTimerErrorHandler(std::string error_name,

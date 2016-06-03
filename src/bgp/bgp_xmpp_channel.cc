@@ -1870,13 +1870,14 @@ bool BgpXmppChannel::ResumeClose() {
     return true;
 }
 
-void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
+void BgpXmppChannel::RegisterTable(int line, BgpTable *table, int instance_id) {
 
     // Defer if Membership manager is in use (by close manager).
     if (peer_close_->close_manager()->membership_state() ==
             PeerCloseManager::MEMBERSHIP_IN_USE) {
         BGP_LOG_PEER_TABLE(Peer(), SandeshLevel::SYS_DEBUG,
-                           BGP_LOG_FLAG_ALL, table, "RegisterTable deferred");
+                           BGP_LOG_FLAG_ALL, table, "RegisterTable deferred "
+                           "from :" << line);
         return;
     }
 
@@ -1889,13 +1890,14 @@ void BgpXmppChannel::RegisterTable(BgpTable *table, int instance_id) {
     channel_stats_.table_subscribe++;
 }
 
-void BgpXmppChannel::UnregisterTable(BgpTable *table) {
+void BgpXmppChannel::UnregisterTable(int line, BgpTable *table) {
 
     // Defer if Membership manager is in use (by close manager).
     if (peer_close_->close_manager()->membership_state() ==
             PeerCloseManager::MEMBERSHIP_IN_USE) {
         BGP_LOG_PEER_TABLE(Peer(), SandeshLevel::SYS_DEBUG,
-                           BGP_LOG_FLAG_ALL, table, "UnregisterTable deferred");
+                           BGP_LOG_FLAG_ALL, table, "UnregisterTable deferred "
+                           "from :" << line);
         return;
     }
 
@@ -1907,33 +1909,37 @@ void BgpXmppChannel::UnregisterTable(BgpTable *table) {
     channel_stats_.table_unsubscribe++;
 }
 
-bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
-    BgpTable *table = static_cast<BgpTable *>
-        (bgp_server_->database()->FindTable(table_name));
-    RoutingTableMembershipRequestMap::iterator loc =
-        routingtable_membership_request_map_.find(table_name);
+#define RegisterTable(table, id) RegisterTable(__LINE__, table, id)
+#define UnregisterTable(table) UnregisterTable(__LINE__, table)
 
-    if (peer_close_->close_manager()->membership_state() ==
-            PeerCloseManager::MEMBERSHIP_IN_USE) {
-        if (!Peer()->peer_close()->close_manager()->MembershipRequestCallback())
-            return true;
-
-        // Process pending membership request if one is pending for this table.
-        if (loc == routingtable_membership_request_map_.end())
-            return true;
-
-        MembershipRequestState state = loc->second;
+// Process all pending membership requests of various tables.
+void BgpXmppChannel::ProcessPendingSubscriptions() {
+    assert(peer_close_->close_manager()->membership_state() !=
+               PeerCloseManager::MEMBERSHIP_IN_USE);
+    BOOST_FOREACH(RoutingTableMembershipRequestMap::value_type &i,
+                  routingtable_membership_request_map_) {
+        BgpTable *table = static_cast<BgpTable *>(
+            bgp_server_->database()->FindTable(i.first));
+        MembershipRequestState state = i.second;
         if (state.current_req == SUBSCRIBE) {
-            bgp_server_->membership_mgr()->Register(peer_.get(), table,
-                                                    bgp_policy_,
-                                                    state.instance_id);
+            RegisterTable(table, state.instance_id);
         } else {
             assert(state.current_req == UNSUBSCRIBE);
-            bgp_server_->membership_mgr()->Unregister(peer_.get(), table);
+            UnregisterTable(table);
         }
+    }
+}
+
+bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
+    if (peer_close_->close_manager()->membership_state() ==
+            PeerCloseManager::MEMBERSHIP_IN_USE) {
+        if (Peer()->peer_close()->close_manager()->MembershipRequestCallback())
+            ProcessPendingSubscriptions();
         return true;
     }
 
+    RoutingTableMembershipRequestMap::iterator loc =
+        routingtable_membership_request_map_.find(table_name);
     if (loc == routingtable_membership_request_map_.end()) {
         BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_WARN,
                      BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
@@ -1962,7 +1968,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
         defer_peer_close_ = false;
         ResumeClose();
     } else {
-        ProcessMembershipResponse(table, loc);
+        ProcessMembershipResponse(table_name, loc);
     }
 
     // If Close manager is waiting to use membership, try now.
@@ -1973,8 +1979,10 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     return true;
 }
 
-bool BgpXmppChannel::ProcessMembershipResponse(BgpTable *table,
+bool BgpXmppChannel::ProcessMembershipResponse(string table_name,
         RoutingTableMembershipRequestMap::iterator loc) {
+    BgpTable *table = static_cast<BgpTable *>
+        (bgp_server_->database()->FindTable(table_name));
     if (!table) {
         routingtable_membership_request_map_.erase(loc);
         return true;
@@ -2140,6 +2148,10 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
             // Incrementor the iterator first as we expect the entry to be
             // soon removed.
             i++;
+            BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
+                         BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
+                         "Instance subscription " << name <<
+                         " is still stale and hence unsubscribed");
             ProcessSubscriptionRequest(name, NULL, false);
         } else {
             i++;
@@ -2148,8 +2160,15 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
 }
 
 // Clear staled subscription state as new subscription has been received.
-void BgpXmppChannel::ClearStaledSubscription(SubscriptionState &sub_state) {
-    sub_state.ClearStale();
+void BgpXmppChannel::ClearStaledSubscription(string instance_name,
+                                             SubscriptionState &sub_state) {
+    if (sub_state.IsStale()) {
+        BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
+                     BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
+                     "Instance subscription " << instance_name <<
+                     " stale flag is cleared");
+        sub_state.ClearStale();
+    }
 }
 
 void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,
@@ -2182,7 +2201,8 @@ void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,
         // During GR, we expect duplicate subscriptionr requests. Clear the
         // stale state, as agent did re-subscribe after restart.
         if (!ret.second) {
-            ClearStaledSubscription((*(ret.first)).second);
+            ClearStaledSubscription((*(ret.first)).first->name(),
+                                    (*(ret.first)).second);
             return;
         }
     } else {
@@ -2213,10 +2233,10 @@ void BgpXmppChannel::ProcessDeferredSubscribeRequest(RoutingInstance *instance,
         if (table->IsVpnTable() || table->family() == Address::RTARGET)
             continue;
 
-        RegisterTable(table, instance_id);
         MembershipRequestState state(SUBSCRIBE, instance_id);
         routingtable_membership_request_map_.insert(
             make_pair(table->name(), state));
+        RegisterTable(table, instance_id);
     }
 }
 
