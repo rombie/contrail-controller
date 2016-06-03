@@ -13,21 +13,22 @@ using namespace std;
 using namespace xmsm;
 
 XmppChannelMux::XmppChannelMux(XmppConnection *connection) 
-    : connection_(connection), rx_message_trace_cb_(NULL), closing_count_(0) {
+    : connection_(connection), rx_message_trace_cb_(NULL) {
+        closing_count_ = 0;
 }
 
 XmppChannelMux::~XmppChannelMux() {
 }
 
 void XmppChannelMux::Close() {
-    if (closing_count_)
-        return;
-    InitializeClosingCount();
-    connection_->Clear();
+    if (InitializeClosingCount())
+        connection_->Clear();
 }
 
 // Track clients who close gracefully. At the moment, only BGP cares about this.
-void XmppChannelMux::InitializeClosingCount() {
+bool XmppChannelMux::InitializeClosingCount() {
+    if (closing_count_)
+        return false;
 
     BOOST_FOREACH(const ReceiveCbMap::value_type &value, rxmap_) {
         switch (value.first) {
@@ -43,6 +44,8 @@ void XmppChannelMux::InitializeClosingCount() {
             break;
         }
     }
+
+    return true;
 }
 
 // Check if the channel is being closed (Graceful Restart)
@@ -202,7 +205,7 @@ void XmppChannelMux::HandleStateEvent(xmsm::XmState state) {
         // Event to create the peer on server
         XmppServer *server = static_cast<XmppServer *>(connection_->server());
         if (st == xmps::NOT_READY)
-            InitializeClosingCount();
+            (void) InitializeClosingCount();
         server->NotifyConnectionEvent(this, st);
     }
 }

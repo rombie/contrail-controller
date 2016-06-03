@@ -67,7 +67,7 @@ protected:
 
 private:
     void RegisterWriteReady(xmps::PeerId, SendReadyCb);
-    void InitializeClosingCount();
+    bool InitializeClosingCount();
 
     typedef std::map<xmps::PeerId, SendReadyCb> WriteReadyCbMap;
     typedef std::map<xmps::PeerId, ReceiveCb> ReceiveCbMap;

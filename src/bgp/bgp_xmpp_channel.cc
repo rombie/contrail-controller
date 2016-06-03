@@ -1928,7 +1928,7 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
                                                     bgp_policy_,
                                                     state.instance_id);
         } else {
-            assert(state.current_req = UNSUBSCRIBE);
+            assert(state.current_req == UNSUBSCRIBE);
             bgp_server_->membership_mgr()->Unregister(peer_.get(), table);
         }
         return true;

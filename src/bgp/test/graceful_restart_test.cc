@@ -769,10 +769,12 @@ void GracefulRestartTest::WaitForAgentToBeEstablished(
         test::NetworkAgentMock *agent) {
     TASK_UTIL_EXPECT_TRUE(agent->IsChannelReady());
     TASK_UTIL_EXPECT_TRUE(agent->IsEstablished());
+    TASK_UTIL_EXPECT_TRUE(bgp_xmpp_channels_[agent->id()]->Peer()->IsReady());
 }
 
 void GracefulRestartTest::WaitForPeerToBeEstablished(BgpPeerTest *peer) {
     TASK_UTIL_EXPECT_TRUE(peer->IsReady());
+    TASK_UTIL_EXPECT_TRUE(bgp_server_peers_[peer->id()]->IsReady());
 }
 
 ExtCommunitySpec *GracefulRestartTest::CreateRouteTargets() {
@@ -1268,6 +1270,10 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
             TASK_UTIL_EXPECT_FALSE(agent->IsEstablished());
             TASK_UTIL_EXPECT_EQ(TcpSession::EVENT_NONE,
                                 XmppStateMachineTest::get_skip_tcp_event());
+            if (gr_test_param.skip_tcp_event == TcpSession::EVENT_NONE) {
+                TASK_UTIL_EXPECT_FALSE(
+                        bgp_xmpp_channels_[agent->id()]->Peer()->IsReady());
+            }
 
             for (size_t i = 0; i < gr_test_param.instance_ids.size(); i++) {
                 int instance_id = gr_test_param.instance_ids[i];
@@ -1289,6 +1295,9 @@ void GracefulRestartTest::ProcessFlippingAgents(int &total_routes,
     // sent desired routes.
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_agents) {
         test::NetworkAgentMock *agent = gr_test_param.agent;
+        if (!agent->down())
+            WaitForAgentToBeEstablished(agent);
+
         if (gr_test_param.should_send_eor() && agent->IsEstablished()) {
             agent->SendEorMarker();
         } else {
@@ -1336,6 +1345,9 @@ void GracefulRestartTest::BgpPeerDown(BgpPeerTest *peer,
     TASK_UTIL_EXPECT_TRUE(peer->IsReady());
     peer->SetAdminState(true);
     TASK_UTIL_EXPECT_FALSE(peer->IsReady());
+
+    if (event == TcpSession::EVENT_NONE)
+        TASK_UTIL_EXPECT_FALSE(server_peer->IsReady());
 
     // Also delete the routes
     for (int i = 1; i <= n_instances_; i++)
@@ -1452,6 +1464,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     //  Verify that n_agents_ * n_instances_ * n_routes_ routes are received in
     //  agent in each instance
     VerifyReceivedXmppRoutes(total_routes);
+
     vector<test::NetworkAgentMock *> dont_unsubscribe =
         vector<test::NetworkAgentMock *>();
 

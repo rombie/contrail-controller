@@ -208,7 +208,7 @@ bool PeerCloseManager::GRTimerFired() const {
 
 void PeerCloseManager::ProcessEORMarkerReceived(Address::Family family) {
     if (GRTimerFired()) {
-        assert(state_ == GR_TIMER);
+        assert(state_ == GR_TIMER || state_ == LLGR_TIMER);
 
         if (family == Address::UNSPEC) {
             families_.clear();
