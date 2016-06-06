@@ -434,11 +434,6 @@ void BgpPeer::BGPPeerInfoSend(const BgpPeerInfoData &peer_info) const {
 }
 
 bool BgpPeer::CanUseMembershipManager() const {
-    if (!IsReady()) {
-        assert(!membership_req_pending_);
-        return true;
-    }
-
     if (membership_req_pending_)
         return false;
 
