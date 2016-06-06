@@ -474,14 +474,17 @@ void GracefulRestartTest::SetUp() {
         xmpp_servers_.push_back(new XmppServerTest(&evm_, XMPP_CONTROL_SERV));
         channel_managers_.push_back(new BgpXmppChannelManagerMock(
                                         xmpp_servers_[i], bgp_servers_[i]));
+
+        // Disable GR helper mode in non DUTs
+        if (i) {
+            bgp_servers_[i]->set_gr_helper_disable(true);
+            xmpp_servers_[i]->set_gr_helper_disable(true);
+        }
     }
 
     server_ = bgp_servers_[0];
     xmpp_server_ = xmpp_servers_[0];
     channel_manager_ = channel_managers_[0];
-
-    // Disable GR advertisement in DUT to prevent GR in non DUTs.
-    server_->set_disable_gr(true);
 
     master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
         BgpConfigManager::kMasterInstance, "", ""));

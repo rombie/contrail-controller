@@ -115,6 +115,11 @@ class BgpPeer::PeerClose : public IPeerClose {
     }
 
     bool IsGRReady() const {
+
+        // Check if GR helper mode is disabled.
+        if (peer_->server()->gr_helper_disable())
+            return false;
+
         // Check if GR is supported by the peer.
         if (peer_->gr_params().families.empty())
             return false;

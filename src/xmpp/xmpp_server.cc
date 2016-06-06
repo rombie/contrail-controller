@@ -63,6 +63,7 @@ XmppServer::XmppServer(EventManager *evm, const string &server_addr,
       log_uve_(false),
       auth_enabled_(config->auth_enabled),
       tcp_hold_time_(config->tcp_hold_time),
+      gr_helper_disable_(config->gr_helper_disable),
       connection_queue_(TaskScheduler::GetInstance()->GetTaskId("bgp::Config"),
           0, boost::bind(&XmppServer::DequeueConnection, this, _1)) {
 
@@ -124,8 +125,7 @@ class XmppConfigUpdater {
 public:
     explicit XmppConfigUpdater(XmppServer *server,
                                BgpConfigManager *config_manager) :
-            server_(server),
-            disable_gr_(getenv("XMPP_GR_DISABLE") != NULL) {
+            server_(server) {
         BgpConfigManager::Observers obs;
         obs.system= boost::bind(&XmppConfigUpdater::ProcessGlobalSystemConfig,
             this, _1, _2);
@@ -136,9 +136,6 @@ public:
 
     void ProcessGlobalSystemConfig(const BgpGlobalSystemConfig *system,
             BgpConfigManager::EventType event) {
-        if (disable_gr_)
-            return;
-
         config_.set_gr_time(system->gr_time());
         config_.set_llgr_time(system->llgr_time());
         config_.set_eor_time(system->eor_time());
@@ -147,7 +144,6 @@ public:
 
 private:
     XmppServer *server_;
-    bool disable_gr_;
     BgpGlobalSystemConfig config_;
 };
 
@@ -161,6 +157,7 @@ XmppServer::XmppServer(EventManager *evm, const string &server_addr)
       log_uve_(false),
       auth_enabled_(false),
       tcp_hold_time_(XmppChannelConfig::kTcpHoldTime),
+      gr_helper_disable_(false),
       xmpp_config_updater_(NULL),
       connection_queue_(TaskScheduler::GetInstance()->GetTaskId("bgp::Config"),
           0, boost::bind(&XmppServer::DequeueConnection, this, _1)) {
@@ -176,6 +173,7 @@ XmppServer::XmppServer(EventManager *evm)
       log_uve_(false),
       auth_enabled_(false),
       tcp_hold_time_(XmppChannelConfig::kTcpHoldTime),
+      gr_helper_disable_(false),
       connection_queue_(TaskScheduler::GetInstance()->GetTaskId("bgp::Config"),
           0, boost::bind(&XmppServer::DequeueConnection, this, _1)) {
 }
@@ -201,6 +199,11 @@ bool XmppServer::IsPeerCloseGraceful() const {
     // If the server is deleted, do not do graceful restart
     if (deleter()->IsDeleted())
         return false;
+
+    // Check if GR helper mode is disabled.
+    if (gr_helper_disable())
+        return false;
+
     return GetGracefulRestartTime() != 0;
 }
 

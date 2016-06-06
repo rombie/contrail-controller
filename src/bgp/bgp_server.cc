@@ -58,8 +58,6 @@ public:
 
     void ProcessGlobalSystemConfig(const BgpGlobalSystemConfig *system,
             BgpConfigManager::EventType event) {
-        if (server_->disable_gr())
-            return;
         server_->global_config()->set_gr_time(system->gr_time());
         server_->global_config()->set_llgr_time(system->llgr_time());
         server_->global_config()->set_eor_time(system->eor_time());
@@ -329,7 +327,7 @@ BgpServer::BgpServer(EventManager *evm)
       local_autonomous_system_(0),
       bgp_identifier_(0),
       hold_time_(0),
-      disable_gr_(getenv("BGP_GR_DISABLE") != NULL),
+      gr_helper_disable_(getenv("GR_HELPER_BGP_DISABLE") != NULL),
       lifetime_manager_(BgpObjectFactory::Create<BgpLifetimeManager>(this,
           TaskScheduler::GetInstance()->GetTaskId("bgp::Config"))),
       deleter_(new DeleteActor(this)),
