@@ -26,6 +26,9 @@ public:
         uint32_t add_tokens_;
         uint64_t add_failures_;
         uint64_t add_restarts_;
+        uint32_t ksync_tokens_;
+        uint64_t ksync_failures_;
+        uint64_t ksync_restarts_;
         uint32_t update_tokens_;
         uint64_t update_failures_;
         uint64_t update_restarts_;
@@ -125,6 +128,7 @@ public:
     ~AgentProfile();
     bool Init();
     void Shutdown();
+    void InitDone();
 
     bool TimerRun();
     void Log();

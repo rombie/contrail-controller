@@ -45,7 +45,8 @@ public:
     DiagTable* diag_table() const {
         return diag_table_;
     }
-
+    uint32_t HashValUdpSourcePort();
+    void FillOamPktHeader(OverlayOamPktData *pktdata, uint32_t vxlan_id);
 protected:
     Ip4Address sip_;
     Ip4Address dip_;
@@ -122,7 +123,7 @@ struct VxLanOamTlv{
 struct OverlayOamPktData{
    enum MsgType {
     OVERLAY_ECHO_REQUEST = 1,
-    OVERLAY_ECHO_REPLY = 1,
+    OVERLAY_ECHO_REPLY = 2
 
    };
    enum Returncode {
@@ -143,10 +144,10 @@ struct OverlayOamPktData{
    uint8_t return_subcode_;
    uint32_t org_handle_;
    uint32_t seq_no_;
-   boost::posix_time::ptime timesent_sec_;
-   boost::posix_time::ptime timesent_misec_;
-   boost::posix_time::ptime timerecv_sec_;
-   boost::posix_time::ptime timerecv_misec_;
+   uint32_t timesent_sec_;
+   uint32_t timesent_misec_;
+   uint32_t timerecv_sec_;
+   uint32_t timerecv_misec_;
    VxLanOamTlv vxlanoamtlv_;
 };
 #endif

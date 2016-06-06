@@ -6,13 +6,18 @@
 
 #include <boost/foreach.hpp>
 
+#include "sandesh/sandesh_types.h"
+#include "sandesh/sandesh.h"
+#include "sandesh/sandesh_trace.h"
 #include "base/task_annotations.h"
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_membership.h"
+#include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_ribout.h"
 #include "bgp/bgp_ribout_updates.h"
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_server.h"
+#include "bgp/bgp_table_types.h"
 #include "bgp/bgp_update_queue.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/path_resolver.h"
@@ -56,6 +61,7 @@ BgpTable::BgpTable(DB *db, const string &name)
     : RouteTable(db, name),
       rtinstance_(NULL),
       path_resolver_(NULL),
+      stats_(new BgpTableStats()),
       instance_delete_ref_(this, NULL) {
     primary_path_count_ = 0;
     secondary_path_count_ = 0;
@@ -628,7 +634,7 @@ void BgpTable::DestroyPathResolver() {
 }
 
 size_t BgpTable::GetPendingRiboutsCount(size_t *markers) const {
-    CHECK_CONCURRENCY("bgp::ShowCommand", "bgp::Config");
+    CHECK_CONCURRENCY("bgp::ShowCommand", "bgp::Config", "bgp::Uve");
     size_t count = 0;
     *markers = 0;
 
@@ -674,4 +680,12 @@ bool BgpTable::IsAggregateRoute(const BgpRoute *route) const {
 // Check whether the route is contributing route to aggregate route
 bool BgpTable::IsContributingRoute(const BgpRoute *route) const {
     return routing_instance()->IsContributingRoute(this, route);
+}
+
+void BgpTable::FillRibOutStatisticsInfo(
+    vector<ShowRibOutStatistics> *sros_list) const {
+    BOOST_FOREACH(const RibOutMap::value_type &value, ribout_map_) {
+        const RibOut *ribout = value.second;
+        ribout->FillStatisticsInfo(sros_list);
+    }
 }

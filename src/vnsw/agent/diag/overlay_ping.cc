@@ -13,6 +13,8 @@
 
 using namespace boost::posix_time;
 extern void time_duration_to_string(time_duration &td, std::string &str);
+const MacAddress OverlayPing::in_dst_mac_(0x00, 0x00, 0x5E, 0x90, 0x00, 0x01);
+const MacAddress OverlayPing::in_source_mac_(0x00, 0x00, 0x5E, 0x90, 0x00, 0x02);
 
 OverlayPing::OverlayPing(const OverlayPingReq *ping_req, DiagTable *diag_table):
    DiagEntry(ping_req->get_source_ip(), ping_req->get_dest_ip(),
@@ -29,8 +31,8 @@ OverlayPing::OverlayPing(const OverlayPingReq *ping_req, DiagTable *diag_table):
 /*
  * Get the L2 Route entry to find the Tunnel NH
  */
-static BridgeRouteEntry * L2RouteGet(VxLanId* vxlan, string remotemac,
-                                     Agent *agent)
+BridgeRouteEntry * 
+OverlayPing::L2RouteGet(VxLanId* vxlan, string remotemac, Agent *agent)
 {
     string vrf_name;
     const VrfNH *vrf_nh = dynamic_cast<const VrfNH *>(vxlan->nexthop());
@@ -74,7 +76,7 @@ void OverlayPingReq::HandleRequest() const {
 
     uint8_t proto = get_protocol();
     if (proto != IPPROTO_TCP && proto != IPPROTO_UDP) {
-        err_str = "Invalid protocol. Valid Protocols are TCP and UDP";
+        err_str = "Invalid protocol. Valid Protocols are TCP & UDP";
         goto error;
     }
 
@@ -92,7 +94,8 @@ void OverlayPingReq::HandleRequest() const {
         goto error;
     }
 
-    BridgeRouteEntry *rt = L2RouteGet(vxlan, get_vm_remote_mac(), agent);
+    BridgeRouteEntry *rt = OverlayPing::L2RouteGet(vxlan, get_vm_remote_mac(), 
+                                                   agent);
     if (!rt) {
         err_str = "Invalid remote mac";
         goto error;
@@ -113,18 +116,6 @@ OverlayPing::~OverlayPing() {
 
 }
 
-void OverlayPing::FillOamPktHeader(OverlayOamPktData *pktdata) {
-   pktdata->msg_type_ = AgentDiagPktData::DIAG_REQUEST;
-   pktdata->reply_mode_ = OverlayOamPktData::REPLY_OVERLAY_SEGMENT;
-   pktdata->org_handle_ = htons(key_);
-   pktdata->seq_no_ = htonl(seq_no_);
-   pktdata->timesent_misec_ = microsec_clock::universal_time();
-   pktdata->timesent_sec_ = second_clock::universal_time();
-   pktdata->vxlanoamtlv_.type_ = AgentDiagPktData::DIAG_REQUEST;
-   uint32_t vxlan_id = diag_table_->agent()->vn_table()->Find(vn_uuid_)->GetVxLanId();
-   pktdata->vxlanoamtlv_.vxlan_id_ = htonl(vxlan_id);
-   pktdata->vxlanoamtlv_.sip_ = sip_;
-}
 /*
  * Creat Overlay VXlan packet.
  * Set the Route alert bit to indicate Overlay OAM packet
@@ -151,16 +142,16 @@ void OverlayPing::SendRequest() {
 
     tunneldst = *nh->GetDip();
     tunnelsrc = *nh->GetSip();
-    len_ = KOverlayPingHdrLength + data_len_;
+    len_ = kOverlayUdpHdrLength + data_len_;
     boost::shared_ptr<PktInfo> pkt_info(new PktInfo(agent, len_,
                                                         PktHandler::DIAG, 0));
     uint8_t *buf = pkt_info->packet_buffer()->data();
     memset(buf, 0, len_);
-
-    OverlayOamPktData *pktdata = (OverlayOamPktData *)(buf + KOverlayPingHdrLength);
+    OverlayOamPktData *pktdata = NULL;
+    pktdata = (OverlayOamPktData *)(buf + kOverlayUdpHdrLength);
     memset(pktdata, 0, sizeof(OverlayOamPktData));
 
-    FillOamPktHeader(pktdata);
+    FillOamPktHeader(pktdata, vxlan_id);
     DiagPktHandler *pkt_handler = new DiagPktHandler(diag_table_->agent(), pkt_info,
                                    *(diag_table_->agent()->event_manager())->io_service());
     // FIll outer header
@@ -169,37 +160,35 @@ void OverlayPing::SendRequest() {
                         ETHERTYPE_IP);
     pkt_info->ip = (struct ip *)(pkt_info->eth +1);
     pkt_info->transp.udp = (struct udphdr *)(pkt_info->ip + 1);
-
-    uint8_t len = data_len_+2 * sizeof(udphdr)+sizeof(VxlanHdr)+
+    uint8_t  len;
+    len = data_len_+2 * sizeof(udphdr)+sizeof(VxlanHdr)+
                             sizeof(struct ip) + sizeof(struct ether_header);
-
-    pkt_handler->UdpHdr(len, ntohl(tunnelsrc.to_ulong()), HashValUdpSourcePort(),
-                     ntohl(tunneldst.to_ulong()), VXLAN_UDP_DEST_PORT);
+    pkt_handler->UdpHdr(len, ntohl(tunnelsrc.to_ulong()), HashValUdpSourcePort(), 
+                        ntohl(tunneldst.to_ulong()), VXLAN_UDP_DEST_PORT);
 
     pkt_handler->IpHdr(len + sizeof(struct ip), ntohl(tunnelsrc.to_ulong()),
                        ntohl(tunneldst.to_ulong()), IPPROTO_UDP,
                        DEFAULT_IP_ID, DEFAULT_IP_TTL );
-    
+   // Fill VxLan Header  
     VxlanHdr *vxlanhdr = (VxlanHdr *)(buf + sizeof(udphdr)+ sizeof(struct ip)
                                    + sizeof(struct ether_header));
-    vxlanhdr->vxlan_id =  ntohl(vxlanhdr->vxlan_id);
-    vxlanhdr->reserved = ntohl(KVxlanRABit | KVxlanIBit);
+    vxlanhdr->vxlan_id =  ntohl(vxlan_id << 8);
+    vxlanhdr->reserved = ntohl(kVxlanRABit | kVxlanIBit);
 
     //Fill  inner packet details.
     pkt_info->eth = (struct ether_header *)(vxlanhdr + 1);
 
-    pkt_handler->EthHdr(agent->vhost_interface()->mac(), agent->vrrp_mac(),
+    pkt_handler->EthHdr(in_source_mac_, in_dst_mac_,
                         ETHERTYPE_IP);
 
     pkt_info->ip = (struct ip *)(pkt_info->eth +1);
-    pkt_info->transp.udp = (struct udphdr *)(pkt_info->ip + 1);
     Ip4Address dip = Ip4Address::from_string("127.0.0.1", ec);
+    pkt_info->transp.udp = (struct udphdr *)(pkt_info->ip + 1);
     len = data_len_+sizeof(struct udphdr);
-    pkt_handler->UdpHdr(len, ntohl(sip_.to_ulong()), sport_,
-                        ntohl(dip.to_ulong()), dport_);
-
+    pkt_handler->UdpHdr(len, sip_.to_ulong(), sport_, dip.to_ulong(), 
+                        VXLAN_UDP_DEST_PORT);
     pkt_handler->IpHdr(len + sizeof(struct ip), ntohl(sip_.to_ulong()),
-                       ntohl(dip.to_ulong()), IPPROTO_UDP,
+                       ntohl(dip.to_ulong()), proto_, 
                        DEFAULT_IP_ID, DEFAULT_IP_TTL);
     //pkt_handler->SetDiagChkSum();
     pkt_handler->pkt_info()->set_len(len_);
@@ -218,7 +207,11 @@ void OverlayPing::HandleReply(DiagPktHandler *handler) {
     PingResp *resp = new PingResp();
     OverlayOamPktData *pktdata = (OverlayOamPktData*) handler->GetData();
     resp->set_seq_no(ntohl(pktdata->seq_no_));
-    time_duration rtt = microsec_clock::universal_time() - pktdata->timesent_misec_;
+    boost::posix_time::ptime time = microsec_clock::universal_time(); 
+    boost::posix_time::time_duration td = time.time_of_day();
+    uint64_t senttime = seconds(pktdata->timesent_sec_).total_microseconds() +
+                 pktdata->timesent_misec_;
+    time_duration  rtt= microseconds(td.total_microseconds() -  senttime);
     avg_rtt_ += rtt;
     std::string rtt_str;
     time_duration_to_string(rtt, rtt_str);
@@ -256,17 +249,5 @@ if (pkt_lost_count_ != GetMaxAttempts()) {
     resp->set_pkt_loss(pkt_loss_percent);
     resp->set_context(context_);
     resp->Response();
-}
-
-
-uint32_t OverlayPing::HashValUdpSourcePort() {
-    std::size_t seed = 0;
-    uint32_t udpproto = IPPROTO_UDP;
-    boost::hash_combine(seed, sip_.to_ulong());
-    boost::hash_combine(seed, dip_.to_ulong());
-    boost::hash_combine(seed, udpproto);
-    boost::hash_combine(seed, sport_);
-    boost::hash_combine(seed, dport_);
-    return seed;
 }
 

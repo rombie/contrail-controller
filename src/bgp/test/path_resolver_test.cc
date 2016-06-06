@@ -59,12 +59,8 @@ public:
         return htonl(address_.to_ulong());
     }
     virtual const std::string GetStateName() const { return ""; }
-    virtual void UpdateRefCount(int count) const { }
-    virtual tbb::atomic<int> GetRefCount() const {
-        tbb::atomic<int> count;
-        count = 0;
-        return count;
-    }
+    virtual void UpdateTotalPathCount(int count) const { }
+    virtual int GetTotalPathCount() const { return 0; }
     virtual void UpdatePrimaryPathCount(int count) const { }
     virtual int GetPrimaryPathCount() const { return 0; }
 
@@ -1839,6 +1835,68 @@ TYPED_TEST(PathResolverTest, SinglePrefixWithMultipathAndEcmp2) {
 
     this->DeleteBgpPath(bgp_peer1, "blue", this->BuildPrefix(1));
     this->DeleteBgpPath(bgp_peer2, "blue", this->BuildPrefix(1));
+}
+
+//
+// Do not resolve BGP path with prefix which is same as nexthop.
+// Add XMPP path before BGP path.
+//
+TYPED_TEST(PathResolverTest, Recursion1) {
+    if (this->GetFamily() == Address::INET && !nexthop_family_is_inet)
+        return;
+    if (this->GetFamily() == Address::INET6 && nexthop_family_is_inet)
+        return;
+
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *xmpp_peer1 = this->xmpp_peer1_;
+
+    this->AddXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+    this->AddBgpPath(bgp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+
+    task_util::WaitForIdle();
+    this->VerifyPathNoExists("blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"));
+
+    this->DeleteBgpPath(bgp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
+    this->DeleteXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
+}
+
+//
+// Do not resolve BGP path with prefix which is same as nexthop.
+// Add BGP path before XMPP path.
+//
+TYPED_TEST(PathResolverTest, Recursion2) {
+    if (this->GetFamily() == Address::INET && !nexthop_family_is_inet)
+        return;
+    if (this->GetFamily() == Address::INET6 && nexthop_family_is_inet)
+        return;
+
+    PeerMock *bgp_peer1 = this->bgp_peer1_;
+    PeerMock *xmpp_peer1 = this->xmpp_peer1_;
+
+    this->AddBgpPath(bgp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildHostAddress(bgp_peer1->ToString()));
+    this->AddXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+
+    task_util::WaitForIdle();
+    this->VerifyPathNoExists("blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildNextHopAddress("172.16.1.1"));
+
+    this->DeleteXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
+    this->DeleteBgpPath(bgp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 32));
 }
 
 //

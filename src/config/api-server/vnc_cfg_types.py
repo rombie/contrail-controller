@@ -346,7 +346,7 @@ class InstanceIpServer(Resource, InstanceIp):
             if not cls._is_gateway_ip(vn_dict, req_ip):
                 return (False, (403, 'Ip address already in use'))
             elif cls._vmi_has_vm_ref(db_conn, obj_dict):
-                return (False, 
+                return (False,
                     (403, 'Gateway IP cannot be used by VM port'))
         # end if request has ip addr
 
@@ -394,7 +394,7 @@ class InstanceIpServer(Resource, InstanceIp):
 
         ok, result = cls.dbe_read(db_conn, 'virtual-network',
                                   vn_uuid,
-                                  obj_fields=['network_ipam-refs'])
+                                  obj_fields=['network_ipam_refs'])
         if not ok:
             return ok, result
 
@@ -811,7 +811,6 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
         global_asn = config.get('prop:autonomous_system')
         if not global_asn:
             return (True, '')
-        global_asn = json.loads(global_asn)
         rt_dict = obj_dict.get('route_target_list')
         if not rt_dict:
             return (True, '')
@@ -1071,7 +1070,10 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
 
     @classmethod
     def ip_alloc(cls, vn_fq_name, subnet_name, count, family=None):
-        ip_version = 6 if family == 'v6' else 4
+        if family:
+            ip_version = 6 if family == 'v6' else 4
+        else:
+            ip_version = None
         ip_list = [cls.addr_mgmt.ip_alloc_req(vn_fq_name, sub=subnet_name,
                                               asked_ip_version=ip_version,
                                               alloc_id=str(uuid.uuid4()))
@@ -1855,4 +1857,3 @@ class RouteAggregateServer(Resource, RouteAggregate):
         return cls._check(obj_dict, db_conn)
 
 # end class RouteAggregateServer
-

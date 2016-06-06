@@ -27,7 +27,7 @@ from analytics.ttypes import \
     NodeStatusUVE, NodeStatus
 from pysandesh.connection_info import ConnectionState
 from analytics.process_info.ttypes import \
-    ProcessStatus, ProcessState, ProcessInfo, DiskPartitionUsageStats
+    ProcessStatus, ProcessState, ProcessInfo
 from analytics.process_info.constants import \
     ProcessStateNames
 
@@ -41,7 +41,7 @@ class AnalyticsEventManager(EventManager):
         self.node_type = 'contrail-analytics'
         self.module = Module.ANALYTICS_NODE_MGR
         self.module_id = ModuleNames[self.module]
-        self.supervisor_serverurl = "unix:///tmp/supervisord_analytics.sock"
+        self.supervisor_serverurl = "unix:///var/run/supervisord_analytics.sock"
         self.add_current_process()
         node_type = Module2NodeType[self.module]
         node_type_name = NodeTypeNames[node_type]
@@ -55,6 +55,8 @@ class AnalyticsEventManager(EventManager):
             self.instance_id,
             staticmethod(ConnectionState.get_process_state_cb),
             NodeStatusUVE, NodeStatus)
+        self.send_system_cpu_info()
+        self.third_party_process_list = [ ]
     # end __init__
 
     def process(self):
@@ -73,10 +75,15 @@ class AnalyticsEventManager(EventManager):
             ProcessStateNames, ProcessState, ProcessStatus,
             NodeStatus, NodeStatusUVE)
 
+    def get_node_third_party_process_list(self):
+        return self.third_party_process_list 
+
+    def get_node_status_class(self):
+        return NodeStatus
+
+    def get_node_status_uve_class(self):
+        return NodeStatusUVE
+
     def get_process_state(self, fail_status_bits):
         return self.get_process_state_base(
             fail_status_bits, ProcessStateNames, ProcessState)
-
-    def send_disk_usage_info(self):
-        self.send_disk_usage_info_base(
-            NodeStatusUVE, NodeStatus, DiskPartitionUsageStats)

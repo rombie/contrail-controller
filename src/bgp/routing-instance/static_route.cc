@@ -778,7 +778,7 @@ void StaticRouteMgr<T>::LocateStaticRoutePrefix(
 template <typename T>
 void StaticRouteMgr<T>::StopStaticRouteDone(BgpTable *table,
                                              ConditionMatch *info) {
-    CHECK_CONCURRENCY("db::DBTable");
+    CHECK_CONCURRENCY("db::Walker");
     StaticRoute<T> *match = static_cast<StaticRoute<T> *>(info);
     match->set_unregistered();
     if (!match->num_matchstate() && match->unregistered()) {
@@ -911,13 +911,13 @@ void StaticRouteMgr<T>::EnableUnregisterTrigger() {
 
 template <typename T>
 uint32_t StaticRouteMgr<T>::GetRouteCount() const {
-    CHECK_CONCURRENCY("bgp::Config");
+    CHECK_CONCURRENCY("bgp::Uve");
     return static_route_map_.size();
 }
 
 template <typename T>
 uint32_t StaticRouteMgr<T>::GetDownRouteCount() const {
-    CHECK_CONCURRENCY("bgp::Config");
+    CHECK_CONCURRENCY("bgp::Uve");
     uint32_t count = 0;
     for (typename StaticRouteMap::const_iterator it = static_route_map_.begin();
          it != static_route_map_.end(); ++it) {

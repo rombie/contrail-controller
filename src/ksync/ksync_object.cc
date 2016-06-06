@@ -35,7 +35,6 @@ KSyncObject::FwdRefTree  KSyncObject::fwd_ref_tree_;
 KSyncObject::BackRefTree  KSyncObject::back_ref_tree_;
 KSyncObjectManager *KSyncObjectManager::singleton_ = NULL;
 std::auto_ptr<KSyncEntry> KSyncObjectManager::default_defer_entry_;
-bool KSyncDebug::debug_;
 
 typedef std::map<uint32_t, std::string> VrouterErrorDescriptionMap;
 VrouterErrorDescriptionMap g_error_description =
@@ -109,6 +108,7 @@ KSyncEntry *KSyncObject::Find(const KSyncEntry *key) {
 }
 
 KSyncEntry *KSyncObject::Next(const KSyncEntry *entry) const {
+    tbb::recursive_mutex::scoped_lock lock(lock_);
     Tree::const_iterator it;
     if (entry == NULL) {
         it = tree_.begin();
@@ -541,7 +541,6 @@ void KSyncEntry::ErrorHandler(int err, uint32_t seq_no,
             AckOperationString(event) << ">. Message number :" << seq_no;
     KSYNC_ERROR_TRACE(Trace, sstr.str().c_str());
     LOG(ERROR, sstr.str().c_str());
-    KSYNC_ASSERT(err == 0);
 }
 
 std::string KSyncEntry::AckOperationString(KSyncEvent event) const {
@@ -1517,12 +1516,15 @@ void KSyncObject::BackRefReEval(KSyncEntry *key) {
 bool KSyncObjectManager::Process(KSyncObjectEvent *event) {
     switch(event->event_) {
     case KSyncObjectEvent::UNREGISTER:
-        delete event->obj_;
+        if (event->obj_->Size() == 0) {
+            delete event->obj_;
+        }
         break;
     case KSyncObjectEvent::DELETE:
         {
             int count = 0;
-            KSyncEntry *entry;
+            // hold reference to entry to ensure the pointer sanity
+            KSyncEntry::KSyncEntryPtr entry(NULL);
             if (event->ref_.get() == NULL) {
                 event->obj_->set_delete_scheduled();
                 if (event->obj_->IsEmpty()) {
@@ -1537,23 +1539,30 @@ bool KSyncObjectManager::Process(KSyncObjectEvent *event) {
                 entry = event->ref_.get();
             }
 
-            while (entry != NULL) {
-                KSyncEntry *next_entry = event->obj_->Next(entry);
+            // hold reference to entry to ensure the pointer sanity
+            // next entry can get free'd in certain cases while processing
+            // current entry
+            KSyncEntry::KSyncEntryPtr next_entry(NULL);
+            while (entry.get() != NULL) {
+                next_entry = event->obj_->Next(entry.get());
                 count++;
                 if (entry->IsDeleted() == false) {
                     // trigger delete if entry is not marked delete already.
-                    event->obj_->Delete(entry);
+                    event->obj_->Delete(entry.get());
                 }
 
-                if (count == kMaxEntriesProcess && next_entry != NULL) {
+                if (count == kMaxEntriesProcess && next_entry.get() != NULL) {
                     // update reference with which entry to start with
                     // in next iteration.
-                    event->ref_ = next_entry;
+                    event->ref_ = next_entry.get();
                     // yeild and re-enqueue event for processing later.
                     event_queue_->Enqueue(event);
+
+                    // release reference to deleted entry.
+                    entry = NULL;
                     return false;
                 }
-                entry = next_entry;
+                entry = next_entry.get();
             }
             break;
         }

@@ -28,28 +28,23 @@ struct FlowStats {
     uint64_t vrouter_responses_;
     uint64_t vrouter_error_;
 
+    // Number of events actually processed
+    uint64_t delete_process_;
+    uint64_t revaluate_process_;
+    uint64_t recompute_process_;
+
     FlowStats() :
         add_count_(0), delete_count_(0), flow_messages_(0),
         revaluate_count_(0), recompute_count_(0), audit_count_(0),
-        vrouter_responses_(0), vrouter_error_(0) {
+        vrouter_responses_(0), vrouter_error_(0), delete_process_(0),
+        revaluate_process_(0), recompute_process_(0) {
     }
 };
 
 class FlowProto : public Proto {
 public:
-    typedef WorkQueue<FlowEvent *> FlowEventQueue;
     static const int kMinTableCount = 1;
     static const int kMaxTableCount = 16;
-    static const int kFlowAddTokens = 800;
-    static const int kFlowDelTokens = 800;
-    static const int kFlowUpdateTokens = 400;
-
-    enum OperationType {
-        INVALID_OP,
-        ADD,
-        UPDATE,
-        DELETE
-    };
 
     FlowProto(Agent *agent, boost::asio::io_service &io);
     virtual ~FlowProto();
@@ -60,9 +55,9 @@ public:
     void FlushFlows();
 
     bool Validate(PktInfo *msg);
-    FlowHandler *AllocProtoHandler(boost::shared_ptr<PktInfo> info,
+    FlowHandler *AllocProtoHandler(PktInfoPtr info,
                                    boost::asio::io_service &io);
-    bool Enqueue(boost::shared_ptr<PktInfo> msg);
+    bool Enqueue(PktInfoPtr msg);
 
     FlowEntry *Find(const FlowKey &key, uint32_t table_index) const;
     uint16_t FlowTableIndex(const IpAddress &sip, const IpAddress &dip,
@@ -80,8 +75,7 @@ public:
 
     void EnqueueFlowEvent(FlowEvent *event);
     void ForceEnqueueFreeFlowReference(FlowEntryPtr &flow);
-    void DeleteFlowRequest(const FlowKey &flow_key, bool del_rev_flow,
-                           uint32_t table_index);
+    void DeleteFlowRequest(FlowEntry *flow);
     void EvictFlowRequest(FlowEntry *flow, uint32_t flow_handle,
                           uint8_t gen_id);
     void CreateAuditEntry(const FlowKey &key, uint32_t flow_handle,
@@ -97,7 +91,7 @@ public:
                            uint64_t evict_flow_bytes,
                            uint64_t evict_flow_packets,
                            int32_t evict_flow_oflow);
-    void MessageRequest(InterTaskMsg *msg);
+    void MessageRequest(FlowEntry *flow);
 
     void DisableFlowEventQueue(uint32_t index, bool disabled);
     void DisableFlowUpdateQueue(bool disabled);
@@ -116,32 +110,35 @@ public:
                           uint8_t table_index);
     FlowTokenPtr GetToken(FlowEvent::Event event);
     void TokenAvailable(FlowTokenPool *pool);
-    void EnqueueUnResolvedFlowEntry(FlowEntryPtr &flow);
-
+    bool TokenCheck(const FlowTokenPool *pool);
     bool ShouldTrace(const FlowEntry *flow, const FlowEntry *rflow);
+    void EnqueueUnResolvedFlowEntry(FlowEntry *flow);
+
 private:
     friend class SandeshIPv4FlowFilterRequest;
     friend class SandeshIPv6FlowFilterRequest;
     friend class SandeshShowFlowFilterRequest;
     friend class FlowTraceFilterTest;
+    friend class FlowUpdateTest;
+    friend class FlowTest;
     FlowTraceFilter *ipv4_trace_filter() { return &ipv4_trace_filter_; }
     FlowTraceFilter *ipv6_trace_filter() { return &ipv6_trace_filter_; }
 
     bool ProcessFlowEvent(const FlowEvent &req, FlowTable *table);
-    bool TokenCheck(const FlowTokenPool *pool);
 
+    FlowTokenPool add_tokens_;
+    FlowTokenPool ksync_tokens_;
+    FlowTokenPool del_tokens_;
+    FlowTokenPool update_tokens_;
     std::vector<FlowEventQueue *> flow_event_queue_;
-    std::vector<FlowEventQueue *> flow_delete_queue_;
-    std::vector<FlowEventQueue *> flow_ksync_queue_;
+    std::vector<DeleteFlowEventQueue *> flow_delete_queue_;
+    std::vector<KSyncFlowEventQueue *> flow_ksync_queue_;
     std::vector<FlowTable *> flow_table_list_;
-    FlowEventQueue flow_update_queue_;
+    UpdateFlowEventQueue flow_update_queue_;
     tbb::atomic<int> linklocal_flow_count_;
     bool use_vrouter_hash_;
     FlowTraceFilter ipv4_trace_filter_;
     FlowTraceFilter ipv6_trace_filter_;
-    FlowTokenPool add_tokens_;
-    FlowTokenPool del_tokens_;
-    FlowTokenPool update_tokens_;
     FlowStats stats_;
 };
 

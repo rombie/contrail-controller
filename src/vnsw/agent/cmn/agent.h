@@ -204,6 +204,7 @@ extern void RouterIdDepInit(Agent *agent);
 #define METADATA_PORT 8775
 #define METADATA_NAT_PORT 80
 #define AGENT_INIT_TASKNAME "Agent::Init"
+#define INSTANCE_MANAGER_TASK_NAME "Agent::InstanceManager"
 #define AGENT_SHUTDOWN_TASKNAME "Agent::Shutdown"
 #define AGENT_FLOW_STATS_MANAGER_TASK "Agent::FlowStatsManager"
 #define AGENT_SANDESH_TASKNAME "Agent::Sandesh"
@@ -249,11 +250,18 @@ public:
     static const uint32_t kDefaultFlowIndexSmLogCount = 0;
     // default number of threads for flow setup
     static const uint32_t kDefaultFlowThreadCount = 1;
+    // Log a message if latency in processing flow queue exceeds limit
+    static const uint32_t kDefaultFlowLatencyLimit = 0;
     // Max number of threads
     static const uint32_t kMaxTbbThreads = 8;
     static const uint32_t kDefaultTbbKeepawakeTimeout = (20); //time-millisecs
     // Default number of tx-buffers on pkt0 interface
     static const uint32_t kPkt0TxBufferCount = 1000;
+
+    static const uint32_t kFlowAddTokens = 50;
+    static const uint32_t kFlowKSyncTokens = 25;
+    static const uint32_t kFlowDelTokens = 16;
+    static const uint32_t kFlowUpdateTokens = 16;
 
     enum ForwardingMode {
         NONE,
@@ -826,9 +834,6 @@ public:
         return ip_fabric_intf_name_;
     }
 
-    bool debug() { return debug_; }
-    void set_debug(bool debug) { debug_ = debug; }
-
     VxLanNetworkIdentifierMode vxlan_network_identifier_mode() const {
         return vxlan_network_identifier_mode_;
     }
@@ -882,6 +887,11 @@ public:
 
     uint32_t max_vm_flows() const { return max_vm_flows_; }
     void set_max_vm_flows(uint32_t count) { max_vm_flows_ = count; }
+
+    uint32_t flow_add_tokens() const { return flow_add_tokens_; }
+    uint32_t flow_ksync_tokens() const { return flow_ksync_tokens_; }
+    uint32_t flow_del_tokens() const { return flow_del_tokens_; }
+    uint32_t flow_update_tokens() const { return flow_update_tokens_; }
 
     bool init_done() const { return init_done_; }
     void set_init_done(bool done) { init_done_ = done; }
@@ -1131,7 +1141,6 @@ private:
     bool headless_agent_mode_;
     const Interface *vhost_interface_;
     process::ConnectionState* connection_state_;
-    bool debug_;
     bool test_mode_;
     bool xmpp_dns_test_mode_;
     bool init_done_;
@@ -1144,6 +1153,10 @@ private:
     uint16_t flow_thread_count_;
     bool flow_trace_enable_;
     uint32_t max_vm_flows_;
+    uint32_t flow_add_tokens_;
+    uint32_t flow_ksync_tokens_;
+    uint32_t flow_del_tokens_;
+    uint32_t flow_update_tokens_;
 
     // OVSDB client ptr
     OVSDB::OvsdbClient *ovsdb_client_;

@@ -26,6 +26,7 @@ from alarmgen_introspect_utils import VerificationAlarmGen
 from generator_introspect_utils import VerificationGenerator
 from opserver.sandesh.viz.constants import COLLECTOR_GLOBAL_TABLE, SOURCE, MODULE
 from opserver.opserver_util import OpServerUtils
+from opserver.sandesh.alarmgen_ctrl.ttypes import UVEAlarmState
 from sandesh_common.vns.constants import NodeTypeNames, ModuleNames
 from sandesh_common.vns.ttypes import NodeType, Module
 from pysandesh.util import UTCTimestampUsec
@@ -753,7 +754,7 @@ class AnalyticsFixture(fixtures.Fixture):
             return False
       
     @retry(delay=2, tries=5)
-    def verify_uvetable_alarm(self, table, name, type, is_set = True, any_of = None):
+    def verify_uvetable_alarm(self, table, name, type, is_set=True, rules=None):
         vag = self.alarmgen.get_introspect()
         ret = vag.get_UVETableAlarm(table)
         self.logger.info("verify_uvetable_alarm %s, %s, %s [%s]: %s" % \
@@ -768,39 +769,36 @@ class AnalyticsFixture(fixtures.Fixture):
                 return True
             if not len(uves):
                 return True
-            else:
-                self.logger.info("Did not expect UVEs for %s" % table)
-                return False
-        if not ret['uves']:
-            ret['uves'] = []
+        if not uves:
+            uves = []
         alarms = {}
-	for uves in ret['uves']:
-	    elem = uves['uai']['UVEAlarms']
-            if elem['name'] != name:
+	for uve in uves:
+	    elem = uve['uai']['UVEAlarms']
+            if name and elem['name'] != name:
                 continue
+	    #alarms in Idle state should not be counted
+	    alarm_state = int(uve['uas']['UVEAlarmOperState']['state'])
+	    if (alarm_state == UVEAlarmState.Idle):
+		continue
             for alm in elem['alarms']:
-                if len(alm['any_of']):
-                    alarms[alm['type']] = []
-                    for ee in alm['any_of']:
-                        all_of = []
-                        if ee['all_of'] is not None:
-                            for ff in ee['all_of']:
-                                all_of.append(ff)
-                        alarms[alm['type']].append(all_of)
+                if len(alm['rules']):
+                    alarms[alm['type']] = alm['rules']
         if type in alarms:
             if is_set:
-                if any_of:
-                    if len(any_of) != len(alarms[type]):
+                if rules:
+                    if len(rules) != len(alarms[type]):
                         return False
                     agg1 = 0
                     agg2 = 0
-                    for idx in range(0,len(any_of)):
-                        agg1 += len(any_of[idx])
-                        agg2 += len(alarms[type][idx])
+                    for idx in range(0,len(rules)):
+                        agg1 += len(rules[idx]['rule'])
+                        agg2 += len(alarms[type][idx]['rule'])
                     if agg1 != agg2:
                         return False
             return is_set
         else:
+	    if not name:
+		return True
             return not is_set
 
     @retry(delay=2, tries=10)

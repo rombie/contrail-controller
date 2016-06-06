@@ -145,6 +145,7 @@ void Agent::SetAgentTaskPolicy() {
         AGENT_INIT_TASKNAME,
         AGENT_SANDESH_TASKNAME,
         kTaskConfigManager
+        INSTANCE_MANAGER_TASK_NAME
     };
     SetTaskPolicyOne("db::DBTable", db_exclude_list, 
                      sizeof(db_exclude_list) / sizeof(char *));
@@ -383,12 +384,15 @@ void Agent::CopyConfig(AgentParam *params) {
 
     headless_agent_mode_ = params_->headless_mode();
     simulate_evpn_tor_ = params->simulate_evpn_tor();
-    debug_ = params_->debug();
     test_mode_ = params_->test_mode();
     tsn_enabled_ = params_->isTsnAgent();
     tor_agent_enabled_ = params_->isTorAgent();
     flow_thread_count_ = params_->flow_thread_count();
     flow_trace_enable_ = params_->flow_trace_enable();
+    flow_add_tokens_ = params_->flow_add_tokens();
+    flow_ksync_tokens_ = params_->flow_ksync_tokens();
+    flow_del_tokens_ = params_->flow_del_tokens();
+    flow_update_tokens_ = params_->flow_update_tokens();
     tbb_keepawake_timeout_ = params_->tbb_keepawake_timeout();
 }
 
@@ -571,7 +575,7 @@ Agent::Agent() :
     lifetime_manager_(NULL), ksync_sync_mode_(false), mgmt_ip_(""),
     vxlan_network_identifier_mode_(AUTOMATIC), headless_agent_mode_(false), 
     vhost_interface_(NULL),
-    connection_state_(NULL), debug_(false), test_mode_(false),
+    connection_state_(NULL), test_mode_(false),
     xmpp_dns_test_mode_(false),
     init_done_(false), simulate_evpn_tor_(false), tsn_enabled_(false),
     tor_agent_enabled_(false),

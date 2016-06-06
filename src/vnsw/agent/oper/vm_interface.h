@@ -334,7 +334,8 @@ public:
     struct InstanceIp : ListEntry {
         InstanceIp();
         InstanceIp(const InstanceIp &rhs);
-        InstanceIp(const IpAddress &ip, bool ecmp, bool is_primary);
+        InstanceIp(const IpAddress &ip, bool ecmp, bool is_primary,
+                   bool is_service_health_check_ip);
         ~InstanceIp();
         bool operator == (const InstanceIp &rhs) const;
         bool operator() (const InstanceIp &lhs,
@@ -362,6 +363,7 @@ public:
         mutable bool l2_installed_;
         mutable bool old_ecmp_;
         mutable bool is_primary_;
+        mutable bool is_service_health_check_ip_;
     };
     typedef std::set<InstanceIp, InstanceIp> InstanceIpSet;
 
@@ -479,6 +481,10 @@ public:
     const Interface *parent() const { return parent_.get(); }
     bool ecmp() const { return ecmp_;}
     bool ecmp6() const { return ecmp6_;}
+    Ip4Address service_ip() { return service_ip_;}
+    bool service_ip_ecmp() const { return service_ip_ecmp_;}
+    Ip6Address service_ip6() { return service_ip6_;}
+    bool service_ip_ecmp6() const { return service_ip_ecmp6_;}
     const OperDhcpOptions &oper_dhcp_options() const { return oper_dhcp_options_; }
     uint8_t configurer() const {return configurer_;}
     bool IsConfigurerSet(VmInterface::Configurer type);
@@ -550,6 +556,8 @@ public:
 
     void SetPathPreference(PathPreference *pref, bool ecmp,
                            const IpAddress &dependent_ip) const;
+    void SetServiceVlanPathPreference(PathPreference *pref,
+                                      const IpAddress &service_ip) const;
     void CopySgIdList(SecurityGroupList *sg_id_list) const;
     bool NeedMplsLabel() const;
     bool IsVxlanMode() const;
@@ -625,6 +633,7 @@ public:
                                 const MacAddress &mac,
                                 const IpAddress &dependent_ip) const;
     uint32_t ethernet_tag() const {return ethernet_tag_;}
+    IpAddress service_health_check_ip() const { return service_health_check_ip_; }
     void UpdateVxLan();
     bool IsActive() const;
     const VmiEcmpLoadBalance &ecmp_load_balance() const {return ecmp_load_balance_;}
@@ -655,7 +664,7 @@ private:
                       uint32_t plen, const std::string &dest_vn, bool policy);
     void ServiceVlanAdd(ServiceVlan &entry);
     void ServiceVlanDel(ServiceVlan &entry);
-    void ServiceVlanRouteAdd(const ServiceVlan &entry);
+    void ServiceVlanRouteAdd(const ServiceVlan &entry, bool force_update);
     void ServiceVlanRouteDel(const ServiceVlan &entry);
 
     bool OnResyncFloatingIp(VmInterfaceConfigData *data, bool new_ipv4_active);
@@ -701,7 +710,8 @@ private:
                   const Ip4Address &old_addr, bool old_need_linklocal_ip,
                   bool old_ipv6_active, const Ip6Address &old_v6_addr,
                   const Ip4Address &old_subnet, const uint8_t old_subnet_plen,
-                  int old_ethernet_tag, const Ip4Address &old_dhcp_addr);
+                  int old_ethernet_tag, const Ip4Address &old_dhcp_addr,
+                  bool force_update);
     void UpdateL2Bridging(bool old_bridging, VrfEntry *old_vrf,
                           int old_ethernet_tag, bool force_update,
                           bool policy_change, const Ip4Address &old_addr,
@@ -709,7 +719,7 @@ private:
                           bool old_layer3_forwarding);
     void DeleteL2Bridging(bool old_bridging, VrfEntry *old_vrf, int old_ethernet_tag,
                           const Ip4Address &old_addr, const Ip6Address &old_v6_addr,
-                          bool old_layer3_forwarding);
+                          bool old_layer3_forwarding, bool force_update);
     void UpdateL2(bool old_l2_active, bool policy_change);
     void DeleteL2(bool old_l2_active);
 
@@ -779,11 +789,11 @@ private:
     void UpdateIpv4InstanceIp(bool force_update, bool policy_change,
                               bool l2, uint32_t old_ethernet_tag);
     void DeleteIpv4InstanceIp(bool l2, uint32_t old_ethernet_tag,
-                              VrfEntry *old_vrf);
+                              VrfEntry *old_vrf, bool force_update);
     void UpdateIpv6InstanceIp(bool force_update, bool policy_change,
                               bool l2, uint32_t old_ethernet_tag);
     void DeleteIpv6InstanceIp(bool l2, uint32_t old_ethernet_tag,
-                              VrfEntry *old_vrf);
+                              VrfEntry *old_vrf, bool force_update);
 
     void AddL2ReceiveRoute(bool old_bridging);
     void DeleteL2ReceiveRoute(const VrfEntry *old_vrf, bool old_briding);
@@ -821,6 +831,10 @@ private:
     bool mac_set_;
     bool ecmp_;
     bool ecmp6_;
+    Ip4Address service_ip_;
+    bool service_ip_ecmp_;
+    Ip6Address service_ip6_;
+    bool service_ip_ecmp6_;
     // disable-policy configuration on VMI. When this is configured, policy
     // dependent features like flows, floating-IP and SG will not work on this
     // VMI. However metadata-services will work because metadata route will
@@ -863,6 +877,7 @@ private:
     MetaDataIpMap metadata_ip_map_;
     HealthCheckInstanceSet hc_instance_set_;
     VmiEcmpLoadBalance ecmp_load_balance_;
+    IpAddress service_health_check_ip_;
     NextHopRef l3_interface_nh_policy_;
     NextHopRef l2_interface_nh_policy_;
     NextHopRef l3_interface_nh_no_policy_;
@@ -1026,6 +1041,11 @@ struct VmInterfaceConfigData : public VmInterfaceData {
     uint16_t tx_vlan_id_;
     boost::uuids::uuid logical_interface_;
     VmiEcmpLoadBalance ecmp_load_balance_;
+    IpAddress service_health_check_ip_;
+    Ip4Address service_ip_;
+    bool service_ip_ecmp_;
+    Ip6Address service_ip6_;
+    bool service_ip_ecmp6_;
 };
 
 // Definition for structures when request queued from Nova

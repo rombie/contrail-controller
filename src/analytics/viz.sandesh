@@ -391,6 +391,7 @@ const map<string, string> UVE_MAP = {
     "vrouter" : VROUTER_TABLE,
     "control-node" : BGP_ROUTER_TABLE,
     "bgp-peer" : BGP_PEER_TABLE,
+    "routing-instance" : ROUTING_INSTANCE_TABLE,
     "xmpp-peer" : XMPP_PEER_INFO_TABLE,
     "analytics-node" : COLLECTOR_INFO_TABLE,
     "database-node" : DATABASE_INFO_TABLE,
@@ -1778,7 +1779,8 @@ const list<stat_table> _STAT_TABLES  = [
       'obj_table' : 'NONE',
       'attributes': [
           { 'name' : 'partition', 'datatype' : 'int',    'index' : true },
-          { 'name' : 'o.key',     'datatype' : 'string', 'index' : true },
+          { 'name' : 'table',     'datatype' : 'string', 'index' : true },
+          { 'name' : 'o.keys',    'datatype' : 'int',    'index' : false },
           { 'name' : 'o.count',   'datatype' : 'int',    'index' : false },
         ]
     },
@@ -2017,8 +2019,11 @@ const list<stat_table> _STAT_TABLES  = [
           { 'name' : 'api_stats.object_type', 'datatype' : 'string', 'index' : true },
           { 'name' : 'api_stats.request_url', 'datatype' : 'string', 'index' : false },
           { 'name' : 'api_stats.response_time_in_usec', 'datatype' : 'int', 'index' : false },
-          { 'name' : 'api_stats.response_size', 'datatype' : 'int', 'index' : false },
+          { 'name' : 'api_stats.response_size_objects', 'datatype' : 'int', 'index' : false },
+          { 'name' : 'api_stats.response_size_bytes', 'datatype' : 'int', 'index' : false },
           { 'name' : 'api_stats.node', 'datatype' : 'string', 'index' : false },
+          { 'name' : 'api_stats.resp_code', 'datatype' : 'string', 'index' : false },
+          { 'name' : 'api_stats.useragent', 'datatype' : 'string', 'index' : false },
         ]
     },
     {
@@ -2049,6 +2054,20 @@ const list<stat_table> _STAT_TABLES  = [
           { 'name' : 'phy_if_band.name', 'datatype' : 'string', 'index' : false },
           { 'name' : 'phy_if_band.in_bandwidth_usage', 'datatype' : 'int', 'index' : false },
           { 'name' : 'phy_if_band.out_bandwidth_usage', 'datatype' : 'int', 'index' : false }
+        ]
+    },
+    {
+      'display_name' : 'Routung Instance Information',
+      'stat_type' : 'RoutingInstanceStatsData',
+      'stat_attr' : 'table_stats',
+      'obj_table' : ROUTING_INSTANCE_TABLE,
+      'attributes': [
+          { 'name' : 'table_stats.address_family', 'datatype' : 'string',    'index' : true},
+          { 'name' : 'table_stats.prefixes', 'datatype' : 'int', 'index' : false},
+          { 'name' : 'table_stats.primary_paths', 'datatype' : 'int', 'index' : false},
+          { 'name' : 'table_stats.secondary_paths', 'datatype' : 'int', 'index' : false},
+          { 'name' : 'table_stats.infeasible_paths', 'datatype' : 'int', 'index' : false},
+          { 'name' : 'table_stats.total_paths', 'datatype' : 'int', 'index' : false},
         ]
     },
 

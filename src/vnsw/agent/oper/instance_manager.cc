@@ -28,7 +28,7 @@ SandeshTraceBufferPtr InstanceManagerTraceBuf(
         SandeshTraceBufferCreate("InstanceManager", 1000));
 
 static const char loadbalancer_config_path_default[] =
-        "/var/lib/contrail/";
+        "/var/lib/contrail/loadbalancer/";
 static const char namespace_store_path_default[] =
         "/var/run/netns";
 static const char namespace_prefix[] = "vrouter-";
@@ -129,14 +129,14 @@ InstanceManager::~InstanceManager() {
 InstanceManager::InstanceManager(Agent *agent)
         : si_listener_(DBTableBase::kInvalidId),
           netns_timeout_(-1),
-          work_queue_(TaskScheduler::GetInstance()->GetTaskId("db::DBTable"), 0,
+          work_queue_(TaskScheduler::GetInstance()->GetTaskId(INSTANCE_MANAGER_TASK_NAME), 0,
                       boost::bind(&InstanceManager::DequeueEvent, this, _1)),
           loadbalancer_config_path_(loadbalancer_config_path_default),
           namespace_store_path_(namespace_store_path_default),
           stale_timer_interval_(5 * 60 * 1000),
           stale_timer_(TimerManager::CreateTimer(*(agent->event_manager()->io_service()),
                       "NameSpaceStaleTimer", TaskScheduler::GetInstance()->
-                      GetTaskId("db::DBTable"), 0)), agent_(agent) {
+                      GetTaskId(INSTANCE_MANAGER_TASK_NAME), 0)), agent_(agent) {
           work_queue_.set_name("Instance Manager");
 
 }
@@ -158,6 +158,15 @@ void InstanceManager::Initialize(DB *database, const std::string &netns_cmd,
     if (docker_cmd.length() == 0) {
         LOG(ERROR, "Path for Docker starter command not specified "
                    "in the config file, the Docker instances won't be started");
+    }
+
+    std::stringstream pathgen;
+    pathgen << loadbalancer_config_path_;
+    boost::filesystem::path dir(pathgen.str());
+    boost::system::error_code error;
+    boost::filesystem::create_directories(dir, error);
+    if (error) {
+        LOG(ERROR, "Falied to create Loadbalancer Directory " << pathgen.str());
     }
 
     adapters_.push_back(new DockerInstanceAdapter(docker_cmd, agent_));

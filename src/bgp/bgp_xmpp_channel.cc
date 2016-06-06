@@ -23,10 +23,12 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/evpn/evpn_table.h"
+#include "bgp/peer_stats.h"
 #include "bgp/rtarget/rtarget_table.h"
 #include "bgp/scheduling_group.h"
 #include "bgp/security_group/security_group.h"
 #include "bgp/tunnel_encap/tunnel_encap.h"
+#include "control-node/sandesh/control_node_types.h"
 #include "net/community_type.h"
 #include "schema/xmpp_multicast_types.h"
 #include "schema/xmpp_enet_types.h"
@@ -254,7 +256,7 @@ private:
 class BgpXmppChannel::PeerStats : public IPeerDebugStats {
 public:
     explicit PeerStats(BgpXmppChannel *peer)
-        : peer_(peer) {
+        : parent_(peer) {
     }
 
     // Used when peer flaps.
@@ -264,16 +266,16 @@ public:
 
     // Printable name
     virtual string ToString() const {
-        return peer_->ToString();
+        return parent_->ToString();
     }
 
     // Previous State of the peer
     virtual string last_state() const {
-        return (peer_->channel_->LastStateName());
+        return (parent_->channel_->LastStateName());
     }
     // Last state change occurred at
     virtual string last_state_change_at() const {
-        return (peer_->channel_->LastStateChangeAt());
+        return (parent_->channel_->LastStateChangeAt());
     }
 
     // Last error on this peer
@@ -283,47 +285,47 @@ public:
 
     // Last Event on this peer
     virtual string last_event() const {
-        return (peer_->channel_->LastEvent());
+        return (parent_->channel_->LastEvent());
     }
 
     // When was the Last
     virtual string last_flap() const {
-        return (peer_->channel_->LastFlap());
+        return (parent_->channel_->LastFlap());
     }
 
     // Total number of flaps
     virtual uint64_t num_flaps() const {
-        return (peer_->channel_->FlapCount());
+        return (parent_->channel_->FlapCount());
     }
 
     virtual void GetRxProtoStats(ProtoStats *stats) const {
-        stats->open = peer_->channel_->rx_open();
-        stats->close = peer_->channel_->rx_close();
-        stats->keepalive = peer_->channel_->rx_keepalive();
-        stats->update = peer_->channel_->rx_update();
+        stats->open = parent_->channel_->rx_open();
+        stats->close = parent_->channel_->rx_close();
+        stats->keepalive = parent_->channel_->rx_keepalive();
+        stats->update = parent_->channel_->rx_update();
     }
 
     virtual void GetTxProtoStats(ProtoStats *stats) const {
-        stats->open = peer_->channel_->tx_open();
-        stats->close = peer_->channel_->tx_close();
-        stats->keepalive = peer_->channel_->tx_keepalive();
-        stats->update = peer_->channel_->tx_update();
+        stats->open = parent_->channel_->tx_open();
+        stats->close = parent_->channel_->tx_close();
+        stats->keepalive = parent_->channel_->tx_keepalive();
+        stats->update = parent_->channel_->tx_update();
     }
 
     virtual void GetRxRouteUpdateStats(UpdateStats *stats)  const {
-        stats->total = peer_->stats_[RX].rt_updates;
-        stats->reach = peer_->stats_[RX].reach;
-        stats->unreach = peer_->stats_[RX].unreach;
+        stats->total = parent_->stats_[RX].rt_updates;
+        stats->reach = parent_->stats_[RX].reach;
+        stats->unreach = parent_->stats_[RX].unreach;
     }
 
     virtual void GetTxRouteUpdateStats(UpdateStats *stats)  const {
-        stats->total = peer_->stats_[TX].rt_updates;
-        stats->reach = peer_->stats_[TX].reach;
-        stats->unreach = peer_->stats_[TX].unreach;
+        stats->total = parent_->stats_[TX].rt_updates;
+        stats->reach = parent_->stats_[TX].reach;
+        stats->unreach = parent_->stats_[TX].unreach;
     }
 
     virtual void GetRxSocketStats(IPeerDebugStats::SocketStats *stats) const {
-        const XmppSession *session = peer_->GetSession();
+        const XmppSession *session = parent_->GetSession();
         if (session) {
             io::SocketStats socket_stats(session->GetSocketStats());
             stats->calls = socket_stats.read_calls;
@@ -332,7 +334,7 @@ public:
     }
 
     virtual void GetTxSocketStats(IPeerDebugStats::SocketStats *stats) const {
-        const XmppSession *session = peer_->GetSession();
+        const XmppSession *session = parent_->GetSession();
         if (session) {
             io::SocketStats socket_stats(session->GetSocketStats());
             stats->calls = socket_stats.write_calls;
@@ -344,7 +346,7 @@ public:
     }
 
     virtual void GetRxErrorStats(RxErrorStats *stats) const {
-        const BgpXmppChannel::ErrorStats &err_stats = peer_->error_stats();
+        const BgpXmppChannel::ErrorStats &err_stats = parent_->error_stats();
         stats->inet6_bad_xml_token_count =
             err_stats.get_inet6_rx_bad_xml_token_count();
         stats->inet6_bad_prefix_count =
@@ -355,16 +357,21 @@ public:
             err_stats.get_inet6_rx_bad_afi_safi_count();
     }
 
+    virtual void GetRxRouteStats(RxRouteStats *stats) const {
+        stats->total_path_count = parent_->Peer()->GetTotalPathCount();
+        stats->primary_path_count = parent_->Peer()->GetPrimaryPathCount();
+    }
+
     virtual void UpdateTxUnreachRoute(uint64_t count) {
-        peer_->stats_[TX].unreach += count;
+        parent_->stats_[TX].unreach += count;
     }
 
     virtual void UpdateTxReachRoute(uint64_t count) {
-        peer_->stats_[TX].reach += count;
+        parent_->stats_[TX].reach += count;
     }
 
 private:
-    BgpXmppChannel *peer_;
+    BgpXmppChannel *parent_;
 };
 
 class BgpXmppChannel::XmppPeer : public IPeer {
@@ -375,12 +382,12 @@ public:
           is_closed_(false),
           send_ready_(true),
           closed_at_(0) {
-        refcount_ = 0;
+        total_path_count_ = 0;
         primary_path_count_ = 0;
     }
 
     virtual ~XmppPeer() {
-        assert(GetRefCount() == 0);
+        assert(GetTotalPathCount() == 0);
     }
 
     virtual bool MembershipPathCallback(DBTablePartBase *tpart, BgpRoute *rt,
@@ -459,8 +466,12 @@ public:
         return 0;
     }
 
-    virtual void UpdateRefCount(int count) const { refcount_ += count; }
-    virtual tbb::atomic<int> GetRefCount() const { return refcount_; }
+    virtual void UpdateTotalPathCount(int count) const {
+        total_path_count_ += count;
+    }
+    virtual int GetTotalPathCount() const {
+        return total_path_count_;
+    }
     virtual void UpdatePrimaryPathCount(int count) const {
         primary_path_count_ += count;
     }
@@ -488,7 +499,7 @@ private:
 
     BgpServer *server_;
     BgpXmppChannel *parent_;
-    mutable tbb::atomic<int> refcount_;
+    mutable tbb::atomic<int> total_path_count_;
     mutable tbb::atomic<int> primary_path_count_;
     bool is_closed_;
     bool send_ready_;
@@ -1687,9 +1698,19 @@ bool BgpXmppChannel::ProcessEnetItem(string vrf_name,
                 if (first_nh) {
                     ext.communities.push_back(
                         tun_encap.GetExtCommunityValue());
+                    if (tun_encap.tunnel_encap() == TunnelEncapType::GRE) {
+                        TunnelEncap alt_tun_encap(TunnelEncapType::MPLS_O_GRE);
+                        ext.communities.push_back(
+                            alt_tun_encap.GetExtCommunityValue());
+                    }
                 }
                 nexthop.tunnel_encapsulations_.push_back(
                     tun_encap.GetExtCommunity());
+                if (tun_encap.tunnel_encap() == TunnelEncapType::GRE) {
+                    TunnelEncap alt_tun_encap(TunnelEncapType::MPLS_O_GRE);
+                    nexthop.tunnel_encapsulations_.push_back(
+                        alt_tun_encap.GetExtCommunity());
+                }
             }
 
             // Mark the path as infeasible if all tunnel encaps published
@@ -2533,6 +2554,14 @@ void BgpXmppChannelManager::VisitChannels(BgpXmppChannelManager::VisitorFn fn) {
     }
 }
 
+void BgpXmppChannelManager::VisitChannels(BgpXmppChannelManager::VisitorFn fn)
+        const {
+    tbb::mutex::scoped_lock lock(mutex_);
+    BOOST_FOREACH(const XmppChannelMap::value_type &i, channel_map_) {
+        fn(i.second);
+    }
+}
+
 BgpXmppChannel *BgpXmppChannelManager::FindChannel(string client) {
     BOOST_FOREACH(XmppChannelMap::value_type &i, channel_map_) {
         if (i.second->ToString() == client) {
@@ -2621,6 +2650,43 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
         peer_info.set_send_state("not advertising");
         bgp_xmpp_channel->XMPPPeerInfoSend(peer_info);
     }
+}
+
+void BgpXmppChannelManager::FillPeerStats(const BgpXmppChannel *channel) const {
+    PeerStatsInfo stats;
+    PeerStats::FillPeerDebugStats(channel->Peer()->peer_stats(), &stats);
+
+    XmppPeerInfoData peer_info;
+    peer_info.set_name(channel->Peer()->ToUVEKey());
+    peer_info.set_peer_stats_info(stats);
+    XMPPPeerInfo::Send(peer_info);
+}
+
+bool BgpXmppChannelManager::CollectStats(BgpRouterState *state, bool first)
+         const {
+    CHECK_CONCURRENCY("bgp::Uve");
+
+    VisitChannels(boost::bind(&BgpXmppChannelManager::FillPeerStats, this, _1));
+    bool change = false;
+    uint32_t num_xmpp = count();
+    if (first || num_xmpp != state->get_num_xmpp_peer()) {
+        state->set_num_xmpp_peer(num_xmpp);
+        change = true;
+    }
+
+    uint32_t num_up_xmpp = NumUpPeer();
+    if (first || num_up_xmpp != state->get_num_up_xmpp_peer()) {
+        state->set_num_up_xmpp_peer(num_up_xmpp);
+        change = true;
+    }
+
+    uint32_t num_deleting_xmpp = deleting_count();
+    if (first || num_deleting_xmpp != state->get_num_deleting_xmpp_peer()) {
+        state->set_num_deleting_xmpp_peer(num_deleting_xmpp);
+        change = true;
+    }
+
+    return change;
 }
 
 void BgpXmppChannel::Close() {

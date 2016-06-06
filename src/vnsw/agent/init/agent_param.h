@@ -124,6 +124,10 @@ public:
     uint32_t linklocal_vm_flows() const { return linklocal_vm_flows_; }
     uint32_t flow_cache_timeout() const {return flow_cache_timeout_;}
     uint16_t flow_index_sm_log_count() const {return flow_index_sm_log_count_;}
+    uint32_t flow_add_tokens() const {return flow_add_tokens_;}
+    uint32_t flow_ksync_tokens() const {return flow_ksync_tokens_;}
+    uint32_t flow_del_tokens() const {return flow_del_tokens_;}
+    uint32_t flow_update_tokens() const {return flow_update_tokens_;}
     bool headless_mode() const {return headless_mode_;}
     bool dhcp_relay_mode() const {return dhcp_relay_mode_;}
     bool xmpp_auth_enabled() const {return xmpp_auth_enable_;}
@@ -141,6 +145,9 @@ public:
     }
     std::string si_lb_keystone_auth_conf_path() const {
         return si_lb_keystone_auth_conf_path_;
+    }
+    std::string si_lbaas_auth_conf() const {
+        return si_lbaas_auth_conf_;
     }
 
     std::string nexthop_server_endpoint() const {
@@ -179,7 +186,6 @@ public:
     const std::string &vmware_physical_port() const {
         return vmware_physical_port_;
     }
-    bool debug() const { return debug_; }
 
     HypervisorMode mode() const { return hypervisor_mode_; }
     bool isXenMode() const { return hypervisor_mode_ == MODE_XEN; }
@@ -247,12 +253,18 @@ public:
     const std::vector<uint16_t> &bgp_as_a_service_port_range_value() const {
         return bgp_as_a_service_port_range_value_;
     }
+    uint32_t services_queue_limit() { return services_queue_limit_; }
 
     uint16_t flow_thread_count() const { return flow_thread_count_; }
     void set_flow_thread_count(uint16_t count) { flow_thread_count_ = count; }
 
     bool flow_trace_enable() const { return flow_trace_enable_; }
     void set_flow_trace_enable(bool val) { flow_trace_enable_ = val; }
+
+    uint16_t flow_task_latency_limit() const { return flow_latency_limit_; }
+    void set_flow_task_latency_limit(uint16_t count) {
+        flow_latency_limit_ = count;
+    }
 
     uint32_t tbb_thread_count() const { return tbb_thread_count_; }
     uint32_t tbb_exec_delay() const { return tbb_exec_delay_; }
@@ -337,7 +349,7 @@ private:
     void ParseAgentInfo();
     void ParseNexthopServer();
     void ParsePlatform();
-    void ParseBgpAsAServicePortRange();
+    void ParseServices();
     void set_agent_mode(const std::string &mode);
 
     void ParseCollectorArguments
@@ -372,7 +384,7 @@ private:
         (const boost::program_options::variables_map &v);
     void ParsePlatformArguments
         (const boost::program_options::variables_map &v);
-    void ParseBgpAsAServicePortRangeArguments
+    void ParseServicesArguments
         (const boost::program_options::variables_map &v);
 
     boost::program_options::variables_map var_map_;
@@ -414,6 +426,10 @@ private:
     uint16_t linklocal_vm_flows_;
     uint16_t flow_cache_timeout_;
     uint16_t flow_index_sm_log_count_;
+    uint32_t flow_add_tokens_;
+    uint32_t flow_ksync_tokens_;
+    uint32_t flow_del_tokens_;
+    uint32_t flow_update_tokens_;
 
     // Parameters configured from command line arguments only (for now)
     std::string config_file_;
@@ -437,7 +453,6 @@ private:
     int vrouter_stats_interval_;
     std::string vmware_physical_port_;
     bool test_mode_;
-    bool debug_;
     boost::property_tree::ptree tree_;
     std::auto_ptr<VirtualGatewayConfigTable> vgw_config_table_;
     bool headless_mode_;
@@ -457,6 +472,7 @@ private:
     int si_netns_timeout_;
     std::string si_lb_ssl_cert_path_;
     std::string si_lb_keystone_auth_conf_path_;
+    std::string si_lbaas_auth_conf_;
     VmwareMode vmware_mode_;
     // List of IP addresses on the compute node.
     AddressList compute_node_address_list_;
@@ -471,9 +487,11 @@ private:
     uint32_t send_ratelimit_;
     uint16_t flow_thread_count_;
     bool flow_trace_enable_;
+    uint16_t flow_latency_limit_;
     bool subnet_hosts_resolvable_;
     std::string bgp_as_a_service_port_range_;
     std::vector<uint16_t> bgp_as_a_service_port_range_value_;
+    uint32_t services_queue_limit_;
 
     // TBB related
     uint32_t tbb_thread_count_;

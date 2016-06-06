@@ -89,7 +89,7 @@ class DiscoveryCassandraClient(VncCassandraClient):
 
     # return all subscriptions
     @cass_error_handler
-    def get_all_clients(self, service_type=None, service_id=None):
+    def get_all_clients(self, service_type=None, service_id=None, unique_clients=False):
         r = []
         entry_format_subscriber = False
         if service_type and service_id:
@@ -125,13 +125,15 @@ class DiscoveryCassandraClient(VncCassandraClient):
                     (_, service_id, client_id) = col_name
                 else:
                     (_, client_id, service_id) = col_name
-                    # skip pure client entry
-                    if service_id == disc_consts.CLIENT_TAG:
-                        continue
                 entry_str = clients[col_name]
                 entry = json.loads(entry_str)
-                rr.append((service_type, client_id, service_id,
-                    entry['mtime'], entry['ttl']))
+                # skip pure client entry unless unique clients wanted
+                if unique_clients and service_id == disc_consts.CLIENT_TAG:
+                    rr.append((service_type, client_id, entry))
+                elif not unique_clients and service_id != disc_consts.CLIENT_TAG:
+                    rr.append((service_type, client_id, service_id,
+                        entry['mtime'], entry['ttl']))
+
             # sort by modification time
             # rr = sorted(rr, key=lambda entry: entry[3])
             r.extend(rr)
@@ -199,10 +201,13 @@ class DiscoveryCassandraClient(VncCassandraClient):
                         column_finish = col_name, column_count = disc_consts.MAX_COL)
                     for col, val in subscribers.items():
                         _, serv_id, client_id = col
-                        data_dict[(serv_type,serv_id)]['in_use'] += 1
+                        if (serv_type,serv_id) in data_dict:
+                            data_dict[(serv_type,serv_id)]['in_use'] += 1
                 except pycassa.NotFoundException:
                     pass
 
+            if len(data_dict) == 0:
+                return None if service_id else []
             for key, entry in data_dict.items():
                 entry['admin_state'] = admin_state.get(key, "up")
             data = [data_dict[key] for key in sorted(data_dict.iterkeys())]
