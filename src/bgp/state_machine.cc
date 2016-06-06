@@ -1578,6 +1578,10 @@ const std::string StateMachine::last_state_change_at() const {
     return integerToString(UTCUsecToPTime(last_state_change_at_));
 }
 
+const uint64_t StateMachine::last_state_change_usecs_at() const {
+    return last_state_change_at_;
+}
+
 ostream &operator<<(ostream &out, const StateMachine::State &state) {
     out << state_names[state];
     return out;

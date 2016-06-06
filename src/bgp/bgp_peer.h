@@ -327,6 +327,7 @@ protected:
     std::vector<std::string> &long_lived_graceful_restart_families() {
         return long_lived_graceful_restart_families_;
     }
+    void SendEndOfRIBActual(Address::Family family);
     void SendEndOfRIB(Address::Family family);
     int membership_req_pending() const { return membership_req_pending_; }
 
@@ -335,6 +336,9 @@ private:
     friend class BgpPeerTest;
     friend class BgpServerUnitTest;
     friend class StateMachineUnitTest;
+
+    static const int kMinEndOfRibSendTimeUsecs = 10000000;
+    static const int kMaxEndOfRibSendTimeUsecs = 30000000;
 
     class DeleteActor;
     class PeerClose;
@@ -353,6 +357,7 @@ private:
     void ReceiveEndOfRIB(Address::Family family, size_t msgsize);
     void StartEndOfRibTimer();
     bool EndOfRibTimerExpired();
+    bool EndOfRibSendTimerExpired(Address::Family family);
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
 
@@ -387,6 +392,7 @@ private:
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     std::string BytesToHexString(const u_int8_t *msg, size_t size);
+    uint32_t get_output_queue_depth(Address::Family family) const;
 
     static const std::vector<Address::Family> supported_families_;
     BgpServer *server_;
@@ -426,6 +432,7 @@ private:
     BgpSession *session_;
     Timer *keepalive_timer_;
     Timer *end_of_rib_timer_;
+    Timer *end_of_rib_send_timer_[Address::NUM_FAMILIES];
     bool send_ready_;
     bool admin_down_;
     bool passive_;
