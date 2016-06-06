@@ -328,7 +328,7 @@ protected:
         return long_lived_graceful_restart_families_;
     }
     void SendEndOfRIBActual(Address::Family family);
-    void SendEndOfRIB(Address::Family family);
+    virtual void SendEndOfRIB(Address::Family family);
     int membership_req_pending() const { return membership_req_pending_; }
 
 private:
@@ -337,8 +337,9 @@ private:
     friend class BgpServerUnitTest;
     friend class StateMachineUnitTest;
 
-    static const int kMinEndOfRibSendTimeUsecs = 10000000;
-    static const int kMaxEndOfRibSendTimeUsecs = 30000000;
+    static const int kMinEndOfRibSendTimeUsecs = 10000000; // 10 Seconds
+    static const int kMaxEndOfRibSendTimeUsecs = 30000000; // 30 Seconds
+    static const int kEndOfRibSendRetryTimeMsecs = 5000;   // 5 Seconds
 
     class DeleteActor;
     class PeerClose;

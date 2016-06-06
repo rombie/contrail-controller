@@ -270,7 +270,11 @@ public:
 
     bool BgpPeerIsReady();
     void SetDataCollectionKey(BgpPeerInfo *peer_info) const;
-    void SendEorMarker() {
+    virtual void SendEndOfRIB(Address::Family family) {
+        SendEndOfRIBActual(family);
+    }
+
+    void SendEndOfRIB() {
         BOOST_FOREACH(std::string family, negotiated_families()) {
             SendEndOfRIBActual(Address::FamilyFromString(family));
         }

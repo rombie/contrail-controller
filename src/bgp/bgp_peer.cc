@@ -455,7 +455,7 @@ bool BgpPeer::EndOfRibSendTimerExpired(Address::Family family) {
 }
 
 void BgpPeer::SendEndOfRIB(Address::Family family) {
-    end_of_rib_send_timer_[family]->Start(5000, // 5 Seconds
+    end_of_rib_send_timer_[family]->Start(kEndOfRibSendRetryTimeMsecs,
         boost::bind(&BgpPeer::EndOfRibSendTimerExpired, this, family),
         boost::bind(&BgpPeer::EndOfRibTimerErrorHandler, this, _1, _2));
 }

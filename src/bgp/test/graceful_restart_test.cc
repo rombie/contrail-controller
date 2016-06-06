@@ -1433,7 +1433,7 @@ void GracefulRestartTest::ProcessFlippingPeers(int &total_routes,
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipping_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         if (gr_test_param.should_send_eor() && peer->IsReady()) {
-            peer->SendEorMarker();
+            peer->SendEndOfRIB();
         } else {
             PeerCloseManager *pc =
                 bgp_server_peers_[peer->id()]->peer_close()->close_manager();
@@ -1656,7 +1656,7 @@ void GracefulRestartTest::GracefulRestartTestRun () {
     BOOST_FOREACH(GRTestParams gr_test_param, n_flipped_peers) {
         BgpPeerTest *peer = gr_test_param.peer;
         if (gr_test_param.should_send_eor())
-            peer->SendEorMarker();
+            peer->SendEndOfRIB();
         else
             FireGRTimer(bgp_server_peers_[peer->id()]);
     }
