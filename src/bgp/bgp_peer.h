@@ -121,7 +121,6 @@ public:
                             size_t size);
 
     void StartKeepaliveTimer();
-    void StopKeepaliveTimer();
     bool KeepaliveTimerRunning();
     void SetSendReady();
 

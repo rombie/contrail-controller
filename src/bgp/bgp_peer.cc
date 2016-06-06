@@ -553,7 +553,9 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
                    GetTaskInstance()),
           session_(NULL),
           keepalive_timer_(TimerManager::CreateTimer(*server->ioservice(),
-                     "BGP keepalive timer")),
+                     "BGP keepalive timer",
+                   TaskScheduler::GetInstance()->GetTaskId("bgp::StateMachine"),
+                   GetTaskInstance())),
           end_of_rib_timer_(TimerManager::CreateTimer(*server->ioservice(),
                    "BGP RTarget EndOfRib timer",
                    TaskScheduler::GetInstance()->GetTaskId("bgp::StateMachine"),
@@ -1950,6 +1952,9 @@ bool BgpPeer::EndOfRibTimerExpired() {
 }
 
 bool BgpPeer::KeepaliveTimerExpired() {
+    if (!IsReady())
+        return false;
+
     SendKeepalive(true);
 
     //
@@ -1987,11 +1992,6 @@ void BgpPeer::StartKeepaliveTimer() {
 
 void BgpPeer::StopKeepaliveTimerUnlocked() {
     keepalive_timer_->Cancel();
-}
-
-void BgpPeer::StopKeepaliveTimer() {
-    tbb::spin_mutex::scoped_lock lock(spin_mutex_);
-    StopKeepaliveTimerUnlocked();
 }
 
 bool BgpPeer::KeepaliveTimerRunning() {
