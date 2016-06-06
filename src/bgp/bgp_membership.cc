@@ -4,6 +4,8 @@
 
 #include "bgp/bgp_membership.h"
 
+#include <boost/foreach.hpp>
+
 #include "base/task_annotations.h"
 #include "base/task_trigger.h"
 #include "bgp/bgp_export.h"
@@ -13,6 +15,7 @@
 #include "bgp/bgp_ribout_updates.h"
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_server.h"
+#include "bgp/bgp_update_queue.h"
 #include "bgp/scheduling_group.h"
 #include "bgp/routing-instance/routing_instance.h"
 
@@ -296,6 +299,28 @@ bool BgpMembershipManager::IsRibOutRegistered(const IPeer *peer,
     tbb::spin_rw_mutex::scoped_lock read_lock(rw_mutex_, false);
     const PeerRibState *prs = FindPeerRibState(peer, table);
     return (prs && prs->ribout_registered());
+}
+
+//
+// Return RibOut's output queue depth.
+//
+uint32_t BgpMembershipManager::GetRibOutQueueDepth(const IPeer *peer,
+    const BgpTable *table) const {
+    tbb::spin_rw_mutex::scoped_lock read_lock(rw_mutex_, false);
+    const PeerRibState *prs = FindPeerRibState(peer, table);
+    if (!prs || !prs->ribout_registered())
+        return 0;
+    RibOut *ribout = prs->ribout();
+    assert(ribout);
+
+    uint32_t out_q_depth = 0;
+    if (ribout->updates()) {
+        BOOST_FOREACH(const UpdateQueue *queue,
+                      ribout->updates()->queue_vec()) {
+            out_q_depth += queue->size();
+        }
+    }
+    return out_q_depth;
 }
 
 //

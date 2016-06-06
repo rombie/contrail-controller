@@ -110,6 +110,8 @@ public:
     bool IsRegistered(const IPeer *peer, const BgpTable *table) const;
     bool IsRibInRegistered(const IPeer *peer, const BgpTable *table) const;
     bool IsRibOutRegistered(const IPeer *peer, const BgpTable *table) const;
+    uint32_t GetRibOutQueueDepth(const IPeer *peer,
+                                 const BgpTable *table) const;
 
     void GetRegisteredRibs(const IPeer *peer,
         std::list<BgpTable *> *table_list) const;

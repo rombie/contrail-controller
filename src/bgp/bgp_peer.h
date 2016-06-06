@@ -392,7 +392,7 @@ private:
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     std::string BytesToHexString(const u_int8_t *msg, size_t size);
-    uint32_t get_output_queue_depth(Address::Family family) const;
+    uint32_t GetOutputQueueDepth(Address::Family family) const;
 
     static const std::vector<Address::Family> supported_families_;
     BgpServer *server_;

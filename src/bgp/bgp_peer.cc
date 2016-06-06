@@ -429,9 +429,9 @@ void BgpPeer::SendEndOfRIBActual(Address::Family family) {
         " size " << msgsize);
 }
 
-uint32_t BgpPeer::get_output_queue_depth(Address::Family family) const {
-    uint32_t out_q_depth = 0;
-    return out_q_depth;
+uint32_t BgpPeer::GetOutputQueueDepth(Address::Family family) const {
+    BgpTable *table = GetRoutingInstance()->GetTable(family);
+    return server_->membership_mgr()->GetRibOutQueueDepth(this, table);
 }
 
 bool BgpPeer::EndOfRibSendTimerExpired(Address::Family family) {
@@ -447,7 +447,7 @@ bool BgpPeer::EndOfRibSendTimerExpired(Address::Family family) {
 
     // Retry if wait time has not exceeded kMaxEndOfRibSendTimeUsecs and output
     // queue has not been fully drained yet.
-    if (elapsed > kMaxEndOfRibSendTimeUsecs && get_output_queue_depth(family))
+    if (elapsed < kMaxEndOfRibSendTimeUsecs && GetOutputQueueDepth(family))
         return true;
 
     SendEndOfRIBActual(family);
