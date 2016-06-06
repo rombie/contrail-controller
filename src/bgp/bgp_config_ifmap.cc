@@ -1786,11 +1786,11 @@ bool BgpIfmapGlobalSystemConfig::Update(BgpIfmapConfigManager *manager,
         changed |= true;
     }
 
-    if (data_.eor_time() != static_cast<uint32_t>(
+    if (data_.eor_rx_time() != static_cast<uint32_t>(
             system->graceful_restart_params().
                 end_of_rib_receive_time)) {
-        data_.set_eor_time(system->graceful_restart_params().
-                               end_of_rib_receive_time);
+        data_.set_eor_rx_time(system->graceful_restart_params().
+                                  end_of_rib_receive_time);
         changed |= true;
     }
     return changed;

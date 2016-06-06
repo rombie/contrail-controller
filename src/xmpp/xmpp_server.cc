@@ -138,7 +138,7 @@ public:
             BgpConfigManager::EventType event) {
         config_.set_gr_time(system->gr_time());
         config_.set_llgr_time(system->llgr_time());
-        config_.set_eor_time(system->eor_time());
+        config_.set_eor_rx_time(system->eor_rx_time());
         server_->ClearAllConnections();
     }
 
@@ -191,7 +191,8 @@ const uint32_t XmppServer::GetLongLivedGracefulRestartTime() const {
 }
 
 const uint32_t XmppServer::GetEndOfRibReceiveTime() const {
-    return xmpp_config_updater_ ? xmpp_config_updater_->config().eor_time():0;
+    return xmpp_config_updater_ ?
+               xmpp_config_updater_->config().eor_rx_time() : 0;
 }
 
 bool XmppServer::IsPeerCloseGraceful() const {
