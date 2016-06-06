@@ -318,7 +318,7 @@ protected:
     ExtCommunitySpec *CreateRouteTargets();
     void AddAllRoutes();
     void AddPeersWithRoutes(const BgpInstanceConfig *instance_config);
-    void AddPeers(const void *args);
+    void AddPeers(const BgpInstanceConfig *instance_config);
     void AddXmppPeersWithRoutes();
     void CreateAgents();
     void Subscribe();
@@ -754,9 +754,7 @@ void BgpPeerCloseTest::VerifyRoutingInstances() {
                                BgpConfigManager::kMasterInstance));
 }
 
-void BgpPeerCloseTest::AddPeers(const void *args) {
-    const BgpInstanceConfig *instance_config =
-        static_cast<const BgpInstanceConfig *>(args);
+void BgpPeerCloseTest::AddPeers(const BgpInstanceConfig *instance_config) {
     for (int p = 1; p <= n_peers_; p++) {
         ostringstream oss;
         oss << "NullPeer" << p;
@@ -786,8 +784,8 @@ void BgpPeerCloseTest::AddPeersWithRoutes(
     // Add XmppPeers with routes as well
     AddXmppPeersWithRoutes();
 
-    task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddPeers, this, _1),
-                        instance_config, "bgp::Config");
+    task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddPeers, this,
+                                    instance_config), "bgp::Config");
     task_util::TaskFire(boost::bind(&BgpPeerCloseTest::AddAllRoutes, this),
                         "bgp::StateMachine");
     WaitForIdle();

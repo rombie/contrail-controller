@@ -30,7 +30,7 @@ public:
 // complete.
 //
 // Usage example:
-// task_util::TaskFire(boost::bind(&Example::ExampleRun, this, _1), args,
+// task_util::TaskFire(boost::bind(&Example::ExampleRun, this, args),
 //                     "bgp::Config");
 //
 // Note: One cannot call task_util::wait_for_idle() inside ExampleRun() as that
@@ -39,17 +39,11 @@ class TaskFire {
 public:
     typedef boost::function<void(void)> FunctionPtr;
     typedef boost::function<void(const void *)> FunctionPtr1;
-    TaskFire(FunctionPtr func, const std::string task_name,
-             int task_instance = 0);
-    TaskFire(FunctionPtr1 func, const void *arg1, const std::string task_name,
-             int task_instance = 0);
+    TaskFire(FunctionPtr func, const std::string task_name, int instance = 0);
 
 private:
     bool Run();
-    bool Run1();
     FunctionPtr func_;
-    FunctionPtr1 func1_;
-    const void *arg1_;
     std::string task_name_;
     boost::scoped_ptr<TaskTrigger> task_trigger_;
 };
