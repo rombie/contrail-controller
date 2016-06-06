@@ -46,7 +46,7 @@ class ConfigEventManager(EventManager):
         self.node_type = "contrail-config"
         self.module = Module.CONFIG_NODE_MGR
         self.module_id = ModuleNames[self.module]
-        self.supervisor_serverurl = "unix:///tmp/supervisord_config.sock"
+        self.supervisor_serverurl = "unix:///var/run/supervisord_config.sock"
         self.add_current_process()
         node_type = Module2NodeType[self.module]
         node_type_name = NodeTypeNames[node_type]
@@ -65,6 +65,7 @@ class ConfigEventManager(EventManager):
 		staticmethod(ConnectionState.get_process_state_cb),
 		NodeStatusUVE, NodeStatus)
         self.send_system_cpu_info()
+        self.third_party_process_list = [ ]
     # end __init__
 
     def process(self):
@@ -82,6 +83,9 @@ class ConfigEventManager(EventManager):
         self.send_nodemgr_process_status_base(
             ProcessStateNames, ProcessState, ProcessStatus,
             NodeStatus, NodeStatusUVE)
+
+    def get_node_third_party_process_list(self):
+        return self.third_party_process_list 
 
     def get_node_status_class(self):
         return NodeStatus

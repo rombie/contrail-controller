@@ -63,7 +63,7 @@ class VrouterEventManager(EventManager):
             node_type_name, self.instance_id, self.collector_addr,
             self.module_id, 8102, ['vrouter.vrouter'], _disc)
         sandesh_global.set_logging_params(enable_local_log=True)
-        self.supervisor_serverurl = "unix:///tmp/supervisord_vrouter.sock"
+        self.supervisor_serverurl = "unix:///var/run/supervisord_vrouter.sock"
         self.add_current_process()
         ConnectionState.init(sandesh_global, socket.gethostname(), self.module_id,
             self.instance_id,
@@ -72,6 +72,7 @@ class VrouterEventManager(EventManager):
 
         self.lb_stats = LoadbalancerStats()
         self.send_system_cpu_info()
+        self.third_party_process_list = [ ]
     # end __init__
 
     def msg_log(self, msg, level):
@@ -94,6 +95,9 @@ class VrouterEventManager(EventManager):
         self.send_nodemgr_process_status_base(
             ProcessStateNames, ProcessState, ProcessStatus,
             NodeStatus, NodeStatusUVE)
+
+    def get_node_third_party_process_list(self):
+        return self.third_party_process_list 
 
     def get_node_status_class(self):
         return NodeStatus
