@@ -338,8 +338,8 @@ private:
     friend class StateMachineUnitTest;
 
     static const int kMinEndOfRibSendTimeUsecs = 10000000; // 10 Seconds
-    static const int kMaxEndOfRibSendTimeUsecs = 30000000; // 30 Seconds
-    static const int kEndOfRibSendRetryTimeMsecs = 5000;   // 5 Seconds
+    static const int kMaxEndOfRibSendTimeUsecs = 60000000; // 60 Seconds
+    static const int kEndOfRibSendRetryTimeMsecs = 2000;   // 2 Seconds
 
     class DeleteActor;
     class PeerClose;
