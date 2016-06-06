@@ -1110,7 +1110,7 @@ TEST_F(BgpMembershipTest, DuplicateRegister1DeathTest) {
 
     // Register to blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(
+    TASK_UTIL_EXPECT_DEATH(
         mgr_->Register(peers_[0], blue_tbl_, peers_[0]->GetRibExportPolicy()),
         ".*");
 
@@ -1139,7 +1139,7 @@ TEST_F(BgpMembershipTest, DuplicateRegister2DeathTest) {
 
     // Register to blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(
+    TASK_UTIL_EXPECT_DEATH(
         mgr_->Register(peers_[0], blue_tbl_, peers_[0]->GetRibExportPolicy()),
         ".*");
 
@@ -1169,7 +1169,7 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn1DeathTest) {
 
     // Register for ribin to blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
 
     // Unregister from blue.
     mgr_->Unregister(peers_[0], blue_tbl_);
@@ -1196,7 +1196,7 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn2DeathTest) {
 
     // Register for ribin to blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1224,7 +1224,7 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn3DeathTest) {
 
     // Register for ribin to blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
 
     // Unregister from blue.
     mgr_->UnregisterRibIn(peers_[0], blue_tbl_);
@@ -1252,7 +1252,7 @@ TEST_F(BgpMembershipTest, DuplicateRegisterRibIn4DeathTest) {
 
     // Register for ribin to blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->RegisterRibIn(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1272,7 +1272,7 @@ TEST_F(BgpMembershipTest, UnregisterWithoutRegisterDeathTest) {
 
     // Unregister from blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
 }
 
 //
@@ -1294,7 +1294,7 @@ TEST_F(BgpMembershipTest, UnregisterWithPendingRegisterDeathTest) {
 
     // Unregister from blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1328,7 +1328,7 @@ TEST_F(BgpMembershipTest, UnregisterWithPendingUnregisterDeathTest) {
 
     // Unregister from blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1358,7 +1358,7 @@ TEST_F(BgpMembershipTest, UnregisterWithPendingWalkDeathTest) {
 
     // Unregister from blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->Unregister(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1377,7 +1377,7 @@ TEST_F(BgpMembershipTest, WalkWithoutRegisterDeathTest) {
 
     // Walk blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
 
 }
 
@@ -1400,7 +1400,7 @@ TEST_F(BgpMembershipTest, WalkWithPendingRegisterDeathTest) {
 
     // Walk blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1434,7 +1434,7 @@ TEST_F(BgpMembershipTest, WalkWithPendingUnregisterDeathTest) {
 
     // Walk blue.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);
@@ -1464,7 +1464,7 @@ TEST_F(BgpMembershipTest, WalkWithPendingWalkDeathTest) {
 
     // Walk blue again.
     // Note that this happens only in the cloned/forked child.
-    EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
+    TASK_UTIL_EXPECT_DEATH(mgr_->WalkRibIn(peers_[0], blue_tbl_), ".*");
 
     // Enable membership manager.
     SetQueueDisable(false);

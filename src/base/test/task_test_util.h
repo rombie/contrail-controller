@@ -5,6 +5,9 @@
 #ifndef __BASE__TASK_TEST_UTIL_H__
 #define __BASE__TASK_TEST_UTIL_H__
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include <boost/function.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <base/task_trigger.h>
@@ -377,6 +380,19 @@ static inline unsigned long long int task_util_retry_count() {
 #define TASK_UTIL_EXPECT_FALSE_MSG(condition, msg) \
     TASK_UTIL_WAIT_EQ_NO_MSG(false, condition, task_util_wait_time(), \
                              task_util_retry_count(), msg)
+
+#define TASK_UTIL_EXPECT_DEATH(statement, regex)                               \
+    do {                                                                       \
+        rlimit current_core_limit;                                             \
+        getrlimit(RLIMIT_CORE, &current_core_limit);                           \
+        rlimit new_core_limit;                                                 \
+        new_core_limit.rlim_cur = 0;                                           \
+        new_core_limit.rlim_max = 0;                                           \
+        setrlimit(RLIMIT_CORE, &new_core_limit);                               \
+        EXPECT_DEATH(statement, regex);                                        \
+        setrlimit(RLIMIT_CORE, &current_core_limit);                           \
+    } while (false)
+
 
 #define TASK_UTIL_ASSERT_EQ(expected, actual)                                  \
     do {                                                                       \
