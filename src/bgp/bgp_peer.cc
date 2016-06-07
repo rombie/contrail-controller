@@ -434,12 +434,15 @@ uint32_t BgpPeer::GetOutputQueueDepth(Address::Family family) const {
     return server_->membership_mgr()->GetRibOutQueueDepth(this, table);
 }
 
+uint64_t BgpPeer::GetElapsedTimeSinceLastStateChange() const {
+    return UTCTimestampUsec() - state_machine_->last_state_change_usecs_at();
+}
+
 bool BgpPeer::EndOfRibSendTimerExpired(Address::Family family) {
     if (!IsReady())
         return false;
 
-    uint64_t elapsed = UTCTimestampUsec() -
-                       state_machine_->last_state_change_usecs_at();
+    uint64_t elapsed = GetElapsedTimeSinceLastStateChange();
 
     // Wait for atleast kMinEndOfRibSendTimeUsecs duration.
     if (elapsed < kMinEndOfRibSendTimeUsecs)
@@ -579,7 +582,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           peer_close_(new PeerClose(this)),
           peer_stats_(new PeerStats(this)),
           deleter_(new DeleteActor(this)),
-          instance_delete_ref_(this, instance->deleter()),
+          instance_delete_ref_(this, instance ? instance->deleter() : NULL),
           flap_count_(0),
           total_flap_count_(0),
           last_flap_(0),
@@ -587,7 +590,8 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     membership_req_pending_ = 0;
     BGP_LOG_PEER(Event, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Created");
-    if (peer_name_.find(rtinstance_->name()) == 0) {
+
+    if (rtinstance_ && peer_name_.find(rtinstance_->name()) == 0) {
         peer_basename_ = peer_name_.substr(rtinstance_->name().size() + 1);
     } else {
         peer_basename_ = peer_name_;
@@ -2083,10 +2087,10 @@ string BgpPeer::ToString() const {
 string BgpPeer::ToUVEKey() const {
     ostringstream out;
 
-    // XXX Skip master instance names from the logs and uves.
-    if (true || !rtinstance_->IsMasterRoutingInstance()) {
+    if (rtinstance_) {
         out << rtinstance_->name() << ":";
     }
+
     // out << peer_key_.endpoint.address();
     out << server_->localname() << ":";
     out << peer_name();

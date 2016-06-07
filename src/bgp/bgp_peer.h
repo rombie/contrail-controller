@@ -72,6 +72,10 @@ struct BgpPeerFamilyAttributesCompare {
 // A BGP peer along with its session and state machine.
 class BgpPeer : public IPeer {
 public:
+    static const int kMinEndOfRibSendTimeUsecs = 10000000; // 10 Seconds
+    static const int kMaxEndOfRibSendTimeUsecs = 60000000; // 60 Seconds
+    static const int kEndOfRibSendRetryTimeMsecs = 2000;   // 2 Seconds
+
     typedef std::set<Address::Family> AddressFamilyList;
     typedef AuthenticationData::KeyType KeyType;
 
@@ -199,6 +203,7 @@ public:
     virtual bool IsXmppPeer() const;
     virtual bool CanUseMembershipManager() const;
     virtual bool IsRegistrationRequired() const { return true; }
+    virtual uint64_t GetElapsedTimeSinceLastStateChange() const;
 
     void Close(bool non_graceful);
     void Clear(int subcode);
@@ -308,6 +313,7 @@ public:
     virtual bool SkipNotificationReceive(int code, int subcode) const;
     void Register(BgpTable *table, const RibExportPolicy &policy);
     void Register(BgpTable *table);
+    bool EndOfRibSendTimerExpired(Address::Family family);
 
 protected:
     const std::vector<std::string> &negotiated_families() const {
@@ -326,7 +332,7 @@ protected:
     std::vector<std::string> &long_lived_graceful_restart_families() {
         return long_lived_graceful_restart_families_;
     }
-    void SendEndOfRIBActual(Address::Family family);
+    virtual void SendEndOfRIBActual(Address::Family family);
     virtual void SendEndOfRIB(Address::Family family);
     int membership_req_pending() const { return membership_req_pending_; }
 
@@ -335,10 +341,6 @@ private:
     friend class BgpPeerTest;
     friend class BgpServerUnitTest;
     friend class StateMachineUnitTest;
-
-    static const int kMinEndOfRibSendTimeUsecs = 10000000; // 10 Seconds
-    static const int kMaxEndOfRibSendTimeUsecs = 60000000; // 60 Seconds
-    static const int kEndOfRibSendRetryTimeMsecs = 2000;   // 2 Seconds
 
     class DeleteActor;
     class PeerClose;
@@ -357,7 +359,6 @@ private:
     void ReceiveEndOfRIB(Address::Family family, size_t msgsize);
     void StartEndOfRibTimer();
     bool EndOfRibTimerExpired();
-    bool EndOfRibSendTimerExpired(Address::Family family);
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
 
@@ -392,7 +393,7 @@ private:
     void FillCloseInfo(BgpNeighborResp *resp) const;
 
     std::string BytesToHexString(const u_int8_t *msg, size_t size);
-    uint32_t GetOutputQueueDepth(Address::Family family) const;
+    virtual uint32_t GetOutputQueueDepth(Address::Family family) const;
 
     static const std::vector<Address::Family> supported_families_;
     BgpServer *server_;
