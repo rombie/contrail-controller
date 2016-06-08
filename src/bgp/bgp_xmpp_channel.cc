@@ -2170,14 +2170,27 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
 }
 
 // Clear staled subscription state as new subscription has been received.
-void BgpXmppChannel::ClearStaledSubscription(string instance_name,
-                                             SubscriptionState &sub_state) {
-    if (sub_state.IsStale()) {
-        BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
-                     BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
-                     "Instance subscription " << instance_name <<
-                     " stale flag is cleared");
-        sub_state.ClearStale();
+void BgpXmppChannel::ClearStaledSubscription(BgpTable *rtarget_table,
+        RoutingInstance *rt_instance, BgpAttrPtr attr,
+        SubscriptionState &sub_state) {
+    if (!sub_state.IsStale())
+        return;
+
+    BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
+                 BGP_LOG_FLAG_ALL, BGP_PEER_DIR_NA,
+                 "Instance subscription " << rt_instance->name() <<
+                 " stale flag is cleared");
+    sub_state.ClearStale();
+
+    // Update route targets to clear STALE flag.
+    BOOST_FOREACH(RouteTarget rtarget, sub_state.targets) {
+        PublishedRTargetRoutes::iterator rt_loc = rtarget_routes_.find(rtarget);
+        assert(rt_loc != rtarget_routes_.end());
+
+        // Send rtarget route ADD
+        RTargetRouteOp(rtarget_table,
+                       bgp_server_->local_autonomous_system(),
+                       rtarget, attr, true);
     }
 }
 
@@ -2208,10 +2221,10 @@ void BgpXmppChannel::PublishRTargetRoute(RoutingInstance *rt_instance,
                   (rt_instance, state));
         it = ret.first;
 
-        // During GR, we expect duplicate subscriptionr requests. Clear the
-        // stale state, as agent did re-subscribe after restart.
+        // During GR, we expect duplicate subscription requests. Clear the stale
+        // state, as agent did re-subscribe after restart.
         if (!ret.second) {
-            ClearStaledSubscription((*(ret.first)).first->name(),
+            ClearStaledSubscription(rtarget_table, rt_instance, attr,
                                     (*(ret.first)).second);
             return;
         }

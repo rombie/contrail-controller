@@ -238,8 +238,9 @@ private:
     void FlushDeferQ(std::string vrf_name, std::string table_name);
     void ProcessDeferredSubscribeRequest(RoutingInstance *rt_instance,
                                          int instance_id);
-    void ClearStaledSubscription(std::string instance_name,
-                                 SubscriptionState &sub_state);
+    void ClearStaledSubscription(BgpTable *rtarget_table,
+            RoutingInstance *rt_instance, BgpAttrPtr attr,
+            SubscriptionState &sub_state);
     const BgpXmppChannelManager *manager() const { return manager_; }
     bool ProcessMembershipResponse(std::string table_name,
              RoutingTableMembershipRequestMap::iterator loc);
