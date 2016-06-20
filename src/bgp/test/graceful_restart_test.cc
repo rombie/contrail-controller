@@ -412,8 +412,7 @@ protected:
             this->send_eor = true;
         }
 
-        // TODO: Enable tests for EoR.
-        bool should_send_eor() const { return true || send_eor; }
+        bool should_send_eor() const { return send_eor; }
 
         test::NetworkAgentMock *agent;
         BgpPeerTest *peer;
