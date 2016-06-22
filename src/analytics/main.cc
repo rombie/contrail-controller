@@ -140,8 +140,6 @@ bool CollectorInfoLogger(VizSandeshContext &ctx) {
 
     analytics->SendGeneratorStatistics();
 
-    analytics->TestDatabaseConnection();
-
     collector_info_log_timer->Cancel();
     collector_info_log_timer->Start(60*1000, boost::bind(&CollectorInfoLogTimer),
                                NULL);
@@ -319,6 +317,9 @@ int main(int argc, char *argv[])
                              ConnectionType::REDIS_UVE)->second, "From"))
          (ConnectionTypeName(g_process_info_constants.ConnectionTypeNames.find(
                              ConnectionType::DISCOVERY)->second,
+                             g_vns_constants.API_SERVER_DISCOVERY_SERVICE_NAME))
+         (ConnectionTypeName(g_process_info_constants.ConnectionTypeNames.find(
+                             ConnectionType::DISCOVERY)->second,
                              g_vns_constants.COLLECTOR_DISCOVERY_SERVICE_NAME))
          (ConnectionTypeName(g_process_info_constants.ConnectionTypeNames.find(
                              ConnectionType::DATABASE)->second,
@@ -347,9 +348,6 @@ int main(int argc, char *argv[])
     ttl_map.insert(std::make_pair(TtlType::GLOBAL_TTL,
                 options.analytics_data_ttl()));
 
-    //Get Platform info
-    //cql not supported in precise, centos 6.4 6.5
-    bool use_cql = MiscUtils::IsCqlSupported();
     std::string zookeeper_server_list(options.zookeeper_server_list());
     bool use_zookeeper = !zookeeper_server_list.empty();
     VizCollector analytics(a_evm,
@@ -370,7 +368,6 @@ int main(int argc, char *argv[])
             options.kafka_prefix(),
             ttl_map, options.cassandra_user(),
             options.cassandra_password(),
-            use_cql,
             zookeeper_server_list,
             use_zookeeper);
 
@@ -427,6 +424,7 @@ int main(int argc, char *argv[])
             g_vns_constants.ModuleNames.find(Module::COLLECTOR)->second;
         ds_client = new DiscoveryServiceClient(a_evm, dss_ep, client_name);
         ds_client->Init();
+        analytics.UpdateUdc(&options, ds_client);
     } else {
         LOG (ERROR, "Invalid Discovery Server hostname or ip " <<
                      options.discovery_server());

@@ -628,14 +628,24 @@ class OpServerUtils(object):
                          data_str += ', '
                     vdict = value_dict['map']
                     data_str += key + ': {'
-                    if vdict['@value'] == 'struct':
+
+                    sname = None
+                    for ss in vdict.keys():
+                        if ss[0] != '@':
+                            if ss != 'element':
+                                sname = ss
+
+                    if sname is not None:
                         keys = []
                         values = []
                         for key, value in vdict.iteritems():
                             if key == 'element':
-                                keys = value
+                                if isinstance(value, list):
+                                    keys = value
+                                else:
+                                    keys = [value]
                             elif isinstance(value, dict):
-                                values = value
+                                values = [value]
                             elif isinstance(value, list):
                                 values = value
                         for i in range(len(keys)):
@@ -643,11 +653,12 @@ class OpServerUtils(object):
                                 '[' + OpServerUtils._data_dict_to_str(
                                     values[i], sandesh_type) + '], '
                     else:
-                        vdict_list = vdict['element']
-                        for i in range(int(vdict['@size'])):
-                            k = i*2
-                            data_str += vdict_list[k] + ': ' + \
-                                vdict_list[k+1] + ', '
+                        if 'element' in vdict:
+                            vdict_list = vdict['element']
+                            for i in range(int(vdict['@size'])):
+                                k = i*2
+                                data_str += vdict_list[k] + ': ' + \
+                                    vdict_list[k+1] + ', '
                     data_str += '}'
                     continue
             else:

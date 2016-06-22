@@ -69,13 +69,16 @@ discovery_pkg = OpEnv.SandeshGenPy('discovery.sandesh', 'opserver/sandesh/', Fal
 analytics_database_pkg = OpEnv.SandeshGenPy('analytics_database.sandesh', 'opserver/sandesh/', False)
 alarmgen_pkg = OpEnv.SandeshGenPy('alarmgen_ctrl.sandesh', 'opserver/sandesh/', False)
 alarm_sandesh_base_pkg = OpEnv.SandeshGenPy('#tools/sandesh/library/common/sandesh_alarm_base.sandesh', 'opserver/sandesh/alarmgen_ctrl/', False)
+derived_stats_pkg = OpEnv.SandeshGenPy('#tools/sandesh/library/common/derived_stats_results.sandesh', 'opserver/sandesh/analytics/', False)
 database_pkg = OpEnv.SandeshGenPy('#controller/src/database/gendb.sandesh', 'opserver/sandesh/viz/', False)
 OpEnv.Depends(alarm_sandesh_base_pkg, alarmgen_pkg)
+OpEnv.Depends(derived_stats_pkg, analytics_pkg)
 
 sdist_depends = [setup_sources_rules, local_sources_rules,
                  viz_pkg, analytics_pkg, cpu_info_pkg, redis_pkg,
                  process_info_pkg, discovery_pkg, analytics_database_pkg,
-                 alarmgen_pkg, alarm_sandesh_base_pkg, database_pkg]
+                 alarmgen_pkg, database_pkg, alarm_sandesh_base_pkg,
+                 derived_stats_pkg]
 
 cd_cmd = 'cd ' + Dir('.').path + ' && '
 sdist_gen = OpEnv.Command('dist/opserver-0.1dev.tar.gz', 'setup.py',
@@ -112,6 +115,7 @@ OpEnv.SConscript('plugins/alarm_partial_sysinfo/SConscript', exports='OpEnv', du
 OpEnv.SConscript('plugins/alarm_bgp_connectivity/SConscript', exports='OpEnv', duplicate = 0)
 OpEnv.SConscript('plugins/alarm_xmpp_connectivity/SConscript', exports='OpEnv', duplicate = 0)
 OpEnv.SConscript('plugins/alarm_vrouter_interface/SConscript', exports='OpEnv', duplicate = 0)
+OpEnv.SConscript('plugins/alarm_phyif_bandwidth/SConscript', exports='OpEnv', duplicate = 0)
 OpEnv.SConscript('plugins/alarm_config_incorrect/SConscript', exports='OpEnv', duplicate = 0)
 OpEnv.SConscript('plugins/alarm_address_mismatch/SConscript', exports='OpEnv', duplicate = 0)
 OpEnv.SConscript('plugins/alarm_storage/SConscript', exports='OpEnv', duplicate = 0)
@@ -250,6 +254,7 @@ test_depends = [
         '/opserver/plugins/alarm_process_connectivity/dist/alarm_process_connectivity-0.1dev.tar.gz',
         '/opserver/plugins/alarm_process_status/dist/alarm_process_status-0.1dev.tar.gz',
         '/opserver/plugins/alarm_vrouter_interface/dist/alarm_vrouter_interface-0.1dev.tar.gz',
+        '/opserver/plugins/alarm_phyif_bandwidth/dist/alarm_phyif_bandwidth-0.1dev.tar.gz',
         '/opserver/plugins/alarm_xmpp_connectivity/dist/alarm_xmpp_connectivity-0.1dev.tar.gz',
         '/opserver/plugins/alarm_config_incorrect/dist/alarm_config_incorrect-0.1dev.tar.gz',
         '/opserver/plugins/alarm_address_mismatch/dist/alarm_address_mismatch-0.1dev.tar.gz',
