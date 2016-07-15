@@ -2521,15 +2521,7 @@ void BgpStressTest::Pause(string message) {
     cout << message;
     BGP_DEBUG_UT(message);
 
-    evm_.io_service()->notify_fork(boost::asio::io_service::fork_prepare);
-    pid_t pid;
-    if (!(pid = fork())) {
-        evm_.io_service()->notify_fork(boost::asio::io_service::fork_child);
-        execl("/usr/bin/python", "/usr/bin/python", NULL);
-    }
-    evm_.io_service()->notify_fork(boost::asio::io_service::fork_parent);
-    int status;
-    waitpid(pid, &status, 0);
+    TASK_UTIL_EXEC_AND_WAIT(evm_, "/usr/bin/python");
     HEAP_PROFILER_DUMP("bgp_stress_test");
 }
 
