@@ -1214,7 +1214,9 @@ void XmppStateMachine::StartConnectTimer(int seconds) {
     // Add up to +/- kJitter percentage to reduce connection collisions.
     int ms = ((seconds)? seconds * 1000 : 50);
     ms = (ms * (100 - kJitter)) / 100;
+#ifndef VALGRIND
     ms += (ms * (rand() % (kJitter * 2))) / 100;
+#endif
     connect_timer_->Start(ms,
         boost::bind(&XmppStateMachine::ConnectTimerExpired, this),
         boost::bind(&XmppStateMachine::TimerErrorHandler, this, _1, _2));

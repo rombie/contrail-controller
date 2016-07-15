@@ -5,6 +5,9 @@
 #include "ifmap_channel.h"
 #include <sstream>
 #include <string>
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include "base/connection_info.h"
 #include "base/logging.h"
@@ -396,6 +399,9 @@ int IFMapChannel::ExtractPubSessionId() {
     // Append the new bytes read, if any, to the stringstream
     reply_ss_ << &reply_;
     std::string reply_str = reply_ss_.str();
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(reply_str.c_str(), reply_str.size());
+#endif
     IFMAP_PEER_DEBUG(IFMapServerConnection,
                      "PubSessionId message is: \n", reply_str);
 
@@ -526,6 +532,9 @@ int IFMapChannel::ReadSubscribeResponseStr() {
     // Append the new bytes read, if any, to the stringstream
     reply_ss_ << &reply_;
     std::string reply_str = reply_ss_.str();
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(reply_str.c_str(), reply_str.size());
+#endif
     IFMAP_PEER_DEBUG(IFMapServerConnection,
                      "SubscribeResponse message is: \n", reply_str);
 
@@ -602,6 +611,9 @@ int IFMapChannel::ReadPollResponse() {
     // Append the new bytes read, if any, to the stringstream
     reply_ss_ << &reply_;
     std::string reply_str = reply_ss_.str();
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(reply_str.c_str(), reply_str.size());
+#endif
     IFMAP_PEER_LOG_POLL_RESP(IFMapServerConnection,
                    GetSizeAsString(reply_.size(), " bytes in reply_. ") +
                    GetSizeAsString(reply_str.size(), " bytes in reply_str. ") +
@@ -774,6 +786,9 @@ void IFMapChannel::ProcResponse(const boost::system::error_code& error,
 
     reply_ss_ << &reply_;
     std::string reply_str = reply_ss_.str();
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(reply_str.c_str(), reply_str.size());
+#endif
 
     if (reply_str.find("401 Unauthorized") != string::npos) {
         IFMAP_PEER_WARN(IFMapServerConnection, 

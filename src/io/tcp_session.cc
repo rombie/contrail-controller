@@ -8,6 +8,9 @@
 #include <boost/bind.hpp>
 #include <boost/scoped_array.hpp>
 #include <boost/asio/detail/socket_option.hpp>
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include "base/logging.h"
 #include "io/event_manager.h"
@@ -32,6 +35,10 @@ public:
     }
     virtual bool Run() {
         if (session_->IsEstablished()) {
+#ifdef VALGRIND
+            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
+                                      buffer_size(buffer_));
+#endif
             read_fn_(buffer_);
             if (session_->IsReaderDeferred()) {
                 // Update socket read block count.
@@ -439,6 +446,11 @@ void TcpSession::AsyncReadHandler(
         return;
     }
 
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
+                              buffer_size(buffer) > bytes_transferred ?
+                              buffer_size(buffer) : bytes_transferred);
+#endif
     boost::system::error_code err;
     if (session->AsyncReadHandlerProcess(buffer, bytes_transferred, err)) {
         // check error code if session needs to be closed

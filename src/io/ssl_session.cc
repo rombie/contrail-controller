@@ -4,6 +4,9 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include "ssl_session.h"
 #include "io/io_utils.h"
@@ -22,6 +25,10 @@ public:
     }
     virtual bool Run() {
         if (session_->IsEstablished()) {
+#ifdef VALGRIND
+            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
+                                      buffer_size(buffer_));
+#endif
             read_fn_(buffer_);
             if (session_->IsSslDisabled()) {
                 session_->AsyncReadStart();
@@ -79,8 +86,17 @@ bool SslSession::AsyncReadHandlerProcess(boost::asio::mutable_buffer buffer,
         return false;
     }
 
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
+                              buffer_size(buffer));
+#endif
+
     // do ssl read here in IO context, ignore errors
     bytes_transferred = ssl_socket_->read_some(mutable_buffers_1(buffer), error);
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
+                              bytes_transferred);
+#endif
 
     return true;
 }
