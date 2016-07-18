@@ -2521,12 +2521,7 @@ void BgpStressTest::Pause(string message) {
     cout << message;
     BGP_DEBUG_UT(message);
 
-    char file[128];
-    snprintf(file, sizeof(file), "/tmp/.bgp_stress_test_resume_%d", getpid());
-    std::cout << "Paused until " << file << " is removed" << std::endl;
-    while (access(file, F_OK))
-        sleep(1);
-    remove(file);
+    TASK_UTIL_EXEC_AND_WAIT(evm_, "/usr/bin/python");
     HEAP_PROFILER_DUMP("bgp_stress_test");
 }
 

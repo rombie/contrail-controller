@@ -563,8 +563,11 @@ class PhysicalRouterDM(DBBaseDM):
                 peer = BgpRouterDM.get(peer_uuid)
                 if peer is None:
                     continue
-                external = (bgp_router.params['autonomous_system'] !=
-                            peer.params['autonomous_system'])
+                local_as = bgp_router.params.get('local_autonomous_system') or \
+                               bgp_router.params.get('autonomous_system')
+                peer_as = peer.params.get('local_autonomous_system') or \
+                               peer.params.get('autonomous_system')
+                external = (local_as != peer_as)
                 self.config_manager.add_bgp_peer(peer.params['address'],
                                                  peer.params, attr, external)
             self.config_manager.set_bgp_config(bgp_router.params)
@@ -1022,6 +1025,7 @@ class VirtualMachineInterfaceDM(DBBaseDM):
             self.params = obj['virtual_machine_interface_properties']
             self.service_interface_type = self.params.get(
                 'service_interface_type', None)
+        self.device_owner = obj.get("virtual_machine_interface_device_owner")
         self.update_single_ref('logical_interface', obj)
         self.update_single_ref('virtual_network', obj)
         self.update_single_ref('floating_ip', obj)
@@ -1037,7 +1041,7 @@ class VirtualMachineInterfaceDM(DBBaseDM):
     # end update
 
     def is_device_owner_bms(self):
-        if self.logical_interface:
+        if self.logical_interface and self.device_owner.lower() == 'physicalrouter':
             return True
         return False
     # end

@@ -717,6 +717,8 @@ class VncCassandraClient(object):
 
                 if self._is_prop(col_name):
                     (_, prop_name) = col_name.split(':')
+                    if prop_name not in prop_fields:
+                        continue
                     result[prop_name] = obj_cols[col_name][0]
                     continue
 
@@ -759,6 +761,8 @@ class VncCassandraClient(object):
                     (_, child_type, child_uuid) = col_name.split(':')
                     if field_names and '%ss' %(child_type) not in field_names:
                         continue
+                    if child_type+'s' not in children_fields:
+                        continue
 
                     child_tstamp = obj_cols[col_name][1]
                     try:
@@ -770,12 +774,16 @@ class VncCassandraClient(object):
 
                 if self._is_ref(col_name):
                     (_, ref_type, ref_uuid) = col_name.split(':')
+                    if ref_type+'_refs' not in ref_fields:
+                        continue
                     self._read_ref(result, obj_uuid, ref_type, ref_uuid,
                                    obj_cols[col_name][0])
                     continue
 
                 if self._is_backref(col_name):
                     (_, back_ref_type, back_ref_uuid) = col_name.split(':')
+                    if back_ref_type+'_back_refs' not in backref_fields:
+                        continue
                     if (field_names and
                         '%s_back_refs' %(back_ref_type) not in field_names):
                         continue
@@ -935,7 +943,8 @@ class VncCassandraClient(object):
                 # iterate on wrapped element or directly on prop field
                 # for wrapped lists, store without the wrapper. regenerate
                 # wrapper on read
-                if obj_class.prop_list_field_has_wrappers[prop_name]:
+                if (obj_class.prop_list_field_has_wrappers[prop_name] and
+                    new_props[prop_name]):
                     wrapper_field = new_props[prop_name].keys()[0]
                     list_coll = new_props[prop_name][wrapper_field]
                 else:
@@ -949,7 +958,8 @@ class VncCassandraClient(object):
                 # iterate on wrapped element or directly on prop field
                 # for wrapped lists, store without the wrapper. regenerate
                 # wrapper on read
-                if obj_class.prop_map_field_has_wrappers[prop_name]:
+                if (obj_class.prop_map_field_has_wrappers[prop_name] and
+                    new_props[prop_name]):
                     wrapper_field = new_props[prop_name].keys()[0]
                     map_coll = new_props[prop_name][wrapper_field]
                 else:

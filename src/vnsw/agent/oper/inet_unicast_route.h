@@ -73,6 +73,7 @@ public:
     virtual bool EcmpDeletePath(AgentPath *path);
     void AppendEcmpPath(Agent *agent, AgentPath *path);
     void DeleteComponentNH(Agent *agent, AgentPath *path);
+    bool UpdateComponentNH(Agent *agent, AgentPath *ecmp_path, AgentPath *path);
 
     AgentPath *AllocateEcmpPath(Agent *agent, const AgentPath *path1,
                                 const AgentPath *path2);
@@ -217,7 +218,8 @@ public:
                             bool force_policy,
                             const PathPreference &path_preference,
                             const IpAddress &subnet_service_ip,
-                            const EcmpLoadBalance &ecmp_load_balance);
+                            const EcmpLoadBalance &ecmp_load_balance,
+                            bool is_local);
     static void AddLocalVmRoute(const Peer *peer, const string &vm_vrf,
                                 const IpAddress &addr, uint8_t plen,
                                 const uuid &intf_uuid,
@@ -228,7 +230,8 @@ public:
                                 bool force_policy,
                                 const PathPreference &path_preference,
                                 const IpAddress &subnet_service_ip,
-                                const EcmpLoadBalance &ecmp_load_balance);
+                                const EcmpLoadBalance &ecmp_load_balance,
+                                bool is_local);
     static void AddRemoteVmRouteReq(const Peer *peer, const string &vm_vrf,
                                     const IpAddress &vm_addr,uint8_t plen,
                                     AgentRouteData *data);

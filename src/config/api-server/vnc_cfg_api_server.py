@@ -1129,6 +1129,12 @@ class VncApiServer(object):
                 return (ok, result)
             obj_ids = result
 
+            # For virtual networks, allocate an ID
+            if child_obj_type == 'virtual_network':
+                child_dict['virtual_network_network_id'] =\
+                    self._db_conn._zk_db.alloc_vn_id(
+                        child_obj.get_fq_name_str())
+
             (ok, result) = self._db_conn.dbe_create(child_obj_type, obj_ids,
                                                     child_dict)
             if not ok:
@@ -1444,7 +1450,6 @@ class VncApiServer(object):
         vnc_cfg_types.AliasIpServer.addr_mgmt = addr_mgmt
         vnc_cfg_types.InstanceIpServer.addr_mgmt = addr_mgmt
         vnc_cfg_types.VirtualNetworkServer.addr_mgmt = addr_mgmt
-        vnc_cfg_types.InstanceIpServer.manager = self
         self._addr_mgmt = addr_mgmt
 
         # Authn/z interface
@@ -1481,6 +1486,8 @@ class VncApiServer(object):
         self.re_uuid = re.compile('^[0-9A-F]{8}-?[0-9A-F]{4}-?4[0-9A-F]{3}-?[89AB][0-9A-F]{3}-?[0-9A-F]{12}$',
                                   re.IGNORECASE)
 
+        # VncZkClient client assignment
+        vnc_cfg_types.VirtualNetworkServer.vnc_zk_client = self._db_conn._zk_db
     # end __init__
 
     def sandesh_disc_client_subinfo_handle_request(self, req):
@@ -2741,15 +2748,12 @@ class VncApiServer(object):
     # generate default rbac group rule
     def _create_default_rbac_rule(self):
         obj_type = 'api_access_list'
-        fq_name = ['default-domain', 'default-api-access-list']
+        fq_name = ['default-global-system-config', 'default-api-access-list']
         try:
             id = self._db_conn.fq_name_to_uuid(obj_type, fq_name)
             return
         except NoIdError:
-            self._create_singleton_entry(ApiAccessList(parent_type='domain', fq_name=fq_name))
-            id = self._db_conn.fq_name_to_uuid(obj_type, fq_name)
-
-        (ok, obj_dict) = self._db_conn.dbe_read(obj_type, {'uuid': id})
+            pass
 
         # allow full access to cloud admin
         rbac_rules = [
@@ -2770,8 +2774,23 @@ class VncApiServer(object):
             },
         ]
 
-        obj_dict['api_access_list_entries'] = {'rbac_rule' : rbac_rules}
-        self._db_conn.dbe_update(obj_type, {'uuid': id}, obj_dict)
+        rge = RbacRuleEntriesType([])
+        for rule in rbac_rules:
+            rule_perms = [RbacPermType(role_name=p['role_name'], role_crud=p['role_crud']) for p in rule['rule_perms']]
+            rbac_rule = RbacRuleType(rule_object=rule['rule_object'],
+                rule_field=rule['rule_field'], rule_perms=rule_perms)
+            rge.add_rbac_rule(rbac_rule)
+
+        rge_dict = rge.exportDict('')
+        glb_rbac_cfg = ApiAccessList(parent_type='global-system-config',
+            fq_name=fq_name, api_access_list_entries = rge_dict)
+
+        try:
+            self._create_singleton_entry(glb_rbac_cfg)
+        except Exception as e:
+            err_msg = 'Error creating default api access list object'
+            err_msg += cfgm_common.utils.detailed_traceback()
+            self.config_log(err_msg, level=SandeshLevel.SYS_ERR)
     # end _create_default_rbac_rule
 
     def _resync_domains_projects(self, ext):
@@ -2809,6 +2828,11 @@ class VncApiServer(object):
             obj_dict['perms2'] = self._get_default_perms2()
             (ok, result) = self._db_conn.dbe_alloc(obj_type, obj_dict)
             obj_ids = result
+            # For virtual networks, allocate an ID
+            if obj_type == 'virtual_network':
+                vn_id = self._db_conn._zk_db.alloc_vn_id(
+                    s_obj.get_fq_name_str())
+                obj_dict['virtual_network_network_id'] = vn_id
             self._db_conn.dbe_create(obj_type, obj_ids, obj_dict)
             method = '_%s_create_default_children' %(obj_type)
             def_children_method = getattr(self, method)

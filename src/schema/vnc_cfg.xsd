@@ -1142,6 +1142,19 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
      </xsd:restriction>
 </xsd:simpleType>
 
+<xsd:simpleType name="AddressAllocationModeType" default="user-defined-subnet-preferred">
+    <xsd:restriction base='xsd:string'>
+        <xsd:enumeration value="user-defined-subnet-preferred"
+             description='Allocation will use user-defined-subnets, if not available or exhausted use flat-subnets'/>
+        <xsd:enumeration value="user-defined-subnet-only"
+             description='Allocation will use user-defined-subnets only, if not available or exhausted igonre flat-subnets'/>
+        <xsd:enumeration value="flat-subnet-preferred"
+             description='Allocation will use flat-subnets, if not available or exhausted use user-defined-subnets'/>
+        <xsd:enumeration value="flat-subnet-only"
+             description='Allocation will use flat-subnets only, if not available or exhausted igonre user-defined-subnets'/>
+    </xsd:restriction>
+</xsd:simpleType>
+
 <xsd:complexType name='VirtualNetworkType'>
     <xsd:all>
         <xsd:element name='allow-transit' type="xsd:boolean" required='optional'
@@ -1286,6 +1299,11 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
     Property('multi-policy-service-chains-enabled', 'virtual-network', 'optional', 'CRUD',
              ['Allow multiple service chains within same two networks based on network policy.',
               'Current limitation is that both networks must reside within cluster, except when right most service is NAT.']) -->
+
+<xsd:element name="address-allocation-mode" type="AddressAllocationModeType"/>
+<!--#IFMAP-SEMANTICS-IDL
+     Property('ip-alloc-mode', 'virtual-network', 'optional', 'CRUD',
+               'Address allocation mode for virtual network.') -->
 
 <xsd:complexType name="IpamSubnets">
     <xsd:all>
@@ -1618,6 +1636,10 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
 <!--#IFMAP-SEMANTICS-IDL
      Property('instance-ip-secondary', 'instance-ip', 'optional', 'CRUD',
               'This instance ip is secondary ip of the interface.') -->
+<xsd:element name="instance-ip-local-ip" type="xsd:boolean" default='false'/>
+<!--#IFMAP-SEMANTICS-IDL
+     Property('instance-ip-local-ip', 'instance-ip', 'optional', 'CRUD',
+              'This instance ip is local to compute and will not be exported to other nodes.') -->
 <xsd:element name="service-instance-ip" type="xsd:boolean" default='false'/>
 <!--#IFMAP-SEMANTICS-IDL
      Property('service-instance-ip', 'instance-ip', 'system-only', 'CRUD',
@@ -2607,6 +2629,11 @@ targetNamespace="http://www.contrailsystems.com/2012/VNC-CONFIG/0">
      Link('project-api-access-list',
                'project', 'api-access-list', ['has'], 'optional', 'CRUD',
                'API access list is list of rules that define role based access to each API and its properties at project level.') -->
+<xsd:element name="global-system-config-api-access-list"/>
+<!--#IFMAP-SEMANTICS-IDL
+     Link('global-system-config-api-access-list',
+             'global-system-config', 'api-access-list', ['has'], 'required', 'CRUD',
+             'Global API access list applicable to all domain and projects') -->
 
 <!-- network.* => admin:CRUD (admin can perform all ops on networks) -->
 <xsd:element name="api-access-list-entries" type="RbacRuleEntriesType"/>
