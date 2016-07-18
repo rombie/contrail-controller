@@ -15,6 +15,9 @@
 #include <sys/shm.h>
 #include <asm/types.h>
 #include <boost/asio.hpp>
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include <base/timer.h>
 #include <base/task_trigger.h>
@@ -364,6 +367,10 @@ void KSyncFlowMemory::GetFlowTableSize() {
     while (len_read < data_len) {
         len_read = socket.read_some(boost::asio::buffer(cl->cl_buf + len_read,
                                                         cl->cl_buf_len), ec);
+
+#ifdef VALGRIND
+        VALGRIND_MAKE_MEM_DEFINED(cl->cl_buf + len_read, cl->cl_buf_len);
+#endif
         if (ec) {
             assert(0);
         }

@@ -1,6 +1,9 @@
 /*
  * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
  */
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include <cmn/agent_cmn.h>
 
@@ -87,9 +90,17 @@ void AgentInit::InitPlatform() {
     }
 }
 
+static void SignalHandler (int sig) {
+#ifdef VALGRIND
+    if (sig == SIGUSR1)
+        VALGRIND_DO_LEAK_CHECK;
+#endif
+}
+
 // Start of Agent init.
 // Trigger init in DBTable task context
 int AgentInit::Start() {
+    signal(SIGUSR1, SignalHandler);
     agent_->set_task_scheduler(TaskScheduler::GetInstance());
 
     // Init platform specific information
