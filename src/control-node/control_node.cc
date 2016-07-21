@@ -102,6 +102,17 @@ void ControlNode::SetDefaultSchedulingPolicy() {
     scheduler->SetPolicy(scheduler->GetTaskId("bgp::SendReadyTask"),
         send_ready_policy);
 
+    // Policy for bgp::SendTask Task.
+    TaskPolicy send_policy = boost::assign::list_of
+        (TaskExclusion(scheduler->GetTaskId("io::ReaderTask")));
+    scheduler->SetPolicy(scheduler->GetTaskId("bgp::SendTask"), send_policy);
+
+    // Policy for io::ReaderTask Task.
+    TaskPolicy io_reader_policy = boost::assign::list_of
+        (TaskExclusion(scheduler->GetTaskId("bgp::SendTask")));
+    scheduler->SetPolicy(scheduler->GetTaskId("io::ReaderTask"),
+                         io_reader_policy);
+
     // Policy for bgp::RTFilter Task.
     TaskPolicy rtfilter_policy = boost::assign::list_of
         (TaskExclusion(scheduler->GetTaskId("db::DBTable")))
