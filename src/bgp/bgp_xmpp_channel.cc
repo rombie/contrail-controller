@@ -52,10 +52,9 @@ using autogen::NextHopListType;
 using autogen::SecurityGroupListType;
 using autogen::CommunityTagListType;
 using autogen::TunnelEncapsulationListType;
-
-using boost::smatch;
 using boost::regex;
 using boost::regex_search;
+using boost::smatch;
 using boost::system::error_code;
 using pugi::xml_node;
 using std::auto_ptr;
