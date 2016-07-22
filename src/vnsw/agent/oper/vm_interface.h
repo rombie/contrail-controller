@@ -287,9 +287,10 @@ public:
         mutable std::string vrf_;
         IpAddress   addr_;
         uint32_t    plen_;
-        bool        ecmp_;
+        mutable bool ecmp_;
         MacAddress  mac_;
         mutable bool        l2_entry_installed_;
+        mutable bool        ecmp_config_changed_;
         mutable uint32_t    ethernet_tag_;
         mutable VrfEntryRef vrf_ref_;
         mutable IpAddress  service_ip_;
@@ -698,6 +699,10 @@ public:
         return (static_cast<InterfaceTable *>(get_table()))->agent();
     }
 
+    bool is_vn_qos_config() const {
+        return is_vn_qos_config_;
+    }
+
 private:
     friend struct VmInterfaceConfigData;
     friend struct VmInterfaceNovaData;
@@ -945,6 +950,7 @@ private:
     NextHopRef l2_interface_nh_policy_;
     NextHopRef l3_interface_nh_no_policy_;
     NextHopRef l2_interface_nh_no_policy_;
+    bool is_vn_qos_config_;
     DISALLOW_COPY_AND_ASSIGN(VmInterface);
 };
 
