@@ -240,7 +240,7 @@ public:
         for (PublishedRTargetRoutes::iterator
              it = parent_->rtarget_routes_.begin();
              it != parent_->rtarget_routes_.end(); it++) {
-            parent_->RTargetRouteOp(rtarget_table,
+            parent_->RTargetRouteOp(rtarget_table, NULL,
                                     server->local_autonomous_system(),
                                     it->first, NULL, false);
         }
@@ -677,9 +677,10 @@ string BgpXmppChannel::StateName() const {
     return channel_->StateName();
 }
 
-void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table, as4_t asn,
-                                    const RouteTarget &rtarget, BgpAttrPtr attr,
-                                    bool add_change) {
+void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table,
+                                    RoutingInstance *routing_instance,
+                                    as4_t asn, const RouteTarget &rtarget,
+                                    BgpAttrPtr attr, bool add_change) {
     if (add_change && delete_in_progress_)
         return;
 
@@ -687,7 +688,16 @@ void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table, as4_t asn,
     RTargetPrefix rt_prefix(asn, rtarget);
     req.key.reset(new RTargetTable::RequestKey(rt_prefix, Peer()));
     if (add_change) {
-        req.data.reset(new RTargetTable::RequestData(attr, 0, 0));
+        uint32_t flags = 0;
+        SubscribedRoutingInstanceList::iterator it =
+            routing_instances_.find(routing_instance);
+        assert(it != routing_instances_.end());
+        if (it->second.IsGrStale())
+            flags |= BgpPath::Stale;
+        if (it->second.IsLlgrStale())
+            flags |= BgpPath::LlgrStale;
+
+        req.data.reset(new RTargetTable::RequestData(attr, flags, 0));
         req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
     } else {
         req.oper = DBRequest::DB_ENTRY_DELETE;
@@ -709,19 +719,15 @@ void BgpXmppChannel::ASNUpdateCallback(as_t old_asn, as_t old_local_asn) {
     BgpTable *rtarget_table = master->GetTable(Address::RTARGET);
     assert(rtarget_table);
 
-    BgpAttrSpec attrs;
-    BgpAttrNextHop nexthop(bgp_server_->bgp_identifier());
-    attrs.push_back(&nexthop);
-    BgpAttrOrigin origin(BgpAttrOrigin::IGP);
-    attrs.push_back(&origin);
-    BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);
-
     // Delete the route and add with new local ASN
+    BgpAttrPtr attr = GetRouteTargetRouteAttr();
     for (PublishedRTargetRoutes::iterator it = rtarget_routes_.begin();
          it != rtarget_routes_.end(); it++) {
-        RTargetRouteOp(rtarget_table, old_local_asn, it->first, NULL, false);
-        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
-                       it->first, attr, true);
+        RTargetRouteOp(rtarget_table, NULL, old_local_asn, it->first, NULL,
+                       false);
+        RTargetRouteOp(rtarget_table, *(it->second.begin()),
+                       bgp_server_->local_autonomous_system(), it->first, attr,
+                       true);
     }
 }
 
@@ -736,19 +742,14 @@ void BgpXmppChannel::IdentifierUpdateCallback(Ip4Address old_identifier) {
     assert(master);
     BgpTable *rtarget_table = master->GetTable(Address::RTARGET);
     assert(rtarget_table);
-
-    BgpAttrSpec attrs;
-    BgpAttrNextHop nexthop(bgp_server_->bgp_identifier());
-    attrs.push_back(&nexthop);
-    BgpAttrOrigin origin(BgpAttrOrigin::IGP);
-    attrs.push_back(&origin);
-    BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);
+    BgpAttrPtr attr = GetRouteTargetRouteAttr();
 
     // Update the route with new nexthop
     for (PublishedRTargetRoutes::iterator it = rtarget_routes_.begin();
          it != rtarget_routes_.end(); it++) {
-        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
-                       it->first, attr, true);
+        RTargetRouteOp(rtarget_table, *(it->second.begin()),
+                       bgp_server_->local_autonomous_system(), it->first, attr,
+                       true);
     }
 }
 
@@ -768,7 +769,7 @@ BgpXmppChannel::AddNewRTargetRoute(BgpTable *rtarget_table,
 
         rt_loc = ret.first;
         // Send rtarget route ADD
-        RTargetRouteOp(rtarget_table,
+        RTargetRouteOp(rtarget_table, rtinstance,
                        bgp_server_->local_autonomous_system(),
                        rtarget, attr, true);
     }
@@ -785,10 +786,19 @@ BgpXmppChannel::DeleteRTargetRoute(BgpTable *rtarget_table,
     if (rt_loc->second.empty()) {
         rtarget_routes_.erase(rtarget);
         // Send rtarget route DELETE
-        RTargetRouteOp(rtarget_table,
+        RTargetRouteOp(rtarget_table, rtinstance,
                        bgp_server_->local_autonomous_system(),
                        rtarget, NULL, false);
     }
+}
+
+BgpAttrPtr BgpXmppChannel::GetRouteTargetRouteAttr() {
+    BgpAttrSpec attrs;
+    BgpAttrNextHop nexthop(bgp_server_->bgp_identifier());
+    attrs.push_back(&nexthop);
+    BgpAttrOrigin origin(BgpAttrOrigin::IGP);
+    attrs.push_back(&origin);
+    return bgp_server_->attr_db()->Locate(attrs);
 }
 
 void BgpXmppChannel::RoutingInstanceCallback(string vrf_name, int op) {
@@ -824,13 +834,6 @@ void BgpXmppChannel::RoutingInstanceCallback(string vrf_name, int op) {
         BgpTable *rtarget_table = master->GetTable(Address::RTARGET);
         assert(rtarget_table);
 
-        BgpAttrSpec attrs;
-        BgpAttrNextHop nexthop(bgp_server_->bgp_identifier());
-        attrs.push_back(&nexthop);
-        BgpAttrOrigin origin(BgpAttrOrigin::IGP);
-        attrs.push_back(&origin);
-        BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);
-
         // Import list in the routing instance
         const RoutingInstance::RouteTargetList &new_list =
             rt_instance->GetImportList();
@@ -843,6 +846,7 @@ void BgpXmppChannel::RoutingInstanceCallback(string vrf_name, int op) {
             new_list.begin();
 
         pair<RoutingInstance::RouteTargetList::iterator, bool> r;
+        BgpAttrPtr attr = GetRouteTargetRouteAttr();
         while (cur_it != current.end() && new_it != new_list.end()) {
             if (*new_it < *cur_it) {
                 r = current.insert(*new_it);
@@ -2094,8 +2098,12 @@ void BgpXmppChannel::FillInstanceMembershipInfo(BgpNeighborResp *resp) const {
         routing_instances_) {
         BgpNeighborRoutingInstance instance;
         instance.set_name(entry.first->name());
-        instance.set_state(entry.second.IsStale() ? "subscribed-stale" :
-                                                    "subscribed");
+        if (entry.second.IsLlgrStale())
+            instance.set_state("subscribed-llgr-stale");
+        else if (entry.second.IsGrStale())
+            instance.set_state("subscribed-gr-stale");
+        else
+            instance.set_state("subscribed");
         instance.set_index(entry.second.index);
         vector<string> import_targets;
         BOOST_FOREACH(RouteTarget rt, entry.second.targets) {
@@ -2181,30 +2189,19 @@ void BgpXmppChannel::FlushDeferQ(string vrf_name) {
 }
 
 void BgpXmppChannel::UpdateRouteTargetRouteFlag(
-    const SubscriptionState *sub_state, bool llgr) {
+        RoutingInstance *routing_instance, const SubscriptionState *sub_state) {
     RoutingInstanceMgr *instance_mgr = bgp_server_->routing_instance_mgr();
     RoutingInstance *master =
         instance_mgr->GetRoutingInstance(BgpConfigManager::kMasterInstance);
     assert(master);
     BgpTable *rtarget_table = master->GetTable(Address::RTARGET);
+    BgpAttrPtr attr = GetRouteTargetRouteAttr();
     BOOST_FOREACH(RouteTarget rtarget, sub_state->targets) {
-        RTargetPrefix rt_prefix(bgp_server_->local_autonomous_system(),
-                                rtarget);
-        const RTargetTable::RequestKey key(rt_prefix, Peer());
-        RTargetRoute *rt = static_cast<RTargetRoute *>(
-                               rtarget_table->Find(&key));
-        assert(rt);
-        BgpPath *path = rt->FindPath(BgpPath::BGP_XMPP, Peer(),
-                                     bgp_server_->bgp_identifier());
-        assert(path);
 
-        // Set Stale or LlgrStale state as requested.
-        if (!llgr) {
-            path->SetStale();
-        } else {
-            assert(path->IsStale());
-            path->SetLlgrStale();
-        }
+        // Update route target route [llgr-]stale flag status.
+        RTargetRouteOp(rtarget_table, routing_instance,
+                       bgp_server_->local_autonomous_system(),
+                       rtarget, attr, true);
     }
 }
 
@@ -2214,8 +2211,8 @@ void BgpXmppChannel::StaleCurrentSubscriptions() {
     CHECK_CONCURRENCY("xmpp::StateMachine");
     BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
                   routing_instances_) {
-        entry.second.SetStale();
-        UpdateRouteTargetRouteFlag(&entry.second, false);
+        entry.second.SetGrStale();
+        UpdateRouteTargetRouteFlag(entry.first, &entry.second);
     }
 }
 
@@ -2224,8 +2221,9 @@ void BgpXmppChannel::LlgrStaleCurrentSubscriptions() {
     CHECK_CONCURRENCY("xmpp::StateMachine");
     BOOST_FOREACH(SubscribedRoutingInstanceList::value_type &entry,
                   routing_instances_) {
-        assert(entry.second.IsStale());
-        UpdateRouteTargetRouteFlag(&entry.second, true);
+        assert(entry.second.IsGrStale());
+        entry.second.SetLlgrStale();
+        UpdateRouteTargetRouteFlag(entry.first, &entry.second);
     }
 }
 
@@ -2234,7 +2232,7 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
     CHECK_CONCURRENCY("xmpp::StateMachine");
     for (SubscribedRoutingInstanceList::iterator i = routing_instances_.begin();
             i != routing_instances_.end();) {
-        if (i->second.IsStale()) {
+        if (i->second.IsGrStale()) {
             string name = i->first->name();
 
             // Increment the iterator first as we expect the entry to be
@@ -2255,7 +2253,7 @@ void BgpXmppChannel::SweepCurrentSubscriptions() {
 void BgpXmppChannel::ClearStaledSubscription(BgpTable *rtarget_table,
         RoutingInstance *rt_instance, BgpAttrPtr attr,
         SubscriptionState *sub_state) {
-    if (!sub_state->IsStale())
+    if (!sub_state->IsGrStale())
         return;
 
     BGP_LOG_PEER(Membership, Peer(), SandeshLevel::SYS_DEBUG,
@@ -2270,7 +2268,7 @@ void BgpXmppChannel::ClearStaledSubscription(BgpTable *rtarget_table,
         assert(rt_loc != rtarget_routes_.end());
 
         // Send rtarget route ADD
-        RTargetRouteOp(rtarget_table,
+        RTargetRouteOp(rtarget_table, rt_instance,
                        bgp_server_->local_autonomous_system(),
                        rtarget, attr, true);
     }
