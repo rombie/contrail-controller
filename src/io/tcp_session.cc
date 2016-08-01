@@ -126,12 +126,6 @@ void TcpSession::ReleaseBufferLocked(Buffer buffer) {
     assert(false);
 }
 
-bool TcpSession::AsyncReadHandlerProcess(boost::asio::mutable_buffer buffer,
-                                         size_t &bytes_transferred,
-                                         boost::system::error_code &error) {
-    return false;
-}
-
 void TcpSession::AsyncReadStartInternal(TcpSessionPtr session) {
     // Update socket read block time.
     if (stats_.read_block_start_time) {
@@ -141,13 +135,7 @@ void TcpSession::AsyncReadStartInternal(TcpSessionPtr session) {
         stats_.read_blocked_duration_usecs += blocked_usecs;
         server_->stats_.read_blocked_duration_usecs += blocked_usecs;
     }
-    mutable_buffer buffer = AllocateBuffer();
-    tbb::mutex::scoped_lock lock(mutex_);
-    if (!established_) {
-        ReleaseBufferLocked(buffer);
-        return;
-    }
-    AsyncReadSome(buffer);
+    AsyncReadSome();
 }
 
 void TcpSession::AsyncReadStart() {
@@ -171,27 +159,30 @@ void TcpSession::DeferWriter() {
     // Update socket write block count.
     stats_.write_blocked++;
     server_->stats_.write_blocked++;
-    socket()->async_write_some(boost::asio::null_buffers(),
-                              boost::bind(&TcpSession::WriteReadyInternal, TcpSessionPtr(this),
-                                          placeholders::error, UTCTimestampUsec()));
+    socket()->async_write_some(null_buffers(),
+                               boost::bind(&TcpSession::WriteReadyInternal,
+                               TcpSessionPtr(this), placeholders::error,
+                               UTCTimestampUsec()));
 }
 
-void TcpSession::AsyncReadSome(boost::asio::mutable_buffer buffer) {
-    socket()->async_read_some(mutable_buffers_1(buffer),
-        boost::bind(&TcpSession::AsyncReadHandler, TcpSessionPtr(this), buffer,
-                    boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+void TcpSession::AsyncReadSome() {
+    tbb::mutex::scoped_lock lock(mutex_);
+    if (established_) {
+        socket()->async_read_some(null_buffers(),
+            boost::bind(&TcpSession::AsyncReadHandler, TcpSessionPtr(this)));
+    }
 }
 
 std::size_t TcpSession::WriteSome(const uint8_t *data, std::size_t len,
-                                  boost::system::error_code &error) {
-    return socket()->write_some(boost::asio::buffer(data, len), error);
+                                  error_code &error) {
+    return socket()->write_some(buffer(data, len), error);
 }
 
 void TcpSession::AsyncWrite(const u_int8_t *data, std::size_t size) {
-    boost::asio::async_write(
+    async_write(
         *socket(), buffer(data, size),
         boost::bind(&TcpSession::AsyncWriteHandler, TcpSessionPtr(this),
-                    boost::asio::placeholders::error));
+                    placeholders::error));
 }
 
 TcpSession::Endpoint TcpSession::local_endpoint() const {
@@ -199,7 +190,7 @@ TcpSession::Endpoint TcpSession::local_endpoint() const {
     if (!established_) {
         return Endpoint();
     }
-    boost::system::error_code err;
+    error_code err;
     Endpoint local = socket()->local_endpoint(err);
     if (err) {
         return Endpoint();
@@ -214,7 +205,7 @@ void TcpSession::set_observer(EventObserver observer) {
 
 void TcpSession::SetName() {
     std::ostringstream out;
-    boost::system::error_code err;
+    error_code err;
     Endpoint local;
 
     local = socket()->local_endpoint(err);
@@ -283,12 +274,12 @@ void TcpSession::ConnectFailed() {
 }
 
 // Requires: lock must not be held
-void TcpSession::CloseInternal(const boost::system::error_code &ec,
+void TcpSession::CloseInternal(const error_code &ec,
                                bool call_observer, bool notify_server) {
     tbb::mutex::scoped_lock lock(mutex_);
 
     if (socket() != NULL && !closed_) {
-        boost::system::error_code err;
+        error_code err;
         socket()->close(err);
     }
     closed_ = true;
@@ -318,18 +309,18 @@ void TcpSession::CloseInternal(const boost::system::error_code &ec,
 }
 
 void TcpSession::Close() {
-    boost::system::error_code ec;
+    error_code ec;
     CloseInternal(ec, false);
 }
 
 // virtual method overriden in derrived classes.
-void TcpSession::WriteReady(const boost::system::error_code &error) {
+void TcpSession::WriteReady(const error_code &error) {
 }
 
 void TcpSession::WriteReadyInternal(TcpSessionPtr session,
-                                    const boost::system::error_code &error,
+                                    const error_code &error,
                                     uint64_t block_start_time) {
-    boost::system::error_code ec = error;
+    error_code ec = error;
     tbb::mutex::scoped_lock lock(session->mutex_);
 
     // Update socket write block time.
@@ -365,7 +356,7 @@ session_error:
 }
 
 void TcpSession::AsyncWriteHandler(TcpSessionPtr session,
-                                   const boost::system::error_code &error) {
+                                   const error_code &error) {
     if (session->IsSocketErrorHard(error)) {
         TCP_SESSION_LOG_ERROR(session, TCP_DIR_OUT,
                               "Write failed due to error: " << error.message());
@@ -387,7 +378,7 @@ bool TcpSession::Send(const u_int8_t *data, size_t size, size_t *sent) {
     if (!established_) return false;
 
     if (socket()->non_blocking()) {
-        boost::system::error_code error;
+        error_code error;
         int len = writer_->Send(data, size, error);
         lock.release();
         if (len < 0) {
@@ -398,7 +389,7 @@ bool TcpSession::Send(const u_int8_t *data, size_t size, size_t *sent) {
             CloseInternal(error, true);
             return false;
         }
-        if (len < 0 || (size_t)len != size) ret = false;
+        if ((size_t) len != size) ret = false;
         if (sent) *sent = (len > 0) ? len : 0;
     } else {
         AsyncWrite(data, size);
@@ -407,53 +398,50 @@ bool TcpSession::Send(const u_int8_t *data, size_t size, size_t *sent) {
     return ret;
 }
 
-Task* TcpSession::CreateReaderTask(boost::asio::mutable_buffer buffer,
+Task* TcpSession::CreateReaderTask(mutable_buffer buffer,
                                   size_t bytes_transferred) {
-
     Buffer rdbuf(buffer_cast<const uint8_t *>(buffer), bytes_transferred);
     Reader *task = new Reader(
         TcpSessionPtr(this), boost::bind(&TcpSession::OnRead, this, _1), rdbuf);
     return (task);
 }
 
-void TcpSession::AsyncReadHandler(
-    TcpSessionPtr session, mutable_buffer buffer,
-    const boost::system::error_code &error, size_t bytes_transferred) {
+bool TcpSession::ReadSome(mutable_buffer buffer, size_t *bytes_transferred,
+                          error_code &error) {
+    *bytes_transferred = socket()->read_some(mutable_buffers_1(buffer), error);
+    return true;
+}
+
+void TcpSession::AsyncReadHandler(TcpSessionPtr session) {
+    mutable_buffer buffer = session->AllocateBuffer();
 
     tbb::mutex::scoped_lock lock(session->mutex_);
+
     if (session->closed_) {
+        session->ReleaseBufferLocked(buffer);
+        return;
+    }
+
+    size_t bytes_transferred;
+    error_code error;
+    if (!session->ReadSome(buffer, &bytes_transferred, error)) {
         session->ReleaseBufferLocked(buffer);
         return;
     }
 
     if (IsSocketErrorHard(error)) {
         session->ReleaseBufferLocked(buffer);
-	// eof is returned when the peer closed the socket, no need to log err
-	if (error != boost::asio::error::eof) {
-	    TCP_SESSION_LOG_ERROR(session, TCP_DIR_IN,
-                              "Read failed due to error " << error.value()
-                              << " : " << error.message());
-	}
+
+        // eof is returned when the peer closed the socket, no need to log err
+        if (error != error::eof) {
+            TCP_SESSION_LOG_ERROR(session, TCP_DIR_IN,
+                    "Read failed due to error " << error.value()
+                    << " : " << error.message());
+        }
+
         lock.release();
         session->CloseInternal(error, true);
         return;
-    }
-
-    boost::system::error_code err;
-    if (session->AsyncReadHandlerProcess(buffer, bytes_transferred, err)) {
-        // check error code if session needs to be closed
-        if (IsSocketErrorHard(err)) {
-            session->ReleaseBufferLocked(buffer);
-	    // eof is returned when the peer has closed the socket
-	    if (err != boost::asio::error::eof) {
-		TCP_SESSION_LOG_ERROR(session, TCP_DIR_IN,
-                                  "Read failed due to error " << err.value()
-                                  << " : " << err.message());
-	    }
-            lock.release();
-            session->CloseInternal(err, true);
-            return;
-        }
     }
 
     // Update read statistics.
@@ -477,7 +465,7 @@ int32_t TcpSession::local_port() const {
     if (socket() == NULL) {
         return -1;
     }
-    boost::system::error_code error;
+    error_code error;
     Endpoint local = socket()->local_endpoint(error);
     if (IsSocketErrorHard(error)) {
         return -1;
@@ -489,7 +477,7 @@ int32_t TcpSession::remote_port() const {
     if (socket() == NULL) {
         return -1;
     }
-    boost::system::error_code error;
+    error_code error;
     Endpoint remote = socket()->remote_endpoint(error);
     if (IsSocketErrorHard(error)) {
         return -1;
@@ -673,7 +661,7 @@ void TcpMessageReader::OnRead(Buffer buffer) {
 // socket. Soft errors like EINTR and EAGAIN should be ignored or properly
 // handled with retries
 //
-bool TcpSession::IsSocketErrorHard(const boost::system::error_code &ec) {
+bool TcpSession::IsSocketErrorHard(const error_code &ec) {
 
     if (!ec) return false;
 
@@ -689,9 +677,9 @@ bool TcpSession::IsSocketErrorHard(const boost::system::error_code &ec) {
     return true;
 }
 
-boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_time,
+error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_time,
         int keepalive_intvl, int keepalive_probes, int tcp_user_timeout_val) {
-    boost::system::error_code ec;
+    error_code ec;
     socket_base::keep_alive keep_alive_option(true);
     socket()->set_option(keep_alive_option, ec);
     if (ec) {
@@ -700,7 +688,7 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
         return ec;
     }
 #ifdef TCP_KEEPIDLE
-    typedef boost::asio::detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPIDLE > keepalive_idle_time;
+    typedef detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPIDLE > keepalive_idle_time;
     keepalive_idle_time keepalive_idle_time_option(keepalive_time);
     socket()->set_option(keepalive_idle_time_option, ec);
     if (ec) {
@@ -710,7 +698,7 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
     }
 #endif
 #ifdef TCP_KEEPALIVE
-    typedef boost::asio::detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPALIVE > keepalive_idle_time;
+    typedef detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPALIVE > keepalive_idle_time;
     keepalive_idle_time keepalive_idle_time_option(keepalive_time);
     socket()->set_option(keepalive_idle_time_option, ec);
     if (ec) {
@@ -720,7 +708,7 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
     }
 #endif
 #ifdef TCP_KEEPINTVL
-    typedef boost::asio::detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPINTVL > keepalive_interval;
+    typedef detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPINTVL > keepalive_interval;
     keepalive_interval keepalive_interval_option(keepalive_intvl);
     socket()->set_option(keepalive_interval_option, ec);
     if (ec) {
@@ -730,7 +718,7 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
     }
 #endif
 #ifdef TCP_KEEPCNT
-    typedef boost::asio::detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPCNT > keepalive_count;
+    typedef detail::socket_option::integer< IPPROTO_TCP, TCP_KEEPCNT > keepalive_count;
     keepalive_count keepalive_count_option(keepalive_probes);
     socket()->set_option(keepalive_count_option, ec);
     if (ec) {
@@ -740,7 +728,7 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
     }
 #endif
 #ifdef TCP_USER_TIMEOUT
-    typedef boost::asio::detail::socket_option::integer< IPPROTO_TCP, TCP_USER_TIMEOUT > tcp_user_timeout;
+    typedef detail::socket_option::integer< IPPROTO_TCP, TCP_USER_TIMEOUT > tcp_user_timeout;
     tcp_user_timeout tcp_user_timeout_option(tcp_user_timeout_val);
     socket()->set_option(tcp_user_timeout_option, ec);
     if (ec) {
@@ -753,8 +741,8 @@ boost::system::error_code TcpSession::SetSocketKeepaliveOptions(int keepalive_ti
     return ec;
 }
 
-boost::system::error_code TcpSession::SetSocketOptions() {
-    boost::system::error_code ec;
+error_code TcpSession::SetSocketOptions() {
+    error_code ec;
 
     //
     // Make socket write non-blocking
