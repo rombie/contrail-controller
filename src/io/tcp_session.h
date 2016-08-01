@@ -140,6 +140,7 @@ public:
     void set_read_on_connect(bool read) { read_on_connect_ = read; }
     void SessionEstablished(Endpoint remote, Direction direction);
 
+    virtual bool IsReadyForRead() { return true; }
     virtual void AsyncReadStart();
     virtual void SetDeferReader(bool defer_reader);
     // Is the reader deferred ? If reader is deferred, SetDeferReader needs
@@ -154,20 +155,12 @@ public:
     int SetMd5SocketOption(uint32_t peer_ip, const std::string &md5_password);
     int ClearMd5SocketOption(uint32_t peer_ip);
 
+
 protected:
     typedef boost::intrusive_ptr<TcpSession> TcpSessionPtr;
-    static void AsyncReadHandler(TcpSessionPtr session,
-                                 boost::asio::mutable_buffer buffer,
-                                 const boost::system::error_code &error,
-                                 size_t size);
+    static void AsyncReadHandler(TcpSessionPtr session);
     static void AsyncWriteHandler(TcpSessionPtr session,
                                   const boost::system::error_code &error);
-
-    // returns true if Processing done, used by SslSession to do actual
-    // synchronous read for data.
-    virtual bool AsyncReadHandlerProcess(boost::asio::mutable_buffer buffer,
-                                         size_t &bytes_transferred,
-                                         boost::system::error_code &error);
 
     void AsyncReadStartInternal(TcpSessionPtr session);
     virtual Task* CreateReaderTask(boost::asio::mutable_buffer, size_t);
@@ -179,7 +172,10 @@ protected:
     // Callback after socket is ready for write.
     virtual void WriteReady(const boost::system::error_code &error);
 
-    virtual void AsyncReadSome(boost::asio::mutable_buffer buffer);
+    virtual void AsyncReadSome();
+    virtual bool ReadSome(boost::asio::mutable_buffer buffer,
+                          size_t *bytes_transferred,
+                          boost::system::error_code &error);
     virtual std::size_t WriteSome(const uint8_t *data, std::size_t len,
                                   boost::system::error_code &error);
     virtual void AsyncWrite(const u_int8_t *data, std::size_t size);

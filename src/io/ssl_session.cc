@@ -4,15 +4,13 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
-#ifdef VALGRIND
-#include <valgrind/memcheck.h>
-#endif
 
 #include "ssl_session.h"
 #include "io/io_utils.h"
 #include "io/io_log.h"
 
 using namespace boost::asio;
+using namespace boost::system;
 
 class SslSession::SslReader : public Task {
 public:
@@ -25,10 +23,6 @@ public:
     }
     virtual bool Run() {
         if (session_->IsEstablished()) {
-#ifdef VALGRIND
-            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
-                                      buffer_size(buffer_));
-#endif
             read_fn_(buffer_);
             if (session_->IsSslDisabled()) {
                 session_->AsyncReadStart();
@@ -63,7 +57,7 @@ SslSession::SslSession(SslServer *server, SslSocket *ssl_socket,
 SslSession::~SslSession() {
 }
 
-Task* SslSession::CreateReaderTask(boost::asio::mutable_buffer buffer,
+Task* SslSession::CreateReaderTask(mutable_buffer buffer,
                                    size_t bytes_transferred) {
 
     Buffer rdbuf(buffer_cast<const uint8_t *>(buffer), bytes_transferred);
@@ -78,54 +72,33 @@ TcpSession::Socket *SslSession::socket() const {
     return &ssl_socket_->next_layer();
 }
 
-bool SslSession::AsyncReadHandlerProcess(boost::asio::mutable_buffer buffer,
-                                         size_t &bytes_transferred,
-                                         boost::system::error_code &error) {
+bool SslSession::ReadSome(mutable_buffer buffer, size_t *bytes_transferred,
+                          error_code &error) {
+
     // no processing needed if ssl handshake is not complete.
     if (!IsSslHandShakeSuccessLocked()) {
+        if (!ssl_handshake_in_progress_)
+            return TcpSession::ReadSome(buffer, bytes_transferred, error);
         return false;
     }
 
-#ifdef VALGRIND
-    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
-                              buffer_size(buffer));
-#endif
-
-    // do ssl read here in IO context, ignore errors
-    bytes_transferred = ssl_socket_->read_some(mutable_buffers_1(buffer), error);
-#ifdef VALGRIND
-    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
-                              bytes_transferred);
-#endif
-
+    *bytes_transferred = ssl_socket_->read_some(mutable_buffers_1(buffer),
+                                                error);
     return true;
 }
 
-void SslSession::AsyncReadSome(boost::asio::mutable_buffer buffer) {
-    if (IsSslHandShakeSuccessLocked()) {
-        // trigger read with null buffer to get indication for data available
-        // on the socket and then do the actuall socket read in
-        // AsyncReadHandlerProcess
-        socket()->async_read_some(boost::asio::null_buffers(),
-            boost::bind(&TcpSession::AsyncReadHandler, SslSessionPtr(this), buffer,
-                         boost::asio::placeholders::error,
-                         boost::asio::placeholders::bytes_transferred));
-    } else {
-        // No tcp socket read/write while ssl handshake is ongoing
-        if (!ssl_handshake_in_progress_) {
-            socket()->async_read_some(mutable_buffers_1(buffer),
-                boost::bind(&TcpSession::AsyncReadHandler, SslSessionPtr(this), buffer,
-                             boost::asio::placeholders::error,
-                             boost::asio::placeholders::bytes_transferred));
-        }
-    }
+// Trigger read with null buffer to get indication for data available on the
+// socket and then do the actual socket read inside ReadSome().
+void SslSession::AsyncReadSome() {
+    if (IsSslHandShakeSuccessLocked() || !ssl_handshake_in_progress_)
+        TcpSession::AsyncReadSome();
 }
 
 std::size_t SslSession::WriteSome(const uint8_t *data, std::size_t len,
-                                  boost::system::error_code &error) {
+                                  error_code &error) {
 
     if (IsSslHandShakeSuccessLocked()) {
-        return ssl_socket_->write_some(boost::asio::buffer(data, len), error);
+        return ssl_socket_->write_some(buffer(data, len), error);
     } else {
         return (TcpSession::WriteSome(data, len, error));
     }
@@ -133,18 +106,18 @@ std::size_t SslSession::WriteSome(const uint8_t *data, std::size_t len,
 
 void SslSession::AsyncWrite(const u_int8_t *data, std::size_t size) {
     if (IsSslHandShakeSuccessLocked()) {
-        boost::asio::async_write(
+        async_write(
             *ssl_socket_.get(), buffer(data, size),
             boost::bind(&TcpSession::AsyncWriteHandler, TcpSessionPtr(this),
-                         boost::asio::placeholders::error));
+                         placeholders::error));
     } else {
         return (TcpSession::AsyncWrite(data, size));
     }
 }
 
 void SslSession::SslHandShakeCallback(SslHandShakeCallbackHandler cb,
-    SslSessionPtr session,
-    const boost::system::error_code &error) {
+                                      SslSessionPtr session,
+                                      const error_code &error) {
 
     session->ssl_handshake_in_progress_ = false;
     if (!error) {
@@ -158,18 +131,19 @@ void SslSession::SslHandShakeCallback(SslHandShakeCallbackHandler cb,
     }
 }
 
-void SslSession::TriggerSslHandShakeInternal(SslSessionPtr session, SslHandShakeCallbackHandler cb) {
+void SslSession::TriggerSslHandShakeInternal(SslSessionPtr session,
+                                             SslHandShakeCallbackHandler cb) {
     std::srand(std::time(0));
-    boost::system::error_code ec;
+    error_code ec;
     session->ssl_handshake_in_progress_ = true;
     if (session->IsServerSession()) {
-        session->ssl_socket_->async_handshake(boost::asio::ssl::stream_base::server,
+        session->ssl_socket_->async_handshake(ssl::stream_base::server,
             boost::bind(&SslSession::SslHandShakeCallback, cb, session,
-            boost::asio::placeholders::error));
+            placeholders::error));
     } else {
-        session->ssl_socket_->async_handshake(boost::asio::ssl::stream_base::client,
+        session->ssl_socket_->async_handshake(ssl::stream_base::client,
             boost::bind(&SslSession::SslHandShakeCallback, cb, session,
-            boost::asio::placeholders::error));
+            placeholders::error));
     }
 }
 
