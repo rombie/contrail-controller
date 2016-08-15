@@ -82,9 +82,10 @@ public:
     void FillShowServer(ShowXmppServerResp *resp) const;
     void CreateConfigUpdater(BgpConfigManager *config_manager);
     bool IsPeerCloseGraceful() const;
-    const uint16_t GetGracefulRestartTime() const;
-    const uint32_t GetLongLivedGracefulRestartTime() const;
-    const uint32_t GetEndOfRibReceiveTime() const;
+    uint16_t GetGracefulRestartTime() const;
+    uint32_t GetLongLivedGracefulRestartTime() const;
+    uint32_t GetEndOfRibReceiveTime() const;
+    uint32_t GetEndOfRibSendTime() const;
     bool gr_helper_enable() const { return gr_helper_enable_; }
     void set_gr_helper_enable(bool flag) { gr_helper_enable_ = flag; }
 
@@ -126,6 +127,7 @@ private:
     bool auth_enabled_;
     int tcp_hold_time_;
     bool gr_helper_enable_;
+    uint32_t end_of_rib_timeout_;
     boost::scoped_ptr<XmppConfigUpdater> xmpp_config_updater_;
     WorkQueue<XmppServerConnection *> connection_queue_;
 

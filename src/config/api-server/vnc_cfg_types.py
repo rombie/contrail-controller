@@ -473,6 +473,8 @@ class InstanceIpServer(Resource, InstanceIp):
             return ok, result
         db_iip_dict = result
 
+        if 'virtual_network_refs' not in db_iip_dict:
+            return True, ''
         vn_uuid = db_iip_dict['virtual_network_refs'][0]['uuid']
         vn_fq_name = db_iip_dict['virtual_network_refs'][0]['to']
         if ((vn_fq_name == cfgm_common.IP_FABRIC_VN_FQ_NAME) or
@@ -1244,7 +1246,7 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
     # end dbe_create_notification
 
     @classmethod
-    def dbe_update_notification(cls, obj_ids, new_obj_dict):
+    def dbe_update_notification(cls, obj_ids):
         cls.addr_mgmt.net_update_notify(obj_ids)
     # end dbe_update_notification
 
@@ -2073,10 +2075,11 @@ class RouteAggregateServer(Resource, RouteAggregate):
 class ForwardingClassServer(Resource, ForwardingClass):
     @classmethod
     def _check_fc_id(cls, obj_dict, db_conn):
-        if obj_dict.get('forwarding_class_id') == None:
-            return (True, '')
+        fc_id = 0
+        if obj_dict.get('forwarding_class_id'):
+            fc_id = obj_dict.get('forwarding_class_id')
 
-        id_filters = {'forwarding_class_id' : [obj_dict['forwarding_class_id']]}
+        id_filters = {'forwarding_class_id' : [fc_id]}
         (ok, forwarding_class_list) = db_conn.dbe_list('forwarding_class',
                                                        filters = id_filters)
         if not ok:
@@ -2085,15 +2088,13 @@ class ForwardingClassServer(Resource, ForwardingClass):
         if len(forwarding_class_list) != 0:
             return (False, (400, "Forwarding class %s is configured "
                     "with a id %d" % (forwarding_class_list[0][0],
-                     obj_dict.get('forwarding_class_id'))))
+                     fc_id)))
         return (True, '')
     # end _check_fc_id
 
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
-        if 'forwarding_class_id' in obj_dict:
-            return cls._check_fc_id(obj_dict, db_conn)
-        return (True, '')
+        return cls._check_fc_id(obj_dict, db_conn)
 
     @classmethod
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
@@ -2116,15 +2117,49 @@ class AlarmServer(Resource, Alarm):
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         if 'alarm_rules' not in obj_dict or obj_dict['alarm_rules'] is None:
             return (False, (400, 'alarm_rules not specified or null'))
+        (ok, error) = cls._check_alarm_rules(obj_dict['alarm_rules'])
+        if not ok:
+            return (False, error)
         return True, ''
     # end pre_dbe_create
 
     @classmethod
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
-        if 'alarm_rules' in obj_dict and obj_dict['alarm_rules'] is None:
-            return (False, (400, 'alarm_rules cannot be removed'))
+        if 'alarm_rules' in obj_dict:
+            if obj_dict['alarm_rules'] is None:
+                return (False, (400, 'alarm_rules cannot be removed'))
+            (ok, error) = cls._check_alarm_rules(obj_dict['alarm_rules'])
+            if not ok:
+                return (False, error)
         return True, ''
     # end pre_dbe_update
+
+    @classmethod
+    def _check_alarm_rules(cls, alarm_rules):
+        operand2_fields = ['uve_attribute', 'json_value']
+        try:
+            for and_list in alarm_rules['or_list']:
+                for and_cond in and_list['and_list']:
+                    if any(k in and_cond['operand2'] for k in operand2_fields):
+                        uve_attr = and_cond['operand2'].get('uve_attribute')
+                        json_val = and_cond['operand2'].get('json_value')
+                        if uve_attr is not None and json_val is not None:
+                            return (False, (400, 'operand2 should have '
+                                'either "uve_attribute" or "json_value", '
+                                'not both'))
+                        if json_val is not None:
+                            try:
+                                json.loads(json_val)
+                            except ValueError:
+                                return (False, (400, 'Invalid json_value %s '
+                                    'specified in alarm_rules' % (json_val)))
+                    else:
+                        return (False, (400, 'operand2 should have '
+                            '"uve_attribute" or "json_value"'))
+        except Exception as e:
+            return (False, (400, 'Invalid alarm_rules'))
+        return (True, '')
+    # end _check_alarm_rules
 
 # end class AlarmServer
 

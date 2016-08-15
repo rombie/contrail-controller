@@ -367,6 +367,8 @@ private:
     void ReceiveEndOfRIB(Address::Family family, size_t msgsize);
     void StartEndOfRibTimer();
     bool EndOfRibTimerExpired();
+    void StartEndOfRouteTargetRibTimer();
+    bool EndOfRouteTargetRibTimerExpired();
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
 
@@ -446,6 +448,7 @@ private:
     Timer *keepalive_timer_;
     Timer *end_of_rib_timer_;
     Timer *end_of_rib_send_timer_[Address::NUM_FAMILIES];
+    uint64_t eor_send_timer_started_[Address::NUM_FAMILIES];
     bool send_ready_;
     bool admin_down_;
     bool passive_;

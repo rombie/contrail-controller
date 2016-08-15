@@ -18,7 +18,6 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/ermvpn/ermvpn_route.h"
 #include "bgp/evpn/evpn_route.h"
-#include "bgp/origin-vn/origin_vn.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/security_group/security_group.h"
 #include "net/community_type.h"
@@ -88,6 +87,7 @@ private:
     bool AddMcastRoute(const BgpRoute *route, const RibOutAttr *roattr);
 
     void ProcessCommunity(const Community *community) {
+        community_list_.clear();
         if (community == NULL)
             return;
         BOOST_FOREACH(uint32_t value, community->communities()) {
@@ -96,6 +96,9 @@ private:
     }
 
     void ProcessExtCommunity(const ExtCommunity *ext_community) {
+        sequence_number_ = 0;
+        security_group_list_.clear();
+        load_balance_attribute_ = LoadBalance::LoadBalanceAttribute();
         if (ext_community == NULL)
             return;
 
@@ -176,6 +179,12 @@ bool BgpXmppMessage::AddRoute(const BgpRoute *route, const RibOutAttr *roattr) {
         return false;
     if (!is_reachable_ && num_unreach_route_ >= kMaxUnreachCount)
         return false;
+
+    if (is_reachable_) {
+        const BgpAttr *attr = roattr->attr();
+        ProcessCommunity(attr->community());
+        ProcessExtCommunity(attr->ext_community());
+    }
 
     if (table_->family() == Address::ERMVPN) {
         return AddMcastRoute(route, roattr);

@@ -50,6 +50,7 @@ class SchedulingGroupManager;
 
 class BgpServer {
 public:
+    static const int kEndOfRibTime = 30; // seconds
     typedef boost::function<void()> AdminDownCb;
     typedef boost::function<void(as_t, as_t)> ASNUpdateCb;
     typedef boost::function<void(Ip4Address)> IdentifierUpdateCb;
@@ -64,6 +65,7 @@ public:
     uint16_t GetGracefulRestartTime() const;
     uint32_t GetLongLivedGracefulRestartTime() const;
     uint32_t GetEndOfRibReceiveTime() const;
+    uint32_t GetEndOfRibSendTime() const;
 
     int RegisterPeer(BgpPeer *peer);
     void UnregisterPeer(BgpPeer *peer);
@@ -248,6 +250,9 @@ public:
     void set_gr_helper_enable(bool gr_helper_enable) {
         gr_helper_enable_ = gr_helper_enable;
     }
+    void set_end_of_rib_timeout(uint32_t end_of_rib_timeout) {
+        end_of_rib_timeout_ = end_of_rib_timeout;
+    }
     bool CollectStats(BgpRouterState *state, bool first) const;
 
 private:
@@ -279,6 +284,7 @@ private:
     boost::dynamic_bitset<> id_bmap_;      // free list.
     uint32_t hold_time_;
     bool gr_helper_enable_;
+    uint32_t end_of_rib_timeout_;
     StaticRouteMgrList srt_manager_list_;
 
     DB db_;
