@@ -54,6 +54,7 @@ public:
         uint64_t rt_updates;
         uint64_t reach;
         uint64_t unreach;
+        uint64_t end_of_rib;
     };
     struct ChannelStats {
         ChannelStats();

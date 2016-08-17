@@ -348,12 +348,14 @@ public:
         stats->total = parent_->stats_[RX].rt_updates;
         stats->reach = parent_->stats_[RX].reach;
         stats->unreach = parent_->stats_[RX].unreach;
+        stats->end_of_rib = parent_->stats_[RX].end_of_rib;
     }
 
     virtual void GetTxRouteUpdateStats(UpdateStats *stats)  const {
         stats->total = parent_->stats_[TX].rt_updates;
         stats->reach = parent_->stats_[TX].reach;
         stats->unreach = parent_->stats_[TX].unreach;
+        stats->end_of_rib = parent_->stats_[TX].end_of_rib;
     }
 
     virtual void GetRxSocketStats(IPeerDebugStats::SocketStats *stats) const {
@@ -2545,9 +2547,6 @@ void BgpXmppChannel::ProcessSubscriptionRequest(
 }
 
 void BgpXmppChannel::ReceiveEndOfRIB(Address::Family family) {
-    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
-                 BGP_PEER_DIR_IN, "EndOfRib receive marker family " <<
-                                  Address::FamilyToString(family));
     eor_receive_->Cancel();
     peer_close_->close_manager()->ProcessEORMarkerReceived(family);
 }
@@ -2575,10 +2574,16 @@ bool BgpXmppChannel::EndOfRibReceiveTimerExpired() {
         if (channel_->LastReceived(kEndOfRibSendRetryTimeMsecs * 3) ||
                 channel_->LastSent(kEndOfRibSendRetryTimeMsecs * 3)) {
             eor_receive_->Reschedule(kEndOfRibSendRetryTimeMsecs);
+            BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO,
+                         BGP_LOG_FLAG_ALL, BGP_PEER_DIR_IN,
+                         "EndOfRib Receive timer rescheduled to fire after " <<
+                         kEndOfRibSendRetryTimeMsecs/1000 << "seconds ");
             return true;
         }
     }
 
+    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+                 BGP_PEER_DIR_IN, "EndOfRib Receive timer expired");
     ReceiveEndOfRIB(Address::UNSPEC);
     return false;
 }
@@ -2599,6 +2604,10 @@ bool BgpXmppChannel::EndOfRibSendTimerExpired() {
         if (channel_->LastReceived(kEndOfRibSendRetryTimeMsecs * 3) ||
                 channel_->LastSent(kEndOfRibSendRetryTimeMsecs * 3)) {
             eor_receive_->Reschedule(kEndOfRibSendRetryTimeMsecs);
+            BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO,
+                         BGP_LOG_FLAG_ALL, BGP_PEER_DIR_IN,
+                         "EndOfRib Send timer rescheduled to fire after " <<
+                         kEndOfRibSendRetryTimeMsecs/1000 << "seconds ");
             return true;
         }
     }
@@ -2613,6 +2622,10 @@ void BgpXmppChannel::StartEndOfRibReceiveTimer() {
                            kEndOfRibTime;
     eor_receive_timer_started_ = UTCTimestampUsec();
     eor_receive_->Cancel();
+
+    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+        BGP_PEER_DIR_IN, "EndOfRib Receive timer scheduled to fire after " <<
+        timeout * 0.10 << " seconds");
     eor_receive_->Start((timeout * 1000) * 0.10,
         boost::bind(&BgpXmppChannel::EndOfRibReceiveTimerExpired, this),
         boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
@@ -2624,6 +2637,10 @@ void BgpXmppChannel::StartEndOfRibSendTimer() {
                            kEndOfRibTime;
     eor_send_timer_started_ = UTCTimestampUsec();
     eor_receive_->Cancel();
+
+    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+        BGP_PEER_DIR_OUT, "EndOfRib Send timer scheduled to fire after " <<
+        timeout * 0.10 << " seconds");
     eor_receive_->Start((timeout * 1000) * 0.10,
         boost::bind(&BgpXmppChannel::EndOfRibSendTimerExpired, this),
         boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
@@ -2648,6 +2665,10 @@ void BgpXmppChannel::SendEndOfRIB() {
     msg += "\n\t</event>\n</message>\n";
 
     channel_->connection()->Send((const uint8_t *) msg.data(), msg.size());
+
+    stats_[TX].end_of_rib++;
+    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
+                 BGP_PEER_DIR_OUT, "EndOfRib marker sent");
 }
 
 void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
@@ -2678,6 +2699,10 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
 
                 // Empty items-list can be considered as EOR Marker for all afis
                 if (item == 0) {
+                    BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO,
+                                 BGP_LOG_FLAG_ALL, BGP_PEER_DIR_IN,
+                                 "EndOfRib marker received");
+                    stats_[RX].end_of_rib++;
                     ReceiveEndOfRIB(Address::UNSPEC);
                     return;
                 }
