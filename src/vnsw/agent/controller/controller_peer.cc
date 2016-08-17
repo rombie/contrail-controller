@@ -1188,6 +1188,10 @@ void AgentXmppChannel::ReceiveBgpMessage(std::auto_ptr<XmlBase> impl) {
         return;
     }
 
+    if (atoi(af) == BgpAf::UnknownAfi && atoi(safi) == BgpAf::UnknownSafi &&
+            vrf_name == "EndOfRib") {
+        // Process EndOfRib marker.
+    }
     if (atoi(af) == BgpAf::IPv4 && atoi(safi) == BgpAf::Mcast) {
         ReceiveMulticastUpdate(pugi);
         return;
