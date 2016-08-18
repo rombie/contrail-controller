@@ -62,14 +62,21 @@ KSync::KSync(Agent *agent)
       ksync_flow_index_manager_(new KSyncFlowIndexManager(this)),
       qos_queue_ksync_obj_(new QosQueueKSyncObject(this)),
       forwarding_class_ksync_obj_(new ForwardingClassKSyncObject(this)),
-      qos_config_ksync_obj_(new QosConfigKSyncObject(this)) {
-      for (uint16_t i = 0; i < agent->flow_thread_count(); i++) {
-          FlowTableKSyncObject *obj = new FlowTableKSyncObject(this);
-          flow_table_ksync_obj_list_.push_back(obj);
-      }
+      qos_config_ksync_obj_(new QosConfigKSyncObject(this)),
+      config_wait_timer_(TimerManager::CreateTimer(
+                       *(agent->event_manager())->io_service(),
+                       "KSync Config wait Timer",
+                       agent->task_scheduler()->GetTaskId("Agent::KSync"), 0)) {
+    for (uint16_t i = 0; i < agent->flow_thread_count(); i++) {
+        FlowTableKSyncObject *obj = new FlowTableKSyncObject(this);
+        flow_table_ksync_obj_list_.push_back(obj);
+    }
+    config_wait_timer_->Start((agent->ConfigWaitTime() * 1000),
+                              boost::bind(&KSync::ConfigWaitCb, this));
 }
 
 KSync::~KSync() {
+    TimerManager::DeleteTimer(config_wait_timer_);
     STLDeleteValues(&flow_table_ksync_obj_list_);
 }
 
@@ -92,7 +99,7 @@ void KSync::Init(bool create_vhost) {
     NetlinkInit();
     VRouterInterfaceSnapshot();
     InitFlowMem();
-    ResetVRouter(true);
+    KSyncSock::DisableSendQueue(true);
     if (create_vhost) {
         CreateVhostIntf();
     }
@@ -102,7 +109,12 @@ void KSync::Init(bool create_vhost) {
         flow_table->set_ksync_object(flow_table_ksync_obj_list_[i]);
         flow_table_ksync_obj_list_[i]->Init();
     }
+}
+
+void KSync::InitConfigDone() {
+    ResetVRouter(true);
     ksync_flow_memory_.get()->Init();
+    KSyncSock::DisableSendQueue(false);
 }
 
 void KSync::InitDone() {
@@ -268,6 +280,11 @@ void KSync::CreateVhostIntf() {
 #endif
 }
 
+bool KSync::ConfigWaitCb() {
+    InitConfigDone();
+    return false;
+}
+
 void KSync::UpdateVhostMac() {
 #if defined(__linux__)
     struct  nl_client *cl;
@@ -385,13 +402,19 @@ void KSyncTcp::Init(bool create_vhost) {
     TcpInit();
     VRouterInterfaceSnapshot();
     InitFlowMem();
-    ResetVRouter(false);
-    //Start async read of socket
-    KSyncSockTcp *sock = static_cast<KSyncSockTcp *>(KSyncSock::Get(0));
-    sock->AsyncReadStart();
+    KSyncSock::DisableSendQueue(true);
     interface_ksync_obj_.get()->Init();
     for (uint16_t i = 0; i < flow_table_ksync_obj_list_.size(); i++) {
         flow_table_ksync_obj_list_[i]->Init();
     }
-    ksync_flow_memory_.get()->Init();
 }
+
+void KSyncTcp::InitConfigDone() {
+    ResetVRouter(false);
+    //Start async read of socket
+    KSyncSockTcp *sock = static_cast<KSyncSockTcp *>(KSyncSock::Get(0));
+    sock->AsyncReadStart();
+    ksync_flow_memory_.get()->Init();
+    KSyncSock::DisableSendQueue(false);
+}
+

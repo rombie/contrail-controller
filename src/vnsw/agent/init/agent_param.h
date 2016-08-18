@@ -283,6 +283,10 @@ public:
     void set_pkt0_tx_buffer_count(uint32_t val) { pkt0_tx_buffer_count_ = val; }
     bool measure_queue_delay() const { return measure_queue_delay_; }
     void set_measure_queue_delay(bool val) { measure_queue_delay_ = val; }
+
+    uint32_t config_wait_time() const { return config_wait_time_; }
+    void set_config_wait_time(uint32_t val) { config_wait_time_ = val; }
+
 protected:
     void set_hypervisor_mode(HypervisorMode m) { hypervisor_mode_ = m; }
     virtual void InitFromSystem();
@@ -411,6 +415,8 @@ private:
     // Number of tx-buffers on pkt0 device
     uint32_t pkt0_tx_buffer_count_;
     bool measure_queue_delay_;
+
+    uint32_t config_wait_time_;
 
     std::string agent_name_;
     std::string eth_port_;

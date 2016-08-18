@@ -889,3 +889,11 @@ VrouterObjectLimits Agent::GetVrouterObjectLimits() {
    vr_limits.set_vrouter_max_oflow_entries(vrouter_max_oflow_entries());
    return vr_limits;
 }
+
+uint32_t Agent::ConfigWaitTime() {
+    return params_->config_wait_time();
+}
+
+void Agent::SetConfigWaitTime(uint32_t val) {
+    return params_->set_config_wait_time(val);
+}
