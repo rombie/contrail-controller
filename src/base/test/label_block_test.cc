@@ -101,12 +101,11 @@ TEST_F(LabelBlockTest, LocateBlockExisting3) {
 // Then release all the labels in the order of allocation.
 TEST_F(LabelBlockTest, AllocateReleaseLabel1) {
     LabelBlockPtr block = manager_->LocateBlock(1000, 1500 - 1);
-    uint32_t label;
     for (int idx = 0; idx < 500; idx++) {
-        EXPECT_TRUE(block->AllocateLabel(&label));
+        uint32_t label = block->AllocateLabel();
         EXPECT_EQ(1000 + idx, label);
     }
-    EXPECT_FALSE(block->AllocateLabel(&label));
+    EXPECT_EQ(0, block->AllocateLabel());
     for (int idx = 0; idx < 500; idx++) {
         block->ReleaseLabel(1000 + idx);
     }
@@ -117,12 +116,11 @@ TEST_F(LabelBlockTest, AllocateReleaseLabel1) {
 // Then release all the labels in reverse order of allocation.
 TEST_F(LabelBlockTest, AllocateReleaseLabel2) {
     LabelBlockPtr block = manager_->LocateBlock(1000, 1500 - 1);
-    uint32_t label;
     for (int idx = 0; idx < 500; idx++) {
-        EXPECT_TRUE(block->AllocateLabel(&label));
+        uint32_t label = block->AllocateLabel();
         EXPECT_EQ(1000 + idx, label);
     }
-    EXPECT_FALSE(block->AllocateLabel(&label));
+    EXPECT_EQ(0, block->AllocateLabel());
     for (int idx = 500 - 1; idx >= 0; idx--) {
         block->ReleaseLabel(1000 + idx);
     }
@@ -133,14 +131,13 @@ TEST_F(LabelBlockTest, AllocateReleaseLabel2) {
 // first label in the block the second time around.
 TEST_F(LabelBlockTest, AllocateReleaseLabel3) {
     LabelBlockPtr block = manager_->LocateBlock(1000, 1500 - 1);
-    uint32_t label;
     for (int idx = 0; idx < 500; idx++) {
-        EXPECT_TRUE(block->AllocateLabel(&label));
+        uint32_t label = block->AllocateLabel();
         EXPECT_EQ(1000 + idx, label);
         block->ReleaseLabel(1000 + idx);
     }
     for (int idx = 0; idx < 500; idx++) {
-        EXPECT_TRUE(block->AllocateLabel(&label));
+        uint32_t label = block->AllocateLabel();
         EXPECT_EQ(1000 + idx, label);
         block->ReleaseLabel(1000 + idx);
     }

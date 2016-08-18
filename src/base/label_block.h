@@ -82,7 +82,7 @@ public:
     LabelBlock(LabelBlockManager *block_manager, uint32_t first, uint32_t last);
     ~LabelBlock();
 
-    bool AllocateLabel(uint32_t *label);
+    uint32_t AllocateLabel();
     void ReleaseLabel(uint32_t value);
     std::string ToString() const;
     uint32_t first() { return first_; }

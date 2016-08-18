@@ -56,7 +56,6 @@ McastForwarder::McastForwarder(McastSGEntry *sg_entry, ErmVpnRoute *route)
       route_(route),
       global_tree_route_(NULL),
       label_(0),
-      label_allocated_(false),
       address_(0),
       rd_(route->GetPrefix().route_distinguisher()),
       router_id_(route->GetPrefix().router_id()) {
@@ -175,7 +174,7 @@ void McastForwarder::FlushLinks() {
 // this McastForwarder belongs.
 //
 void McastForwarder::AllocateLabel() {
-    label_allocated_ = label_block_->AllocateLabel(&label_);
+    label_ = label_block_->AllocateLabel();
 }
 
 //
@@ -183,10 +182,9 @@ void McastForwarder::AllocateLabel() {
 // updating the distribution tree for the McastSGEntry to which we belong.
 //
 void McastForwarder::ReleaseLabel() {
-    if (label_allocated_) {
+    if (label_ != 0) {
         label_block_->ReleaseLabel(label_);
         label_ = 0;
-        label_allocated_ = false;
     }
 }
 
@@ -200,7 +198,7 @@ void McastForwarder::AddGlobalTreeRoute() {
     assert(!global_tree_route_);
 
     // Bail if there's no distribution tree.
-    if (!label_allocated_ || tree_links_.empty())
+    if (label_ == 0 || tree_links_.empty())
         return;
 
     // Bail if we can't build a source RD.
@@ -341,7 +339,7 @@ UpdateInfo *McastForwarder::GetUpdateInfo(ErmVpnTable *table) {
     AddGlobalOListElems(&olist_spec);
 
     // Bail if we've never built the tree or if the BgpOList is empty.
-    if (!label_allocated_ || olist_spec.elements.empty())
+    if (label_ == 0 || olist_spec.elements.empty())
         return NULL;
 
     BgpAttrSpec attr_spec;
@@ -462,7 +460,7 @@ void McastSGEntry::AddLocalTreeRoute() {
     for (ForwarderSet::reverse_iterator rit = forwarders->rbegin();
          rit != forwarders->rend(); ++rit) {
         McastForwarder *forwarder = *rit;
-        if (forwarder->label_allocated()) {
+        if (forwarder->label()) {
             forest_node_ = forwarder;
             break;
         }
@@ -643,7 +641,7 @@ void McastSGEntry::UpdateTree(uint8_t level) {
          it != forwarders->end(); ++it) {
         McastForwarder *forwarder = *it;
         forwarder->AllocateLabel();
-        if (!forwarder->label_allocated())
+        if (!forwarder->label())
             continue;
         vec.push_back(forwarder);
     }
