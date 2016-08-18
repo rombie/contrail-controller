@@ -74,7 +74,7 @@ LabelBlock::~LabelBlock() {
         block_manager_->RemoveBlock(this);
 }
 
-uint32_t LabelBlock::AllocateLabel() {
+bool LabelBlock::AllocateLabel(uint32_t *label) {
     tbb::mutex::scoped_lock lock(mutex_);
 
     size_t pos;
@@ -88,11 +88,12 @@ uint32_t LabelBlock::AllocateLabel() {
         if (first_ + pos <= last_) {
             used_bitset_.set(pos);
             prev_pos_ = pos;
-            return (first_ + pos);
+            *label = (first_ + pos);
+            return true;
         }
     }
 
-    return 0;
+    return false;
 }
 
 void LabelBlock::ReleaseLabel(uint32_t value) {
