@@ -2,6 +2,7 @@
  * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
  */
 
+#include <valgrind/memcheck.h>
 #include <boost/program_options.hpp>
 #include <base/logging.h>
 #include <base/contrail_ports.h>
@@ -54,8 +55,14 @@ void RouterIdDepInit(Agent *agent) {
 bool GetBuildInfo(std::string &build_info_str) {
     return MiscUtils::GetBuildInfo(MiscUtils::Agent, BuildInfo, build_info_str);
 }
+ 
+static void SignalHandler (int sig) {
+    if (sig == SIGUSR1)
+        VALGRIND_DO_LEAK_CHECK;
+}
 
 int main(int argc, char *argv[]) {
+    signal(SIGUSR1, SignalHandler);
     AgentParam params;
 
     try {
