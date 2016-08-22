@@ -543,7 +543,6 @@ static void SetInEcmpIndex(const PktInfo *pkt, PktFlowInfo *flow_info,
             static_cast<const CompositeNH *>(rt->GetActiveNextHop());
         label = nh->GetRemoteLabel(dest_ip);
     }
-    ComponentNH component_nh(label, component_nh_ptr);
 
     const NextHop *nh = NULL;
     if (out->intf_) {
@@ -566,9 +565,12 @@ static void SetInEcmpIndex(const PktInfo *pkt, PktFlowInfo *flow_info,
         const CompositeNH *comp_nh = static_cast<const CompositeNH *>(nh);
         //Find component entry index in composite NH
         uint32_t idx = 0;
-        if (comp_nh->GetIndex(component_nh, idx)) {
-            flow_info->in_component_nh_idx = idx;
-            flow_info->ecmp = true;
+        if (label != MplsTable::kInvalidLabel) {
+            ComponentNH component_nh(label, component_nh_ptr);
+            if (comp_nh->GetIndex(component_nh, idx)) {
+                flow_info->in_component_nh_idx = idx;
+                flow_info->ecmp = true;
+            }
         }
     } else {
         //Ideally this case is not ecmp, as on reverse flow we are hitting 
@@ -1825,6 +1827,7 @@ void PktFlowInfo::RewritePktInfo(uint32_t flow_index) {
     pkt->sport = key.src_port;
     pkt->dport = key.dst_port;
     pkt->agent_hdr.vrf = flow->data().vrf;
+    pkt->vrf = flow->data().vrf;
     pkt->agent_hdr.nh = key.nh;
     // If component_nh_idx is not set, assume that NH transitioned from 
     // Non ECMP to ECMP. The old Non-ECMP NH would always be placed at index 0

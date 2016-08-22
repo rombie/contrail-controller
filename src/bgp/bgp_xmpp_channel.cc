@@ -718,11 +718,9 @@ uint32_t BgpXmppChannel::GetRTargetRouteFlag(const RouteTarget &rtarget) const {
     return flags;
 }
 
-void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table,
-                                    RoutingInstance *routing_instance,
-                                    as4_t asn, const RouteTarget &rtarget,
-                                    BgpAttrPtr attr, bool add_change,
-                                    uint32_t flags) {
+void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table, as4_t asn,
+                                    const RouteTarget &rtarget, BgpAttrPtr attr,
+                                    bool add_change, uint32_t flags) {
     if (add_change && delete_in_progress_)
         return;
 
@@ -730,8 +728,10 @@ void BgpXmppChannel::RTargetRouteOp(BgpTable *rtarget_table,
     RTargetPrefix rt_prefix(asn, rtarget);
     req.key.reset(new RTargetTable::RequestKey(rt_prefix, Peer()));
     if (add_change) {
-        req.data.reset(new RTargetTable::RequestData(attr,
-                           flags ?: GetRTargetRouteFlag(rtarget) , 0));
+        // Find correct rtarget route flags if not already known.
+        if (!flags)
+            flags = GetRTargetRouteFlag(rtarget);
+        req.data.reset(new RTargetTable::RequestData(attr, flags , 0));
         req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
     } else {
         req.oper = DBRequest::DB_ENTRY_DELETE;
@@ -2136,12 +2136,13 @@ void BgpXmppChannel::FillInstanceMembershipInfo(BgpNeighborResp *resp) const {
         routing_instances_) {
         BgpNeighborRoutingInstance instance;
         instance.set_name(entry.first->name());
-        if (entry.second.IsLlgrStale())
+        if (entry.second.IsLlgrStale()) {
             instance.set_state("subscribed-llgr-stale");
-        else if (entry.second.IsGrStale())
+        } else if (entry.second.IsGrStale()) {
             instance.set_state("subscribed-gr-stale");
-        else
+        } else {
             instance.set_state("subscribed");
+        }
         instance.set_index(entry.second.index);
         vector<string> import_targets;
         BOOST_FOREACH(RouteTarget rt, entry.second.targets) {
@@ -2237,7 +2238,7 @@ void BgpXmppChannel::UpdateRouteTargetRouteFlag(
     BOOST_FOREACH(RouteTarget rtarget, sub_state->targets) {
 
         // Update route target route [llgr-]stale flag status.
-        RTargetRouteOp(rtarget_table, routing_instance,
+        RTargetRouteOp(rtarget_table,
                        bgp_server_->local_autonomous_system(),
                        rtarget, attr, true, flags);
     }

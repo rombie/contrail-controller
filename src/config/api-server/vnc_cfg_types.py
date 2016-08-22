@@ -25,6 +25,7 @@ from gen.resource_common import *
 from netaddr import IPNetwork
 from pprint import pformat
 from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
+from provision_defaults import *
 
 
 def _parse_rt(rt):
@@ -43,8 +44,6 @@ def _parse_rt(rt):
 
 
 class ResourceDbMixin(object):
-    generate_default_instance = True
-
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         return True, ''
@@ -157,8 +156,6 @@ class GlobalSystemConfigServer(Resource, GlobalSystemConfig):
 
 
 class FloatingIpServer(Resource, FloatingIp):
-    generate_default_instance = False
-
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         if 'project_refs' not in obj_dict:
@@ -243,8 +240,6 @@ class FloatingIpServer(Resource, FloatingIp):
 
 
 class AliasIpServer(Resource, AliasIp):
-    generate_default_instance = False
-
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         if 'project_refs' not in obj_dict:
@@ -329,8 +324,6 @@ class AliasIpServer(Resource, AliasIp):
 
 
 class InstanceIpServer(Resource, InstanceIp):
-    generate_default_instance = False
-
     @classmethod
     def _get_subnet_name(cls, vn_dict, subnet_uuid):
         ipam_refs = vn_dict.get('network_ipam_refs', [])
@@ -542,8 +535,6 @@ class InstanceIpServer(Resource, InstanceIp):
 
 
 class LogicalRouterServer(Resource, LogicalRouter):
-    generate_default_instance = False
-
     @classmethod
     def is_port_in_use_by_vm(cls, obj_dict, db_conn):
         for vmi_ref in obj_dict.get('virtual_machine_interface_refs', []):
@@ -645,8 +636,6 @@ class LogicalRouterServer(Resource, LogicalRouter):
 
 
 class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
-    generate_default_instance = False
-
     portbindings = {}
     portbindings['VIF_TYPE_VROUTER'] = 'vrouter'
     portbindings['VIF_TYPE_HW_VEB'] = 'hw_veb'
@@ -988,6 +977,11 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
         if not ok:
             return (ok, response)
         user_visibility = obj_dict['id_perms'].get('user_visible', True)
+        # neutorn <-> vnc sharing
+        if obj_dict['perms2']['global_access']:
+            obj_dict['is_shared'] = True
+        elif obj_dict.get('is_shared'):
+            obj_dict['perms2']['global_access'] = PERMS_RWX
         verify_quota_kwargs = {'db_conn': db_conn,
                                'fq_name': obj_dict['fq_name'],
                                'resource': 'virtual_networks',
@@ -1075,6 +1069,16 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
                 (fq_name == cfgm_common.LINK_LOCAL_VN_FQ_NAME)):
             # Ignore ip-fabric subnet updates
             return True,  ""
+
+        # neutorn <-> vnc sharing
+        if 'perms2' in obj_dict:
+            obj_dict['is_shared'] =  obj_dict['perms2']['global_access'] != 0
+        elif 'is_shared' in obj_dict:
+            ok, result = cls.dbe_read(db_conn, 'virtual_network', id, obj_fields=['perms2'])
+            if not ok:
+                return ok, result
+            obj_dict['perms2'] = result['perms2']
+            obj_dict['perms2']['global_access'] = PERMS_RWX if obj_dict['is_shared'] else 0
 
         (ok, error) =  cls._check_route_targets(obj_dict, db_conn)
         if not ok:
@@ -1328,8 +1332,6 @@ class NetworkIpamServer(Resource, NetworkIpam):
 
 
 class VirtualDnsServer(Resource, VirtualDns):
-    generate_default_instance = False
-
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         return cls.validate_dns_server(obj_dict, db_conn)
@@ -1473,8 +1475,6 @@ class VirtualDnsServer(Resource, VirtualDns):
 
 
 class VirtualDnsRecordServer(Resource, VirtualDnsRecord):
-    generate_default_instance = False
-
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         return cls.validate_dns_record(obj_dict, db_conn)
@@ -1603,8 +1603,6 @@ def _check_policy_rules(entries, network_policy_rule=False):
 # end _check_policy_rules
 
 class SecurityGroupServer(Resource, SecurityGroup):
-    generate_default_instance = False
-
     @classmethod
     def _set_configured_security_group_id(cls, obj_dict):
         fq_name_str = ':'.join(obj_dict['fq_name'])

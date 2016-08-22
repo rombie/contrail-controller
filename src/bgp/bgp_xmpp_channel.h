@@ -228,8 +228,7 @@ private:
                          const pugi::xml_node &item, bool add_change);
     void PublishRTargetRoute(RoutingInstance *instance, bool add_change,
                              int index);
-    void RTargetRouteOp(BgpTable *rtarget_table,
-                        RoutingInstance *routing_instance, as4_t asn,
+    void RTargetRouteOp(BgpTable *rtarget_table, as4_t asn,
                         const RouteTarget &rt, BgpAttrPtr attr,
                         bool add_change, uint32_t flags = 0);
     void AddNewRTargetRoute(BgpTable *rtarget_table,
@@ -268,9 +267,7 @@ private:
     void ReceiveEndOfRIB(Address::Family family);
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
-    bool EndOfRibReceiveTimerExpired();
-    bool EndOfRibSendTimerExpired();
-    void SendEndOfRIB();
+    bool EndOfRibTimerExpired();
     BgpAttrPtr GetRouteTargetRouteAttr();
 
     xmps::PeerId peer_id_;

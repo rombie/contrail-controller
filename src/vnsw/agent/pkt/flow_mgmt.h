@@ -740,7 +740,22 @@ public:
         }
 
         return NULL;
+    } 
+
+    bool Match(const IpAddress &match_ip) const {
+        if (ip_.is_v4()) {
+            return (Address::GetIp4SubnetAddress(ip_.to_v4(), plen_) ==
+                    Address::GetIp4SubnetAddress(match_ip.to_v4(), plen_));
+        } else if (ip_.is_v6()) {
+            return (Address::GetIp6SubnetAddress(ip_.to_v6(), plen_) ==
+                    Address::GetIp6SubnetAddress(match_ip.to_v6(), plen_));
+        }
+        assert(0);
+        return false;
     }
+
+    bool NeedsReCompute(const FlowEntry *flow);
+
 
 private:
     friend class InetRouteFlowMgmtTree;
@@ -754,7 +769,10 @@ class InetRouteFlowMgmtEntry : public RouteFlowMgmtEntry {
 public:
     InetRouteFlowMgmtEntry() : RouteFlowMgmtEntry() { }
     virtual ~InetRouteFlowMgmtEntry() { }
-
+    // Handle covering routeEntry
+    bool RecomputeCoveringRouteEntry(FlowMgmtManager *mgr,
+                                     InetRouteFlowMgmtKey *covering_route,
+                                     InetRouteFlowMgmtKey *key);
 private:
     DISALLOW_COPY_AND_ASSIGN(InetRouteFlowMgmtEntry);
 };
@@ -798,6 +816,9 @@ public:
             delete rt_key;
         }
     }
+   bool RecomputeCoveringRoute(InetRouteFlowMgmtKey *covering_route,
+                               InetRouteFlowMgmtKey *key);
+
 private:
     LpmTree lpm_tree_;
     DISALLOW_COPY_AND_ASSIGN(InetRouteFlowMgmtTree);
@@ -989,7 +1010,9 @@ private:
 
 class BgpAsAServiceFlowMgmtTree : public FlowMgmtTree {
 public:
-    BgpAsAServiceFlowMgmtTree(FlowMgmtManager *mgr) : FlowMgmtTree(mgr) {}
+    static const int kInvalidCnIndex = -1;
+    BgpAsAServiceFlowMgmtTree(FlowMgmtManager *mgr, int index) :
+        FlowMgmtTree(mgr), index_(index) {}
     virtual ~BgpAsAServiceFlowMgmtTree() {}
 
     void ExtractKeys(FlowEntry *flow, FlowMgmtKeyTree *tree);
@@ -998,10 +1021,11 @@ public:
                              const FlowMgmtRequest *req);
     void DeleteAll();
     //Gets CN index from flow.
-    static uint8_t GetCNIndex(const FlowEntry *flow);
+    static int GetCNIndex(const FlowEntry *flow);
     // Called just before entry is deleted. Used to implement cleanup operations
     virtual void FreeNotify(FlowMgmtKey *key, uint32_t gen_id);
 private:
+    int index_;
     DISALLOW_COPY_AND_ASSIGN(BgpAsAServiceFlowMgmtTree);
 };
 
