@@ -191,6 +191,7 @@ public:
     virtual BgpProto::BgpPeerType PeerType() const {
         return peer_type_;
     }
+    const string &private_as_action() const { return private_as_action_; }
 
     const BgpNeighborConfig *config() const { return config_; }
 
@@ -207,7 +208,7 @@ public:
     virtual bool IsXmppPeer() const;
     virtual bool CanUseMembershipManager() const;
     virtual bool IsRegistrationRequired() const { return true; }
-    virtual uint64_t GetElapsedTimeSinceLastStateChange() const;
+    virtual uint64_t GetEorSendTimerElapsedTimeUsecs() const;
 
     void Close(bool non_graceful);
     void Clear(int subcode);
@@ -365,10 +366,8 @@ private:
 
     RibExportPolicy BuildRibExportPolicy(Address::Family family) const;
     void ReceiveEndOfRIB(Address::Family family, size_t msgsize);
-    void StartEndOfRibTimer();
-    bool EndOfRibTimerExpired();
-    void StartEndOfRouteTargetRibTimer();
-    bool EndOfRouteTargetRibTimerExpired();
+    void StartEndOfRibReceiveTimer(Address::Family family);
+    bool EndOfRibReceiveTimerExpired(Address::Family family);
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
 
@@ -446,13 +445,15 @@ private:
     size_t buffer_len_;
     BgpSession *session_;
     Timer *keepalive_timer_;
-    Timer *end_of_rib_timer_;
-    Timer *end_of_rib_send_timer_[Address::NUM_FAMILIES];
+    Timer *eor_receive_timer_[Address::NUM_FAMILIES];
+    Timer *eor_send_timer_[Address::NUM_FAMILIES];
+    uint64_t eor_send_timer_start_time_;
     bool send_ready_;
     bool admin_down_;
     bool passive_;
     bool resolve_paths_;
     bool as_override_;
+    string private_as_action_;
 
     tbb::atomic<int> membership_req_pending_;
     bool defer_close_;

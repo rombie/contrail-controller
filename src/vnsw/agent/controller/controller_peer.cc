@@ -161,10 +161,6 @@ void AgentXmppChannel::ReceiveEvpnUpdate(XmlPugi *pugi) {
     pugi::xml_node node = pugi->FindNode("items");
     pugi::xml_attribute attr = node.attribute("node");
 
-    // Empty items denotes EoR marker.
-    if (!node.first_child())
-        return;
-
     char *saveptr;
     strtok_r(const_cast<char *>(attr.value()), "/", &saveptr);
     strtok_r(NULL, "/", &saveptr);
@@ -1188,10 +1184,11 @@ void AgentXmppChannel::ReceiveBgpMessage(std::auto_ptr<XmlBase> impl) {
         return;
     }
 
-    if (atoi(af) == BgpAf::UnknownAfi && atoi(safi) == BgpAf::UnknownSafi &&
-            !strcmp(vrf_name, "EndOfRib")) {
-        // Process EndOfRib marker.
+    // If EndOfRib marker is received, process it accordingly.
+    if (nodename == XmppInit::kEndOfRibMarker) {
+        return;
     }
+
     if (atoi(af) == BgpAf::IPv4 && atoi(safi) == BgpAf::Mcast) {
         ReceiveMulticastUpdate(pugi);
         return;

@@ -34,8 +34,8 @@
 #include "schema/xmpp_multicast_types.h"
 #include "schema/xmpp_enet_types.h"
 #include "xml/xml_pugi.h"
-#include "xmpp/xmpp_init.h"
 #include "xmpp/xmpp_connection.h"
+#include "xmpp/xmpp_init.h"
 #include "xmpp/xmpp_server.h"
 #include "xmpp/sandesh/xmpp_peer_info_types.h"
 
@@ -246,8 +246,6 @@ public:
         }
         parent_->routing_instances_.clear();
         parent_->rtarget_routes_.clear();
-        parent_->eor_receive_timer_->Cancel();
-        parent_->eor_send_timer_->Cancel();
     }
 
     virtual void CloseComplete() {
@@ -263,7 +261,6 @@ public:
     virtual void Delete() {
         if (!parent_)
             return;
-        parent_->eor_send_timer_->Cancel();
         parent_->delete_in_progress_ = true;
         parent_->set_peer_closed(true);
         parent_->manager_->increment_deleting_count();
@@ -609,6 +606,10 @@ void BgpXmppChannel::XmppPeer::Close(bool non_graceful) {
         const_cast<XmppConnection *>(parent_->channel_->connection());
 
     if (connection && !connection->IsActiveChannel()) {
+
+        // Clear EOR state.
+        parent_->ClearEndOfRibState();
+
         parent_->peer_close_->Close(non_graceful);
         XmppPeerInfoData peer_info;
         peer_info.set_name(parent_->ToUVEKey());
@@ -636,13 +637,13 @@ BgpXmppChannel::BgpXmppChannel(XmppChannel *channel, BgpServer *bgp_server,
       eor_sent_(false),
       eor_receive_timer_(NULL),
       eor_send_timer_(NULL),
+      eor_receive_timer_start_time_(0),
+      eor_send_timer_start_time_(0),
       membership_response_worker_(
             TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
             channel->GetTaskInstance(),
             boost::bind(&BgpXmppChannel::MembershipResponseHandler, this, _1)),
       lb_mgr_(new LabelBlockManager()) {
-    eor_receive_timer_start_time_ = 0;
-    eor_send_timer_start_time_ = 0;
     if (bgp_server) {
         eor_receive_timer_ =
             TimerManager::CreateTimer(*bgp_server->ioservice(),
@@ -2578,6 +2579,12 @@ void BgpXmppChannel::ProcessSubscriptionRequest(
     }
 }
 
+void BgpXmppChannel::ClearEndOfRibState() {
+    eor_receive_timer_->Cancel();
+    eor_send_timer_->Cancel();
+    eor_sent_ = false;
+}
+
 void BgpXmppChannel::ReceiveEndOfRIB(Address::Family family) {
     eor_receive_timer_->Cancel();
     peer_close_->close_manager()->ProcessEORMarkerReceived(family);
@@ -2633,7 +2640,7 @@ bool BgpXmppChannel::EndOfRibSendTimerExpired() {
     if (UTCTimestampUsec() - eor_send_timer_start_time_ < timeout * 1000000) {
 
         // If there is some send or receive activity in the channel in last few
-        // seconds, delay EoR receive event.
+        // seconds, delay EoR send event.
         if (channel_->LastReceived(kEndOfRibSendRetryTimeMsecs * 3) ||
                 channel_->LastSent(kEndOfRibSendRetryTimeMsecs * 3)) {
             eor_receive_timer_->Reschedule(kEndOfRibSendRetryTimeMsecs);
@@ -2707,7 +2714,7 @@ void BgpXmppChannel::SendEndOfRIB() {
     msg += XmppInit::kBgpPeer;
     msg += "\">";
     msg += "\n\t<event xmlns=\"http://jabber.org/protocol/pubsub\">";
-    msg += "\n<items node=\"0/0/EndOfRib\"></items>";
+    msg = (msg + "\n<items node=\"") +XmppInit::kEndOfRibMarker+ "\"></items>";
     msg += "\n\t</event>\n</message>\n";
 
     if (channel_->connection())

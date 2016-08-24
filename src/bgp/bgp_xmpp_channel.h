@@ -131,6 +131,7 @@ public:
     Timer *eor_send_timer() const { return eor_send_timer_; }
     bool eor_sent() const { return eor_sent_; }
     size_t membership_requests() const;
+    void ClearEndOfRibState();
 
     uint64_t get_rx_route_reach() const { return stats_[RX].reach; }
     uint64_t get_rx_route_unreach() const { return stats_[RX].unreach; }
@@ -298,8 +299,8 @@ private:
     bool eor_sent_;
     Timer *eor_receive_timer_;
     Timer *eor_send_timer_;
-    tbb::atomic<uint64_t> eor_receive_timer_start_time_;
-    tbb::atomic<uint64_t> eor_send_timer_start_time_;
+    uint64_t eor_receive_timer_start_time_;
+    uint64_t eor_send_timer_start_time_;
     WorkQueue<std::string> membership_response_worker_;
     SubscribedRoutingInstanceList routing_instances_;
     PublishedRTargetRoutes rtarget_routes_;
