@@ -240,14 +240,14 @@ public:
         for (PublishedRTargetRoutes::iterator
              it = parent_->rtarget_routes_.begin();
              it != parent_->rtarget_routes_.end(); it++) {
-            parent_->RTargetRouteOp(rtarget_table, NULL,
+            parent_->RTargetRouteOp(rtarget_table,
                                     server->local_autonomous_system(),
                                     it->first, NULL, false);
         }
         parent_->routing_instances_.clear();
         parent_->rtarget_routes_.clear();
-        parent_->eor_receive_->Cancel();
-        parent_->eor_send_->Cancel();
+        parent_->eor_receive_timer_->Cancel();
+        parent_->eor_send_timer_->Cancel();
     }
 
     virtual void CloseComplete() {
@@ -263,6 +263,7 @@ public:
     virtual void Delete() {
         if (!parent_)
             return;
+        parent_->eor_send_timer_->Cancel();
         parent_->delete_in_progress_ = true;
         parent_->set_peer_closed(true);
         parent_->manager_->increment_deleting_count();
@@ -526,6 +527,8 @@ public:
         parent_->MembershipRequestCallback(table);
     }
 
+    bool send_ready() const { return send_ready_; }
+
 private:
     void WriteReadyCb(const boost::system::error_code &ec) {
         if (!server_) return;
@@ -534,6 +537,10 @@ private:
                      BGP_PEER_DIR_NA, "Send ready");
         sg_mgr->SendReady(this);
         send_ready_ = true;
+
+        // Restart EndOfRib Send timer if necessary.
+        parent_->StartEndOfRibSendTimer();
+
         XmppPeerInfoData peer_info;
         peer_info.set_name(ToUVEKey());
         peer_info.set_send_state("in sync");
@@ -581,6 +588,11 @@ bool BgpXmppChannel::XmppPeer::SendUpdate(const uint8_t *msg, size_t msgsize) {
             peer_info.set_name(ToUVEKey());
             peer_info.set_send_state("not in sync");
             parent_->XMPPPeerInfoSend(peer_info);
+
+            // If EndOfRib Send timer is running, cancel it and reschedule it
+            // after socket gets unblocked.
+            if (parent_->eor_send_timer_->running())
+                parent_->eor_send_timer_->Cancel();
         }
         return send_ready_;
     } else {
@@ -597,7 +609,7 @@ void BgpXmppChannel::XmppPeer::Close(bool non_graceful) {
         const_cast<XmppConnection *>(parent_->channel_->connection());
 
     if (connection && !connection->IsActiveChannel()) {
-        parent_->peer_close_->Close(false);
+        parent_->peer_close_->Close(non_graceful);
         XmppPeerInfoData peer_info;
         peer_info.set_name(parent_->ToUVEKey());
         peer_info.set_send_state("not advertising");
@@ -621,22 +633,23 @@ BgpXmppChannel::BgpXmppChannel(XmppChannel *channel, BgpServer *bgp_server,
       membership_unavailable_(false),
       skip_update_send_(false),
       skip_update_send_cached_(false),
-      eor_receive_(NULL),
-      eor_send_(NULL),
+      eor_sent_(false),
+      eor_receive_timer_(NULL),
+      eor_send_timer_(NULL),
       membership_response_worker_(
             TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
             channel->GetTaskInstance(),
             boost::bind(&BgpXmppChannel::MembershipResponseHandler, this, _1)),
       lb_mgr_(new LabelBlockManager()) {
-    eor_receive_timer_started_ = 0;
-    eor_send_timer_started_ = 0;
+    eor_receive_timer_start_time_ = 0;
+    eor_send_timer_start_time_ = 0;
     if (bgp_server) {
-        eor_receive_ =
+        eor_receive_timer_ =
             TimerManager::CreateTimer(*bgp_server->ioservice(),
                 "EndOfRib receive timer",
                 TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
                 channel->GetTaskInstance());
-        eor_send_ =
+        eor_send_timer_ =
             TimerManager::CreateTimer(*bgp_server->ioservice(),
                 "EndOfRib send timer",
                 TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
@@ -661,8 +674,8 @@ BgpXmppChannel::~BgpXmppChannel() {
     assert(peer_deleted());
     assert(!peer_->peer_close()->close_manager()->IsMembershipInUse());
     assert(routingtable_membership_request_map_.empty());
-    TimerManager::DeleteTimer(eor_receive_);
-    TimerManager::DeleteTimer(eor_send_);
+    TimerManager::DeleteTimer(eor_receive_timer_);
+    TimerManager::DeleteTimer(eor_send_timer_);
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_NA, "Deleted");
     channel_->UnRegisterReceive(peer_id_);
@@ -756,11 +769,9 @@ void BgpXmppChannel::ASNUpdateCallback(as_t old_asn, as_t old_local_asn) {
     BgpAttrPtr attr = GetRouteTargetRouteAttr();
     for (PublishedRTargetRoutes::iterator it = rtarget_routes_.begin();
          it != rtarget_routes_.end(); it++) {
-        RTargetRouteOp(rtarget_table, NULL, old_local_asn, it->first, NULL,
-                       false);
-        RTargetRouteOp(rtarget_table, *(it->second.begin()),
-                       bgp_server_->local_autonomous_system(), it->first, attr,
-                       true);
+        RTargetRouteOp(rtarget_table, old_local_asn, it->first, NULL, false);
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
+                       it->first, attr, true);
     }
 }
 
@@ -779,9 +790,8 @@ void BgpXmppChannel::IdentifierUpdateCallback(Ip4Address old_identifier) {
     // Update the route with new nexthop
     for (PublishedRTargetRoutes::iterator it = rtarget_routes_.begin();
          it != rtarget_routes_.end(); it++) {
-        RTargetRouteOp(rtarget_table, *(it->second.begin()),
-                       bgp_server_->local_autonomous_system(), it->first, attr,
-                       true);
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
+                       it->first, attr, true);
     }
 }
 
@@ -801,8 +811,7 @@ BgpXmppChannel::AddNewRTargetRoute(BgpTable *rtarget_table,
 
         rt_loc = ret.first;
         // Send rtarget route ADD
-        RTargetRouteOp(rtarget_table, rtinstance,
-                       bgp_server_->local_autonomous_system(),
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        rtarget, attr, true);
     }
     rt_loc->second.insert(rtinstance);
@@ -818,8 +827,7 @@ BgpXmppChannel::DeleteRTargetRoute(BgpTable *rtarget_table,
     if (rt_loc->second.empty()) {
         rtarget_routes_.erase(rtarget);
         // Send rtarget route DELETE
-        RTargetRouteOp(rtarget_table, rtinstance,
-                       bgp_server_->local_autonomous_system(),
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        rtarget, NULL, false);
     }
 }
@@ -1980,6 +1988,11 @@ void BgpXmppChannel::RegisterTable(int line, BgpTable *table, int instance_id) {
                  " with id " << instance_id);
     mgr->Register(peer_.get(), table, bgp_policy_, instance_id);
     channel_stats_.table_subscribe++;
+
+    // If EndOfRib Send timer is running, cancel it and reschedule it after all
+    // outstanding membership registrations are complete.
+    if (eor_send_timer_->running())
+        eor_send_timer_->Cancel();
 }
 
 void BgpXmppChannel::UnregisterTable(int line, BgpTable *table) {
@@ -2024,6 +2037,10 @@ void BgpXmppChannel::ProcessPendingSubscriptions() {
     }
 }
 
+size_t BgpXmppChannel::membership_requests() const {
+    return routingtable_membership_request_map_.size();
+}
+
 bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     if (peer_close_->close_manager()->IsMembershipInUse()) {
         membership_unavailable_ = true;
@@ -2063,6 +2080,14 @@ bool BgpXmppChannel::MembershipResponseHandler(string table_name) {
     } else {
         ProcessMembershipResponse(table_name, loc);
     }
+
+    assert(channel_stats_.table_subscribe_complete <=
+               channel_stats_.table_subscribe);
+    assert(channel_stats_.table_unsubscribe_complete <=
+               channel_stats_.table_unsubscribe);
+
+    // Restart EndOfRib send if necessary.
+    StartEndOfRibSendTimer();
 
     // If Close manager is waiting to use membership, try now.
     if (peer_close_->close_manager()->IsMembershipInWait())
@@ -2238,8 +2263,7 @@ void BgpXmppChannel::UpdateRouteTargetRouteFlag(
     BOOST_FOREACH(RouteTarget rtarget, sub_state->targets) {
 
         // Update route target route [llgr-]stale flag status.
-        RTargetRouteOp(rtarget_table,
-                       bgp_server_->local_autonomous_system(),
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        rtarget, attr, true, flags);
     }
 }
@@ -2308,8 +2332,7 @@ void BgpXmppChannel::ClearStaledSubscription(BgpTable *rtarget_table,
         assert(rt_loc != rtarget_routes_.end());
 
         // Send rtarget route ADD
-        RTargetRouteOp(rtarget_table, rt_instance,
-                       bgp_server_->local_autonomous_system(),
+        RTargetRouteOp(rtarget_table, bgp_server_->local_autonomous_system(),
                        rtarget, attr, true);
     }
 }
@@ -2556,7 +2579,7 @@ void BgpXmppChannel::ProcessSubscriptionRequest(
 }
 
 void BgpXmppChannel::ReceiveEndOfRIB(Address::Family family) {
-    eor_receive_->Cancel();
+    eor_receive_timer_->Cancel();
     peer_close_->close_manager()->ProcessEORMarkerReceived(family);
 }
 
@@ -2576,13 +2599,14 @@ bool BgpXmppChannel::EndOfRibReceiveTimerExpired() {
 
     // If max timeout has not reached yet, check if we can exit GR sooner by
     // looking at the activity in the channel.
-    if (UTCTimestampUsec() - eor_receive_timer_started_ < timeout * 1000000) {
+    if (UTCTimestampUsec() - eor_receive_timer_start_time_
+            < timeout * 1000000) {
 
         // If there is some send or receive activity in the channel in last few
         // seconds, delay EoR receive event.
         if (channel_->LastReceived(kEndOfRibSendRetryTimeMsecs * 3) ||
                 channel_->LastSent(kEndOfRibSendRetryTimeMsecs * 3)) {
-            eor_receive_->Reschedule(kEndOfRibSendRetryTimeMsecs);
+            eor_receive_timer_->Reschedule(kEndOfRibSendRetryTimeMsecs);
             BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO,
                          BGP_LOG_FLAG_ALL, BGP_PEER_DIR_IN,
                          "EndOfRib Receive timer rescheduled to fire after " <<
@@ -2606,13 +2630,13 @@ bool BgpXmppChannel::EndOfRibSendTimerExpired() {
 
     // If max timeout has not reached yet, check if we can exit GR sooner by
     // looking at the activity in the channel.
-    if (UTCTimestampUsec() - eor_send_timer_started_ < timeout * 1000000) {
+    if (UTCTimestampUsec() - eor_send_timer_start_time_ < timeout * 1000000) {
 
         // If there is some send or receive activity in the channel in last few
         // seconds, delay EoR receive event.
         if (channel_->LastReceived(kEndOfRibSendRetryTimeMsecs * 3) ||
                 channel_->LastSent(kEndOfRibSendRetryTimeMsecs * 3)) {
-            eor_receive_->Reschedule(kEndOfRibSendRetryTimeMsecs);
+            eor_receive_timer_->Reschedule(kEndOfRibSendRetryTimeMsecs);
             BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO,
                          BGP_LOG_FLAG_ALL, BGP_PEER_DIR_IN,
                          "EndOfRib Send timer rescheduled to fire after " <<
@@ -2629,28 +2653,40 @@ void BgpXmppChannel::StartEndOfRibReceiveTimer() {
     uint32_t timeout = manager() && manager()->xmpp_server() ?
                            manager()->xmpp_server()->GetEndOfRibReceiveTime() :
                            kEndOfRibTime;
-    eor_receive_timer_started_ = UTCTimestampUsec();
-    eor_receive_->Cancel();
+    eor_receive_timer_start_time_ = UTCTimestampUsec();
+    eor_receive_timer_->Cancel();
 
     BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_IN, "EndOfRib Receive timer scheduled to fire after " <<
         timeout * 0.10 << " seconds");
-    eor_receive_->Start((timeout * 1000) * 0.10,
+    eor_receive_timer_->Start((timeout * 1000) * 0.10,
         boost::bind(&BgpXmppChannel::EndOfRibReceiveTimerExpired, this),
         boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
 }
 
 void BgpXmppChannel::StartEndOfRibSendTimer() {
+    if (eor_sent_)
+        return;
+
+    // If socket is blocked, then wait for it to get unblocked first.
+    if (!peer_->send_ready())
+        return;
+
+    // If there is any outstanding subscribe pending, wait for its completion.
+    if (channel_stats_.table_subscribe_complete !=
+            channel_stats_.table_subscribe)
+        return;
+
     uint32_t timeout = manager() && manager()->xmpp_server() ?
                            manager()->xmpp_server()->GetEndOfRibSendTime() :
                            kEndOfRibTime;
-    eor_send_timer_started_ = UTCTimestampUsec();
-    eor_receive_->Cancel();
+    eor_send_timer_start_time_ = UTCTimestampUsec();
+    eor_send_timer_->Cancel();
 
     BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
         BGP_PEER_DIR_OUT, "EndOfRib Send timer scheduled to fire after " <<
         timeout * 0.10 << " seconds");
-    eor_receive_->Start((timeout * 1000) * 0.10,
+    eor_send_timer_->Start((timeout * 1000) * 0.10,
         boost::bind(&BgpXmppChannel::EndOfRibSendTimerExpired, this),
         boost::bind(&BgpXmppChannel::EndOfRibTimerErrorHandler, this, _1, _2));
 }
@@ -2659,7 +2695,8 @@ void BgpXmppChannel::StartEndOfRibSendTimer() {
  * Empty items list constitute eor marker.
  */
 void BgpXmppChannel::SendEndOfRIB() {
-    eor_send_->Cancel();
+    eor_send_timer_->Cancel();
+    eor_sent_ = true;
 
     string msg;
     msg += "\n<message from=\"";
@@ -2673,7 +2710,8 @@ void BgpXmppChannel::SendEndOfRIB() {
     msg += "\n<items node=\"0/0/EndOfRib\"></items>";
     msg += "\n\t</event>\n</message>\n";
 
-    channel_->connection()->Send((const uint8_t *) msg.data(), msg.size());
+    if (channel_->connection())
+        channel_->connection()->Send((const uint8_t *) msg.data(), msg.size());
 
     stats_[TX].end_of_rib++;
     BGP_LOG_PEER(Message, Peer(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
@@ -2929,6 +2967,8 @@ void BgpXmppChannelManager::XmppHandleChannelEvent(XmppChannel *channel,
             if (bgp_xmpp_channel->peer_deleted())
                 return;
         }
+
+        bgp_xmpp_channel->eor_sent_ = false;
         bgp_xmpp_channel->StartEndOfRibReceiveTimer();
         bgp_xmpp_channel->StartEndOfRibSendTimer();
     } else if (state == xmps::NOT_READY) {
