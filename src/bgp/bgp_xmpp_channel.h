@@ -39,6 +39,7 @@ class BgpXmppChannelManagerMock;
 class Timer;
 class XmppConfigUpdater;
 class XmppPeerInfoData;
+class XmppRTargetManager;
 class XmppSession;
 
 class BgpXmppChannel {
@@ -141,6 +142,14 @@ public:
     uint64_t get_tx_route_unreach() const { return stats_[TX].unreach; }
     uint64_t get_tx_update() const { return stats_[TX].rt_updates; }
     bool SkipUpdateSend();
+    bool delete_in_progress() const { return delete_in_progress_; }
+
+    XmppRTargetManager *xmpp_rtarget_manager() { return xmpp_rtarget_manager_; }
+    bool IsSubscriptionGrStale(RoutingInstance *instance) const;
+    bool IsSubscriptionLlgrStale(RoutingInstance *instance) const;
+    bool IsSubscriptionEmpty() const;
+    const RoutingInstance::RouteTargetList &GetSubscribedRTargets(
+            RoutingInstance *instance) const;
 
 protected:
     XmppChannel *channel_;
@@ -197,8 +206,6 @@ private:
     };
     typedef std::map<RoutingInstance *, SubscriptionState>
         SubscribedRoutingInstanceList;
-    typedef std::set<RoutingInstance *> RoutingInstanceList;
-    typedef std::map<RouteTarget, RoutingInstanceList> PublishedRTargetRoutes;
 
     // map of routing-instance table name to XMPP subscription request state
     typedef std::map<std::string, MembershipRequestState>
@@ -232,21 +239,10 @@ private:
                           const pugi::xml_node &item, bool add_change);
     bool ProcessEnetItem(std::string vrf_name,
                          const pugi::xml_node &item, bool add_change);
-    void PublishRTargetRoute(RoutingInstance *instance, bool add_change,
-                             int index);
-    void RTargetRouteOp(BgpTable *rtarget_table, as4_t asn,
-                        const RouteTarget &rt, BgpAttrPtr attr,
-                        bool add_change, uint32_t flags = 0);
-    void AddNewRTargetRoute(BgpTable *rtarget_table,
-        RoutingInstance *rtinstance, const RouteTarget &rtarget,
-        BgpAttrPtr attr);
-    void DeleteRTargetRoute(BgpTable *rtarget_table,
-        RoutingInstance *rtinstance, const RouteTarget &rtarget);
-    uint32_t GetRTargetRouteFlag(const RouteTarget &rtarget) const;
-    void ProcessASUpdate(as4_t old_as);
     void ProcessSubscriptionRequest(std::string rt_instance,
                                     const XmppStanza::XmppMessageIq *iq,
                                     bool add_change);
+    void AddSubscriptionState(RoutingInstance *rt_instance, int index);
 
     void RegisterTable(int line, BgpTable *table, int instance_id);
     void UnregisterTable(int line, BgpTable *table);
@@ -260,12 +256,8 @@ private:
     void FlushDeferQ(std::string vrf_name, std::string table_name);
     void ProcessDeferredSubscribeRequest(RoutingInstance *rt_instance,
                                          int instance_id);
-    void ClearStaledSubscription(BgpTable *rtarget_table,
-            RoutingInstance *rt_instance, BgpAttrPtr attr,
-            SubscriptionState *sub_state);
-    void UpdateRouteTargetRouteFlag(RoutingInstance *routing_instance,
-                                    const SubscriptionState *sub_state,
-                                    uint32_t flags);
+    void ClearStaledSubscription(RoutingInstance *rt_instance,
+                                 SubscriptionState *sub_state);
     const BgpXmppChannelManager *manager() const { return manager_; }
     bool ProcessMembershipResponse(std::string table_name,
              RoutingTableMembershipRequestMap::iterator loc);
@@ -275,9 +267,9 @@ private:
                                    std::string error_message);
     bool EndOfRibTimerExpired();
     void SendEndOfRIB();
-    BgpAttrPtr GetRouteTargetRouteAttr();
 
     xmps::PeerId peer_id_;
+    XmppRTargetManager *xmpp_rtarget_manager_;
     BgpServer *bgp_server_;
     boost::scoped_ptr<XmppPeer> peer_;
     boost::scoped_ptr<PeerClose> peer_close_;
@@ -303,7 +295,6 @@ private:
     uint64_t eor_send_timer_start_time_;
     WorkQueue<std::string> membership_response_worker_;
     SubscribedRoutingInstanceList routing_instances_;
-    PublishedRTargetRoutes rtarget_routes_;
 
     // statistics
     Stats stats_[2];
@@ -352,10 +343,10 @@ public:
     bool IsReadyForDeletion();
     void SetQueueDisable(bool disabled);
     size_t GetQueueSize() const;
-    void RoutingInstanceCallback(std::string vrf_name, int op);
     void AdminDownCallback();
     void ASNUpdateCallback(as_t old_asn, as_t old_local_asn);
     void IdentifierUpdateCallback(Ip4Address old_identifier);
+    void RoutingInstanceCallback(std::string vrf_name, int op);
 
     uint32_t count() const {
         tbb::mutex::scoped_lock lock(mutex_);
