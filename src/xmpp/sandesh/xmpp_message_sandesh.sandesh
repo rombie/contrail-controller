@@ -15,6 +15,8 @@
 /**
  * @description: XMPP Chat message send event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppChatMessage {
     1: "Received chat message ";
@@ -27,6 +29,8 @@ systemlog sandesh XmppChatMessage {
 /**
  * @description: XMPP Connection creation event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppConnectionCreate {
     1: "Created Xmpp ";
@@ -40,6 +44,8 @@ systemlog sandesh XmppConnectionCreate {
 /**
  * @description: XMPP Session deletion event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppSessionDelete {
     1: "Delete Xmpp Session";
@@ -96,6 +102,8 @@ systemlog sandesh XmppBadMessage {
 /**
  * @description: XMPP HandShake message received
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppSslHandShakeMessage {
     1: string f1;
@@ -124,6 +132,8 @@ systemlog sandesh XmppIqCollectionError {
 /**
  * @description: XMPP IQ message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppIqMessageProcess {
     1: "Received IQ message for node:";
@@ -143,6 +153,8 @@ systemlog sandesh XmppIqMessageProcess {
 /**
  * @description: XMPP Chat message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppChatMessageProcess {
     1: "Received Chat message of type: "
@@ -156,6 +168,8 @@ systemlog sandesh XmppChatMessageProcess {
 /**
  * @description: XMPP Open message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppRxOpenMessage {
     1: "Received open message From: ";
@@ -167,6 +181,8 @@ systemlog sandesh XmppRxOpenMessage {
 /**
  * @description: XMPP TLS Required message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppRxStreamTlsRequired {
     1: "Received Tls Feature Required ";
@@ -175,6 +191,8 @@ systemlog sandesh XmppRxStreamTlsRequired {
 /**
  * @description: XMPP TLS Start message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppRxStreamStartTls {
     1: "Received Start Tls ";
@@ -183,6 +201,8 @@ systemlog sandesh XmppRxStreamStartTls {
 /**
  * @description: XMPP TLS Proceed message reception event
  * @severity: DEBUG
+ * @cause: Normal diagnostic message used during software trouble-shooting
+ * @action: None
  */
 systemlog sandesh XmppRxStreamProceed {
     1: "Received Proceed Tls ";
