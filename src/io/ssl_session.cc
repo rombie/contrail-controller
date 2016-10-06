@@ -98,8 +98,10 @@ void SslSession::AsyncReadSome() {
     }
 
     if (established()) {
-        ssl_socket_->async_read_some(null_buffers(),
-            bind(&TcpSession::AsyncReadHandler, TcpSessionPtr(this)));
+        mutable_buffer buffer = AllocateBuffer(GetReadBufferSize());
+        ssl_socket_->async_read_some(mutable_buffers_1(buffer),
+            bind(&TcpSession::AsyncReadHandler, _1, _2, TcpSessionPtr(this),
+                 buffer));
     }
 }
 
@@ -110,14 +112,14 @@ size_t SslSession::GetReadBufferSize() const {
     return kDefaultBufferSize;
 }
 
-size_t SslSession::ReadSome(mutable_buffer buffer, error_code *error) {
+mutable_buffer SslSession::ReadSome(mutable_buffer buffer, size_t *size,
+                                    error_code *error) {
     // Read data from the tcp socket or from the ssl socket, as appropriate.
     assert(!ssl_handshake_in_progress_);
     if (!IsSslHandShakeSuccessLocked())
-        return TcpSession::ReadSome(buffer, error);
+        return TcpSession::ReadSome(buffer, size, error);
 
-    // do ssl read here in IO context, ignore errors
-    return ssl_socket_->read_some(mutable_buffers_1(buffer), *error);
+    return buffer;
 }
 
 size_t SslSession::WriteSome(const uint8_t *data, size_t len,
