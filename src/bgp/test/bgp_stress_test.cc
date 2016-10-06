@@ -14,6 +14,7 @@
 
 #include "base/task_annotations.h"
 #include "base/test/addr_test_util.h"
+#include "db/db_table_walker.h"
 
 #include "bgp/bgp_config_parser.h"
 #include "bgp/bgp_factory.h"
@@ -26,6 +27,7 @@
 #include "bgp/inet6vpn/inet6vpn_table.h"
 #include "bgp/tunnel_encap/tunnel_encap.h"
 #include "bgp/xmpp_message_builder.h"
+#include "bgp/routing-instance/routing_instance.h"
 #include "control-node/control_node.h"
 
 
@@ -2316,8 +2318,39 @@ void BgpStressTest::DeleteRoutingInstances() {
         "Waiting for the completion of routing-instances' deletion");
 }
 
+bool BgpStressTest::WalkTableCallback(DBTablePartBase *root,
+                                      DBEntryBase *entry) {
+    root->Notify(entry);
+    return true;
+}
+
+void BgpStressTest::WalkDone(DBTable::DBTableWalkRef walk_ref,
+                             DBTableBase *table) {
+}
+
+void BgpStressTest::TriggerResendAllUpdates() {
+    // Trigger Updates Send again by notifying.
+    for (RoutingInstanceMgr::RoutingInstanceIterator rit =
+            server_->routing_instance_mgr()->begin();
+            rit != server_->routing_instance_mgr()->end(); ++rit) {
+        RoutingInstance::RouteTableList const rt_list = rit->GetTables();
+        for (RoutingInstance::RouteTableList::const_iterator it =
+             rt_list.begin(); it != rt_list.end(); ++it) {
+            BgpTable *table = it->second;
+                DBTable::DBTableWalkRef walk_ref = table->AllocWalker(
+                        boost::bind(&BgpStressTest::WalkTableCallback,
+                                    this, _1, _2),
+                        boost::bind(&BgpStressTest::WalkDone, this, _1, _2));
+                task_util::TaskFire(boost::bind(&DBTable::WalkTable, table,
+                                                walk_ref), "bgp::Config");
+        }
+    }
+}
+
 void BgpStressTest::AddAllRoutes(int ninstances, int npeers, int nagents,
                                  int nroutes, int ntargets) {
+    setenv("CONTRAIL_SKIP_UPDATE_SEND", "1", true);
+
     // Add XmppPeers with routes as well
     BGP_STRESS_TEST_LOG("Start subscribing all XMPP Agents");
     SubscribeAgents(ninstances, nagents);
@@ -2360,6 +2393,9 @@ void BgpStressTest::AddAllRoutes(int ninstances, int npeers, int nagents,
     VerifyControllerRoutes(ninstances, nagents, nroutes);
     BGP_STRESS_TEST_LOG("End verifying XMPP Routes at the controller");
 
+    unsetenv("CONTRAIL_SKIP_UPDATE_SEND");
+    TriggerResendAllUpdates();
+
     //
     // We get routes added by agents as well as those from bgp peers
     //
@@ -2379,8 +2415,9 @@ void BgpStressTest::DeleteAllRoutes(int ninstances, int npeers, int nagents,
                                     int nroutes, int ntargets) {
     DeleteAllBgpRoutes(nroutes, ntargets, npeers, nagents);
     DeleteAllXmppRoutes(ninstances, nagents, nroutes);
-    VerifyAgentRoutes(nagents, ninstances, 0);
     VerifyControllerRoutes(ninstances, nagents, 0);
+
+    VerifyAgentRoutes(nagents, ninstances, 0);
 
     UnsubscribeAgents(nagents, ninstances);
     UnsubscribeAgentsConfiguration(nagents, true);
@@ -2721,6 +2758,7 @@ TEST_P(BgpStressTest, RandomEvents) {
                 break;
         }
     }
+    _exit(0);
     DeleteAllRoutes(n_instances_, n_peers_, n_agents_, n_routes_, n_targets_);
 }
 

@@ -414,9 +414,6 @@ private:
 // Skip sending updates if the destinatin matches against the pattern.
 // XXX Used in test environments only
 bool BgpXmppChannel::SkipUpdateSend() {
-    if (channel_->connection()->IsClient())
-        return false;
-
     static char *skip_env_ = getenv("XMPP_SKIP_UPDATE_SEND");
     if (!skip_env_)
         return false;

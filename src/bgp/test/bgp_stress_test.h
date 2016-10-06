@@ -5,6 +5,7 @@
 #define __BGP__BGP_STRESS_TEST_H__
 
 #include "control-node/test/network_agent_mock.h"
+#include "db/db_table_partition.h"
 #include "bgp/bgp_xmpp_channel.h"
 #include "bgp/bgp_sandesh.h"
 #include "bgp/test/bgp_server_test_util.h"
@@ -416,6 +417,9 @@ protected:
     void ValidateShowNeighborStatisticsResponse(size_t expected_count,
                                                 Sandesh *sandesh);
     void ValidateShowRouteSandeshResponse(Sandesh *sandesh);
+    bool WalkTableCallback(DBTablePartBase *root, DBEntryBase *entry);
+    void WalkDone(DBTable::DBTableWalkRef walk_ref, DBTableBase *table);
+    void TriggerResendAllUpdates();
 
     std::string GetAgentConfigName(int agent_id);
     std::string GetAgentVmConfigName(int agent_id, int vm_id);

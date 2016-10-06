@@ -149,6 +149,7 @@ void TcpSession::ReleaseBufferLocked(Buffer buffer) {
     }
     assert(false);
 }
+
 void TcpSession::AsyncReadStartInternal(TcpSessionPtr session) {
     // Update socket read block time.
     if (stats_.read_block_start_time) {
@@ -401,9 +402,7 @@ bool TcpSession::Send(const u_int8_t *data, size_t size, size_t *sent) {
     //
     // If the session closed in the mean while, bail out
     //
-    if (!established_) {
-        return false;
-    }
+    if (!established_) return false;
 
     if (socket()->non_blocking()) {
         error_code error;
