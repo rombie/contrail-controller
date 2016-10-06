@@ -240,6 +240,7 @@ private:
     boost::scoped_ptr<Socket> socket_;
     boost::scoped_ptr<Strand> io_strand_;
     bool read_on_connect_;
+    size_t last_read_;
 
     /**************** protected by mutex_ ****************/
     bool established_;             // In TCP ESTABLISHED state.

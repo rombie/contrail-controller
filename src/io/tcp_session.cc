@@ -84,6 +84,7 @@ TcpSession::TcpSession(
     : server_(server),
       socket_(socket),
       read_on_connect_(async_read_ready),
+      last_read_(0),
       established_(false),
       closed_(false),
       direction_(ACTIVE),
@@ -151,6 +152,14 @@ void TcpSession::ReleaseBufferLocked(Buffer buffer) {
 }
 
 void TcpSession::AsyncReadStartInternal(TcpSessionPtr session) {
+    tbb::mutex::scoped_lock lock(mutex_);
+
+    if (last_read_) {
+        lock.release();
+        session->AsyncReadHandler(session);
+        return;
+    }
+
     // Update socket read block time.
     if (stats_.read_block_start_time) {
         uint64_t blocked_usecs = UTCTimestampUsec() -
@@ -160,7 +169,6 @@ void TcpSession::AsyncReadStartInternal(TcpSessionPtr session) {
         server_->stats_.read_blocked_duration_usecs += blocked_usecs;
     }
 
-    tbb::mutex::scoped_lock lock(mutex_);
     AsyncReadSome();
 }
 
@@ -477,6 +485,7 @@ void TcpSession::AsyncReadHandler(TcpSessionPtr session) {
     session->stats_.read_bytes += bytes_transferred;
     session->server_->stats_.read_calls++;
     session->server_->stats_.read_bytes += bytes_transferred;
+    session->last_read_ = bytes_transferred;
 
     Task *task = session->CreateReaderTask(buffer, bytes_transferred);
     // Starting a new task for the session
