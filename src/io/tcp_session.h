@@ -169,10 +169,7 @@ public:
 
 protected:
     typedef boost::intrusive_ptr<TcpSession> TcpSessionPtr;
-    static void AsyncReadHandler(const boost::system::error_code &error,
-                                 size_t bytes_transferred,
-                                 TcpSessionPtr session,
-                                 boost::asio::mutable_buffer buffer);
+    static void AsyncReadHandler(TcpSessionPtr session);
     static void AsyncWriteHandler(TcpSessionPtr session,
                                   const boost::system::error_code &error);
 
@@ -188,9 +185,8 @@ protected:
 
     virtual void AsyncReadSome();
     virtual size_t GetReadBufferSize() const;
-    virtual boost::asio::mutable_buffer ReadSome(
-        boost::asio::mutable_buffer buffer, size_t *size,
-        boost::system::error_code *error);
+    virtual size_t ReadSome(boost::asio::mutable_buffer buffer,
+                            boost::system::error_code *error);
     virtual std::size_t WriteSome(const uint8_t *data, std::size_t len,
                                   boost::system::error_code *error);
     virtual void AsyncWrite(const u_int8_t *data, std::size_t size);
@@ -200,7 +196,6 @@ protected:
     }
 
     bool established() const { return established_; }
-    boost::asio::mutable_buffer AllocateBuffer(size_t buffer_size);
 
     EventObserver observer() { return observer_; }
     boost::system::error_code SetSocketKeepaliveOptions(int keepalive_time,
@@ -236,6 +231,7 @@ private:
 
     void SetName();
 
+    boost::asio::mutable_buffer AllocateBuffer(size_t buffer_size);
     void DeleteBuffer(boost::asio::mutable_buffer buffer);
 
     static int reader_task_id_;

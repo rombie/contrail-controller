@@ -192,11 +192,9 @@ void TcpSession::DeferWriter() {
 }
 
 void TcpSession::AsyncReadSome() {
-    static mutable_buffer empty_buffer = AllocateBuffer(0);
     if (established_) {
         socket()->async_read_some(null_buffers(),
-            bind(&TcpSession::AsyncReadHandler, _1, _2, TcpSessionPtr(this),
-                 empty_buffer));
+            bind(&TcpSession::AsyncReadHandler, TcpSessionPtr(this)));
     }
 }
 
@@ -434,11 +432,8 @@ Task* TcpSession::CreateReaderTask(mutable_buffer buffer,
     return (task);
 }
 
-mutable_buffer TcpSession::ReadSome(mutable_buffer buffer, size_t *size,
-                                    error_code *error) {
-    buffer = AllocateBuffer(GetReadBufferSize());
-    *size = socket()->read_some(mutable_buffers_1(buffer), *error);
-    return buffer;
+size_t TcpSession::ReadSome(mutable_buffer buffer, error_code *error) {
+    return socket()->read_some(mutable_buffers_1(buffer), *error);
 }
 
 // Tests with large data have shown large amounts of data being read in one
@@ -452,16 +447,17 @@ size_t TcpSession::GetReadBufferSize() const {
     return size;
 }
 
-void TcpSession::AsyncReadHandler(const error_code &err,
-        size_t bytes_transferred, TcpSessionPtr session,
-        mutable_buffer buffer) {
+void TcpSession::AsyncReadHandler(TcpSessionPtr session) {
     tbb::mutex::scoped_lock lock(session->mutex_);
     if (session->closed_) {
         return;
     }
 
+    mutable_buffer buffer =
+        session->AllocateBuffer(session->GetReadBufferSize());
+
     error_code error;
-    buffer = session->ReadSome(buffer, &bytes_transferred, &error);
+    size_t bytes_transferred = session->ReadSome(buffer, &error);
     if (IsSocketErrorHard(error)) {
         session->ReleaseBufferLocked(buffer);
         // eof is returned when the peer closed the socket, no need to log error

@@ -44,9 +44,6 @@ void BgpExport::Export(DBTablePartBase *root, DBEntryBase *db_entry) {
     RouteUpdate *rt_update;
     UpdateInfoSList uinfo_slist;
 
-    if (getenv("CONTRAIL_SKIP_UPDATE_SEND"))
-        return;
-
     // Calculate attributes by running through export policy.
     BgpRoute *route = static_cast<BgpRoute *>(db_entry);
     bool reach = false;
