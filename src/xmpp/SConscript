@@ -11,6 +11,7 @@ def MapBuildDir(list):
     return map(lambda x: '#/' + Dir('.').path + '/../' + x, list)
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 sandesh_files = env.SConscript('sandesh/SConscript', exports='BuildEnv', duplicate = 0)
 

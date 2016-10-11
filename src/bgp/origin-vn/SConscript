@@ -7,6 +7,7 @@
 Import('BuildEnv')
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 liborigin_vn = env.Library('origin_vn', ['origin_vn.cc'])
 

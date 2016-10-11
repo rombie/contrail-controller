@@ -4,6 +4,7 @@
 
 Import('BuildEnv')
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 XmppSandeshFiles  = env.SandeshGenCpp('xmpp_client_server_sandesh.sandesh')
 XmppSandeshFiles  += env.SandeshGenCpp('xmpp_state_machine_sandesh.sandesh')

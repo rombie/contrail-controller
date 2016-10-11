@@ -7,6 +7,7 @@
 Import('BuildEnv')
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 env.Append(CPPPATH = env['TOP'])
 env.Append(CPPPATH = [env['TOP'] + '/bgp'])
 env.Append(CPPPATH = [env['TOP'] + '/io'])

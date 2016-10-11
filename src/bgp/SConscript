@@ -9,6 +9,7 @@ def MapBuildDir(list):
     return map(lambda x: '#/' + Dir('.').path + '/../' + x, list)
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 env.CppDisableExceptions()
 

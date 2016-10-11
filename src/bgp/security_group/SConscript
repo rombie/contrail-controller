@@ -7,5 +7,6 @@
 Import('BuildEnv')
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 librtarget = env.Library('security_group', ['security_group.cc'])

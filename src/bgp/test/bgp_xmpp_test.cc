@@ -394,7 +394,7 @@ TEST_F(BgpXmppUnitTest, Connection) {
 
     // show route for a table
     cout << "ValidateShowRouteResponse for bgp.l3vpn.0:" << endl;
-    result = list_of(1);
+    result = {1};
     Sandesh::set_response_callback(boost::bind(ValidateShowRouteResponse, _1,
                                    result));
     show_req = new ShowRouteReq;
@@ -407,7 +407,7 @@ TEST_F(BgpXmppUnitTest, Connection) {
 
     // show route for a routing instance
     cout << "ValidateShowRouteResponse for __default__:" << endl;
-    result = list_of(1)(1);
+    result = {1, 1};
     Sandesh::set_response_callback(boost::bind(ValidateShowRouteResponse, _1,
                                    result));
     show_req = new ShowRouteReq;

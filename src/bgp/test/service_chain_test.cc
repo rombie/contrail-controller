@@ -1959,9 +1959,10 @@ TYPED_TEST(ServiceChainTest, PendingChain) {
     this->VerifyPendingServiceChainSandesh(this, list_of("blue-i1"));
 
     // Add "red" routing instance and create connection with "red-i2"
-    instance_names = list_of("blue")("blue-i1")("red-i2")("red");
-    connections = map_list_of("blue", "blue-i1") ("red-i2", "red");
-    this->NetworkConfig(instance_names, connections);
+    instance_names = {"blue", "blue-i1", "red-i2", "red"};
+    multimap<string, string> connections2 =
+        map_list_of("blue", "blue-i1") ("red-i2", "red");
+    this->NetworkConfig(instance_names, connections2);
     this->VerifyNetworkConfig(instance_names);
 
     this->VerifyServiceChainCount(1);
@@ -2269,8 +2270,10 @@ TYPED_TEST(ServiceChainTest, EcmpPathUpdate) {
 
     this->AddConnectedRoute(this->peers_[1], this->BuildPrefix("1.1.2.3", 32),
                             100, this->BuildNextHopAddress("2.3.1.8"));
-    path_ids = list_of(this->BuildNextHopAddress("2.3.0.5"))
-        (this->BuildNextHopAddress("2.3.1.8"));
+    path_ids = {
+        this->BuildNextHopAddress("2.3.0.5"),
+        this->BuildNextHopAddress("2.3.1.8")
+    };
     this->VerifyRouteAttributes("blue", this->BuildPrefix("192.168.1.0", 24),
                                 path_ids, "red");
 
@@ -2454,9 +2457,10 @@ TYPED_TEST(ServiceChainTest, EcmpWithDuplicateForwardingPaths) {
 
     // Check for aggregated route
     this->VerifyRouteExists("blue", this->BuildPrefix("192.168.1.0", 24));
-    path_ids = list_of(
-        this->BuildNextHopAddress("2.3.4.5"))
-        (this->BuildNextHopAddress("2.3.4.6"));
+    path_ids = {
+        this->BuildNextHopAddress("2.3.4.5"),
+        this->BuildNextHopAddress("2.3.4.6")
+    };
     this->VerifyRouteAttributes("blue", this->BuildPrefix("192.168.1.0", 24),
                                 path_ids, "red");
 
@@ -3345,7 +3349,7 @@ TYPED_TEST(ServiceChainTest, ValidateTunnelEncapAggregate) {
                                 encap);
 
     // Add Connected
-    encap = list_of("gre");
+    encap = {"gre"};
     this->AddConnectedRoute(NULL, this->BuildPrefix("1.1.2.3", 32), 100,
                             this->BuildNextHopAddress("2.3.4.5"), 0, 0,
                             vector<uint32_t>(), encap);
@@ -3391,7 +3395,7 @@ TYPED_TEST(ServiceChainTest, ValidateTunnelEncapExtRoute) {
                                 encap);
 
     // Add Connected
-    encap = list_of("udp");
+    encap = {"udp"};
     this->AddConnectedRoute(NULL, this->BuildPrefix("1.1.2.3", 32), 100,
                             this->BuildNextHopAddress("2.3.4.5"), 0, 0,
                             vector<uint32_t>(), encap);

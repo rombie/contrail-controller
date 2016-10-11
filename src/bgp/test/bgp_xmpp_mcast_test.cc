@@ -895,7 +895,7 @@ TEST_F(BgpXmppMcastMultiAgentTest, ValidateShowRoute) {
     TASK_UTIL_EXPECT_EQ(1, validate_done_);
 
     // Now get blue.ermvpn.0.
-    result = list_of(4);
+    result = {4};
     Sandesh::set_response_callback(
         boost::bind(ValidateShowRouteResponse, _1, result));
     show_req = new ShowRouteReq;
@@ -907,7 +907,7 @@ TEST_F(BgpXmppMcastMultiAgentTest, ValidateShowRoute) {
     TASK_UTIL_EXPECT_EQ(1, validate_done_);
 
     // Now get bgp.ermvpn.0.
-    result = list_of(1);
+    result = {1};
     Sandesh::set_response_callback(
         boost::bind(ValidateShowRouteResponse, _1, result));
     show_req = new ShowRouteReq;

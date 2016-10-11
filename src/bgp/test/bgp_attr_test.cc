@@ -3,7 +3,6 @@
  */
 
 
-#include <boost/assign/list_of.hpp>
 #include <boost/foreach.hpp>
 #include <boost/scoped_ptr.hpp>
 
@@ -18,7 +17,6 @@
 #include "control-node/control_node.h"
 #include "net/community_type.h"
 
-using boost::assign::list_of;
 using boost::system::error_code;
 using std::string;
 using std::vector;
@@ -215,9 +213,9 @@ TEST_F(BgpAttrTest, AsPathLoop4) {
     AsPathSpec::PathSegment *ps = new AsPathSpec::PathSegment;
     spec.path_segments.push_back(ps);
 
-    vector<AsPathSpec::PathSegment::PathSegmentType> segment_type_list = list_of
-        (AsPathSpec::PathSegment::AS_SET)
-        (AsPathSpec::PathSegment::AS_SEQUENCE);
+    vector<AsPathSpec::PathSegment::PathSegmentType> segment_type_list = {
+        AsPathSpec::PathSegment::AS_SET,
+        AsPathSpec::PathSegment::AS_SEQUENCE};
     BOOST_FOREACH(AsPathSpec::PathSegment::PathSegmentType segment_type,
         segment_type_list) {
         ps->path_segment_type = segment_type;
@@ -1014,11 +1012,11 @@ TEST_F(BgpAttrTest, CommunityBuildStringList1) {
     spec.communities.push_back(CommunityType::AcceptOwnNexthop);
     Community comm(comm_db_, spec);
 
-    vector<string> expected_list = list_of("65535:0")
-        ("accept-own")
-        ("llgr-stale")("no-llgr")
-        ("accept-own-nexthop")
-        ("no-export")("no-advertise")("no-export-subconfed");
+    vector<string> expected_list = {"65535:0",
+        "accept-own",
+        "llgr-stale", "no-llgr",
+        "accept-own-nexthop",
+        "no-export","no-advertise","no-export-subconfed"};
     vector<string> result_list;
     comm.BuildStringList(&result_list);
     EXPECT_EQ(expected_list, result_list);
@@ -1036,11 +1034,11 @@ TEST_F(BgpAttrTest, CommunityBuildStringList2) {
     spec.communities.push_back(0xFFFF0000);
     Community comm(comm_db_, spec);
 
-    vector<string> expected_list = list_of("65535:0")
-        ("accept-own")
-        ("llgr-stale")("no-llgr")
-        ("accept-own-nexthop")
-        ("no-export")("no-advertise")("no-export-subconfed");
+    vector<string> expected_list = {"65535:0",
+        "accept-own",
+        "llgr-stale","no-llgr",
+        "accept-own-nexthop",
+        "no-export","no-advertise","no-export-subconfed"};
     vector<string> result_list;
     comm.BuildStringList(&result_list);
     EXPECT_EQ(expected_list, result_list);
@@ -1706,18 +1704,17 @@ TEST_F(BgpAttrTest, PmsiTunnelSpecTunnelArTypeString) {
 
 TEST_F(BgpAttrTest, PmsiTunnelSpecTunnelFlagsStrings) {
     PmsiTunnelSpec pmsi_spec;
-    vector<string> flags;
-    flags = list_of("None");
+    vector<string> flags = {"None"};
     EXPECT_EQ(flags, pmsi_spec.GetTunnelFlagsStrings());
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::LeafInfoRequired;
-    flags = list_of("LeafInfoRequired");
+    flags = vector<string>({"LeafInfoRequired"});
     EXPECT_EQ(flags, pmsi_spec.GetTunnelFlagsStrings());
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
-    flags = list_of("EdgeReplicationSupported");
+    flags = vector<string>({"EdgeReplicationSupported"});
     EXPECT_EQ(flags, pmsi_spec.GetTunnelFlagsStrings());
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::LeafInfoRequired;
     pmsi_spec.tunnel_flags |= PmsiTunnelSpec::EdgeReplicationSupported;
-    flags = list_of("LeafInfoRequired")("EdgeReplicationSupported");
+    flags = vector<string>({"LeafInfoRequired", "EdgeReplicationSupported"});
     EXPECT_EQ(flags, pmsi_spec.GetTunnelFlagsStrings());
 }
 
@@ -2246,7 +2243,7 @@ TEST_F(BgpAttrTest, BgpOList2a) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec.elements.push_back(elem);
@@ -2262,7 +2259,7 @@ TEST_F(BgpAttrTest, BgpOList2b) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2271,7 +2268,7 @@ TEST_F(BgpAttrTest, BgpOList2b) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2287,7 +2284,7 @@ TEST_F(BgpAttrTest, BgpOList2c) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2296,7 +2293,7 @@ TEST_F(BgpAttrTest, BgpOList2c) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("udp")("gre");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2312,7 +2309,7 @@ TEST_F(BgpAttrTest, BgpOList2d) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2321,7 +2318,7 @@ TEST_F(BgpAttrTest, BgpOList2d) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(3 - idx);
-        std::vector<std::string> encap = list_of("udp")("gre");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * (3 - idx), encap);
         olist_spec2.elements.push_back(elem);
@@ -2337,7 +2334,7 @@ TEST_F(BgpAttrTest, BgpOList3a) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2346,7 +2343,7 @@ TEST_F(BgpAttrTest, BgpOList3a) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2362,7 +2359,7 @@ TEST_F(BgpAttrTest, BgpOList3b) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2371,7 +2368,7 @@ TEST_F(BgpAttrTest, BgpOList3b) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.2." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2387,7 +2384,7 @@ TEST_F(BgpAttrTest, BgpOList3c) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2396,7 +2393,7 @@ TEST_F(BgpAttrTest, BgpOList3c) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 2000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2412,7 +2409,7 @@ TEST_F(BgpAttrTest, BgpOList3d) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2421,7 +2418,7 @@ TEST_F(BgpAttrTest, BgpOList3d) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp-contrail");
+        std::vector<std::string> encap = {"gre", "udp-contrail"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2437,7 +2434,7 @@ TEST_F(BgpAttrTest, BgpOList4a) {
     for (int idx = 1; idx < 4; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2446,7 +2443,7 @@ TEST_F(BgpAttrTest, BgpOList4a) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);
@@ -2462,7 +2459,7 @@ TEST_F(BgpAttrTest, BgpOList4b) {
     for (int idx = 1; idx < 3; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec1.elements.push_back(elem);
@@ -2471,7 +2468,7 @@ TEST_F(BgpAttrTest, BgpOList4b) {
     for (int idx = 1; idx < 4; ++idx) {
         error_code ec;
         std::string addr_str = "10.1.1." + integerToString(idx);
-        std::vector<std::string> encap = list_of("gre")("udp");
+        std::vector<std::string> encap = {"gre", "udp"};
         BgpOListElem elem(
             Ip4Address::from_string(addr_str, ec), 1000 * idx, encap);
         olist_spec2.elements.push_back(elem);

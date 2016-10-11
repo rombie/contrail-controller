@@ -439,26 +439,26 @@ protected:
 
     void ConfigureInstancesAndConnections() {
         std::vector<string> instance_names;
-        multimap<string, string> connections;
         std::vector<string> networks;
         std::vector<int> network_ids;
 
         if (ServiceChainIntegrationTestGlobals::single_si_) {
-            instance_names = list_of
-                ("blue")("blue-i1")("red-i2")("red")("purple");
-            networks = list_of("blue")("blue")("red")("red")("purple");
-            network_ids = list_of(1)(1)(2)(2)(3);
-            connections = map_list_of
+            instance_names = { "blue", "blue-i1", "red-i2", "red", "purple" };
+            networks = {"blue", "blue", "red", "red", "purple"};
+            network_ids = {1, 1, 2, 2, 3};
+            multimap<string, string> connections = map_list_of
                 ("blue","blue-i1")("red-i2","red")("red","purple");
+            NetworkConfig(instance_names, connections, networks, network_ids);
         } else {
-            instance_names = list_of
-                ("blue")("blue-i1")("red-i2")("blue-i3")("red-i4")("red");
-            networks = list_of("blue")("blue")("red")("blue")("red")("red");
-            network_ids = list_of(1)(1)(2)(1)(2)(2);
-            connections = map_list_of
+            instance_names = {
+                "blue", "blue-i1", "red-i2", "blue-i3", "red-i4", "red"
+            };
+            networks = {"blue", "blue", "red", "blue", "red", "red"};
+            network_ids = {1, 1, 2, 1, 2, 2};
+            multimap<string, string> connections = map_list_of
                 ("blue","blue-i1")("red-i2","blue-i3")("red-i4","red");
+            NetworkConfig(instance_names, connections, networks, network_ids);
         }
-        NetworkConfig(instance_names, connections, networks, network_ids);
 
         VerifyNetworkConfig(cn1_.get(), instance_names);
         VerifyNetworkConfig(cn2_.get(), instance_names);

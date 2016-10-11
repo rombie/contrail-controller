@@ -277,7 +277,7 @@ bool ErmVpnRoute::IsValid() const {
     const BgpAttr *attr = BestPath()->GetAttr();
     switch (prefix_.type()) {
     case ErmVpnPrefix::NativeRoute:
-        return attr->label_block();
+        return attr->label_block().get() != NULL;
         break;
     case ErmVpnPrefix::LocalTreeRoute:
         return attr->edge_discovery();

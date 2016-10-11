@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <boost/foreach.hpp>
-#include <boost/assign/list_of.hpp>
 
 #include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
@@ -2925,7 +2924,7 @@ TEST_F(BgpConfigTest, RoutePolicy_1) {
         server_.routing_instance_mgr()->GetRoutingInstance("test");
     TASK_UTIL_ASSERT_TRUE(rti != NULL);
 
-    vector<string> expect_list = boost::assign::list_of("basic_1")("basic_0");
+    vector<string> expect_list = {"basic_1", "basic_0"};
     vector<string> current_list;
     RoutingPolicyAttachList *policies = rti->routing_policies();
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
@@ -2985,7 +2984,7 @@ TEST_F(BgpConfigTest, RoutePolicy_3) {
         server_.routing_instance_mgr()->GetRoutingInstance("test");
     TASK_UTIL_ASSERT_TRUE(rti != NULL);
 
-    vector<string> expect_list = boost::assign::list_of("basic_0")("basic_1");
+    vector<string> expect_list = {"basic_0", "basic_1"};
     vector<string> current_list;
     RoutingPolicyAttachList *policies = rti->routing_policies();
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
@@ -3144,7 +3143,7 @@ TEST_F(BgpConfigTest, RoutePolicy_7) {
 
     RoutingPolicyAttachList *policies = rti->routing_policies();
 
-    vector<string> expect_list = boost::assign::list_of("basic_1")("basic_0");
+    vector<string> expect_list = {"basic_1", "basic_0"};
     vector<string> current_list;
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
         current_list.push_back(info.first->name());
@@ -3169,7 +3168,7 @@ TEST_F(BgpConfigTest, RoutePolicy_7) {
 
     policies = rti->routing_policies();
 
-    expect_list = boost::assign::list_of("basic_0")("basic_1");
+    expect_list = {"basic_0", "basic_1"};
     current_list.clear();
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
         current_list.push_back(info.first->name());
@@ -3210,7 +3209,7 @@ TEST_F(BgpConfigTest, RoutePolicy_8) {
 
     RoutingPolicyAttachList *policies = rti->routing_policies();
 
-    vector<string> expect_list = boost::assign::list_of("basic_0")("basic_1");
+    vector<string> expect_list = {"basic_0", "basic_1"};
     vector<string> current_list;
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
         current_list.push_back(info.first->name());
@@ -3235,7 +3234,7 @@ TEST_F(BgpConfigTest, RoutePolicy_8) {
 
     policies = rti->routing_policies();
 
-    expect_list = boost::assign::list_of("basic_1")("basic_0");
+    expect_list = {"basic_1", "basic_0"};
     current_list.clear();
     BOOST_FOREACH(RoutingPolicyInfo info, *policies) {
         current_list.push_back(info.first->name());

@@ -3,7 +3,6 @@
  */
 
 #include <sstream>
-#include <boost/assign/list_of.hpp>
 #include <pugixml/pugixml.hpp>
 
 #include "bgp/bgp_config_ifmap.h"
@@ -84,7 +83,7 @@ BgpServerAuthTestMock::BgpServerAuthTestMock(EventManager &evm,
             const string &bgp_id, const string &address, int port) :
         db_(NULL), db_graph_(NULL), evm_(evm), fqn_ifmap_id_(fqn_ifmap_id),
         ifmap_id_(ifmap_id), bgp_id_(bgp_id), address_(address) {
-    families_ = boost::assign::list_of("inet-vpn");
+    families_ = vector<string>({"inet-vpn"});
     Initialize(port);
 }
 

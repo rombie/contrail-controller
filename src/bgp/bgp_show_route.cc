@@ -590,7 +590,7 @@ void ShowRouteReq::HandleRequest() const {
     s2.cbFn_ = ShowRouteHandler::CallbackS2;
     s2.instances_.push_back(0);
 
-    ps.stages_= list_of(s1)(s2);
+    ps.stages_= vector<RequestPipeline::StageSpec>({s1, s2});
     RequestPipeline rp(ps);
 }
 
@@ -618,6 +618,6 @@ void ShowRouteReqIterate::HandleRequest() const {
     s2.cbFn_ = ShowRouteHandler::CallbackS2Iterate;
     s2.instances_.push_back(0);
 
-    ps.stages_= list_of(s1)(s2);
+    ps.stages_= vector<RequestPipeline::StageSpec>({s1, s2});
     RequestPipeline rp(ps);
 }

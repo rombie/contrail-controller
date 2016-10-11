@@ -7,6 +7,7 @@ import os
 import sys
 
 env = BuildEnv.Clone()
+env.Append(CCFLAGS = '-std=c++11 -Wno-deprecated-declarations')
 
 env.CppDisableExceptions()
 
