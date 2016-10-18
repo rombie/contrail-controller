@@ -63,7 +63,8 @@ bool unit_test() {
 void LogServerName(const BgpServer *server) {
     if (!unit_test_ || !server) return;
 
-    if (Sandesh::LoggingLevel() >= SandeshLevel::SYS_DEBUG) {
+    if (!getenv("CONTRAIL_SYSLOG_DISABLE") &&
+            Sandesh::LoggingLevel() >= SandeshLevel::SYS_DEBUG) {
         LOG(DEBUG, "BgpServer: " << server->ToString());
     }
 }

@@ -3475,6 +3475,7 @@ class TestEnvironment : public ::testing::Environment {
 };
 
 static void SetUp() {
+    unsetenv("CONTRAIL_SYSLOG_ASSERT_LEVEL");
     BgpServer::Initialize();
     ControlNode::SetDefaultSchedulingPolicy();
     BgpServerTest::GlobalSetUp();
