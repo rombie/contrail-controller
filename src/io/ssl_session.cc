@@ -8,6 +8,9 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include "io/io_log.h"
 #include "io/io_utils.h"
@@ -39,6 +42,10 @@ public:
     }
     virtual bool Run() {
         if (session_->IsEstablished()) {
+#ifdef VALGRIND
+            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
+                                      buffer_size(buffer_));
+#endif
             read_fn_(buffer_);
             if (session_->IsSslDisabled()) {
                 session_->AsyncReadStart();

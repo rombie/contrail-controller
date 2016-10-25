@@ -264,6 +264,8 @@ void BgpPeer::SendEndOfRIBActual(Address::Family family) {
     uint8_t data[256];
     int msgsize = BgpProto::Encode(&update, data, sizeof(data));
     assert(msgsize > BgpProto::kMinMessageSize);
+    if (!access("/tmp/.contrail_bgp_skip_send_eor", F_OK))
+        return;
     session_->Send(data, msgsize, NULL);
     inc_tx_end_of_rib();
     inc_tx_update();
@@ -1174,6 +1176,8 @@ void BgpPeer::SendOpen(TcpSession *session) {
     uint8_t data[256];
     int result = BgpProto::Encode(&openmsg, data, sizeof(data));
     assert(result > BgpProto::kMinMessageSize);
+    if (!access("/tmp/.contrail_bgp_skip_send_open", F_OK))
+        return;
     BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
                  BGP_PEER_DIR_OUT, "Open "  << openmsg.ToString());
     session->Send(data, result, NULL);
@@ -1185,6 +1189,9 @@ void BgpPeer::SendKeepalive(bool from_timer) {
 
     // Bail if there's no session for the peer anymore.
     if (!session_)
+        return;
+
+    if (!access("/tmp/.contrail_bgp_skip_send_keepalive", F_OK))
         return;
 
     BgpProto::Keepalive msg;
@@ -1205,6 +1212,8 @@ static bool SkipUpdateSend() {
 
     if (init_) return skip_;
 
+    if (!access("/tmp/.contrail_bgp_skip_send_update", F_OK))
+        return true;
     skip_ = getenv("BGP_SKIP_UPDATE_SEND") != NULL;
     init_ = true;
 

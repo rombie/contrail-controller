@@ -18,6 +18,9 @@
 #include "io/io_utils.h"
 #include "io/tcp_message_write.h"
 #include "io/tcp_server.h"
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 using boost::asio::async_write;
 using boost::asio::buffer;
@@ -59,6 +62,10 @@ public:
     }
     virtual bool Run() {
         if (session_->IsEstablished()) {
+#ifdef VALGRIND
+            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
+                                      buffer_size(buffer_));
+#endif
             read_fn_(buffer_);
             if (session_->IsReaderDeferred()) {
                 // Update socket read block count.
@@ -458,6 +465,11 @@ void TcpSession::AsyncReadHandler(TcpSessionPtr session) {
 
     error_code error;
     size_t bytes_transferred = session->ReadSome(buffer, &error);
+#ifdef VALGRIND
+    VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer),
+                              buffer_size(buffer) > bytes_transferred ?
+                              buffer_size(buffer) : bytes_transferred);
+#endif
     if (IsSocketErrorHard(error)) {
         session->ReleaseBufferLocked(buffer);
         // eof is returned when the peer closed the socket, no need to log error

@@ -10,6 +10,10 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/program_options.hpp>
 
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
+
 #include "sandesh/sandesh_types.h"
 #include "sandesh/sandesh.h"
 #include "nodeinfo_types.h"
@@ -291,7 +295,15 @@ static bool ControlNodeReEvalPublishCb(const BgpServer *bgp_server,
     return true;
 }
 
+static void SignalHandler (int sig) {
+#ifdef VALGRIND
+    if (sig == SIGUSR1)
+        VALGRIND_DO_LEAK_CHECK;
+#endif
+}
+
 int main(int argc, char *argv[]) {
+    signal(SIGUSR1, SignalHandler);
     Options options;
     bool sandesh_generator_init = true;
 
