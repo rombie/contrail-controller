@@ -212,6 +212,7 @@ public:
         BgpRoute *route, BgpPath *path) = 0;
     virtual bool CanUseMembershipManager() const = 0;
     virtual bool IsInGRTimerWaitState() const = 0;
+    virtual const std::string GetTag() const { return ""; }
 };
 
 #endif  // SRC_BGP_IPEER_H_

@@ -108,6 +108,8 @@ public:
     static bool PathSelection(const Path &path1, const Path &path2);
     UpdateInfo *GetUpdateInfo(RibOut *ribout, BgpRoute *route,
                               const RibPeerSet &peerset);
+    void GetRibOutInterestedPeers(const RibOut *ribout, const IPeer *from,
+        const RibPeerSet &peerset, RibPeerSet *new_peerset);
 
     void ManagedDelete();
     virtual void RetryDelete();

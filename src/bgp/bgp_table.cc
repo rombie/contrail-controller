@@ -212,6 +212,21 @@ void BgpTable::ProcessLlgrState(const RibOut *ribout, const BgpPath *path,
     return;
 }
 
+void BgpTable::GetRibOutInterestedPeers(const RibOut *ribout, const IPeer *from,
+        const RibPeerSet &peerset, RibPeerSet *new_peerset) {
+    if (!from || !from->IsXmppPeer())
+        return;
+
+    RibOut::PeerIterator iter(ribout, peerset);
+    while (iter.HasNext()) {
+        int current_index = iter.index();
+        IPeer *to = dynamic_cast<IPeer *>(iter.Next());
+        assert(to);
+        if (to->IsXmppPeer() && from->GetTag() != to->GetTag())
+            new_peerset->reset(current_index);
+    }
+}
+
 UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
         const RibPeerSet &peerset) {
     const BgpPath *path = route->BestPath();
@@ -376,6 +391,7 @@ UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
         attr = attr_ptr.get();
     }
 
+    GetRibOutInterestedPeers(ribout, path->GetPeer(), peerset, &new_peerset);
     UpdateInfo *uinfo = new UpdateInfo;
     uinfo->target = new_peerset;
     uinfo->roattr = RibOutAttr(route, attr, ribout->IsEncodingXmpp());
