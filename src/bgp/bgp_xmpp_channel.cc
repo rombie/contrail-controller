@@ -1003,7 +1003,8 @@ bool BgpXmppChannel::ProcessItem(string vrf_name,
             nexthops.push_back(nexthop);
         }
 
-        BgpAttrLocalPref local_pref(item.entry.local_preference);
+        BgpAttrLocalPref local_pref(item.entry.local_preference ?:
+                BgpAttrLocalPref::kDefault;
         if (local_pref.local_pref != 0)
             attrs.push_back(&local_pref);
 

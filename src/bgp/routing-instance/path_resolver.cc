@@ -1019,11 +1019,11 @@ bool ResolverPath::UpdateResolvedPaths() {
     // resolved paths.
     ResolvedPathList future_resolved_path_list;
     const BgpRoute *nh_route = rnexthop_->route();
-    const IPeer *peer = path_ ? path_->GetPeer() : NULL;
+    const IPeer *peer = path_.get() ? path_->GetPeer() : NULL;
     Route::PathList::const_iterator it;
-    if (path_ && nh_route)
+    if (path_.get() && nh_route)
         it = nh_route->GetPathList().begin();
-    for (; path_ && nh_route && it != nh_route->GetPathList().end(); ++it) {
+    for (; path_.get() && nh_route && it != nh_route->GetPathList().end(); ++it) {
         const BgpPath *nh_path = static_cast<const BgpPath *>(it.operator->());
 
         // Start with attributes of the original path.
@@ -1079,7 +1079,7 @@ bool ResolverPath::UpdateResolvedPaths() {
         partition_->table_partition()->Delete(route_);
     }
 
-    return (!path_);
+    return (!path_.get());
 }
 
 //

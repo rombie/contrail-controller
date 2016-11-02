@@ -50,6 +50,7 @@ void BgpRoute::InsertPath(BgpPath *path) {
         rtinstance->ProcessRoutingPolicy(this, path);
     }
     insert(path);
+    intrusive_ptr_add_ref(path);
 
     Sort(&BgpTable::PathSelection, prev_front);
 
@@ -71,8 +72,8 @@ void BgpRoute::DeletePath(BgpPath *path) {
     BgpTable *table = static_cast<BgpTable *>(get_table());
     if (table) table->UpdatePathCount(path, -1);
     path->UpdatePeerRefCount(-1);
-
-    delete path;
+    path->SetPeer(NULL);
+    intrusive_ptr_release(path);
 }
 
 //

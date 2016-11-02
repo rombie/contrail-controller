@@ -69,6 +69,7 @@ public:
 
     IPeer *GetPeer() { return const_cast<IPeer *>(peer_); }
     const IPeer *GetPeer() const { return peer_; }
+    void SetPeer(const IPeer *peer) const { peer_ = peer; }
     const uint32_t GetPathId() const { return path_id_; }
 
     void UpdatePeerRefCount(int count) const;
@@ -129,6 +130,9 @@ public:
     bool PathSameNeighborAs(const BgpPath &rhs) const;
 
 private:
+    friend void intrusive_ptr_add_ref(BgpPath *path);
+    friend void intrusive_ptr_release(BgpPath *path);
+    tbb::atomic<int> refcount_;
     const IPeer *peer_;
     const uint32_t path_id_;
     const PathSource source_;
@@ -174,5 +178,19 @@ private:
 
     DISALLOW_COPY_AND_ASSIGN(BgpSecondaryPath);
 };
+
+typedef boost::intrusive_ptr<BgpPath> BgpPathPtr;
+
+inline void intrusive_ptr_add_ref(BgpPath *bgp_path) {
+    bgp_path->refcount_.fetch_and_increment();
+}
+
+inline void intrusive_ptr_release(BgpPath *bgp_path) {
+    int prev = bgp_path->refcount_.fetch_and_decrement();
+    if (prev == 1) {
+        delete bgp_path;
+    }
+}
+
 
 #endif  // SRC_BGP_BGP_PATH_H_

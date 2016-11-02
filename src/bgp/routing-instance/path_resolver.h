@@ -320,7 +320,7 @@ public:
     PathResolverPartition *partition() const { return partition_; }
     BgpRoute *route() const { return route_; }
     const ResolverNexthop *rnexthop() const { return rnexthop_; }
-    void clear_path() { path_ = NULL; }
+    void clear_path() { path_.reset(NULL); }
     size_t resolved_path_count() const { return resolved_path_list_.size(); }
 
 private:
@@ -332,7 +332,7 @@ private:
         const BgpAttr *attr, uint32_t label);
 
     PathResolverPartition *partition_;
-    const BgpPath *path_;
+    const BgpPathPtr path_;
     BgpRoute *route_;
     ResolverNexthop *rnexthop_;
     ResolverRouteStatePtr state_;

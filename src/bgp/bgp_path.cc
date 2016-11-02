@@ -22,24 +22,28 @@ BgpPath::BgpPath(const IPeer *peer, uint32_t path_id, PathSource src,
                  const BgpAttrPtr ptr, uint32_t flags, uint32_t label)
     : peer_(peer), path_id_(path_id), source_(src), attr_(ptr),
       original_attr_(ptr), flags_(flags), label_(label) {
+    refcount_ = 0;
 }
 
 BgpPath::BgpPath(const IPeer *peer, PathSource src, const BgpAttrPtr ptr,
         uint32_t flags, uint32_t label)
     : peer_(peer), path_id_(0), source_(src), attr_(ptr), original_attr_(ptr),
       flags_(flags), label_(label) {
+    refcount_ = 0;
 }
 
 BgpPath::BgpPath(uint32_t path_id, PathSource src, const BgpAttrPtr ptr,
         uint32_t flags, uint32_t label)
     : peer_(NULL), path_id_(path_id), source_(src), attr_(ptr),
       original_attr_(ptr), flags_(flags), label_(label) {
+    refcount_ = 0;
 }
 
 BgpPath::BgpPath(PathSource src, const BgpAttrPtr ptr,
         uint32_t flags, uint32_t label)
     : peer_(NULL), path_id_(0), source_(src), attr_(ptr), original_attr_(ptr),
       flags_(flags), label_(label) {
+    refcount_ = 0;
 }
 
 // True is better
