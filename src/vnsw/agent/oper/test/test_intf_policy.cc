@@ -13,7 +13,6 @@
 #include <cmn/agent_cmn.h>
 
 #include "cfg/cfg_init.h"
-#include "cfg/cfg_interface.h"
 #include "oper/operdb_init.h"
 #include "controller/controller_init.h"
 #include "pkt/pkt_init.h"
@@ -388,7 +387,7 @@ TEST_F(PolicyTest, IntfPolicyDisable_Fip) {
     EXPECT_TRUE(VmPortActive(input, 0));
     const VmInterface *intf = VmInterfaceGet(input[0].intf_id);
     EXPECT_TRUE(intf != NULL);
-    EXPECT_FALSE(intf->policy_enabled());
+    EXPECT_TRUE(intf->policy_enabled());
 
     //Create a VN for floating-ip
     client->Reset();

@@ -14,7 +14,6 @@
 #include <agent_types.h>
 
 #include <cfg/cfg_init.h>
-#include <cfg/cfg_interface.h>
 #include <cfg/cfg_mirror.h>
 
 #include <oper/route_common.h>
@@ -971,7 +970,7 @@ bool VnTable::IpamChangeNotify(std::vector<VnIpam> &old_ipam,
                 if (gateway_changed) {
                     if (IsGwHostRouteRequired()) {
                         UpdateHostRoute((*it_old).default_gw,
-                                        (*it_new).default_gw, vn, false);
+                                        (*it_new).default_gw, vn, true);
                     }
                 }
                 if (service_address_changed) {
@@ -1045,8 +1044,11 @@ void VnTable::AddIPAMRoutes(VnEntry *vn, VnIpam &ipam) {
         if (vrf->GetName() == agent()->linklocal_vrf_name()) {
             return;
         }
+        // Allways policy will be enabled for default Gateway and
+        // Dns server to create flows for BGP as service even
+        // though explicit disable policy config form user.
         if (IsGwHostRouteRequired())
-            AddHostRoute(vn, ipam.default_gw, false);
+            AddHostRoute(vn, ipam.default_gw, true);
         AddHostRoute(vn, ipam.dns_server, true);
         AddSubnetRoute(vn, ipam);
         ipam.installed = true;

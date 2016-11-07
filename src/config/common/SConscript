@@ -36,6 +36,7 @@ local_sources = [
                   'vnc_cassandra.py',
                   'vnc_kombu.py',
                   'vnc_db.py',
+                  'vnc_rdbms.py',
                   'dependency_tracker.py',
                   'vnc_api_stats.py',
                   'ssl_adapter.py',
@@ -76,6 +77,7 @@ pkg = [env.SandeshGenPy('#controller/src/config/uve/service_instance.sandesh', '
        env.SandeshGenPy('#controller/src/config/uve/acl.sandesh', 'cfgm_common/uve/', False),
        env.SandeshGenPy('#controller/src/config/uve/cfgm_cpuinfo.sandesh', 'cfgm_common/uve/', False),
        env.SandeshGenPy('#controller/src/config/uve/greenlets.sandesh', 'cfgm_common/uve/', False),
+       env.SandeshGenPy('#controller/src/config/uve/msg_traces.sandesh', 'cfgm_common/uve/', False),
 ]
 
 # Generate the sandesh cpuinfo from base
@@ -89,7 +91,6 @@ env.Depends(process_info_pkg, pkg)
 rel_path = Dir('cfgm_common').path
 def BuildInfoAction(target, source, env):
     env.GenerateBuildInfoPyCode(path=rel_path)
-    
 build_info_rules = [env.Command(target='buildinfo.py', source = None, action=BuildInfoAction)]
 
 sdist_depends = []
