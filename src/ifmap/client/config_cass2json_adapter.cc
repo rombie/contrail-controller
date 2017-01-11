@@ -7,13 +7,16 @@
 #include <assert.h>
 #include <iostream>
 
+#include <boost/assign/list_of.hpp>
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
 #include "base/string_util.h"
 #include "config_cassandra_client.h"
+#include "config_json_parser.h"
 
+using boost::assign::list_of;
 using namespace rapidjson;
 using namespace std;
 
@@ -27,6 +30,10 @@ const string ConfigCass2JsonAdapter::backref_prefix = "backref:";
 const string ConfigCass2JsonAdapter::parent_prefix = "parent:";
 const string ConfigCass2JsonAdapter::parent_type_prefix = "parent_type";
 const string ConfigCass2JsonAdapter::comma_str = ",";
+
+const set<string> ConfigCass2JsonAdapter::allowed_properties =
+             list_of(prop_prefix)(map_prop_prefix)
+                    (list_prop_prefix)(ref_prefix)(parent_prefix);
 
 ConfigCass2JsonAdapter::ConfigCass2JsonAdapter(ConfigCassandraClient *cassandra_client,
                            const string &obj_type, const CassColumnKVVec &cdvec)
@@ -111,7 +118,8 @@ bool ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type,
             it = ret.first;
         }
 
-        bool link_with_attr = cassandra_client_->json_parser()->IsLinkWithAttr(obj_type, ref_type);
+        bool link_with_attr =
+            cassandra_client_->mgr()->IsLinkWithAttr(obj_type, ref_type);
         if (link_with_attr) {
             Document ref_document;
             ref_document.Parse<0>(cdvec.at(i).value.c_str());
@@ -189,7 +197,8 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
     // Add map properties
     for (MapPropertyMap::iterator it = map_property_map_.begin();
          it != map_property_map_.end(); it++) {
-        string wrapper_field = cassandra_client_->GetWrapperFieldName(type_, it->first);
+        string wrapper_field =
+            cassandra_client_->mgr()->GetWrapperFieldName(type_, it->first);
         if (wrapper_field != "") wrapper_field = "\"" + wrapper_field + "\":";
         doc_string_ += string("\"" + it->first + "\": { " + wrapper_field + " [ ");
         for (PropertyMapDataList::iterator rit = it->second.begin();
@@ -207,7 +216,8 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
     // Add list properties
     for (ListPropertyMap::iterator it = list_property_map_.begin();
          it != list_property_map_.end(); it++) {
-        string wrapper_field = cassandra_client_->GetWrapperFieldName(type_, it->first);
+        string wrapper_field =
+            cassandra_client_->mgr()->GetWrapperFieldName(type_, it->first);
         if (wrapper_field != "") wrapper_field = "\"" + wrapper_field + "\":";
         doc_string_ += string("\"" + it->first + "\": { " + wrapper_field + "[ ");
         for (PropertyListDataMap::iterator rit = it->second.begin();

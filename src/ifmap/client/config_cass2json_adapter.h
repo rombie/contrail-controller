@@ -5,6 +5,7 @@
 #ifndef ctrlplane_config_cass2json_adapter_h
 #define ctrlplane_config_cass2json_adapter_h
 #include <map>
+#include <set>
 #include <vector>
 
 #include "rapidjson/document.h"
@@ -19,6 +20,18 @@ class ConfigCassandraClient;
 // doc_string() accessor.
 class ConfigCass2JsonAdapter {
 public:
+    static const std::string prop_prefix;
+    static const std::string list_prop_prefix;
+    static const std::string map_prop_prefix;
+    static const std::string meta_prefix;
+    static const std::string backref_prefix;
+    static const std::string child_prefix;
+    static const std::string ref_prefix;
+    static const std::string parent_prefix;
+    static const std::string parent_type_prefix;
+    static const std::string comma_str;
+
+    static const std::set<std::string> allowed_properties;
     ConfigCass2JsonAdapter(ConfigCassandraClient *cassandra_client,
                            const std::string &obj_type,
                            const CassColumnKVVec &cdvec);
@@ -34,16 +47,6 @@ private:
     typedef std::vector<std::string> PropertyMapDataList;
     typedef std::map<std::string, PropertyMapDataList> MapPropertyMap;
 
-    static const std::string prop_prefix;
-    static const std::string list_prop_prefix;
-    static const std::string map_prop_prefix;
-    static const std::string meta_prefix;
-    static const std::string backref_prefix;
-    static const std::string child_prefix;
-    static const std::string ref_prefix;
-    static const std::string parent_prefix;
-    static const std::string parent_type_prefix;
-    static const std::string comma_str;
     bool CreateJsonString(const std::string &obj_type,
                           const CassColumnKVVec &cdvec);
     bool AddOneEntry(const std::string &obj_type,
