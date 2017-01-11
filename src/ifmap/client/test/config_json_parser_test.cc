@@ -324,7 +324,7 @@ TEST_F(ConfigJsonParserTest, VmiParseAddDeleteProperty) {
 }
 
 // In a single message, adds vn1, vn2, vn3.
-TEST_F(ConfigJsonParserTest, ServerParser1) {
+TEST_F(ConfigJsonParserTest, ServerParserAddInOneShot) {
     ParseEventsJson("controller/src/ifmap/testdata/server_parser_test01.json");
     FeedEventsJson();
 
@@ -340,7 +340,7 @@ TEST_F(ConfigJsonParserTest, ServerParser1) {
 }
 
 // In a multiple messages, adds (vn1, vn2), and vn3.
-TEST_F(ConfigJsonParserTest, ServerParser1_InMultipleMessages) {
+TEST_F(ConfigJsonParserTest, ServerParserAddInMultipleShots) {
     ParseEventsJson("controller/src/ifmap/testdata/server_parser_test01.1.2.json");
     FeedEventsJson();
 
@@ -366,7 +366,7 @@ TEST_F(ConfigJsonParserTest, ServerParser1_InMultipleMessages) {
 
 // In a single message, adds vn1, vn2, vn3, then deletes, vn3, then adds vn4,
 // vn5, then deletes vn5, vn4 and vn2. Only vn1 should remain.
-TEST_F(ConfigJsonParserTest, ServerParser2) {
+TEST_F(ConfigJsonParserTest, ServerParser) {
     ParseEventsJson("controller/src/ifmap/testdata/server_parser_test.json");
     FeedEventsJson();
 
@@ -388,6 +388,1368 @@ TEST_F(ConfigJsonParserTest, ServerParser2) {
     EXPECT_TRUE(vn == NULL);
 }
 
+// In 4 separate messages: 1) adds vn1, vn2, vn3, 2) deletes vn3, 3) adds vn4,
+// vn5, 4) deletes vn5, vn4 and vn2. Only vn1 should remain.
+// Same as ServerParser except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParserInParts) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(3, table->Size());
+
+    IFMapNode *vn1 = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn1 != NULL);
+    IFMapObject *obj = vn1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vn2 = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn2 != NULL);
+    obj = vn2->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vn3 = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn3 != NULL);
+    obj = vn3->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(2, table->Size());
+    IFMapNode *node = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(node == NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(4, table->Size());
+
+    IFMapNode *vn4 = NodeLookup("virtual-network", "vn4");
+    EXPECT_TRUE(vn4 != NULL);
+    obj = vn4->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vn5 = NodeLookup("virtual-network", "vn5");
+    EXPECT_TRUE(vn5 != NULL);
+    obj = vn5->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, table->Size());
+
+    // Only vn1 should exist
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn != NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn4");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn5");
+    EXPECT_TRUE(vn == NULL);
+}
+
+// In a single message, adds vn1, vn2, vn3 and then deletes all of them.
+TEST_F(ConfigJsonParserTest, ServerParser1) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test1.json");
+    FeedEventsJson();
+    EXPECT_EQ(0, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+}
+
+// In 2 separate messages, adds vn1, vn2, vn3 and then deletes all of them.
+// Same as ServerParser1 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser1InParts) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test1_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(3, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn != NULL);
+    IFMapObject *obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, table->Size());
+
+    vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+}
+
+// In a single message, adds vn1, vn2, vn3 in separate updateResult stanza's
+// and then adds them again in a single stanza 
+TEST_F(ConfigJsonParserTest, ServerParser2) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test2.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(3, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn != NULL);
+    IFMapObject *obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In 4 separate messages: 1) adds vn1, 2) adds vn2, 3) adds vn3 4) adds all of
+// them again in a single stanza 
+// Same as ServerParser2 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser2InParts) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test2_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn != NULL);
+    IFMapObject *obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(2, table->Size());
+
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(3, table->Size());
+
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn != NULL);
+    obj = vn->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(3, table->Size());
+
+    vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn != NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn != NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn != NULL);
+}
+
+// In a single message, deletes vn1, vn2, vn3 in a deleteResult stanza and then
+// deletes them again in a single stanza 
+TEST_F(ConfigJsonParserTest, ServerParser3) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+    EXPECT_EQ(0, table->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test3.json");
+    FeedEventsJson();
+    EXPECT_EQ(0, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+}
+
+// In 2 separate messages, 1) deletes vn1, vn2, vn3 2) deletes them again 
+// Same as ServerParser3 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser3InParts) {
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+    EXPECT_EQ(0, table->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test3_p1.json");
+    FeedEventsJson();
+    EXPECT_EQ(0, table->Size());
+
+    IFMapNode *vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+
+    FeedEventsJson();
+    EXPECT_EQ(0, table->Size());
+
+    vn = NodeLookup("virtual-network", "vn1");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn2");
+    EXPECT_TRUE(vn == NULL);
+    vn = NodeLookup("virtual-network", "vn3");
+    EXPECT_TRUE(vn == NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete link(vr,vm)
+// Both vr and vm nodes should continue to live
+TEST_F(ConfigJsonParserTest, ServerParser4) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test4.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link == NULL);
+}
+
+// In 2 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete link(vr,vm)
+// Same as ServerParser4 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser4InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test4_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") == NULL);
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm)         2) delete link(vr,vm)
+// Both vr and vm nodes should get deleted since they dont have any properties
+TEST_F(ConfigJsonParserTest, ServerParser5) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test5.json");
+    FeedEventsJson();
+    EXPECT_EQ(0, vrtable->Size());
+    EXPECT_EQ(0, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 == NULL);
+}
+
+// In 2 separate messages: 
+// 1) create link(vr,vm)         2) delete link(vr,vm)
+// Both vr and vm nodes should get deleted since they dont have any properties
+// Same as ServerParser5 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser5InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test5_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 == NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete vr, then link(vr,vm)
+// The vr should disappear and vm should continue to live
+TEST_F(ConfigJsonParserTest, ServerParser6) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test6.json");
+    FeedEventsJson();
+    EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    IFMapObject *obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In 2 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete vr, then link(vr,vm)
+// The vr should disappear and vm should continue to live
+// Same as ServerParser6 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser6InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test6_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete vr, then link(vr,vm)
+// 3) add vr-with-properties
+// Both vr and vm nodes should continue to live
+TEST_F(ConfigJsonParserTest, ServerParser7) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test7.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link == NULL);
+}
+
+// In 3 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
+// 2) delete vr and link(vr,vm)
+// 3) add vr-with-properties
+// Both vr and vm nodes should continue to live
+// Same as ServerParser7 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser7InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test7_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link == NULL);
+}
+
+// In a single message:
+// 1) create link(vr,vm)   2) delete link(vr,vm)    3) create link(vr,vm)
+// Both vr and vm should exist but should not have any objects since we dont
+// get any node-config with properties for either of them
+TEST_F(ConfigJsonParserTest, ServerParser8) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test8.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+}
+
+// In 3 separte messages:
+// 1) create link(vr,vm)   2) delete link(vr,vm)    3) create link(vr,vm)
+// Both vr and vm should exist but should not have any objects since we dont
+// get any node-config with properties for either of them
+// Same as ServerParser8 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser8InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test8_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 == NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+}
+
+// In a single message: 
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm)
+// 3) add link(vr,vm)
+// Both vr and vm nodes should continue to live
+TEST_F(ConfigJsonParserTest, ServerParser9) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test9.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+}
+
+// In 3 separate messages:
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm)
+// 3) add link(vr,vm)
+// Both vr and vm nodes should continue to live
+// Same as ServerParser9 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser9InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test9_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") == NULL);
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In a single message: 
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm), then delete vr
+// The vr should disappear and vm should continue to live
+// Similar to ServerParser6, except that in step2, we delete link and then vr
+TEST_F(ConfigJsonParserTest, ServerParser10) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test10.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    IFMapObject *obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In 2 separate messages: 
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm), then delete vr
+// The vr should disappear and vm should continue to live
+// Similar to ServerParser6, except that in step2, we delete link and then vr
+// Same as ServerParser10 except that the various operations are happening in
+// separate messages.
+TEST_F(ConfigJsonParserTest, ServerParser10InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test10_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_TRUE(NodeLookup("virtual-router", "vr1") == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+}
+
+// In a single message: 
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm), then delete vr
+// 3) add link(vr,vm)
+// Both vr and vm nodes should continue to live but vr should have no object
+TEST_F(ConfigJsonParserTest, ServerParser11) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test11.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+}
+
+// In 3 separate messages: 
+// 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
+// 2) delete link(vr,vm), then delete vr
+// 3) add link(vr,vm)
+// Both vr and vm nodes should continue to live but vr should have no object
+TEST_F(ConfigJsonParserTest, ServerParser11InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test11_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+
+    // vr1 should not have any object
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then link(vr,gsc)
+// 2) delete link(vr,vm), then link(vr,gsc)
+// No nodes should exist.
+TEST_F(ConfigJsonParserTest, ServerParser12) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test12.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, vmtable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 == NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+}
+
+// In 2 separate messages: 
+// 1) create link(vr,vm), then link(vr,gsc)
+// 2) delete link(vr,vm), then link(vr,gsc)
+TEST_F(ConfigJsonParserTest, ServerParser12InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test12_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+
+    IFMapLink *link = LinkLookup(vr1, vm1, "virtual-router-virtual-machine");
+    EXPECT_TRUE(link != NULL);
+    link = LinkLookup(vr1, gsc, "global-system-config-virtual-router");
+    EXPECT_TRUE(link != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 == NULL);
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 == NULL);
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete link(vr,vm), then link(vr,gsc)
+TEST_F(ConfigJsonParserTest, ServerParser13) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test13.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+
+    usleep(1000);
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") == NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") == NULL);
+}
+
+// In 3 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete link(vr,vm), then link(vm, gsc)
+TEST_F(ConfigJsonParserTest, ServerParser13InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test13_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(NodeLookup("virtual-router", "vr1") != NULL);
+    EXPECT_TRUE(NodeLookup("virtual-machine", "vm1") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+
+    EXPECT_TRUE(NodeLookup("virtual-router", "vr1") != NULL);
+    EXPECT_TRUE(NodeLookup("virtual-machine", "vm1") != NULL);
+    EXPECT_TRUE(NodeLookup("global-system-config", "gsc") != NULL);
+    TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") == NULL);
+    TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") == NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete gsc, then link(vr,gsc)
+TEST_F(ConfigJsonParserTest, ServerParser14) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test14.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    usleep(1000);
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+}
+
+// In 3 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete gsc, then link(vr,gsc)
+TEST_F(ConfigJsonParserTest, ServerParser14InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    // Using datafile from test13_p1
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test13_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+
+    // Using datafile from test13_p2
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(NodeLookup("virtual-router", "vr1") != NULL);
+    EXPECT_TRUE(NodeLookup("virtual-machine", "vm1") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+
+    // Need new datafile for step 3
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(NodeLookup("global-system-config", "gsc") == NULL);
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete vr
+TEST_F(ConfigJsonParserTest, ServerParser15) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test15.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+
+    usleep(1000);
+
+    // Object should not exist
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    EXPECT_TRUE(vr1->HasAdjacencies(&graph_));
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+}
+
+// In 3 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete vr
+TEST_F(ConfigJsonParserTest, ServerParser15InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    // Using datafile from test13_p1
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test13_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+
+    // Using datafile from test13_p2
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(NodeLookup("virtual-router", "vr1") != NULL);
+    EXPECT_TRUE(NodeLookup("virtual-machine", "vm1") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+
+    // Need new datafile for step 3
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+
+    // Object should not exist
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    EXPECT_TRUE(vr1->HasAdjacencies(&graph_));
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+}
+
+// In a single message: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete link(vr,gsc), then delete gsc, then delete vr
+TEST_F(ConfigJsonParserTest, ServerParser16) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test16.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    usleep(1000);
+
+    // Object should not exist
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    EXPECT_TRUE(vr1->HasAdjacencies(&graph_));
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+}
+
+// In 3 separate messages: 
+// 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
+// 2) create link(vr,gsc), then gsc-with-properties
+// 3) delete link(vr,gsc), then delete gsc, then delete vr
+TEST_F(ConfigJsonParserTest, ServerParser16InParts) {
+    IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
+    EXPECT_EQ(0, vrtable->Size());
+    IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
+    EXPECT_EQ(0, vmtable->Size());
+    IFMapTable *gsctable = IFMapTable::FindTable(&db_, "global-system-config");
+    EXPECT_EQ(0, gsctable->Size());
+
+    // Using datafile from test13_p1
+    ParseEventsJson("controller/src/ifmap/testdata/server_parser_test13_p1.json");
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+
+    // Using datafile from test13_p2
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
+    EXPECT_EQ(1, vrtable->Size());
+    EXPECT_EQ(1, vmtable->Size());
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc != NULL);
+    obj = gsc->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    EXPECT_TRUE(NodeLookup("virtual-router", "vr1") != NULL);
+    EXPECT_TRUE(NodeLookup("virtual-machine", "vm1") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+    EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") != NULL);
+
+    // Need new datafile for step 3
+    FeedEventsJson();
+    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, gsctable->Size());
+
+    // Object should not exist
+    vr1 = NodeLookup("virtual-router", "vr1");
+    EXPECT_TRUE(vr1 != NULL);
+    obj = vr1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj == NULL);
+    EXPECT_TRUE(vr1->HasAdjacencies(&graph_));
+
+    vm1 = NodeLookup("virtual-machine", "vm1");
+    EXPECT_TRUE(vm1 != NULL);
+    obj = vm1->Find(IFMapOrigin(IFMapOrigin::MAP_SERVER));
+    EXPECT_TRUE(obj != NULL);
+
+    gsc = NodeLookup("global-system-config", "gsc");
+    EXPECT_TRUE(gsc == NULL);
+
+    EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     LoggingInit();
@@ -399,4 +1761,3 @@ int main(int argc, char **argv) {
     TaskScheduler::GetInstance()->Terminate();
     return status;
 }
-
