@@ -149,7 +149,9 @@ TEST_F(ConfigJsonParserTest, VirtualNetworkParse) {
         FileRead("controller/src/ifmap/client/testdata/vn.json");
     assert(message.size() != 0);
     bool add_change = true;
-    config_client_manager_->config_json_parser()->Receive(message, add_change, IFMapOrigin::CASSANDRA);
+    config_client_manager_->config_json_parser()->Receive(
+        "e6e5609b-64f8-4238-82e6-163e2ec11d21", message, add_change,
+        IFMapOrigin::CASSANDRA);
     task_util::WaitForIdle();
 
     IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
@@ -195,7 +197,9 @@ TEST_F(ConfigJsonParserTest, AclParse) {
         FileRead("controller/src/ifmap/client/testdata/acl.json");
     assert(message.size() != 0);
     bool add_change = true;
-    config_client_manager_->config_json_parser()->Receive(message, add_change, IFMapOrigin::CASSANDRA);
+    config_client_manager_->config_json_parser()->Receive(
+        "d4cb8100-b9b8-41cd-8fdf-5eb76323f096", message, add_change,
+        IFMapOrigin::CASSANDRA);
     task_util::WaitForIdle();
 
     IFMapTable *table = IFMapTable::FindTable(&db_, "access-control-list");
@@ -236,7 +240,9 @@ TEST_F(ConfigJsonParserTest, VmiParseAddDeleteProperty) {
         FileRead("controller/src/ifmap/client/testdata/vmi.json");
     assert(message.size() != 0);
     bool add_change = true;
-    config_client_manager_->config_json_parser()->Receive(message, add_change, IFMapOrigin::CASSANDRA);
+    config_client_manager_->config_json_parser()->Receive(
+        "42f6d841-d1c7-40b8-b1c4-ca2ab415c81d", message, add_change,
+        IFMapOrigin::CASSANDRA);
     task_util::WaitForIdle();
 
     IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-machine-interface");
@@ -302,7 +308,9 @@ TEST_F(ConfigJsonParserTest, VmiParseAddDeleteProperty) {
     // this message, the node should not have this property.
     message = FileRead("controller/src/ifmap/client/testdata/vmi1.json");
     assert(message.size() != 0);
-    config_client_manager_->config_json_parser()->Receive(message, add_change, IFMapOrigin::CASSANDRA);
+    config_client_manager_->config_json_parser()->Receive(
+        "42f6d841-d1c7-40b8-b1c4-ca2ab415c81d", message, add_change,
+        IFMapOrigin::CASSANDRA);
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_FALSE(
         vmi->IsPropertySet(autogen::VirtualMachineInterface::DISABLE_POLICY));
@@ -358,7 +366,7 @@ TEST_F(ConfigJsonParserTest, ServerParser1_InMultipleMessages) {
 
 // In a single message, adds vn1, vn2, vn3, then deletes, vn3, then adds vn4,
 // vn5, then deletes vn5, vn4 and vn2. Only vn1 should remain.
-TEST_F(ConfigJsonParserTest, DISABLED_ServerParser2) {
+TEST_F(ConfigJsonParserTest, ServerParser2) {
     ParseEventsJson("controller/src/ifmap/testdata/server_parser_test.json");
     FeedEventsJson();
 
