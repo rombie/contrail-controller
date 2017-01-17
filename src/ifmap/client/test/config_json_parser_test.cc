@@ -1310,7 +1310,7 @@ TEST_F(ConfigJsonParserTest, ServerParser14InParts) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete vr
-TEST_F(ConfigJsonParserTest, ServerParser15) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser15) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
