@@ -52,7 +52,7 @@ ConfigCass2JsonAdapter::ConfigCass2JsonAdapter(
     CreateJsonString(obj_type, cdvec);
 }
 
-string ConfigCass2JsonAdapter::GetAttrString(const Value &attr_value) {
+string ConfigCass2JsonAdapter::GetJsonString(const Value &attr_value) {
     StringBuffer buffer;
     Writer<rapidjson::StringBuffer> writer(buffer);
     attr_value.Accept(writer);
@@ -60,197 +60,167 @@ string ConfigCass2JsonAdapter::GetAttrString(const Value &attr_value) {
 }
 
 // Return true if the caller needs to append a comma. False otherwise.
-bool ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type,
-                                         const CassColumnKVVec &cdvec, int i) {
+void ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type, Value &d,
+                                         const JsonAdapterDataType &c) {
+    Document::AllocatorType &a = json_document_.GetAllocator();
+
     // If the key has 'prop:' at the start, remove it.
-    if (cdvec.at(i).key.substr(0, prop_plen_) == prop_prefix) {
-        if (cdvec.at(i).value != "null") {
-            string prop_value = cdvec.at(i).value;
-            if (cdvec.at(i).key.substr(prop_plen_) == "security_group_id") {
-                prop_value = "\"" + prop_value + "\"";
-            }
-            doc_string_ += string("\"" + cdvec.at(i).key.substr(prop_plen_) +
-                                  "\":" + prop_value);
-        } else {
-            return false;
+    string prop_key = c.key.substr(0, prop_plen_);
+    if (prop_key == prop_prefix) {
+        if (c.value != "null") {
+            Document prop_document(&json_document_.GetAllocator());
+            prop_document.Parse<0>(c.value.c_str());
+            Value vk;
+            d.AddMember(vk.SetString(c.key.substr(prop_plen_).c_str(), a),
+                        prop_document, a);
+            return;
         }
-    } else if (cdvec.at(i).key.substr(0, propl_plen_) == list_prop_prefix) {
-        size_t from_front_pos = cdvec.at(i).key.find(':');
-        size_t from_back_pos = cdvec.at(i).key.rfind(':');
-        string property_list = cdvec.at(i).key.substr(from_front_pos+1,
-                                          (from_back_pos-from_front_pos-1));
+        return;
+    }
+
+    if (c.key.substr(0, propl_plen_) == list_prop_prefix) {
+        size_t from_front_pos = c.key.find(':');
+        size_t from_back_pos = c.key.rfind(':');
+        string property_list = c.key.substr(from_front_pos+1,
+                                            from_back_pos-from_front_pos-1);
         int index = 0;
-        assert(stringToInteger(cdvec.at(i).key.substr(from_back_pos+1), index));
-        ListPropertyMap::iterator it;
-        if ((it = list_property_map_.find(property_list)) ==
-            list_property_map_.end()) {
-            std::pair<ListPropertyMap::iterator, bool> ret;
-            ret = list_property_map_.insert(make_pair(property_list,
-                                                      PropertyListDataMap()));
-            assert(ret.second);
-            it = ret.first;
+        assert(stringToInteger(c.key.substr(from_back_pos+1), index));
+        if (!d.HasMember(property_list.c_str())) {
+            Value v;
+            Value vk;
+            d.AddMember(vk.SetString(property_list.c_str(), a), v.SetArray(),
+                        a);
         }
-        it->second.insert(make_pair(index, cdvec.at(i).value));
-        return false;
-    } else if (cdvec.at(i).key.substr(0, propm_plen_) == map_prop_prefix) {
-        size_t from_front_pos = cdvec.at(i).key.find(':');
-        size_t from_back_pos = cdvec.at(i).key.rfind(':');
-        string property_map = cdvec.at(i).key.substr(from_front_pos+1,
-                                             (from_back_pos-from_front_pos-1));
-        MapPropertyMap::iterator it;
-        if ((it = map_property_map_.find(property_map)) ==
-            map_property_map_.end()) {
-            std::pair<MapPropertyMap::iterator, bool> ret;
-            ret = map_property_map_.insert(make_pair(property_map,
-                                                     PropertyMapDataList()));
-            assert(ret.second);
-            it = ret.first;
+
+        Value v;
+        d[property_list.c_str()].PushBack(v.SetString(c.value.c_str(), a), a);
+        return;
+    }
+
+    if (c.key.substr(0, propm_plen_) == map_prop_prefix) {
+        size_t from_front_pos = c.key.find(':');
+        size_t from_back_pos = c.key.rfind(':');
+        string property_map = c.key.substr(from_front_pos+1,
+                                           from_back_pos-from_front_pos-1);
+        string wrapper = cassandra_client_->mgr()->GetWrapperFieldName(type_,
+                                                       property_map);
+        if (!d.HasMember(property_map.c_str())) {
+            Value v;
+            Value vk;
+            d.AddMember(vk.SetString(property_map.c_str(), a),
+                        v.SetObject(), a);
+
+            Value va;
+            Value vak;
+            d[property_map.c_str()].AddMember(vak.SetString(wrapper.c_str(), a),
+                                              va.SetArray(), a);
         }
-        it->second.push_back(cdvec.at(i).value);
-        return false;
-    } else if (cdvec.at(i).key.substr(0, ref_plen_) == ref_prefix) {
-        size_t from_front_pos = cdvec.at(i).key.find(':');
-        size_t from_back_pos = cdvec.at(i).key.rfind(':');
+
+        Value v;
+        d[property_map.c_str()][wrapper.c_str()].PushBack(
+                v.SetString(c.value.c_str(), a), a);
+        return;
+    }
+
+    if (c.key.substr(0, ref_plen_) == ref_prefix) {
+        size_t from_front_pos = c.key.find(':');
+        size_t from_back_pos = c.key.rfind(':');
         assert(from_front_pos != string::npos);
         assert(from_back_pos != string::npos);
-        string ref_type = cdvec.at(i).key.substr(from_front_pos+1,
+        string ref_type = c.key.substr(from_front_pos+1,
                                              (from_back_pos-from_front_pos-1));
-        string ref_uuid = cdvec.at(i).key.substr(from_back_pos+1);
+        string ref_uuid = c.key.substr(from_back_pos+1);
 
         string fq_name_ref = cassandra_client_->UUIDToFQName(ref_uuid);
         if (fq_name_ref == "ERROR")
-            return false;
-        RefTypeMap::iterator it;
-        if ((it = ref_type_map_.find(ref_type)) == ref_type_map_.end()) {
-            std::pair<RefTypeMap::iterator, bool> ret;
-            ret = ref_type_map_.insert(make_pair(ref_type, RefDataList()));
-            assert(ret.second);
-            it = ret.first;
+            return;
+        string r = ref_type + "_refs";
+        if (!d.HasMember(r.c_str())) {
+            Value v;
+            Value vk;
+            d.AddMember(vk.SetString(r.c_str(), a), v.SetArray(), a);
         }
+
+        Value v;
+        v.SetObject();
+
+        Value vs1;
+        Value vs2;
+        v.AddMember("to", vs1.SetString(fq_name_ref.c_str(), a), a);
+        v.AddMember("uuid", vs2.SetString(ref_uuid.c_str(), a), a);
 
         bool link_with_attr =
             cassandra_client_->mgr()->IsLinkWithAttr(obj_type, ref_type);
         if (link_with_attr) {
-            Document ref_document;
-            ref_document.Parse<0>(cdvec.at(i).value.c_str());
+            Document ref_document(&json_document_.GetAllocator());
+            ref_document.Parse<0>(c.value.c_str());
             Value& attr_value = ref_document["attr"];
-            it->second.push_back(string("{\"to\":\"" + fq_name_ref +\
-                        "\",\"uuid\":\"" + ref_uuid + "\",\"attr\":" +\
-                        GetAttrString(attr_value) + "}"));
-        } else {
-            it->second.push_back(string("{\"to\":\"" + fq_name_ref +\
-                                    "\", \"uuid\":\"" + ref_uuid + "\"}"));
+            Value vs;
+            v.AddMember("attr",
+                        vs.SetString(GetJsonString(attr_value).c_str(), a), a);
         }
-        return false;
-    } else if (cdvec.at(i).key.substr(0, parent_type_plen_) ==
-               parent_type_prefix) {
-        // If the key has 'parent_type' at the start, ignore the column.
-        return false;
-    } else if (cdvec.at(i).key.substr(0, parent_plen_) == parent_prefix) {
-        size_t pos = cdvec.at(i).key.rfind(':');
+        d[r.c_str()].PushBack(v, a);
+        return;
+    }
+
+    if (c.key.substr(0, parent_plen_) == parent_prefix) {
+        size_t pos = c.key.rfind(':');
         assert(pos != string::npos);
-        size_t type_pos = cdvec.at(i).key.find(':');
+        size_t type_pos = c.key.find(':');
         assert(type_pos != string::npos);
-        doc_string_ += string("\"parent_type\":\"" +\
-          cdvec.at(i).key.substr(type_pos+1, pos-type_pos-1) + "\"");
-    } else if (cdvec.at(i).key.substr(0, child_plen_) == child_prefix) {
-        // If the key has 'children:' at the start, ignore the column.
-        return false;
-    } else if (cdvec.at(i).key.substr(0, backref_plen_) == backref_prefix) {
-        // If the key has 'backref:' at the start, ignore the column.
-        return false;
-    } else if (cdvec.at(i).key.substr(0, meta_plen_) == meta_prefix) {
-        // If the key has 'META:' at the start, ignore the column.
-        return false;
-    } else if (cdvec.at(i).key.substr(0, fq_name_plen_) == fq_name_prefix) {
-        // Write the fq_name node
-        doc_string_ +=
-            string("\"" + cdvec.at(i).key + "\":" + cdvec.at(i).value);
-    } else if (cdvec.at(i).key.compare("type") == 0) {
+        Value v;
+        d.AddMember("parent_type",
+          v.SetString(c.key.substr(type_pos+1, pos-type_pos-1).c_str(), a), a);
+        return;
+    }
+
+    if (c.key.substr(0, fq_name_plen_) == fq_name_prefix) {
+        Document fq_name_document(&json_document_.GetAllocator());
+        fq_name_document.Parse<0>(c.value.c_str());
+        Value vk;
+        d.AddMember(vk.SetString(c.key.c_str(), a), fq_name_document, a);
+        return;
+    }
+
+    if (c.key.compare("type") == 0) {
         // Prepend the 'type'. This is "our key", with value being the json
         // sub-document containing all other columns.
         assert(type_ != obj_type);
-        type_ = cdvec.at(i).value;
+        type_ = c.value;
         type_.erase(remove(type_.begin(), type_.end(), '\"' ), type_.end());
-        doc_string_ = string("{" + cdvec.at(i).value + ":" + "{") +
-                        doc_string_;
-        return false;
-    } else {
-        cout << "Unknown tag:" << cdvec.at(i).key << endl;
-        return false;
+        return;
     }
-    return true;
+
+#if 0
+    // If the key has 'parent_type' at the start, ignore the column.
+    if (c.key.substr(0, parent_type_plen_) == parent_type_prefix)
+        return;
+
+    // If the key has 'children:' at the start, ignore the column.
+    if (c.key.substr(0, child_plen_) == child_prefix)
+        return;
+
+    // If the key has 'backref:' at the start, ignore the column.
+    if (c.key.substr(0, backref_plen_) == backref_prefix)
+        return;
+
+    // If the key has 'META:' at the start, ignore the column.
+    if (c.key.substr(0, meta_plen_) == meta_prefix)
+        return;
+    cout << "Unknown tag:" << c.key << endl;
+#endif
 }
 
 bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
                                               const CassColumnKVVec &cdvec) {
-    for (size_t i = 0; i < cdvec.size(); ++i) {
-        if (AddOneEntry(obj_type, cdvec, i)) {
-            doc_string_ += comma_str;
-        }
-    }
-
+    Value d;
+    d.SetObject();
+    for (size_t i = 0; i < cdvec.size(); ++i)
+        AddOneEntry(obj_type, d, cdvec[i]);
     assert(type_ != "");
-
-    // Add the refs
-    for (RefTypeMap::iterator it = ref_type_map_.begin();
-         it != ref_type_map_.end(); it++) {
-        doc_string_ += string("\"" + it->first + "_refs\":[");
-        for (RefDataList::iterator rit = it->second.begin();
-             rit != it->second.end(); rit++) {
-            doc_string_ += *rit + comma_str;
-        }
-        // Remove the comma after the last entry.
-        if (doc_string_[doc_string_.size() - 1] == ',') {
-            doc_string_.erase(doc_string_.size() - 1);
-        }
-        doc_string_ += string("],");
-    }
-
-    // Add map properties
-    for (MapPropertyMap::iterator it = map_property_map_.begin();
-         it != map_property_map_.end(); it++) {
-        string wrapper_field =
-            cassandra_client_->mgr()->GetWrapperFieldName(type_, it->first);
-        if (wrapper_field != "") wrapper_field = "\"" + wrapper_field + "\":";
-        doc_string_ += string("\"" + it->first + "\":{" + wrapper_field + "[");
-        for (PropertyMapDataList::iterator rit = it->second.begin();
-             rit != it->second.end(); rit++) {
-            doc_string_ += *rit + comma_str;
-        }
-        // Remove the comma after the last entry.
-        if (doc_string_[doc_string_.size() - 1] == ',') {
-            doc_string_.erase(doc_string_.size() - 1);
-        }
-        doc_string_ += string("] },");
-    }
-
-    // Add list properties
-    for (ListPropertyMap::iterator it = list_property_map_.begin();
-         it != list_property_map_.end(); it++) {
-        string wrapper_field =
-            cassandra_client_->mgr()->GetWrapperFieldName(type_, it->first);
-        if (wrapper_field != "") wrapper_field = "\"" + wrapper_field + "\":";
-        doc_string_ += string("\"" + it->first + "\":{" + wrapper_field + "[");
-        for (PropertyListDataMap::iterator rit = it->second.begin();
-             rit != it->second.end(); rit++) {
-            doc_string_ += rit->second + comma_str;
-        }
-        // Remove the comma after the last entry.
-        if (doc_string_[doc_string_.size() - 1] == ',') {
-            doc_string_.erase(doc_string_.size() - 1);
-        }
-        doc_string_ += string("]},");
-    }
-
-    // Remove the comma after the last entry.
-    if (doc_string_[doc_string_.size() - 1] == ',') {
-        doc_string_.erase(doc_string_.size() - 1);
-    }
-
-    // Add one brace to close out the type's value and one to close out the
-    // whole json document.
-    doc_string_ += string("}}");
-
+    Value vk;
+    json_document_.SetObject().AddMember(vk.SetString(type_.c_str(),
+        json_document_.GetAllocator()), d, json_document_.GetAllocator());
+    std::cout << GetJsonString(json_document_) << std::endl;
     return true;
 }

@@ -190,10 +190,9 @@ bool ConfigJsonParser::ParseDocument(const Document &document, bool add_change,
     return true;
 }
 
-bool ConfigJsonParser::Receive(const string &uuid, const string &in_message,
+bool ConfigJsonParser::Receive(const string &uuid,
+                               const rapidjson::Document &document,
                                bool add_change, IFMapOrigin::Origin origin) {
-    Document document;
-    document.Parse<0>(in_message.c_str());
     ConfigClientManager::RequestList req_list;
 
     if (document.HasParseError()) {

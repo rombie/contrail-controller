@@ -36,7 +36,7 @@ public:
     ConfigCass2JsonAdapter(ConfigCassandraClient *cassandra_client,
                            const std::string &obj_type,
                            const CassColumnKVVec &cdvec);
-    const std::string &doc_string() { return doc_string_; }
+    const rapidjson::Document &document() { return json_document_; }
 
 private:
     typedef std::vector<std::string> RefDataList;
@@ -50,10 +50,10 @@ private:
 
     bool CreateJsonString(const std::string &obj_type,
                           const CassColumnKVVec &cdvec);
-    bool AddOneEntry(const std::string &obj_type,
-                     const CassColumnKVVec &cdvec, int i);
+    void AddOneEntry(const std::string &obj_type, rapidjson::Value &d,
+                     const JsonAdapterDataType &c);
+    static std::string GetJsonString(const rapidjson::Value &attr_value);
 
-    std::string GetAttrString(const rapidjson::Value &attr_value);
     ConfigCassandraClient *cassandra_client_;
     std::string doc_string_;
     std::string type_;
@@ -71,6 +71,7 @@ private:
     RefTypeMap ref_type_map_;
     MapPropertyMap map_property_map_;
     ListPropertyMap list_property_map_;
+    rapidjson::Document json_document_;
 };
 
 #endif // ctrlplane_config_cass2json_adapter_h

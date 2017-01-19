@@ -277,7 +277,7 @@ bool ConfigCassandraClient::ParseRowAndEnqueueToParser(const string &obj_type,
                                              obj_type, *(cass_data_vec.get())));
 
         // Enqueue Json document to the parser here.
-        parser_->Receive(uuid_key, ccja->doc_string(), true,
+        parser_->Receive(uuid_key, ccja->document(), true,
                          IFMapOrigin::CASSANDRA);
     } else {
         IFMAP_WARN(IFMapGetRowError, "Parsing row response failed for table",

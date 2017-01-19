@@ -48,7 +48,7 @@ env.Prepend(LIBS = [
                    ])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 ifmap_boost_ssl_test = env.UnitTest('ifmap_boost_ssl_test',
                                     ['ifmap_boost_ssl_test.cc'])
