@@ -58,7 +58,7 @@ public:
     virtual void InitDatabase();
     std::string UUIDToFQName(const std::string &uuid_str) const;
 
-    virtual void EnqueueUUIDRequest(std::string oper, std::string obj_type,
+    void EnqueueUUIDRequest(std::string oper, std::string obj_type,
                                     std::string uuid_str);
 
     ConfigJsonParser *json_parser() const { return parser_; }
@@ -89,6 +89,15 @@ protected:
     virtual void HandleObjectDelete(const std::string &obj_type,
                             const std::string &uuid);
 
+    typedef std::pair<string, string> ObjTypeUUIDType;
+    typedef std::list<ObjTypeUUIDType> ObjTypeUUIDList;
+    void UpdateCache(const std::string &key, const std::string &obj_type,
+                     ObjTypeUUIDList &uuid_list);
+    bool BulkDataSync();
+    bool EnqueueUUIDRequest(const ObjTypeUUIDList &uuid_list);
+    virtual std::string GetUUID(const std::string &key,
+                                const std::string &obj_type);
+
 private:
     class ConfigReader;
 
@@ -118,8 +127,6 @@ private:
     typedef std::list<ObjectProcessRequestType *> UUIDProcessList;
     typedef std::map<std::string, ObjectProcessRequestType *> UUIDProcessSet;
 
-    typedef std::pair<string, string> ObjTypeUUIDType;
-    typedef std::list<ObjTypeUUIDType> ObjTypeUUIDList;
 
     typedef std::pair<uint64_t, bool> FieldTimeStampInfo;
     typedef std::map<std::string, FieldTimeStampInfo> FieldDetailMap;
@@ -132,7 +139,6 @@ private:
     virtual bool ParseUuidTableRowResponse(const std::string &uuid,
         const GenDb::ColList &col_list, CassColumnKVVec *cass_data_vec);
     void AddUuidEntry(const string &uuid);
-    bool BulkDataSync();
     bool ReadAllUuidTableRows();
     bool ParseFQNameRowGetUUIDList(const GenDb::ColList &col_list,
                                    ObjTypeUUIDList &uuid_list);

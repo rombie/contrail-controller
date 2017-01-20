@@ -52,8 +52,7 @@ public:
     virtual void AddFQNameCache(const string &uuid, const string &obj_name) {
         vector<string> tokens;
         boost::split(tokens, uuid, boost::is_any_of(":"));
-        string u = tokens[1];
-        ConfigCassandraClient::AddFQNameCache(u, obj_name);
+        ConfigCassandraClient::AddFQNameCache(tokens[1], obj_name);
     }
 
     virtual int HashUUID(const string &uuid) const {
@@ -93,6 +92,28 @@ public:
         db_index_[idx].erase(it);
         return true;
     }
+
+    string GetUUID(const string &key, const string &obj_type) {
+        size_t temp = key.rfind(':');
+        return (temp == string::npos) ?
+            "" : (boost::lexical_cast<string>(cevent_-1) + ":" +
+                    key.substr(temp+1));
+    }
+
+    bool BulkDataSync() {
+        ConfigCassandraClient::ObjTypeUUIDList uuid_list;
+        for (Value::ConstMemberIterator k =
+             events_[SizeType(cevent_-1)]["OBJ_FQ_NAME_TABLE"].MemberBegin();
+             k != events_[SizeType(cevent_-1)]["OBJ_FQ_NAME_TABLE"].MemberEnd(); ++k) {
+            string obj_type = k->name.GetString();
+            for (Value::ConstMemberIterator l = events_[SizeType(cevent_-1)]["OBJ_FQ_NAME_TABLE"][obj_type.c_str()].MemberBegin();
+                       l != events_[SizeType(cevent_-1)]["OBJ_FQ_NAME_TABLE"][obj_type.c_str()].MemberEnd(); l++) {
+                UpdateCache(l->name.GetString(), obj_type, uuid_list);
+            }
+        }
+        return EnqueueUUIDRequest(uuid_list);
+    }
+
 private:
     typedef std::map<string, int> UUIDIndexMap;
     vector<UUIDIndexMap> db_index_;
@@ -140,8 +161,16 @@ protected:
     void FeedEventsJson () {
         while (cevent_++ < events_.Size()) {
             if (events_[SizeType(cevent_-1)]["operation"].GetString() ==
-                           string("pause"))
+                           string("pause")) {
                 break;
+            }
+
+            if (events_[SizeType(cevent_-1)]["operation"].GetString() ==
+                           string("db_sync")) {
+                dynamic_cast<ConfigCassandraClientTest *>(config_client_manager_->config_db_client())->BulkDataSync();
+                continue;
+            }
+
             config_client_manager_->config_amqp_client()->ProcessMessage(
                 events_[SizeType(cevent_-1)]["message"].GetString());
         }
@@ -174,6 +203,13 @@ protected:
     boost::scoped_ptr<IFMapServer> ifmap_server_;
     boost::scoped_ptr<ConfigClientManager> config_client_manager_;
 };
+
+TEST_F(ConfigJsonParserTest, BulkSync) {
+    ParseEventsJson("controller/src/ifmap/client/testdata/bulk_sync.json");
+    FeedEventsJson();
+    IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
+    TASK_UTIL_EXPECT_NE(0, table->Size());
+}
 
 // In a single message, adds vn1, vn2, vn3.
 TEST_F(ConfigJsonParserTest, ServerParserAddInOneShot) {
@@ -351,7 +387,7 @@ TEST_F(ConfigJsonParserTest, ServerParser1InParts) {
 }
 
 // In a single message, adds vn1, vn2, vn3 in separate updateResult stanza's
-// and then adds them again in a single stanza 
+// and then adds them again in a single stanza
 TEST_F(ConfigJsonParserTest, ServerParser2) {
     IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
 
@@ -376,7 +412,7 @@ TEST_F(ConfigJsonParserTest, ServerParser2) {
 }
 
 // In 4 separate messages: 1) adds vn1, 2) adds vn2, 3) adds vn3 4) adds all of
-// them again in a single stanza 
+// them again in a single stanza
 // Same as ServerParser2 except that the various operations are happening in
 // separate messages.
 TEST_F(ConfigJsonParserTest, ServerParser2InParts) {
@@ -419,7 +455,7 @@ TEST_F(ConfigJsonParserTest, ServerParser2InParts) {
 }
 
 // In a single message, deletes vn1, vn2, vn3 in a deleteResult stanza and then
-// deletes them again in a single stanza 
+// deletes them again in a single stanza
 TEST_F(ConfigJsonParserTest, ServerParser3) {
     IFMapTable *table = IFMapTable::FindTable(&db_, "virtual-network");
     TASK_UTIL_EXPECT_EQ(0, table->Size());
@@ -436,7 +472,7 @@ TEST_F(ConfigJsonParserTest, ServerParser3) {
     TASK_UTIL_EXPECT_TRUE(vn == NULL);
 }
 
-// In 2 separate messages, 1) deletes vn1, vn2, vn3 2) deletes them again 
+// In 2 separate messages, 1) deletes vn1, vn2, vn3 2) deletes them again
 // Same as ServerParser3 except that the various operations are happening in
 // separate messages.
 TEST_F(ConfigJsonParserTest, ServerParser3InParts) {
@@ -465,7 +501,7 @@ TEST_F(ConfigJsonParserTest, ServerParser3InParts) {
     TASK_UTIL_EXPECT_TRUE(vn == NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete link(vr,vm)
 // Both vr and vm nodes should continue to live
@@ -494,7 +530,7 @@ TEST_F(ConfigJsonParserTest, ServerParser4) {
             vm1->Find(IFMapOrigin(IFMapOrigin::CASSANDRA)) != NULL);
 }
 
-// In 2 separate messages: 
+// In 2 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete link(vr,vm)
 // Same as ServerParser4 except that the various operations are happening in
@@ -542,7 +578,7 @@ TEST_F(ConfigJsonParserTest, ServerParser4InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm)         2) delete link(vr,vm)
 // Both vr and vm nodes should get deleted since they dont have any properties
 TEST_F(ConfigJsonParserTest, ServerParser5) {
@@ -563,7 +599,7 @@ TEST_F(ConfigJsonParserTest, ServerParser5) {
     TASK_UTIL_EXPECT_TRUE(vm1 == NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete vr, then link(vr,vm)
 // The vr should disappear and vm should continue to live
@@ -587,7 +623,7 @@ TEST_F(ConfigJsonParserTest, ServerParser6) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In 2 separate messages: 
+// In 2 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete vr, then link(vr,vm)
 // The vr should disappear and vm should continue to live
@@ -630,7 +666,7 @@ TEST_F(ConfigJsonParserTest, ServerParser6InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete vr, then link(vr,vm)
 // 3) add vr-with-properties
@@ -660,7 +696,7 @@ TEST_F(ConfigJsonParserTest, ServerParser7) {
     TASK_UTIL_EXPECT_TRUE(link == NULL);
 }
 
-// In 3 separate messages: 
+// In 3 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete vr and link(vr,vm)
 // 3) add vr-with-properties
@@ -721,7 +757,7 @@ TEST_F(ConfigJsonParserTest, ServerParser7InParts) {
     TASK_UTIL_EXPECT_TRUE(link == NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
 // 2) delete link(vr,vm)
 // 3) add link(vr,vm)
@@ -813,7 +849,7 @@ TEST_F(ConfigJsonParserTest, ServerParser9InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
 // 2) delete link(vr,vm), then delete vr
 // The vr should disappear and vm should continue to live
@@ -838,7 +874,7 @@ TEST_F(ConfigJsonParserTest, ServerParser10) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In 2 separate messages: 
+// In 2 separate messages:
 // 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
 // 2) delete link(vr,vm), then delete vr
 // The vr should disappear and vm should continue to live
@@ -880,7 +916,7 @@ TEST_F(ConfigJsonParserTest, ServerParser10InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
 // 2) delete link(vr,vm), then delete vr
 // 3) add link(vr,vm)
@@ -905,7 +941,7 @@ TEST_F(ConfigJsonParserTest, ServerParser11) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In 3 separate messages: 
+// In 3 separate messages:
 // 1) create vr-with-properties, then vm-with-properties, then link(vr,vm)
 // 2) delete link(vr,vm), then delete vr
 // 3) add link(vr,vm)
@@ -960,7 +996,7 @@ TEST_F(ConfigJsonParserTest, ServerParser11InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then link(vr,gsc)
 // 2) delete link(vr,vm), then link(vr,gsc)
 // No nodes should exist.
@@ -987,7 +1023,7 @@ TEST_F(ConfigJsonParserTest, ServerParser12) {
     TASK_UTIL_EXPECT_TRUE(gsc == NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete link(vr,vm), then link(vr,gsc)
@@ -1026,7 +1062,7 @@ TEST_F(ConfigJsonParserTest, ServerParser13) {
     TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, gsc, "global-system-config-virtual-router") == NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete gsc, then link(vr,gsc)
@@ -1062,7 +1098,7 @@ TEST_F(ConfigJsonParserTest, ServerParser14) {
     TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
 }
 
-// In 3 separate messages: 
+// In 3 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete gsc, then link(vr,gsc)
@@ -1132,7 +1168,7 @@ TEST_F(ConfigJsonParserTest, ServerParser14InParts) {
     TASK_UTIL_EXPECT_TRUE(LinkLookup(vr1, vm1, "virtual-router-virtual-machine") != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete vr
@@ -1167,7 +1203,7 @@ TEST_F(ConfigJsonParserTest, DISABLED_ServerParser15) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In 3 separate messages: 
+// In 3 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete vr
@@ -1241,7 +1277,7 @@ TEST_F(ConfigJsonParserTest, ServerParser15InParts) {
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 }
 
-// In a single message: 
+// In a single message:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete link(vr,gsc), then delete gsc, then delete vr
@@ -1273,7 +1309,7 @@ TEST_F(ConfigJsonParserTest, ServerParser16) {
     TASK_UTIL_EXPECT_TRUE(gsc == NULL);
 }
 
-// In 3 separate messages: 
+// In 3 separate messages:
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete link(vr,gsc), then delete gsc, then delete vr
