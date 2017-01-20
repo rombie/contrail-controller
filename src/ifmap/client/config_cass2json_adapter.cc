@@ -219,8 +219,9 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
         AddOneEntry(obj_type, d, cdvec[i]);
     assert(type_ != "");
     Value vk;
-    json_document_.SetObject().AddMember(vk.SetString(type_.c_str(),
-        json_document_.GetAllocator()), d, json_document_.GetAllocator());
-    std::cout << GetJsonString(json_document_) << std::endl;
+    json_document_.SetObject().AddMember(
+        vk.SetString(type_.c_str(), json_document_.GetAllocator()), d,
+        json_document_.GetAllocator());
+
     return true;
 }
