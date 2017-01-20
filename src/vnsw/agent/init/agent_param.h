@@ -119,6 +119,8 @@ public:
             return 0;
         return dns_client_port_;
     }
+    const uint32_t dns_timeout() const { return dns_timeout_; }
+    const uint32_t dns_max_retries() const { return dns_max_retries_; }
     const uint16_t mirror_client_port() const {
         if (test_mode_)
             return 0;
@@ -295,6 +297,9 @@ public:
         flow_latency_limit_ = count;
     }
 
+    std::string ksync_thread_cpu_pin_policy() const {
+        return ksync_thread_cpu_pin_policy_;
+    }
     uint32_t tbb_thread_count() const { return tbb_thread_count_; }
     uint32_t tbb_exec_delay() const { return tbb_exec_delay_; }
     uint32_t tbb_schedule_delay() const { return tbb_schedule_delay_; }
@@ -488,6 +493,8 @@ private:
     uint16_t dns_port_1_;
     uint16_t dns_port_2_;
     uint16_t dns_client_port_;
+    uint32_t dns_timeout_;
+    uint32_t dns_max_retries_;
     uint16_t mirror_client_port_;
     std::string dss_server_;
     uint32_t dss_port_;
@@ -511,6 +518,7 @@ private:
     uint32_t flow_ksync_tokens_;
     uint32_t flow_del_tokens_;
     uint32_t flow_update_tokens_;
+    int flow_netlink_pin_cpuid_;
     uint32_t stale_interface_cleanup_timeout_;
 
     // Parameters configured from command line arguments only (for now)
@@ -589,6 +597,7 @@ private:
     // Config restore audit timeout in msec
     uint64_t restart_restore_audit_timeout_;
 
+    std::string ksync_thread_cpu_pin_policy_;
     // TBB related
     uint32_t tbb_thread_count_;
     uint32_t tbb_exec_delay_;

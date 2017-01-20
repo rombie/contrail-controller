@@ -359,6 +359,8 @@ void AgentParam::ParseDns() {
                                     "DNS.dns_client_port")) {
         dns_client_port_ = ContrailPorts::VrouterAgentDnsClientUdpPort();
     }
+    GetValueFromTree<uint32_t>(dns_timeout_, "DNS.dns_timeout");
+    GetValueFromTree<uint32_t>(dns_max_retries_, "DNS.dns_max_retries");
 }
 
 void AgentParam::ParseDiscovery() {
@@ -567,6 +569,8 @@ void AgentParam::ParseTaskSection() {
                                     "TASK.tbb_keepawake_timeout")) {
         tbb_keepawake_timeout_ = Agent::kDefaultTbbKeepawakeTimeout;
     }
+    GetValueFromTree<string>(ksync_thread_cpu_pin_policy_,
+                             "TASK.ksync_thread_cpu_pin_policy");
 }
 
 void AgentParam::ParseMetadataProxy() {
@@ -820,6 +824,8 @@ void AgentParam::ParseDnsArguments
     ParseServerListArguments(var_map_, &dns_server_1_, &dns_port_1_,
                              &dns_server_2_, &dns_port_2_, "DNS.server");
     GetOptValue<uint16_t>(var_map, dns_client_port_, "DNS.dns_client_port");
+    GetOptValue<uint32_t>(var_map, dns_timeout_, "DNS.dns_timeout");
+    GetOptValue<uint32_t>(var_map, dns_max_retries_, "DNS.dns_max_retries");
 }
 
 void AgentParam::ParseDiscoveryArguments
@@ -937,6 +943,8 @@ void AgentParam::ParseTaskSectionArguments
                           "TASK.log_schedule_threshold");
     GetOptValue<uint32_t>(var_map, tbb_keepawake_timeout_,
                           "TASK.tbb_keepawake_timeout");
+    GetOptValue<string>(var_map, ksync_thread_cpu_pin_policy_,
+                        "TASK.ksync_thread_cpu_pin_policy");
 }
 
 void AgentParam::ParseMetadataProxyArguments
@@ -1418,6 +1426,8 @@ void AgentParam::LogConfig() const {
     LOG(DEBUG, "DNS Server-2                : " << dns_server_2_);
     LOG(DEBUG, "DNS Port-2                  : " << dns_port_2_);
     LOG(DEBUG, "DNS client port             : " << dns_client_port_);
+    LOG(DEBUG, "DNS timeout                 : " << dns_timeout_);
+    LOG(DEBUG, "DNS max retries             : " << dns_max_retries_);
     LOG(DEBUG, "Xmpp Dns Authentication     : " << xmpp_dns_auth_enable_);
     if (xmpp_dns_auth_enable_) {
         LOG(DEBUG, "Xmpp Server Certificate : " << xmpp_server_cert_);
@@ -1452,6 +1462,8 @@ void AgentParam::LogConfig() const {
     LOG(DEBUG, "Flow ksync-tokens           : " << flow_ksync_tokens_);
     LOG(DEBUG, "Flow del-tokens             : " << flow_del_tokens_);
     LOG(DEBUG, "Flow update-tokens          : " << flow_update_tokens_);
+    LOG(DEBUG, "Pin flow netlink task to CPU: "
+        << ksync_thread_cpu_pin_policy_);
 
     if (agent_mode_ == VROUTER_AGENT)
         LOG(DEBUG, "Agent Mode                  : Vrouter");
@@ -1552,7 +1564,8 @@ AgentParam::AgentParam(bool enable_flow_options,
         xmpp_instance_count_(),
         dns_port_1_(ContrailPorts::DnsServerPort()),
         dns_port_2_(ContrailPorts::DnsServerPort()),
-        dns_client_port_(0), mirror_client_port_(0),
+        dns_client_port_(0), dns_timeout_(3000),
+        dns_max_retries_(2), mirror_client_port_(0),
         dss_server_(), dss_port_(0), mgmt_ip_(), hypervisor_mode_(MODE_KVM), 
         xen_ll_(), tunnel_type_(), metadata_shared_secret_(),
         metadata_proxy_port_(0), metadata_use_ssl_(false),
@@ -1602,6 +1615,7 @@ AgentParam::AgentParam(bool enable_flow_options,
         restart_backup_count_(CFG_BACKUP_COUNT),
         restart_restore_enable_(true),
         restart_restore_audit_timeout_(CFG_RESTORE_AUDIT_TIMEOUT),
+        ksync_thread_cpu_pin_policy_(),
         tbb_thread_count_(Agent::kMaxTbbThreads),
         tbb_exec_delay_(0),
         tbb_schedule_delay_(0),
@@ -1833,6 +1847,8 @@ AgentParam::AgentParam(bool enable_flow_options,
          "Log message if task takes more than threshold (msec) to schedule")
         ("TASK.tbb_keepawake_timeout", opt::value<uint32_t>(),
          "Timeout for the TBB keepawake timer")
+        ("TASK.ksync_thread_cpu_pin_policy", opt::value<string>(),
+         "Pin ksync io task to CPU")
         ;
     options_.add(tbb);
 }

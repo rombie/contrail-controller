@@ -15,11 +15,11 @@ import link_local_manager as ll_mgr
 class VncService(object):
 
     def __init__(self, vnc_lib=None, label_cache=None, args=None, logger=None,
-                 service=None):
+                 kube=None):
         self._vnc_lib = vnc_lib
         self._label_cache = label_cache
         self.logger = logger
-        self.service = service
+        self.kube = kube
 
         # Cache kubernetes API server params.
         self._kubernetes_api_secure_ip = args.kubernetes_api_secure_ip
@@ -197,7 +197,11 @@ class VncService(object):
 
     def _vnc_create_member(self, pool, vmi_id, protocol_port):
         pool_obj = self.service_lb_pool_mgr.read(pool.uuid)
-        member_obj = self.service_lb_member_mgr.create(pool_obj, vmi_id, protocol_port)
+        address = None
+        annotations = {}
+        annotations['vmi'] = vmi_id
+        member_obj = self.service_lb_member_mgr.create(pool_obj,
+                          address, protocol_port, annotations)
         return member_obj
 
     def _vnc_create_pool(self, namespace, ll, port):
@@ -271,19 +275,20 @@ class VncService(object):
                         port['port'].__str__())
 
     def _vnc_create_lb(self, service_id, service_name,
-                       service_namespace, service_ip, selectors):
+                       service_namespace, service_ip):
         proj_obj = self._get_project(service_namespace)
         vn_obj = self._get_network()
-        lb_obj = self.service_lb_mgr.create(vn_obj, service_id, service_name,
-                                        proj_obj, service_ip, selectors)
+        lb_provider = 'native'
+        lb_obj = self.service_lb_mgr.create(lb_provider, vn_obj, service_id,
+                                        service_name, proj_obj, service_ip)
         return lb_obj
 
     def _lb_create(self, service_id, service_name,
-            service_namespace, service_ip, selectors, ports):
+            service_namespace, service_ip, ports):
         lb = LoadbalancerKM.get(service_id)
         if not lb:
             lb_obj = self._vnc_create_lb( service_id, service_name,
-                                        service_namespace, service_ip, selectors)
+                                        service_namespace, service_ip)
             lb = LoadbalancerKM.locate(service_id)
 
         self._create_listeners(service_namespace, lb, ports)
@@ -373,7 +378,7 @@ class VncService(object):
 
     def _update_service_external_ip(self, service_namespace, service_name, external_ip):
         merge_patch = {'spec': {'externalIPs': [external_ip]}}
-        self.service.patch(resource_type="services", resource_name=service_name, 
+        self.kube.patch_resource(resource_type="services", resource_name=service_name,
                            namespace=service_namespace, merge_patch=merge_patch)
 
     def _update_service_public_ip(self, service_id, service_name,
@@ -391,8 +396,8 @@ class VncService(object):
     def vnc_service_add(self, service_id, service_name,
                         service_namespace, service_ip, selectors, ports,
                         service_type, externalIp):
-        self._lb_create(service_id, service_name, service_namespace, service_ip,
-                        selectors, ports)
+        self._lb_create(service_id, service_name, service_namespace,
+                        service_ip, ports)
 
         # "kubernetes" service needs a link-local service to be created.
         # This link-local service will steer traffic destined for

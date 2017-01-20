@@ -1146,7 +1146,7 @@ TEST_F(ConfigJsonParserTest, DISABLED_ServerParser15) {
 
     ParseEventsJson("controller/src/ifmap/testdata/server_parser_test15.json");
     FeedEventsJson();
-    TASK_UTIL_EXPECT_EQ(1, vrtable->Size());
+    TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     TASK_UTIL_EXPECT_EQ(1, vmtable->Size());
     TASK_UTIL_EXPECT_EQ(1, gsctable->Size());
 
@@ -1154,14 +1154,11 @@ TEST_F(ConfigJsonParserTest, DISABLED_ServerParser15) {
 
     // Object should not exist
     IFMapNode *vr1 = NodeLookup("virtual-router", "vr1");
-    TASK_UTIL_EXPECT_TRUE(vr1 != NULL);
-    IFMapObject *obj = vr1->Find(IFMapOrigin(IFMapOrigin::CASSANDRA));
-    EXPECT_TRUE(obj == NULL);
-    EXPECT_TRUE(vr1->HasAdjacencies(&graph_));
+    TASK_UTIL_EXPECT_TRUE(vr1 == NULL);
 
     IFMapNode *vm1 = NodeLookup("virtual-machine", "vm1");
     TASK_UTIL_EXPECT_TRUE(vm1 != NULL);
-    obj = vm1->Find(IFMapOrigin(IFMapOrigin::CASSANDRA));
+    IFMapObject *obj = vm1->Find(IFMapOrigin(IFMapOrigin::CASSANDRA));
     TASK_UTIL_EXPECT_TRUE(obj != NULL);
 
     IFMapNode *gsc = NodeLookup("global-system-config", "gsc");
