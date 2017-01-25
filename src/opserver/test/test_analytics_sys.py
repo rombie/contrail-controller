@@ -26,7 +26,6 @@ import socket
 from utils.analytics_fixture import AnalyticsFixture
 from utils.generator_fixture import GeneratorFixture
 from mockcassandra import mockcassandra
-from mockredis import mockredis
 import logging
 import time
 import pycassa
@@ -56,8 +55,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         cls.cassandra_port = AnalyticsTest.get_free_port()
         mockcassandra.start_cassandra(cls.cassandra_port)
-        cls.redis_port = AnalyticsTest.get_free_port()
-        mockredis.start_redis(cls.redis_port)
 
 
     @classmethod
@@ -66,7 +63,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
             return
 
         mockcassandra.stop_cassandra(cls.cassandra_port)
-        mockredis.stop_redis(cls.redis_port)
         pass
 
     def _update_analytics_start_time(self, start_time):
@@ -103,7 +99,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -124,7 +119,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -156,7 +150,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -206,7 +199,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
         self._update_analytics_start_time(start_time)
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -237,7 +229,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
         self._update_analytics_start_time(start_time)
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -269,7 +260,7 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
             return True
         
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1,
+            AnalyticsFixture(logging, builddir,
                              self.__class__.cassandra_port, 
                              collector_ha_test=True))
         assert vizd_obj.verify_on_setup()
@@ -314,26 +305,30 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
             return True
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1,
+            AnalyticsFixture(logging, builddir,
                              self.__class__.cassandra_port, 
                              collector_ha_test=True))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
-        exp_genlist1 = ['contrail-collector', 'contrail-analytics-api',
-                        'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0], 
-                                              exp_genlist1)
-        exp_genlist2 = ['contrail-collector'] 
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[1], 
-                                              exp_genlist2)
+        source = socket.gethostname()
+        exp_genlist = [
+            source+':Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+'dup:Analytics:contrail-collector:0'
+        ]
+        assert vizd_obj.verify_generator_list(vizd_obj.collectors,
+                                              exp_genlist)
         exp_src_list = [col.hostname for col in vizd_obj.collectors]
-        exp_mod_list = exp_genlist1 
+        exp_mod_list = ['contrail-collector', 'contrail-analytics-api',
+            'contrail-query-engine']
         assert vizd_obj.verify_table_source_module_list(exp_src_list, 
                                                         exp_mod_list)
         # stop the second redis_uve instance and verify the src/module list
         vizd_obj.redis_uves[1].stop()
         exp_src_list = [vizd_obj.collectors[0].hostname]
-        exp_mod_list = exp_genlist1
+        exp_mod_list = [gen.split(':')[2] \
+            for gen in vizd_obj.get_generator_list(vizd_obj.collectors[0])]
         assert vizd_obj.verify_table_source_module_list(exp_src_list, 
                                                         exp_mod_list)
     #end test_07_table_source_module_list
@@ -353,7 +348,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
         self._update_analytics_start_time(start_time)
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_where_query()
@@ -378,7 +372,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info('%%% test_09_verify_object_table_query %%%')
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         collectors = [vizd_obj.get_collector()]
@@ -421,7 +414,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.verify_collector_obj_count()
@@ -454,7 +446,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port,
                              syslog_port = True))
         assert vizd_obj.verify_on_setup()
@@ -486,7 +477,6 @@ class AnalyticsTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info('%%% test_12_verify_message_non_ascii %%%')
         analytics = self.useFixture(
             AnalyticsFixture(logging, builddir,
-                             self.__class__.redis_port,
                              self.__class__.cassandra_port))
         assert analytics.verify_on_setup()
         collectors = [analytics.get_collector()]

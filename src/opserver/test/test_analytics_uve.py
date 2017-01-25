@@ -25,7 +25,6 @@ import socket
 from utils.util import obj_to_dict, find_buildroot
 from utils.analytics_fixture import AnalyticsFixture
 from utils.generator_fixture import GeneratorFixture
-from mockredis import mockredis
 from mockzoo import mockzoo
 import logging
 import time
@@ -49,13 +48,9 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
             if (os.getenv('DYLD_LIBRARY_PATH', '').find('build/lib') < 0):
                 assert(False)
 
-        cls.redis_port = AnalyticsUveTest.get_free_port()
-        mockredis.start_redis(cls.redis_port)
-
     @classmethod
     def tearDownClass(cls):
-
-        mockredis.stop_redis(cls.redis_port)
+        pass
 
     #@unittest.skip('Skipping non-cassandra test with vizd')
     def test_00_nocassandra(self):
@@ -67,7 +62,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info("%%% test_00_nocassandra %%%")
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, self.__class__.redis_port, 0)) 
+            AnalyticsFixture(logging, builddir, 0)) 
         assert vizd_obj.verify_on_setup()
 
         return True
@@ -84,7 +79,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info("%%% test_01_vm_uve %%%")
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, self.__class__.redis_port, 0))
+            AnalyticsFixture(logging, builddir, 0))
         assert vizd_obj.verify_on_setup()
         collectors = [vizd_obj.get_collector()]
         generator_obj = self.useFixture(
@@ -128,7 +123,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info("%%% test_02_vm_uve_with_password %%%")
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1, 0,
+            AnalyticsFixture(logging, builddir, 0,
                              redis_password='contrail'))
         assert vizd_obj.verify_on_setup()
         collectors = [vizd_obj.get_collector()]
@@ -150,7 +145,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info('%%% test_03_redis_uve_restart %%%')
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1, 0,
+            AnalyticsFixture(logging, builddir, 0,
             start_kafka = True))
         assert vizd_obj.verify_on_setup()
 
@@ -173,8 +168,6 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         assert(vizd_obj.verify_uvetable_alarm("ObjectVRouter",
             "ObjectVRouter:myvrouter1",
             "default-global-system-config:partial-sysinfo-compute"))
-
-        # should there be a return True here?
     # end test_03_redis_uve_restart
 
     #@unittest.skip('verify redis-uve restart')
@@ -183,7 +176,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging,
-                             builddir, -1, 0,
+                             builddir, 0,
                              redis_password='contrail'))
         self.verify_uve_resync(vizd_obj)
         return True
@@ -223,38 +216,40 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         logging.info('%%% test_05_collector_ha %%%')
         
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1, 0,
+            AnalyticsFixture(logging, builddir, 0,
                              collector_ha_test=True))
         assert vizd_obj.verify_on_setup()
-        # OpServer, AlarmGen and QE are started with collectors[0] as 
-        # primary and collectors[1] as secondary
-        exp_genlist = ['contrail-collector', 'contrail-analytics-api',
-                       'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0], 
-                                              exp_genlist)
-        # start the contrail-vrouter-agent with collectors[1] as primary and 
-        # collectors[0] as secondary 
         collectors = [vizd_obj.collectors[1].get_addr(), 
                       vizd_obj.collectors[0].get_addr()]
         vr_agent = self.useFixture(
             GeneratorFixture("contrail-vrouter-agent", collectors,
                              logging, vizd_obj.get_opserver_port()))
         assert vr_agent.verify_on_setup()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[1], 
+        source = socket.gethostname()
+        exp_genlist = [
+            source+':Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+':Test:contrail-vrouter-agent:0',
+            source+'dup:Analytics:contrail-collector:0'
+        ]
+        assert vizd_obj.verify_generator_list(vizd_obj.collectors,
                                               exp_genlist)
-        # stop collectors[0] and verify that OpServer, AlarmGen and QE switch 
-        # from primary to secondary collector
+        # stop collectors[0] and verify that all the generators are connected
+        # to collectors[1]
         vizd_obj.collectors[0].stop()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent',
-                       'contrail-analytics-api',
-                       'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[1], 
+        exp_genlist = [
+            source+'dup:Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+':Test:contrail-vrouter-agent:0'
+        ]
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[1]],
                                               exp_genlist)
         # start collectors[0]
         vizd_obj.collectors[0].start()
-        exp_genlist = ['contrail-collector']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0],
+        exp_genlist = [source+':Analytics:contrail-collector:0']
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[0]],
                                               exp_genlist)
         # verify that the old UVEs are flushed from redis when collector restarts
         exp_genlist = [vizd_obj.collectors[0].get_generator_id()]
@@ -262,14 +257,16 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
                                 vizd_obj.collectors[0].get_redis_uve(),
                                 exp_genlist)
 
-        # stop collectors[1] and verify that OpServer, AlarmGen and QE switch 
-        # from secondary to primary and contrail-vrouter-agent from primary to
-        # secondary
+        # stop collectors[1] and verify that all the generators are connected
+        # to collectors[0]
         vizd_obj.collectors[1].stop()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent',
-                       'contrail-analytics-api',
-                       'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0],
+        exp_genlist = [
+            source+':Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+':Test:contrail-vrouter-agent:0'
+        ]
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[0]],
                                               exp_genlist)
         # verify the generator list in redis
         exp_genlist = [vizd_obj.collectors[0].get_generator_id(),
@@ -282,9 +279,12 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         # stop QE 
         vizd_obj.query_engine.stop()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent',
-                       'contrail-analytics-api']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0],
+        exp_genlist = [
+            source+':Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Test:contrail-vrouter-agent:0'
+        ]
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[0]],
                                               exp_genlist)
 
         # verify the generator list in redis
@@ -295,25 +295,23 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
                                 vizd_obj.collectors[0].get_redis_uve(),
                                 exp_genlist)
 
-        # start a python generator and QE with collectors[1] as the primary and
-        # collectors[0] as the secondary. On generator startup, verify 
-        # that they connect to the secondary collector, if the 
-        # connection to the primary fails
+        # start a python generator and QE and verify that they are connected
+        # to collectors[0]
         vr2_collectors = [vizd_obj.collectors[1].get_addr(), 
                           vizd_obj.collectors[0].get_addr()]
         vr2_agent = self.useFixture(
             GeneratorFixture("contrail-snmp-collector", collectors,
                              logging, vizd_obj.get_opserver_port()))
         assert vr2_agent.verify_on_setup()
-        vizd_obj.query_engine.set_primary_collector(
-                            vizd_obj.collectors[1].get_addr())
-        vizd_obj.query_engine.set_secondary_collector(
-                            vizd_obj.collectors[0].get_addr())
         vizd_obj.query_engine.start()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent',
-                       'contrail-analytics-api', 'contrail-snmp-collector',
-                       'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[0],
+        exp_genlist = [
+            source+':Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Test:contrail-vrouter-agent:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+':Test:contrail-snmp-collector:0'
+        ]
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[0]],
                                               exp_genlist)
         # stop the collectors[0] - both collectors[0] and collectors[1] are down
         # send the VM UVE and verify that the VM UVE is synced after connection
@@ -327,10 +325,14 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         vr_agent.send_vm_uve(vm_id='abcd-1234-efgh-5678',
                              num_vm_ifs=5, msg_count=5) 
         vizd_obj.collectors[1].start()
-        exp_genlist = ['contrail-collector', 'contrail-vrouter-agent',
-                       'contrail-analytics-api', 'contrail-snmp-collector',
-                       'contrail-query-engine']
-        assert vizd_obj.verify_generator_list(vizd_obj.collectors[1],
+        exp_genlist = [
+            source+'dup:Analytics:contrail-collector:0',
+            source+':Analytics:contrail-analytics-api:0',
+            source+':Test:contrail-vrouter-agent:0',
+            source+':Analytics:contrail-query-engine:0',
+            source+':Test:contrail-snmp-collector:0'
+        ]
+        assert vizd_obj.verify_generator_list([vizd_obj.collectors[1]],
                                               exp_genlist)
         assert vr_agent.verify_vm_uve(vm_id='abcd-1234-efgh-5678',
                                       num_vm_ifs=5, msg_count=5)
@@ -349,7 +351,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
             return True
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, self.__class__.redis_port, 0,
+            AnalyticsFixture(logging, builddir, 0,
             start_kafka = True))
         assert vizd_obj.verify_on_setup()
 
@@ -474,7 +476,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
         # collector_ha_test flag is set to True, because we wanna test
         # retrieval of alarms across multiple redis servers.
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1, 0,
+            AnalyticsFixture(logging, builddir, 0,
                              collector_ha_test=True,
                              start_kafka = True))
         assert vizd_obj.verify_on_setup()
@@ -587,7 +589,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
             return True
 
         vizd_obj = self.useFixture(
-            AnalyticsFixture(logging, builddir, -1, 0,
+            AnalyticsFixture(logging, builddir, 0,
                 collector_ha_test=True, start_kafka = True))
         assert vizd_obj.verify_on_setup()
 
@@ -1894,7 +1896,7 @@ class AnalyticsUveTest(testtools.TestCase, fixtures.TestWithFixtures):
 
         vizd_obj = self.useFixture(
             AnalyticsFixture(logging,
-                             builddir, -1, 0,
+                             builddir, 0,
                              redis_password='contrail'))
         assert vizd_obj.verify_on_setup()
         assert vizd_obj.set_opserver_db_info(vizd_obj.opserver,

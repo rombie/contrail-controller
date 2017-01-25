@@ -77,7 +77,8 @@ public:
     }
 
     bool ParseUuidTableRowResponse(const string &uuid,
-            const GenDb::ColList &col_list, CassColumnKVVec *cass_data_vec) {
+            const GenDb::ColList &col_list, CassColumnKVVec *cass_data_vec,
+            ConfigCassandraParseContext &context) {
         // Retrieve event index prepended to uuid, to get to the correct db.
         int idx = HashUUID(uuid);
         UUIDIndexMap::iterator it = db_index_[idx].find(uuid);
@@ -87,7 +88,7 @@ public:
              events_[SizeType(index)]["db"][uuid.c_str()].MemberBegin();
              k != events_[SizeType(index)]["db"][uuid.c_str()].MemberEnd(); ++k) {
             ParseUuidTableRowJson(uuid, k->name.GetString(), k->value.GetString(),
-                                  0, cass_data_vec);
+                                  0, cass_data_vec, context);
         }
         db_index_[idx].erase(it);
         return true;

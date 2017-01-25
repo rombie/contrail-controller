@@ -54,8 +54,8 @@ bool ConfigJsonParser::ParseNameType(const Document &document,
 }
 
 bool ConfigJsonParser::ParseOneProperty(const Value &key_node,
-        const Value &value_node, bool add_change,
-        const IFMapTable::RequestKey &key, IFMapOrigin::Origin origin,
+        const Value &value_node, const IFMapTable::RequestKey &key,
+        IFMapOrigin::Origin origin,
         ConfigClientManager::RequestList *req_list) const {
     string metaname = key_node.GetString();
     MetadataParseMap::const_iterator loc = metadata_map_.find(metaname);
@@ -71,28 +71,27 @@ bool ConfigJsonParser::ParseOneProperty(const Value &key_node,
 
     std::replace(metaname.begin(), metaname.end(), '_', '-');
     config_mgr()->InsertRequestIntoQ(origin, "", "", metaname, pvalue, key,
-                                     add_change, req_list);
+                                     true, req_list);
 
     return true;
 }
 
 bool ConfigJsonParser::ParseProperties(const Document &document,
-        bool add_change, const IFMapTable::RequestKey &key,
-        IFMapOrigin::Origin origin,
+        const IFMapTable::RequestKey &key, IFMapOrigin::Origin origin,
         ConfigClientManager::RequestList *req_list) const {
 
     Value::ConstMemberIterator doc_itr = document.MemberBegin();
     const Value &value_node = doc_itr->value;
     for (Value::ConstMemberIterator itr = value_node.MemberBegin();
          itr != value_node.MemberEnd(); ++itr) {
-        ParseOneProperty(itr->name, itr->value, add_change, key, origin,
+        ParseOneProperty(itr->name, itr->value, key, origin,
                          req_list);
     }
 
     return true;
 }
 
-bool ConfigJsonParser::ParseRef(const Value &ref_entry, bool add_change,
+bool ConfigJsonParser::ParseRef(const Value &ref_entry,
         IFMapOrigin::Origin origin, const string &to_underscore,
         const IFMapTable::RequestKey &key,
         ConfigClientManager::RequestList *req_list) const {
@@ -122,12 +121,12 @@ bool ConfigJsonParser::ParseRef(const Value &ref_entry, bool add_change,
     neigh_name += to_node.GetString();
 
     config_mgr()->InsertRequestIntoQ(origin, to_underscore, neigh_name,
-                                 link_name, pvalue, key, add_change, req_list);
+                                 link_name, pvalue, key, true, req_list);
 
     return true;
 }
 
-bool ConfigJsonParser::ParseLinks(const Document &document, bool add_change,
+bool ConfigJsonParser::ParseLinks(const Document &document, 
         const IFMapTable::RequestKey &key, IFMapOrigin::Origin origin,
         ConfigClientManager::RequestList *req_list) const {
     Value::ConstMemberIterator doc_itr = document.MemberBegin();
@@ -145,7 +144,7 @@ bool ConfigJsonParser::ParseLinks(const Document &document, bool add_change,
             const Value& arr = itr->value;
             assert(arr.IsArray());
             for (size_t i = 0; i < arr.Size(); ++i) {
-                ParseRef(arr[i], add_change, origin, to_underscore,
+                ParseRef(arr[i], origin, to_underscore,
                          key, req_list);
             }
         }
@@ -161,7 +160,7 @@ bool ConfigJsonParser::ParseLinks(const Document &document, bool add_change,
                     config_mgr()->GetLinkName(parent_type,key.id_type);
                 auto_ptr<AutogenProperty > pvalue;
                 config_mgr()->InsertRequestIntoQ(origin, parent_type,
-                     parent_name, metaname, pvalue, key, add_change, req_list);
+                     parent_name, metaname, pvalue, key, true, req_list);
             } else {
                 continue;
             }
@@ -171,7 +170,7 @@ bool ConfigJsonParser::ParseLinks(const Document &document, bool add_change,
     return true;
 }
 
-bool ConfigJsonParser::ParseDocument(const Document &document, bool add_change,
+bool ConfigJsonParser::ParseDocument(const Document &document,
         IFMapOrigin::Origin origin, ConfigClientManager::RequestList *req_list,
         IFMapTable::RequestKey *key) const {
     // Update the name and the type into 'key'.
@@ -181,11 +180,11 @@ bool ConfigJsonParser::ParseDocument(const Document &document, bool add_change,
 
     // For each property, we will clone 'key' to create our DBRequest's i.e.
     // 'key' will never become part of any DBRequest.
-    if (!ParseProperties(document, add_change, *key, origin, req_list)){
+    if (!ParseProperties(document, *key, origin, req_list)){
         return false;
     }
 
-    if (!ParseLinks(document, add_change, *key, origin, req_list)) {
+    if (!ParseLinks(document, *key, origin, req_list)) {
         return false;
     }
 
@@ -194,7 +193,7 @@ bool ConfigJsonParser::ParseDocument(const Document &document, bool add_change,
 
 bool ConfigJsonParser::Receive(const string &uuid,
                                const rapidjson::Document &document,
-                               bool add_change, IFMapOrigin::Origin origin) {
+                               IFMapOrigin::Origin origin) {
     ConfigClientManager::RequestList req_list;
 
     if (document.HasParseError()) {
@@ -207,7 +206,7 @@ bool ConfigJsonParser::Receive(const string &uuid,
         return false;
     } else {
         auto_ptr<IFMapTable::RequestKey> key(new IFMapTable::RequestKey());
-        if (!ParseDocument(document, add_change, origin, &req_list, key.get()))
+        if (!ParseDocument(document, origin, &req_list, key.get()))
             return false;
         config_mgr()->config_db_client()->FormDeleteRequestList(uuid, &req_list,
                                                             key.get(), true);

@@ -53,6 +53,7 @@ class LoadbalancerListenerKM(DBBaseKM):
         self.uuid = uuid
         self.loadbalancer = None
         self.loadbalancer_pool = None
+        self.target_port = None
         self.update(obj_dict)
     # end __init__
 
@@ -66,6 +67,12 @@ class LoadbalancerListenerKM(DBBaseKM):
         self.params = obj.get('loadbalancer_listener_properties', None)
         self.update_single_ref('loadbalancer', obj)
         self.update_single_ref('loadbalancer_pool', obj)
+        annotations = obj.get('annotations', None)
+        if annotations:
+            for kvp in annotations['key_value_pair'] or []:
+                if kvp['key'] == 'targetPort':
+                    self.target_port = kvp['value']
+                    break
     # end update
 
     @classmethod
@@ -473,6 +480,8 @@ class FloatingIpPoolKM(DBBaseKM):
         self.name = obj['fq_name'][-1]
         self.fq_name = obj['fq_name']
         self.update_single_ref('virtual_network', obj)
+        if 'floating_ip_pool_subnets' in obj:
+            self.floating_ip_pool_subnets = obj['floating_ip_pool_subnets']
 
     @classmethod
     def delete(cls, uuid):
