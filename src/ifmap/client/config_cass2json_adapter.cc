@@ -44,8 +44,7 @@ ConfigCass2JsonAdapter::ConfigCass2JsonAdapter(
     CreateJsonString(obj_type, cdvec);
 }
 
-string ConfigCass2JsonAdapter::GetJsonString(
-    const Value &attr_value) {
+string ConfigCass2JsonAdapter::GetJsonString(const Value &attr_value) {
     StringBuffer buffer;
     Writer<StringBuffer> writer(buffer);
     attr_value.Accept(writer);
@@ -76,25 +75,24 @@ void ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type, Value &d,
             boost::starts_with(c.key, list_prop_prefix)) {
         size_t from_front_pos = c.key.find(':');
         size_t from_back_pos = c.key.rfind(':');
-        string property_map = c.key.substr(from_front_pos+1,
-                                           from_back_pos-from_front_pos-1);
+        string prop_map = c.key.substr(from_front_pos + 1,
+                                       from_back_pos - from_front_pos - 1);
         string wrapper = cassandra_client_->mgr()->GetWrapperFieldName(type_,
-                                                       property_map);
-        if (!d.HasMember(property_map.c_str())) {
+                                                       prop_map);
+        if (!d.HasMember(prop_map.c_str())) {
             Value v;
             Value vk;
-            d.AddMember(vk.SetString(property_map.c_str(), a), v.SetObject(),
-                        a);
+            d.AddMember(vk.SetString(prop_map.c_str(), a), v.SetObject(), a);
             Value va;
             Value vak;
-            d[property_map.c_str()].AddMember(vak.SetString(wrapper.c_str(), a),
-                                              va.SetArray(), a);
+            d[prop_map.c_str()].AddMember(vak.SetString(wrapper.c_str(), a),
+                                          va.SetArray(), a);
         }
 
         Document map_document(&json_document_.GetAllocator());
         map_document.Parse<0>(c.value.c_str());
         assert(!map_document.HasParseError());
-        d[property_map.c_str()][wrapper.c_str()].PushBack(map_document, a);
+        d[prop_map.c_str()][wrapper.c_str()].PushBack(map_document, a);
         return;
     }
 
@@ -103,9 +101,9 @@ void ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type, Value &d,
         size_t from_back_pos = c.key.rfind(':');
         assert(from_front_pos != string::npos);
         assert(from_back_pos != string::npos);
-        string ref_type = c.key.substr(from_front_pos+1,
-                                             (from_back_pos-from_front_pos-1));
-        string ref_uuid = c.key.substr(from_back_pos+1);
+        string ref_type = c.key.substr(from_front_pos + 1,
+                                       from_back_pos-from_front_pos - 1);
+        string ref_uuid = c.key.substr(from_back_pos + 1);
 
         string fq_name_ref = cassandra_client_->UUIDToFQName(ref_uuid);
         if (fq_name_ref == "ERROR")
@@ -149,7 +147,8 @@ void ConfigCass2JsonAdapter::AddOneEntry(const string &obj_type, Value &d,
         Value v;
         Value vk;
         d.AddMember(vk.SetString(parent_type_prefix.c_str(), a),
-           v.SetString(c.key.substr(type_pos+1, pos-type_pos-1).c_str(), a), a);
+                    v.SetString(c.key.substr(type_pos + 1,
+                                             pos-type_pos - 1).c_str(), a), a);
         return;
     }
 
@@ -180,7 +179,7 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
     // First look for and part "type" field. We usually expect it to be at the
     // end as column names are suppose to be allways sorted lexicographically.
     size_t type_index = -1;
-    for (size_t i = cdvec.size()-1; i >= 0; i--) {
+    for (size_t i = cdvec.size() - 1; i >= 0; i--) {
         if (cdvec[i].key == "type") {
             AddOneEntry(obj_type, d, cdvec[i]);
             type_index = i;

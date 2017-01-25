@@ -4,9 +4,9 @@ require 'pp'
 require 'json'
 require 'tempfile'
 
-@host = "10.204.216.23"
+@host = ENV["CONFIG_JSON_PARSER_TEST_DB"] || "10.204.216.23"
 @cass=<<EOF
-cqlsh 10.204.216.23
+cqlsh #{@host}
 use config_db_uuid;
 select * from obj_uuid_table WHERE key = textAsBlob('387b8af9-7cc3-4ed0-ae29-4cc72f426a20');
 EOF
@@ -21,28 +21,33 @@ EOF
     return run_py
 end
 
+def run (cmd)
+    puts cmd
+    return `#{cmd}`
+end
+
 def get_cassandra_data (host = @host)
     t = Tempfile.new(["fq", ".py"])
     t.puts get_py_cmd("OBJ_FQ_NAME_TABLE")
     fq_cmd = t.path
     t.close
     tf1 = "/tmp/#{File.basename t.path}"
-    `sshpass -p c0ntrail123 scp -q #{t.path} root@#{host}:#{tf1}`
+    run("sshpass -p c0ntrail123 scp -q #{t.path} root@#{host}:#{tf1}")
 
     t = Tempfile.new(["data", ".py"])
     t.puts get_py_cmd("OBJ_UUID_TABLE")
     db_cmd = t.path
     t.close
     tf2 = "/tmp/#{File.basename t.path}"
-    `sshpass -p c0ntrail123 scp -q #{t.path} root@#{host}:#{tf2}`
+    run("sshpass -p c0ntrail123 scp -q #{t.path} root@#{host}:#{tf2}")
 
-    c1 = "cat #{fq_cmd} | sshpass -p c0ntrail123 ssh -q root@#{host} pycassaShell -H 10.204.216.23 -k config_db_uuid -f #{tf1}| grep OrderedDict"
-    puts c1
-    o1 = `#{c1}`
+    c1 = "cat #{fq_cmd} | sshpass -p c0ntrail123 ssh -q root@#{host} pycassaShell -H #{@host} -k config_db_uuid -f #{tf1}| grep OrderedDict"
+    puts "Retrieving OBJ_FQ_NAME_TABLE from #{@host} cassandra db"
+    o1 = run(c1)
 
-    c2 = "cat #{db_cmd} | sshpass -p c0ntrail123 ssh -q root@#{host} pycassaShell -H 10.204.216.23 -k config_db_uuid -f #{tf2}| grep OrderedDict"
-    puts c2
-    o2 = `#{c2}`
+    c2 = "cat #{db_cmd} | sshpass -p c0ntrail123 ssh -q root@#{host} pycassaShell -H #{@host} -k config_db_uuid -f #{tf2}| grep OrderedDict"
+    puts "Retrieving OBJ_UUID_TABLE from #{@host} cassandra db"
+    o2 = run(c2)
 
     @fq_file = "/tmp/cassandra_db_#{@host}_fq_#{Process.pid}.txt"
     @config_file = "/tmp/cassandra_db_#{@host}_config_#{Process.pid}.txt"
@@ -86,8 +91,12 @@ def convert_to_json
 end
 
 def main
-#   get_cassandra_data
-    exec "build/debug/ifmap/client/test/config_json_parser_test --gtest_filter=ConfigJsonParserTest.BulkSync"
+    get_cassandra_data
+    ENV["CONFIG_JSON_PARSER_TEST_INTROSPECT"] ||= "0"
+    cmd = "build/debug/ifmap/client/test/config_json_parser_test --gtest_filter=ConfigJsonParserTest.BulkSync"
+    print "CONFIG_JSON_PARSER_TEST_INTROSPECT="
+    puts "#{ENV["CONFIG_JSON_PARSER_TEST_INTROSPECT"]} #{cmd}"
+    exec(ENV, cmd)
 end
 
 main
