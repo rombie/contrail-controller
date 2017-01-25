@@ -5,6 +5,7 @@
 #include <boost/program_options.hpp>
 #include "io/event_manager.h"
 #include "ifmap/ifmap_config_options.h"
+#include "sandesh/sandesh.h"
 
 // Process command line/configuration file options for control-node.
 class Options {
@@ -85,17 +86,7 @@ public:
     const std::vector<std::string> cassandra_server_list() const {
         return cassandra_server_list_;
     }
-
-    const std::string rabbitmq_ip() const { return ifmap_config_options_.rabbitmq_ip; }
-    const std::string rabbitmq_port() const { return ifmap_config_options_.rabbitmq_port; }
-    const std::string rabbitmq_user() const { return ifmap_config_options_.rabbitmq_user; }
-    const std::string rabbitmq_password() const { return ifmap_config_options_.rabbitmq_password; }
-    const std::string rabbitmq_vhost() const { return ifmap_config_options_.rabbitmq_vhost; }
-    bool rabbitmq_use_ssl() const { return ifmap_config_options_.rabbitmq_use_ssl; }
-    const std::string rabbitmq_ssl_version() const { return ifmap_config_options_.rabbitmq_ssl_version; }
-    const std::string rabbitmq_ssl_keyfile() const { return ifmap_config_options_.rabbitmq_ssl_keyfile; }
-    const std::string rabbitmq_ssl_certfile() const { return ifmap_config_options_.rabbitmq_ssl_certfile; }
-    const std::string rabbitmq_ssl_ca_certs() const { return ifmap_config_options_.rabbitmq_ssl_ca_certs; }
+    const SandeshConfig &sandesh_config() const { return sandesh_config_; }
 
     void ParseReConfig();
 
@@ -157,5 +148,6 @@ private:
     std::string cassandra_password_;
     std::vector<std::string> cassandra_server_list_;
     std::vector<std::string> default_collector_server_list_;
+    SandeshConfig sandesh_config_;
     boost::program_options::options_description config_file_options_;
 };

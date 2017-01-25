@@ -66,6 +66,10 @@ void Options::Initialize(EventManager &evm,
     string default_config_db_server(host_ip + ":9042");
     default_config_db_server_list.push_back(default_config_db_server);
 
+    vector<string> default_rabbitmq_server_list;
+    string default_rabbitmq_server(host_ip + ":5672");
+    default_rabbitmq_server_list.push_back(default_rabbitmq_server);
+
     // Command line and config file options.
     opt::options_description config("Configuration options");
     config.add_options()
@@ -175,12 +179,10 @@ void Options::Initialize(EventManager &evm,
              "IFMAP end of rib timeout")
         ("IFMAP.peer_response_wait_time", opt::value<int>()->default_value(60),
              "IFMAP peer response wait time")
-        ("IFMAP.rabbitmq_ip",
-             opt::value<string>()->default_value("127.0.0.1"),
-             "RabbitMQ server ip")
-        ("IFMAP.rabbitmq_port",
-             opt::value<string>()->default_value("5672"),
-             "RabbitMQ port")
+        ("IFMAP.rabbitmq_server_list",
+             opt::value<vector<string> >()->default_value(
+             default_rabbitmq_server_list, default_rabbitmq_server),
+             "RabbitMQ server list")
         ("IFMAP.rabbitmq_user",
              opt::value<string>()->default_value("guest"),
              "RabbitMQ user")
@@ -220,6 +222,21 @@ void Options::Initialize(EventManager &evm,
              opt::value<string>()->default_value(
              "/etc/contrail/ssl/certs/ca-cert.pem"),
              "XMPP CA ssl certificate")
+        ("SANDESH.keyfile", opt::value<string>()->default_value(
+            "/etc/contrail/ssl/private/server-privkey.pem"),
+            "Sandesh ssl private key")
+        ("SANDESH.certfile", opt::value<string>()->default_value(
+            "/etc/contrail/ssl/certs/server.pem"),
+            "Sandesh ssl certificate")
+        ("SANDESH.ca_cert", opt::value<string>()->default_value(
+            "/etc/contrail/ssl/certs/ca-cert.pem"),
+            "Sandesh CA ssl certificate")
+        ("SANDESH.sandesh_ssl_enable",
+             opt::bool_switch(&sandesh_config_.sandesh_ssl_enable),
+             "Enable ssl for sandesh connection")
+        ("SANDESH.introspect_ssl_enable",
+             opt::bool_switch(&sandesh_config_.introspect_ssl_enable),
+             "Enable ssl for introspect connection")
         ;
 
     config_file_options_.add(config);
@@ -380,12 +397,9 @@ void Options::Process(int argc, char *argv[],
     GetOptValue<int>(var_map,
                      ifmap_config_options_.peer_response_wait_time,
                      "IFMAP.peer_response_wait_time");
-    GetOptValue<string>(var_map,
-                     ifmap_config_options_.rabbitmq_ip,
-                     "IFMAP.rabbitmq_ip");
-    GetOptValue<string>(var_map,
-                     ifmap_config_options_.rabbitmq_port,
-                     "IFMAP.rabbitmq_port");
+    GetOptValue< vector<string> >(var_map,
+                     ifmap_config_options_.rabbitmq_server_list,
+                     "IFMAP.rabbitmq_server_list");
     GetOptValue<string>(var_map,
                      ifmap_config_options_.rabbitmq_user,
                      "IFMAP.rabbitmq_user");
@@ -415,6 +429,17 @@ void Options::Process(int argc, char *argv[],
     GetOptValue<string>(var_map, xmpp_server_cert_, "DEFAULT.xmpp_server_cert");
     GetOptValue<string>(var_map, xmpp_server_key_, "DEFAULT.xmpp_server_key");
     GetOptValue<string>(var_map, xmpp_ca_cert_, "DEFAULT.xmpp_ca_cert");
+
+    GetOptValue<string>(var_map, sandesh_config_.keyfile,
+                        "SANDESH.keyfile");
+    GetOptValue<string>(var_map, sandesh_config_.certfile,
+                        "SANDESH.certfile");
+    GetOptValue<string>(var_map, sandesh_config_.ca_cert,
+                        "SANDESH.ca_cert");
+    GetOptValue<bool>(var_map, sandesh_config_.sandesh_ssl_enable,
+                      "SANDESH.sandesh_ssl_enable");
+    GetOptValue<bool>(var_map, sandesh_config_.introspect_ssl_enable,
+                      "SANDESH.introspect_ssl_enable");
 }
 
 void Options::ParseReConfig() {
