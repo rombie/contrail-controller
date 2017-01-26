@@ -10,6 +10,7 @@
 
 #include <boost/function.hpp>
 #include <boost/scoped_ptr.hpp>
+#include <base/logging.h>
 #include <base/task_trigger.h>
 #include "testing/gunit.h"
 
@@ -77,6 +78,7 @@ do {                                                                           \
             break;                                                             \
         }                                                                      \
         usleep(wait);                                                          \
+        TASK_UTIL_WAIT_MSG(_i, expected, actual, wait, " to become ", msg);    \
     }                                                                          \
     if (!_satisfied) {                                                         \
         EXPECT_TRUE((expected) == (actual));                                   \
@@ -94,6 +96,7 @@ do {                                                                           \
             break;                                                             \
         }                                                                      \
         usleep(wait);                                                          \
+        TASK_UTIL_WAIT_MSG(_i, expected, actual, wait, " to not remain ", msg);\
     }                                                                          \
     if (!_satisfied) {                                                         \
         EXPECT_TRUE((expected) != (actual));                                   \
@@ -369,18 +372,14 @@ static inline unsigned long long int task_util_retry_count() {
                       task_util_retry_count(), msg)
 
 #define TASK_UTIL_EXPECT_TRUE(condition) \
-    TASK_UTIL_WAIT_EQ_NO_MSG(true, condition, task_util_wait_time(), \
-                             task_util_retry_count(), "")
+    TASK_UTIL_EXPECT_EQ(true, condition)
 #define TASK_UTIL_EXPECT_TRUE_MSG(condition, msg) \
-    TASK_UTIL_WAIT_EQ_NO_MSG(true, condition, task_util_wait_time(), \
-                             task_util_retry_count(), msg)
+    TASK_UTIL_EXPECT_EQ_MSG(true, condition, msg)
 
 #define TASK_UTIL_EXPECT_FALSE(condition) \
-    TASK_UTIL_WAIT_EQ_NO_MSG(false, condition, task_util_wait_time(), \
-                             task_util_retry_count(), "")
+    TASK_UTIL_EXPECT_EQ(false, condition)
 #define TASK_UTIL_EXPECT_FALSE_MSG(condition, msg) \
-    TASK_UTIL_WAIT_EQ_NO_MSG(false, condition, task_util_wait_time(), \
-                             task_util_retry_count(), msg)
+    TASK_UTIL_EXPECT_EQ_MSG(false, condition, msg)
 
 #define TASK_UTIL_EXPECT_DEATH(statement, regex)                               \
     do {                                                                       \

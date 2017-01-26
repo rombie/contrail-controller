@@ -139,9 +139,8 @@ bool ConfigAmqpClient::RabbitMQReader::ConnectToRabbitMQ(bool queue_delete) {
             consumer_tag_ = channel_->BasicConsume(queue, queue_name,
                                                    true, false, true, 0);
         } catch (std::exception &e) {
-            static std::string what = e.what();
             std::cout << "Caught fatal exception while connecting to RabbitMQ: "
-                << what << std::endl;
+                << e.what() << std::endl;
             // Wait to reconnect
             sleep(5);
             continue;
@@ -231,9 +230,8 @@ bool ConfigAmqpClient::RabbitMQReader::ReceiveRabbitMessages(
         // timeout = -1.. wait forever
         return (channel_->BasicConsumeMessage(consumer_tag_, envelope, -1));
     } catch (std::exception &e) {
-        static std::string what = e.what();
         std::cout << "Caught fatal exception while receiving " <<
-            "messages from RabbitMQ: " << what << std::endl;
+            "messages from RabbitMQ: " << e.what() << std::endl;
         return false;
     } catch (...) {
         std::cout << "Caught fatal unknown exception while receiving " <<
@@ -248,9 +246,8 @@ bool ConfigAmqpClient::RabbitMQReader::AckRabbitMessages(
     try {
         channel_->BasicAck(envelope);
     } catch (std::exception &e) {
-        static std::string what = e.what();
         std::cout << "Caught fatal exception while Acking message to RabbitMQ: "
-            << what << std::endl;
+            << e.what() << std::endl;
         return false;
     } catch (...) {
         std::cout << "Caught fatal unknown exception while acking messages " <<

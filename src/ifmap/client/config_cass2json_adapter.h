@@ -38,8 +38,9 @@ public:
 private:
     bool CreateJsonString(const std::string &obj_type,
                           const CassColumnKVVec &cdvec);
-    void AddOneEntry(const std::string &obj_type, rapidjson::Value &d,
-                     const JsonAdapterDataType &c);
+    void AddOneEntry(rapidjson::Value *jsonObject, const std::string &obj_type,
+                     const JsonAdapterDataType &c,
+                     rapidjson::Document::AllocatorType &a);
     static std::string GetJsonString(const rapidjson::Value &attr_value);
 
     ConfigCassandraClient *cassandra_client_;
