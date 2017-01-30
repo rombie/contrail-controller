@@ -83,7 +83,6 @@ static void DnsServerGetProcessStateCb(
     }
 }
 
-
 bool DnsServerReEvaluatePublishCb(IFMapServer *ifmap_server,
       const ConfigClientManager *config_client_manager, std::string &message) {
     if (!config_client_manager->GetEndOfRibComputed()) {
@@ -151,6 +150,11 @@ void InitializeSignalHandlers() {
 }
 
 int main(int argc, char *argv[]) {
+    // Initialize the task scheduler
+    int num_threads_to_tbb = TaskScheduler::GetDefaultThreadCount() +
+        ConfigClientManager::GetNumWorkers();
+    TaskScheduler::Initialize(num_threads_to_tbb);
+
     // Create DB table and event manager
     Dns::Init();
 

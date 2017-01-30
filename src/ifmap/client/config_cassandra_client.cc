@@ -431,7 +431,7 @@ void ConfigCassandraClient::HandleCassandraConnectionStatus(bool success) {
     } else {
         process::ConnectionState::GetInstance()->Update(
             process::ConnectionType::DATABASE, "Cassandra",
-            process::ConnectionStatus::UP,
+            process::ConnectionStatus::DOWN,
             dbif_->Db_GetEndpoints(), "Lost Cassandra connection");
     }
 }

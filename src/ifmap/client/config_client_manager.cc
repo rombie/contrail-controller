@@ -34,7 +34,7 @@ ConfigClientManager::ConfigClientManager(EventManager *evm,
         const IFMapConfigOptions& config_options)
         : evm_(evm), ifmap_server_(ifmap_server) {
     config_json_parser_.reset(new ConfigJsonParser(this));
-    thread_count_ = TaskScheduler::GetInstance()->HardwareThreadCount();
+    thread_count_ = kNumConfigReaderTasks;
     end_of_rib_computed_ = false;
     end_of_rib_computed_at_ = UTCTimestampUsec();
     config_db_client_.reset(

@@ -92,6 +92,8 @@ class VncPod(object):
         vmi_obj = VirtualMachineInterface(name=pod_name, parent_obj=proj_obj)
         vmi_obj.set_virtual_network(vn_obj)
         vmi_obj.set_virtual_machine(vm_obj)
+        sg_obj = SecurityGroup("default", proj_obj)
+        vmi_obj.add_security_group(sg_obj)
         try:
             self._vnc_lib.virtual_machine_interface_create(vmi_obj)
         except RefsExistError:
@@ -198,7 +200,7 @@ class VncPod(object):
         pod_id = event['object']['metadata'].get('uid')
         pod_name = event['object']['metadata'].get('name')
         pod_namespace = event['object']['metadata'].get('namespace')
-        labels = event['object']['metadata']['labels']
+        labels = event['object']['metadata'].get('labels', {})
 
         if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
             pod_node = event['object']['spec'].get('nodeName')

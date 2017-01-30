@@ -51,6 +51,5 @@ client_unit_tests = [ config_json_parser_test ]
 client_test = env.TestSuite('ifmap-test', client_unit_tests)
 
 env.Alias('src/ifmap/client:test', client_test)
-env.Alias('src/ifmap/client:flaky-test', [
-])
+env.Alias('src/ifmap/client:flaky-test', [ ])
 Return('client_unit_tests')
