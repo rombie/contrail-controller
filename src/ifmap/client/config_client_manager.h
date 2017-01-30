@@ -72,11 +72,6 @@ public:
     void GetPeerServerInfo(IFMapPeerServerInfoUI *server_info);
     void GetClientManagerInfo(ConfigClientManagerInfo &info) const;
 
-    void EndOfConfig();
-    void WaitForEndOfConfig();
-    void GetPeerServerInfo(IFMapPeerServerInfoUI *server_info);
-    void GetClientManagerInfo(ConfigClientManagerInfo &info) const;
-
 private:
     typedef std::pair<std::string, std::string> LinkMemberPair;
     typedef std::pair<std::string, bool> LinkDataPair;

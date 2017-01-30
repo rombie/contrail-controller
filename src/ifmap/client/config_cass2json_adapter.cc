@@ -63,6 +63,8 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
         string c_value = c.value;
         if (c.key == "prop:security_group_id" && c.value[0] != '\"')
             c_value = "\"" + c.value + "\"";
+        if (c.key == "prop:bgpaas_session_attributes")
+            c_value = "\"\"";
         Document prop_document(&a);
         prop_document.Parse<0>(c_value.c_str());
         assert(!prop_document.HasParseError());

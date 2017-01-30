@@ -275,6 +275,8 @@ string ConfigCassandraClient::GetUUID(const string &key,
 void ConfigCassandraClient::UpdateCache(const std::string &key,
         const std::string &obj_type, ObjTypeUUIDList &uuid_list) {
     string uuid_str = GetUUID(key, obj_type);
+    if (uuid_str.empty())
+        return;
     uuid_list.push_back(make_pair(obj_type, uuid_str));
     AddFQNameCache(uuid_str, key.substr(0, key.rfind(':')));
 }

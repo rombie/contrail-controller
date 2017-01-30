@@ -58,7 +58,11 @@ ConfigAmqpClient::ConfigAmqpClient(ConfigClientManager *mgr, string hostname,
     rabbitmq_ssl_certfile_(options.rabbitmq_ssl_certfile),
     rabbitmq_ssl_ca_certs_(options.rabbitmq_ssl_ca_certs) {
 
+    connection_status_ = false;
     if (disable_)
+        return;
+
+    if (options.rabbitmq_server_list.empty())
         return;
 
     for (vector<string>::const_iterator iter =
@@ -82,7 +86,6 @@ ConfigAmqpClient::ConfigAmqpClient(ConfigClientManager *mgr, string hostname,
     endpoint_.address(boost::asio::ip::address::from_string(rabbitmq_ip(), ec));
     endpoint_.port(port);
 
-    connection_status_ = false;
     connection_status_change_at_ = UTCTimestampUsec();
 
     TaskScheduler *scheduler = TaskScheduler::GetInstance();
@@ -139,8 +142,9 @@ bool ConfigAmqpClient::RabbitMQReader::ConnectToRabbitMQ(bool queue_delete) {
             consumer_tag_ = channel_->BasicConsume(queue, queue_name,
                                                    true, false, true, 0);
         } catch (std::exception &e) {
+            static std::string what = e.what();
             std::cout << "Caught fatal exception while connecting to RabbitMQ: "
-                << e.what() << std::endl;
+                << what << std::endl;
             // Wait to reconnect
             sleep(5);
             continue;
@@ -230,8 +234,9 @@ bool ConfigAmqpClient::RabbitMQReader::ReceiveRabbitMessages(
         // timeout = -1.. wait forever
         return (channel_->BasicConsumeMessage(consumer_tag_, envelope, -1));
     } catch (std::exception &e) {
+        static std::string what = e.what();
         std::cout << "Caught fatal exception while receiving " <<
-            "messages from RabbitMQ: " << e.what() << std::endl;
+            "messages from RabbitMQ: " << what << std::endl;
         return false;
     } catch (...) {
         std::cout << "Caught fatal unknown exception while receiving " <<
@@ -246,8 +251,9 @@ bool ConfigAmqpClient::RabbitMQReader::AckRabbitMessages(
     try {
         channel_->BasicAck(envelope);
     } catch (std::exception &e) {
+        static std::string what = e.what();
         std::cout << "Caught fatal exception while Acking message to RabbitMQ: "
-            << e.what() << std::endl;
+            << what << std::endl;
         return false;
     } catch (...) {
         std::cout << "Caught fatal unknown exception while acking messages " <<

@@ -539,7 +539,7 @@ TEST_F(ConfigJsonParserTest, ServerParser4) {
 // 2) delete link(vr,vm)
 // Same as ServerParser4 except that the various operations are happening in
 // separate messages.
-TEST_F(ConfigJsonParserTest, ServerParser4InParts) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser4InParts) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -601,7 +601,7 @@ TEST_F(ConfigJsonParserTest, ServerParser5) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties
 // 2) delete vr, then link(vr,vm)
 // The vr should disappear and vm should continue to live
-TEST_F(ConfigJsonParserTest, ServerParser6) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser6) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -624,7 +624,7 @@ TEST_F(ConfigJsonParserTest, ServerParser6) {
 // The vr should disappear and vm should continue to live
 // Same as ServerParser6 except that the various operations are happening in
 // separate messages.
-TEST_F(ConfigJsonParserTest, ServerParser6InParts) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser6InParts) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -664,7 +664,7 @@ TEST_F(ConfigJsonParserTest, ServerParser6InParts) {
 // 2) delete vr, then link(vr,vm)
 // 3) add vr-with-properties
 // Both vr and vm nodes should continue to live
-TEST_F(ConfigJsonParserTest, ServerParser7) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser7) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -999,7 +999,7 @@ TEST_F(ConfigJsonParserTest, ServerParser12) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete link(vr,vm), then link(vr,gsc)
-TEST_F(ConfigJsonParserTest, ServerParser13) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser13) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -1037,7 +1037,7 @@ TEST_F(ConfigJsonParserTest, ServerParser13) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete gsc, then link(vr,gsc)
-TEST_F(ConfigJsonParserTest, ServerParser14) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser14) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -1070,7 +1070,7 @@ TEST_F(ConfigJsonParserTest, ServerParser14) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete gsc, then link(vr,gsc)
-TEST_F(ConfigJsonParserTest, ServerParser14InParts) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser14InParts) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");
@@ -1173,7 +1173,7 @@ TEST_F(ConfigJsonParserTest, ServerParser15) {
 // 1) create link(vr,vm), then vr-with-properties, then vm-with-properties,
 // 2) create link(vr,gsc), then gsc-with-properties
 // 3) delete vr
-TEST_F(ConfigJsonParserTest, ServerParser15InParts) {
+TEST_F(ConfigJsonParserTest, DISABLED_ServerParser15InParts) {
     IFMapTable *vrtable = IFMapTable::FindTable(&db_, "virtual-router");
     TASK_UTIL_EXPECT_EQ(0, vrtable->Size());
     IFMapTable *vmtable = IFMapTable::FindTable(&db_, "virtual-machine");

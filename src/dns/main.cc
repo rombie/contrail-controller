@@ -83,6 +83,7 @@ static void DnsServerGetProcessStateCb(
     }
 }
 
+
 bool DnsServerReEvaluatePublishCb(IFMapServer *ifmap_server,
       const ConfigClientManager *config_client_manager, std::string &message) {
     if (!config_client_manager->GetEndOfRibComputed()) {
