@@ -204,6 +204,9 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
 
 void ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
                                               const CassColumnKVVec &cdvec) {
+    if (cdvec.empty())
+        return;
+
     Document::AllocatorType &a = json_document_.GetAllocator();
     Value jsonObject;
     jsonObject.SetObject();
@@ -211,8 +214,9 @@ void ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
     // First look for and part "type" field. We usually expect it to be at the
     // end as column names are suppose to be allways sorted lexicographically.
     size_t type_index = -1;
-    for (size_t i = cdvec.size() - 1; i >= 0; i--) {
-        if (cdvec[i].key == "type") {
+    size_t i = cdvec.size();
+    while (i--) {
+        if (!cdvec[i].key.compare("type")) {
             AddOneEntry(&jsonObject, obj_type, cdvec[i], a);
             type_index = i;
             break;
