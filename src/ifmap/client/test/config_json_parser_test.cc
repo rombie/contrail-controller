@@ -3,6 +3,7 @@
  */
 
 #include "ifmap/client/config_amqp_client.h"
+#include "ifmap/client/config_cass2json_adapter.h"
 #include "ifmap/client/config_cassandra_client.h"
 #include "ifmap/client/config_client_manager.h"
 #include "ifmap/client/config_json_parser.h"
@@ -170,6 +171,7 @@ protected:
     }
 
     virtual void SetUp() {
+        ConfigCass2JsonAdapter::set_assert_on_parse_error(true);
         IFMapLinkTable_Init(&db_, &graph_);
         vnc_cfg_JsonParserInit(config_client_manager_->config_json_parser());
         vnc_cfg_Server_ModuleInit(&db_, &graph_);

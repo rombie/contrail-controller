@@ -49,6 +49,7 @@ ConfigCassandraClient::ConfigCassandraClient(ConfigClientManager *mgr,
     // Initialized the casssadra connection status;
     cassandra_connection_up_ = false;
     connection_status_change_at_ = UTCTimestampUsec();
+    bulk_sync_status_ = 0;
 
     int processor_task_id =
         TaskScheduler::GetInstance()->GetTaskId(kObjectProcessTaskId);
@@ -327,7 +328,7 @@ bool ConfigCassandraClient::ParseRowAndEnqueueToParser(const string &obj_type,
         }
 
         // Convert column data to json string.
-        ConfigCass2JsonAdapter ccja(this, obj_type, cass_data_vec);
+        ConfigCass2JsonAdapter ccja(uuid_key, this, obj_type, cass_data_vec);
 
         // Enqueue Json document to the parser here.
         parser_->Receive(uuid_key, ccja.document(), IFMapOrigin::CASSANDRA);

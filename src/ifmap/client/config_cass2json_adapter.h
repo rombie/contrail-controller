@@ -30,13 +30,17 @@ public:
 
     static const std::set<std::string> allowed_properties;
 
-    ConfigCass2JsonAdapter(ConfigCassandraClient *cassandra_client,
+    ConfigCass2JsonAdapter(const std::string &uuid,
+                           ConfigCassandraClient *cassandra_client,
                            const std::string &obj_type,
                            const CassColumnKVVec &cdvec);
     const rapidjson::Document &document() { return json_document_; }
+    static void set_assert_on_parse_error(bool flag) {
+        assert_on_parse_error_ = flag;
+    }
 
 private:
-    bool CreateJsonString(const std::string &obj_type,
+    void CreateJsonString(const std::string &obj_type,
                           const CassColumnKVVec &cdvec);
     void AddOneEntry(rapidjson::Value *jsonObject, const std::string &obj_type,
                      const JsonAdapterDataType &c,
@@ -44,8 +48,10 @@ private:
     static std::string GetJsonString(const rapidjson::Value &attr_value);
 
     ConfigCassandraClient *cassandra_client_;
+    std::string uuid_;
     std::string type_;
     rapidjson::Document json_document_;
+    static bool assert_on_parse_error_;
 };
 
 #endif // ctrlplane_config_cass2json_adapter_h

@@ -6,16 +6,17 @@
 
 #include <assert.h>
 #include <boost/algorithm/string/predicate.hpp>
-#include <iostream>
-
 #include <boost/assign/list_of.hpp>
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
+#include <iostream>
 
 #include "base/string_util.h"
 #include "config_cassandra_client.h"
 #include "config_json_parser.h"
+#include "ifmap_log.h"
+#include "client/config_log_types.h"
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 using boost::assign::list_of;
 using rapidjson::Document;
@@ -37,9 +38,23 @@ const set<string> ConfigCass2JsonAdapter::allowed_properties =
              list_of(prop_prefix)(map_prop_prefix)
                     (list_prop_prefix)(ref_prefix)(parent_prefix);
 
-ConfigCass2JsonAdapter::ConfigCass2JsonAdapter(
+bool ConfigCass2JsonAdapter::assert_on_parse_error_;
+
+#define CONFIG_PARSE_ASSERT(t, condition)                                      \
+    do {                                                                       \
+        if (condition)                                                         \
+            break;                                                             \
+        IFMAP_WARN(ConfigurationMalformed ## t, c.key, c.value, type_, uuid_,  \
+                   obj_type);                                                  \
+        if (assert_on_parse_error_)                                            \
+            assert(false);                                                     \
+        return;                                                                \
+    } while (false)
+
+ConfigCass2JsonAdapter::ConfigCass2JsonAdapter(const string &uuid,
        ConfigCassandraClient *cassandra_client, const string &obj_type,
-       const CassColumnKVVec &cdvec) : cassandra_client_(cassandra_client) {
+       const CassColumnKVVec &cdvec) : cassandra_client_(cassandra_client),
+       uuid_(uuid) {
     CreateJsonString(obj_type, cdvec);
 }
 
@@ -67,7 +82,7 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
             c_value = "\"\"";
         Document prop_document(&a);
         prop_document.Parse<0>(c_value.c_str());
-        assert(!prop_document.HasParseError());
+        CONFIG_PARSE_ASSERT(Property, !prop_document.HasParseError());
         Value vk;
         jsonObject->AddMember(
             vk.SetString(c.key.substr(prop_prefix.size()).c_str(), a),
@@ -76,7 +91,8 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
     }
 
     // Process property list and  property map values.
-    if (boost::starts_with(c.key, map_prop_prefix) ||
+    bool is_map = false;
+    if ((is_map = boost::starts_with(c.key, map_prop_prefix)) ||
             boost::starts_with(c.key, list_prop_prefix)) {
         size_t from_front_pos = c.key.find(':');
         size_t from_back_pos = c.key.rfind(':');
@@ -97,7 +113,11 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
 
         Document map_document(&a);
         map_document.Parse<0>(c.value.c_str());
-        assert(!map_document.HasParseError());
+        if (is_map)
+            CONFIG_PARSE_ASSERT(PropertyMap, !map_document.HasParseError());
+        else
+            CONFIG_PARSE_ASSERT(PropertyList, !map_document.HasParseError());
+
         (*jsonObject)[prop_map.c_str()][wrapper.c_str()].PushBack(
             map_document, a);
         return;
@@ -106,8 +126,8 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
     if (boost::starts_with(c.key, ref_prefix)) {
         size_t from_front_pos = c.key.find(':');
         size_t from_back_pos = c.key.rfind(':');
-        assert(from_front_pos != string::npos);
-        assert(from_back_pos != string::npos);
+        CONFIG_PARSE_ASSERT(Reference, from_front_pos != string::npos);
+        CONFIG_PARSE_ASSERT(Reference, from_back_pos != string::npos);
         string ref_type = c.key.substr(from_front_pos + 1,
                                        from_back_pos-from_front_pos - 1);
         string ref_uuid = c.key.substr(from_back_pos + 1);
@@ -135,7 +155,10 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
         if (link_with_attr) {
             Document ref_document(&a);
             ref_document.Parse<0>(c.value.c_str());
-            assert(!ref_document.HasParseError());
+            CONFIG_PARSE_ASSERT(ReferenceLinkAttributes,
+                                !ref_document.HasParseError());
+            CONFIG_PARSE_ASSERT(ReferenceLinkAttributes,
+                                ref_document.HasMember("attr"));
             Value &attr_value = ref_document["attr"];
             v.AddMember("attr", attr_value, a);
         } else {
@@ -148,9 +171,9 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
 
     if (boost::starts_with(c.key, parent_prefix)) {
         size_t pos = c.key.rfind(':');
-        assert(pos != string::npos);
+        CONFIG_PARSE_ASSERT(Parent, pos != string::npos);
         size_t type_pos = c.key.find(':');
-        assert(type_pos != string::npos);
+        CONFIG_PARSE_ASSERT(Parent, type_pos != string::npos);
         Value v;
         Value vk;
         jsonObject->AddMember(vk.SetString(parent_type_prefix.c_str(), a),
@@ -162,7 +185,7 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
     if (!c.key.compare(fq_name_prefix)) {
         Document fq_name_document(&a);
         fq_name_document.Parse<0>(c.value.c_str());
-        assert(!fq_name_document.HasParseError());
+        CONFIG_PARSE_ASSERT(FqName, !fq_name_document.HasParseError());
         Value vk;
         jsonObject->AddMember(vk.SetString(c.key.c_str(), a),
                               fq_name_document, a);
@@ -172,14 +195,14 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
     if (!c.key.compare("type")) {
         // Prepend the 'type'. This is "our key", with value being the json
         // sub-document containing all other columns.
-        assert(type_ != obj_type);
+        CONFIG_PARSE_ASSERT(Type, type_ != obj_type);
         type_ = c.value;
         type_.erase(remove(type_.begin(), type_.end(), '\"' ), type_.end());
         return;
     }
 }
 
-bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
+void ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
                                               const CassColumnKVVec &cdvec) {
     Document::AllocatorType &a = json_document_.GetAllocator();
     Value jsonObject;
@@ -196,7 +219,11 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
         }
     }
 
-    assert(type_ != "");
+    if (type_ == "") {
+        IFMAP_WARN(ConfigurationMissingType, uuid_, obj_type);
+        return;
+    }
+
     for (size_t i = 0; i < cdvec.size(); ++i) {
         if (i != type_index)
             AddOneEntry(&jsonObject, obj_type, cdvec[i], a);
@@ -205,5 +232,4 @@ bool ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
     Value vk;
     json_document_.SetObject().AddMember(vk.SetString(type_.c_str(), a),
                                          jsonObject, a);
-    return true;
 }
