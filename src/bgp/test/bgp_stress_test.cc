@@ -580,6 +580,7 @@ void BgpStressTest::SetUp() {
 }
 
 void BgpStressTest::TearDown() {
+    ControlNode::Shutdown();
     AgentCleanup();
     WaitForIdle();
     xmpp_server_test_->Shutdown();
@@ -600,7 +601,6 @@ void BgpStressTest::TearDown() {
 
     evm_.Shutdown();
     thread_.Join();
-    ControlNode::Shutdown();
     task_util::WaitForIdle();
 }
 
