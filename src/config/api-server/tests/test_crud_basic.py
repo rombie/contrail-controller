@@ -2,6 +2,9 @@
 # Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
 #
 import gevent
+import gevent.monkey
+gevent.monkey.patch_all()
+
 import os
 import sys
 import socket
@@ -401,6 +404,17 @@ class TestCrud(test_case.ApiServerTestCase):
         with ExpectedException(BadRequest) as e:
             port_id = self._vnc_lib.virtual_machine_interface_create(port_obj)
        #end test_service_interface_type_value
+
+    def test_physical_router_credentials(self):
+        user_cred_create = UserCredentials(username="test_user", password="test_pswd")
+        phy_rout = PhysicalRouter(physical_router_user_credentials=user_cred_create)
+        self._vnc_lib.physical_router_create(phy_rout)
+
+        phy_rout_obj = self._vnc_lib.physical_router_read(id=phy_rout.uuid)
+        user_cred_read = phy_rout_obj.get_physical_router_user_credentials()
+        if user_cred_read.password != '**Password Hidden**':
+            raise Exception("ERROR: physical-router: password should be hidden")
+       #end test_physical_router_credentials
 # end class TestCrud
 
 class TestVncCfgApiServer(test_case.ApiServerTestCase):
@@ -810,7 +824,8 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
         self.assertThat(rb_obj.display_name, Equals('foobar'))
 
     def test_floatingip_as_instanceip(self):
-        ipam_fixt = self.useFixture(NetworkIpamTestFixtureGen(self._vnc_lib))
+        ipam_fixt = self.useFixture(NetworkIpamTestFixtureGen(
+            self._vnc_lib, network_ipam_name='ipam-%s' % self.id()))
 
         project_fixt = self.useFixture(ProjectTestFixtureGen(self._vnc_lib, 'default-project'))
 
@@ -846,7 +861,8 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
     # end test_floatingip_as_instanceip
 
     def test_aliasip_as_instanceip(self):
-        ipam_fixt = self.useFixture(NetworkIpamTestFixtureGen(self._vnc_lib))
+        ipam_fixt = self.useFixture(NetworkIpamTestFixtureGen(
+            self._vnc_lib, network_ipam_name='ipam-%s' % self.id()))
 
         project_fixt = self.useFixture(ProjectTestFixtureGen(self._vnc_lib, 'default-project'))
 
@@ -1935,6 +1951,180 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
         self.assertIn('name', vn_dict)
         self.assertEqual(vn_dict['name'], vn_obj.fq_name[-1])
 
+    def test_bgpvpn_type_assoc_with_network_l2_l3_forwarding_mode(self):
+        # Create virtual network with forwarding mode set to 'l2' and 'l3'
+        vn_l2_l3 = self.create_virtual_network('vn-l2-l3-%s' % self.id())
+        # Create l2 bgpvpn
+        bgpvpn_l2 = Bgpvpn('bgpvpn-l2-%s' % self.id(), bgpvpn_type='l2')
+        self._vnc_lib.bgpvpn_create(bgpvpn_l2)
+        # Create l3 bgpvpn
+        bgpvpn_l3 = Bgpvpn('bgpvpn-l3-%s' % self.id())
+        self._vnc_lib.bgpvpn_create(bgpvpn_l3)
+
+        # Trying to associate a 'l2' bgpvpn on the virtual network
+        vn_l2_l3.add_bgpvpn(bgpvpn_l2)
+        self._vnc_lib.virtual_network_update(vn_l2_l3)
+        vn_l2_l3 = self._vnc_lib.virtual_network_read(id=vn_l2_l3.uuid)
+
+        # Trying to associate a 'l3' bgpvpn on the virtual network
+        vn_l2_l3.add_bgpvpn(bgpvpn_l3)
+        self._vnc_lib.virtual_network_update(vn_l2_l3)
+        vn_l2_l3 = self._vnc_lib.virtual_network_read(id=vn_l2_l3.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l2' only
+        with ExpectedException(BadRequest):
+            vn_l2_l3.set_virtual_network_properties(
+                VirtualNetworkType(forwarding_mode='l2'))
+            self._vnc_lib.virtual_network_update(vn_l2_l3)
+        vn_l2_l3 = self._vnc_lib.virtual_network_read(id=vn_l2_l3.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l3' only
+        with ExpectedException(BadRequest):
+            vn_l2_l3.set_virtual_network_properties(
+                VirtualNetworkType(forwarding_mode='l3'))
+            self._vnc_lib.virtual_network_update(vn_l2_l3)
+
+    def test_bgpvpn_type_assoc_with_network_l2_forwarding_mode(self):
+        # Create virtual network with forwarding mode set to 'l2' only
+        vn_l2 = self.create_virtual_network('vn-l2-%s' % self.id())
+        vn_l2.set_virtual_network_properties(
+            VirtualNetworkType(forwarding_mode='l2'))
+        self._vnc_lib.virtual_network_update(vn_l2)
+        vn_l2 = self._vnc_lib.virtual_network_read(id=vn_l2.uuid)
+        # Create l2 bgpvpn
+        bgpvpn_l2 = Bgpvpn('bgpvpn-l2-%s' % self.id(), bgpvpn_type='l2')
+        self._vnc_lib.bgpvpn_create(bgpvpn_l2)
+        # Create l3 bgpvpn
+        bgpvpn_l3 = Bgpvpn('bgpvpn-l3-%s' % self.id())
+        self._vnc_lib.bgpvpn_create(bgpvpn_l3)
+
+        # Trying to associate a 'l2' bgpvpn on the virtual network
+        vn_l2.add_bgpvpn(bgpvpn_l2)
+        self._vnc_lib.virtual_network_update(vn_l2)
+        vn_l2 = self._vnc_lib.virtual_network_read(id=vn_l2.uuid)
+
+        # Trying to associate a 'l3' bgpvpn on the virtual network
+        with ExpectedException(BadRequest):
+            vn_l2.add_bgpvpn(bgpvpn_l3)
+            self._vnc_lib.virtual_network_update(vn_l2)
+        vn_l2 = self._vnc_lib.virtual_network_read(id=vn_l2.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l3' only
+        with ExpectedException(BadRequest):
+            vn_l2.set_virtual_network_properties(
+                VirtualNetworkType(forwarding_mode='l3'))
+            self._vnc_lib.virtual_network_update(vn_l2)
+        vn_l2 = self._vnc_lib.virtual_network_read(id=vn_l2.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l2' and l3'
+        vn_l2.set_virtual_network_properties(
+            VirtualNetworkType(forwarding_mode='l2_l3'))
+        self._vnc_lib.virtual_network_update(vn_l2)
+
+    def test_bgpvpn_type_assoc_with_network_l3_forwarding_mode(self):
+        # Create virtual network with forwarding mode set to 'l3' only
+        vn_l3 = self.create_virtual_network('vn-l3-%s' % self.id())
+        vn_l3.set_virtual_network_properties(
+            VirtualNetworkType(forwarding_mode='l3'))
+        self._vnc_lib.virtual_network_update(vn_l3)
+        vn_l3 = self._vnc_lib.virtual_network_read(id=vn_l3.uuid)
+        # Create l2 bgpvpn
+        bgpvpn_l2 = Bgpvpn('bgpvpn-l2-%s' % self.id(), bgpvpn_type='l2')
+        self._vnc_lib.bgpvpn_create(bgpvpn_l2)
+        # Create l3 bgpvpn
+        bgpvpn_l3 = Bgpvpn('bgpvpn-l3-%s' % self.id())
+        self._vnc_lib.bgpvpn_create(bgpvpn_l3)
+
+        # Trying to associate a 'l3' bgpvpn on the virtual network
+        vn_l3.add_bgpvpn(bgpvpn_l3)
+        self._vnc_lib.virtual_network_update(vn_l3)
+        vn_l3 = self._vnc_lib.virtual_network_read(id=vn_l3.uuid)
+
+        # Trying to associate a 'l2' bgpvpn on the virtual network
+        with ExpectedException(BadRequest):
+            vn_l3.add_bgpvpn(bgpvpn_l2)
+            self._vnc_lib.virtual_network_update(vn_l3)
+        vn_l3 = self._vnc_lib.virtual_network_read(id=vn_l3.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l2' only
+        with ExpectedException(BadRequest):
+            vn_l3.set_virtual_network_properties(
+                VirtualNetworkType(forwarding_mode='l2'))
+            self._vnc_lib.virtual_network_update(vn_l3)
+        vn_l3 = self._vnc_lib.virtual_network_read(id=vn_l3.uuid)
+
+        # Try to change the virtual network forwarding mode to 'l2' and l3'
+        vn_l3.set_virtual_network_properties(
+            VirtualNetworkType(forwarding_mode='l2_l3'))
+        self._vnc_lib.virtual_network_update(vn_l3)
+
+    def test_bgpvpn_type_limited_to_l3_for_router_assoc(self):
+        # Create logical router
+        lr, _, _, _ = self.create_logical_router(
+            'lr-%s' % self.id(), nb_of_attached_networks=0)
+        # Create l2 bgpvpn
+        bgpvpn_l2 = Bgpvpn('bgpvpn-l2-%s' % self.id(), bgpvpn_type='l2')
+        self._vnc_lib.bgpvpn_create(bgpvpn_l2)
+
+        # Trying to associate a 'l2' bgpvpn on the logical router
+        with ExpectedException(BadRequest):
+            lr.add_bgpvpn(bgpvpn_l2)
+            self._vnc_lib.logical_router_update(lr)
+
+    def test_bgpvpn_fail_assoc_network_with_gw_router_assoc_to_bgpvpn(self):
+        # Create one bgpvpn
+        bgpvpn = Bgpvpn('bgpvpn-%s' % self.id())
+        self._vnc_lib.bgpvpn_create(bgpvpn)
+        # Create one virtual network with one logical router as gateway
+        lr, vns, _, _ = self.create_logical_router('lr-%s' % self.id())
+        # We attached only one virtual network to the logical router
+        vn = vns[0]
+
+        # Associate the bgppvpn to the logical router
+        lr.add_bgpvpn(bgpvpn)
+        self._vnc_lib.logical_router_update(lr)
+        lr = self._vnc_lib.logical_router_read(id=lr.uuid)
+
+        # The try to set that same bgpvpn to the virtual network
+        with ExpectedException(BadRequest):
+            vn.add_bgpvpn(bgpvpn)
+            self._vnc_lib.virtual_network_update(vn)
+
+    def test_bgpvpn_fail_assoc_router_with_network_assoc_to_bgpvpn(self):
+        # Create one bgpvpn
+        bgpvpn = Bgpvpn('bgpvpn-%s' % self.id())
+        self._vnc_lib.bgpvpn_create(bgpvpn)
+        # Create one virtual network with one logical router as gateway
+        lr, vns, vmis, _ = self.create_logical_router('lr-%s' % self.id())
+        # We attached only one virtual network to the logical router
+        vn = vns[0]
+        vmi = vmis[0]
+
+        # Associate the bgpvpn to the virtual network
+        vn.add_bgpvpn(bgpvpn)
+        self._vnc_lib.virtual_network_update(vn)
+        lr = self._vnc_lib.logical_router_read(id=lr.uuid)
+
+        # The try to set that same bgpvpn to the logical router
+        with ExpectedException(BadRequest):
+            lr.add_bgpvpn(bgpvpn)
+            self._vnc_lib.logical_router_update(lr)
+        lr = self._vnc_lib.logical_router_read(id=lr.uuid)
+
+        # Detatch the logical router from the virtual network
+        lr.del_virtual_machine_interface(vmi)
+        self._vnc_lib.logical_router_update(lr)
+        lr = self._vnc_lib.logical_router_read(id=lr.uuid)
+
+        # Associate the bgpvpn to the logical router
+        lr.add_bgpvpn(bgpvpn)
+        self._vnc_lib.logical_router_update(lr)
+        lr = self._vnc_lib.logical_router_read(id=lr.uuid)
+
+        # Try to reattach the virtual network to the logical router
+        with ExpectedException(BadRequest):
+            lr.add_virtual_machine_interface(vmi)
+            self._vnc_lib.logical_router_update(lr)
 # end class TestVncCfgApiServer
 
 

@@ -12,6 +12,91 @@
 class Agent;
 class VirtualGatewayConfigTable;
 
+struct LlgrParams {
+public:    
+    //In seconds
+    static const int kStaleConfigCleanupTime = 100;
+    static const int kConfigPollTime = 5;
+    static const int kConfigInactivityTime = 15;
+    static const int kConfigFallbackTimeOut = 900;
+    static const int kEorTxPollTime = 5;
+    static const int kEorTxFallbackTimeOut = 60;
+    static const int kEorTxInactivityTime = 15;
+    static const int kEorRxFallbackTime = 60;
+
+    LlgrParams();
+    virtual ~LlgrParams() { }
+
+    /*
+     * stale_config_cleanup_time_ - On receiving all config, remove stale
+     * config.
+     */
+    uint16_t stale_config_cleanup_time() const {return stale_config_cleanup_time_;}
+
+    /*
+     * config_poll_time_ - Timer poll time
+     */
+    uint16_t config_poll_time() const {return config_poll_time_;}
+    /*
+     * config_inactivity_time_ - Silence time to conclude end of config
+     */
+    uint16_t config_inactivity_time() const {
+        return config_inactivity_time_;
+    } 
+    /*
+     * config_fallback_time_ - Maximum time to wait for silence. In case
+     * silence is never seen use this time to conclude end of config.
+     */
+    uint16_t config_fallback_time() const {
+        return config_fallback_time_;
+    } 
+
+    /*
+     * end_of_rib_tx_poll_time_ - End of rib timer poll time.
+     */
+    uint16_t end_of_rib_tx_poll_time() const {
+        return end_of_rib_tx_poll_time_;
+    }
+    /*
+     * end_of_rib_tx_fallback_time_ - Maximum time to wait for silence, if
+     * silence not seen then use this time to conclude fallback
+     */
+    uint16_t end_of_rib_tx_fallback_time() const {
+        return end_of_rib_tx_fallback_time_;
+    }
+    /*
+     * end_of_rib_tx_inactivity_time_ - Silence time on route publish to
+     * conclude end of rib
+     */
+    uint16_t end_of_rib_tx_inactivity_time() const {
+        return end_of_rib_tx_inactivity_time_;
+    }
+
+    /*
+     * end_of_rib_rx_fallback_time_ - Maximum time to wait for end of rib from
+     * CN on a channel
+     */
+    uint16_t end_of_rib_rx_fallback_time() const {
+        return end_of_rib_rx_fallback_time_;
+    }
+
+private:    
+    friend class AgentParam;
+
+    /** stale config cleanup time */
+    uint16_t stale_config_cleanup_time_;
+    /** end of config timer time values */
+    uint16_t config_poll_time_;
+    uint16_t config_inactivity_time_;
+    uint16_t config_fallback_time_;
+    /** End of rib Tx times */
+    uint16_t end_of_rib_tx_poll_time_;
+    uint16_t end_of_rib_tx_fallback_time_;
+    uint16_t end_of_rib_tx_inactivity_time_;
+    /** End of rib rx times */
+    uint16_t end_of_rib_rx_fallback_time_;
+};
+
 // Class handling agent configuration parameters from config file and 
 // arguments
 class AgentParam  {
@@ -155,7 +240,6 @@ public:
     uint32_t stale_interface_cleanup_timeout() const {
         return stale_interface_cleanup_timeout_;
     }
-    bool headless_mode() const {return headless_mode_;}
     bool dhcp_relay_mode() const {return dhcp_relay_mode_;}
     bool xmpp_auth_enabled() const {return xmpp_auth_enable_;}
     std::string xmpp_server_cert() const { return xmpp_server_cert_;}
@@ -309,10 +393,13 @@ public:
 
     // Restart parameters
     bool restart_backup_enable() const { return restart_backup_enable_; }
+    void set_restart_backup_enable(bool val) {
+        restart_backup_enable_ = val;
+    }
     uint64_t restart_backup_idle_timeout() const {
         return restart_backup_idle_timeout_;
     }
-    const std::string &restart_backup_dir() const {
+    const std::string& restart_backup_dir() const {
         return restart_backup_dir_;
     }
     uint16_t restart_backup_count() const { return restart_backup_count_; }
@@ -344,6 +431,7 @@ public:
     void add_nic_queue(uint16_t queue, uint16_t nic_queue) {
         qos_queue_map_[queue] = nic_queue;
     }
+    const LlgrParams &llgr_params() const {return llgr_params_;}
 
 protected:
     void set_hypervisor_mode(HypervisorMode m) { hypervisor_mode_ = m; }
@@ -419,7 +507,6 @@ private:
     void ParseTaskSection();
     void ParseMetadataProxy();
     void ParseFlows();
-    void ParseHeadlessMode();
     void ParseDhcpRelayMode();
     void ParseSimulateEvpnTor();
     void ParseServiceInstance();
@@ -430,6 +517,7 @@ private:
     void ParseSandesh();
     void ParseQueue();
     void ParseRestart();
+    void ParseLlgr();
     void set_agent_mode(const std::string &mode);
     void set_gateway_mode(const std::string &mode);
 
@@ -453,8 +541,6 @@ private:
         (const boost::program_options::variables_map &v);
     void ParseFlowArguments
         (const boost::program_options::variables_map &v);
-    void ParseHeadlessModeArguments
-        (const boost::program_options::variables_map &v);
     void ParseDhcpRelayModeArguments
         (const boost::program_options::variables_map &var_map);
     void ParseServiceInstanceArguments
@@ -470,6 +556,8 @@ private:
     void ParseSandeshArguments
         (const boost::program_options::variables_map &v);
     void ParseRestartArguments
+        (const boost::program_options::variables_map &v);
+    void ParseLlgrArguments
         (const boost::program_options::variables_map &v);
 
     boost::program_options::variables_map var_map_;
@@ -553,7 +641,6 @@ private:
     bool test_mode_;
     boost::property_tree::ptree tree_;
     std::auto_ptr<VirtualGatewayConfigTable> vgw_config_table_;
-    bool headless_mode_;
     bool dhcp_relay_mode_;
     bool xmpp_auth_enable_;
     std::string xmpp_server_cert_;
@@ -616,6 +703,7 @@ private:
     std::map<uint16_t, uint16_t> qos_queue_map_;
     std::set<uint16_t> nic_queue_list_;
     uint16_t default_nic_queue_;
+    LlgrParams llgr_params_;
     DISALLOW_COPY_AND_ASSIGN(AgentParam);
 };
 

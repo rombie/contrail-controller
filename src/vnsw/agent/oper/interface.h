@@ -250,7 +250,7 @@ struct InterfaceData : public AgentOperDBData {
 
 struct InterfaceQosConfigData : public AgentOperDBData {
     InterfaceQosConfigData(const Agent *agent, IFMapNode *node,
-                           boost::uuids::uuid qos_config_uuid):
+                           const boost::uuids::uuid &qos_config_uuid):
         AgentOperDBData(agent, node), qos_config_uuid_(qos_config_uuid) {}
 
     boost::uuids::uuid qos_config_uuid_;
@@ -424,7 +424,7 @@ private:
     OperDB *operdb_;        // Cached entry
     Agent *agent_;          // Cached entry
     DBTableWalker::WalkId walkid_;
-    IndexVector<Interface> index_table_;
+    IndexVector<Interface *> index_table_;
     // On restart, DHCP Snoop entries are read from kernel and updated in the
     // ASIO context. Lock used to synchronize
     tbb::mutex dhcp_snoop_mutex_;

@@ -686,6 +686,11 @@ class VncApiServer(object):
             if 'exclude_children' not in get_request().query:
                 obj_fields |= r_class.children_fields
 
+        (ok, result) = r_class.pre_dbe_read(obj_ids['uuid'], db_conn)
+        if not ok:
+            (code, msg) = result
+            raise cfgm_common.exceptions.HttpError(code, msg)
+
         try:
             (ok, result) = db_conn.dbe_read(obj_type, obj_ids,
                 list(obj_fields), ret_readonly=True)
@@ -706,6 +711,11 @@ class VncApiServer(object):
 
         if not self.is_admin_request():
             result = self.obj_view(resource_type, result)
+
+        (ok, err_msg) = r_class.post_dbe_read(result, db_conn)
+        if not ok:
+            (code, msg) = err_msg
+            raise cfgm_common.exceptions.HttpError(code, msg)
 
         rsp_body = {}
         rsp_body['uuid'] = id
@@ -821,6 +831,8 @@ class VncApiServer(object):
         # State modification starts from here. Ensure that cleanup is done for all state changes
         cleanup_on_failure = []
         obj_ids = {'uuid': id}
+        if 'uuid' not in obj_dict:
+            obj_dict['uuid'] = id
 
         def stateful_update():
             get_context().set_state('PRE_DBE_UPDATE')

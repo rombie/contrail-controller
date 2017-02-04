@@ -11,6 +11,21 @@ from cfgm_common.vnc_db import DBBase
 
 class DBBaseKM(DBBase):
     obj_type = __name__
+    _fq_name_to_uuid = {}
+
+    def __init__(self, uuid, obj_dict=None):
+        self._fq_name_to_uuid[tuple(obj_dict['fq_name'])] = uuid
+
+    @classmethod
+    def get_fq_name_to_uuid(cls, fq_name):
+        return cls._fq_name_to_uuid.get(tuple(fq_name))
+
+    @classmethod
+    def delete(cls, uuid):
+        if uuid not in cls._dict:
+            return
+        obj = cls._dict[uuid]
+        del cls._fq_name_to_uuid[tuple(obj.fq_name)]
 
     def evaluate(self):
         # Implement in the derived class
@@ -25,7 +40,8 @@ class LoadbalancerKM(DBBaseKM):
         self.virtual_machine_interfaces = set()
         self.loadbalancer_listeners = set()
         self.selectors = None
-        self.update(obj_dict)
+        obj_dict = self.update(obj_dict)
+        super(LoadbalancerKM, self).__init__(uuid, obj_dict)
 
     def update(self, obj=None):
         if obj is None:
@@ -35,6 +51,7 @@ class LoadbalancerKM(DBBaseKM):
         self.parent_uuid = obj['parent_uuid']
         self.update_multiple_refs('virtual_machine_interface', obj)
         self.update_multiple_refs('loadbalancer_listener', obj)
+        return obj
 
     @classmethod
     def delete(cls, uuid):
@@ -43,6 +60,7 @@ class LoadbalancerKM(DBBaseKM):
         obj = cls._dict[uuid]
         obj.update_multiple_refs('virtual_machine_interface', {})
         obj.update_multiple_refs('loadbalancer_listener', {})
+        super(LoadbalancerKM, cls).delete(uuid)
         del cls._dict[uuid]
 
 class LoadbalancerListenerKM(DBBaseKM):
@@ -67,9 +85,9 @@ class LoadbalancerListenerKM(DBBaseKM):
         self.params = obj.get('loadbalancer_listener_properties', None)
         self.update_single_ref('loadbalancer', obj)
         self.update_single_ref('loadbalancer_pool', obj)
-        annotations = obj.get('annotations', None)
-        if annotations:
-            for kvp in annotations['key_value_pair'] or []:
+        self.annotations = obj.get('annotations', None)
+        if self.annotations:
+            for kvp in self.annotations['key_value_pair'] or []:
                 if kvp['key'] == 'targetPort':
                     self.target_port = kvp['value']
                     break
@@ -107,6 +125,7 @@ class LoadbalancerPoolKM(DBBaseKM):
         self.fq_name = obj['fq_name']
         self.params = obj.get('loadbalancer_pool_properties', None)
         self.provider = obj.get('loadbalancer_pool_provider', None)
+        self.annotations = obj.get('annotations', None)
         kvpairs = obj.get('loadbalancer_pool_custom_attributes', None)
         if kvpairs:
             self.custom_attributes = kvpairs.get('key_value_pair', [])
@@ -137,6 +156,7 @@ class LoadbalancerMemberKM(DBBaseKM):
     def __init__(self, uuid, obj_dict=None):
         self.uuid = uuid
         self.vmi = None
+        self.vm = None
         self.loadbalancer_pool = {}
         self.update(obj_dict)
         if self.loadbalancer_pool:
@@ -152,12 +172,13 @@ class LoadbalancerMemberKM(DBBaseKM):
         self.params = obj.get('loadbalancer_member_properties', None)
         self.loadbalancer_pool = self.get_parent_uuid(obj)
         self.id_perms = obj.get('id_perms', None)
-        annotations = obj.get('annotations', None)
-        if annotations:
-            for kvp in annotations['key_value_pair'] or []:
+        self.annotations = obj.get('annotations', None)
+        if self.annotations:
+            for kvp in self.annotations['key_value_pair'] or []:
                 if kvp['key'] == 'vmi':
                     self.vmi = kvp['value']
-                    break
+                if kvp['key'] == 'vm':
+                    self.vm = kvp['value']
     # end update
 
     @classmethod
@@ -214,15 +235,23 @@ class VirtualMachineKM(DBBaseKM):
         self.virtual_router = None
         self.virtual_machine_interfaces = set()
         self.pod_labels = None
-        self.update(obj_dict)
+        obj_dict = self.update(obj_dict)
+        super(VirtualMachineKM, self).__init__(uuid, obj_dict)
 
     def update(self, obj=None):
         if obj is None:
             obj = self.read_obj(self.uuid)
         self.name = obj['fq_name'][-1]
         self.fq_name = obj['fq_name']
+        self.annotations = obj.get('annotations', None)
+        if self.annotations:
+            for kvp in self.annotations['key_value_pair'] or []:
+                if kvp['key'] == 'labels':
+                    self.pod_labels = kvp['value']
+                    break
         self.update_single_ref('virtual_router', obj)
         self.update_multiple_refs('virtual_machine_interface', obj)
+        return obj
 
     @classmethod
     def delete(cls, uuid):
@@ -231,8 +260,8 @@ class VirtualMachineKM(DBBaseKM):
         obj = cls._dict[uuid]
         obj.update_single_ref('virtual_router', {})
         obj.update_multiple_refs('virtual_machine_interface', {})
+        super(VirtualMachineKM, cls).delete(uuid)
         del cls._dict[uuid]
-
 
 class VirtualRouterKM(DBBaseKM):
     _dict = {}
@@ -371,6 +400,7 @@ class InstanceIpKM(DBBaseKM):
         self.family = None
         self.virtual_machine_interfaces = set()
         self.virtual_networks = set()
+        self.floating_ips = set()
         self.update(obj_dict)
 
     def update(self, obj=None):
@@ -382,6 +412,7 @@ class InstanceIpKM(DBBaseKM):
         self.address = obj.get('instance_ip_address', None)
         self.update_multiple_refs('virtual_machine_interface', obj)
         self.update_multiple_refs('virtual_network', obj)
+        self.update_multiple_refs('floating_ip', obj)
 
     @classmethod
     def delete(cls, uuid):
@@ -448,7 +479,8 @@ class SecurityGroupKM(DBBaseKM):
         self.virtual_machine_interfaces = set()
         self.annotations = None
         self.rule_entries = None
-        self.update(obj_dict)
+        obj_dict = self.update(obj_dict)
+        super(SecurityGroupKM, self).__init__(uuid, obj_dict)
 
     def update(self, obj=None):
         if obj is None:
@@ -458,6 +490,7 @@ class SecurityGroupKM(DBBaseKM):
         self.update_multiple_refs('virtual_machine_interface', obj)
         self.annotations = obj.get('annotations', None)
         self.rule_entries = obj.get('security_group_entries', None)
+        return obj
 
     @classmethod
     def delete(cls, uuid):
@@ -465,6 +498,7 @@ class SecurityGroupKM(DBBaseKM):
             return
         obj = cls._dict[uuid]
         obj.update_multiple_refs('virtual_machine_interface', {})
+        super(SecurityGroupKM, cls).delete(uuid)
         del cls._dict[uuid]
 
 class FloatingIpPoolKM(DBBaseKM):

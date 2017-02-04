@@ -94,119 +94,6 @@ class VncService(object):
             if len(pod_ids):
                 self.add_pods_to_service(service_id, pod_ids, ports)
 
-    def remove_service_selectors_from_cache(self, selectors, service_id, ports):
-        for selector in selectors.items():
-            key = self._label_cache._get_key(selector)
-            self._label_cache._remove_label(key,
-                self._label_cache.service_selector_cache, selector, service_id)
-
-    def add_pod_to_service(self, service_id, pod_id, port=None):
-        lb = LoadbalancerKM.get(service_id)
-        if not lb:
-            return
-
-        listener_found = True
-        for ll_id in list(lb.loadbalancer_listeners):
-            ll = LoadbalancerListenerKM.get(ll_id)
-            if not ll:
-                continue
-            if not ll.params['protocol_port']:
-                continue
-
-            if port:
-                if ll.params['protocol_port'] != port['port'] or \
-                   ll.params['protocol'] != port['protocol']:
-                    listener_found = False
-
-            if not listener_found:
-                continue
-            pool_id = ll.loadbalancer_pool
-            if not pool_id:
-                continue
-            pool = LoadbalancerPoolKM.get(pool_id)
-            if not pool:
-                continue
-            vm = VirtualMachineKM.get(pod_id)
-            if not vm: 
-                continue
-
-            for vmi_id in list(vm.virtual_machine_interfaces):
-                vmi = VirtualMachineInterfaceKM.get(vmi_id)
-                if not vmi:
-                    continue
-                member_match = False
-                for member_id in pool.members:
-                    member = LoadbalancerMemberKM.get(member_id)
-                    if member and member.vmi == vmi_id:
-                        member_match = True
-                        break
-                if not member_match:
-                    if isinstance(ll.target_port, basestring):
-                        target_port = ll.params['protocol_port']
-                    else:
-                        target_port = ll.target_port
-                    member_obj = self._vnc_create_member(pool, vmi_id, target_port)
-                    LoadbalancerMemberKM.locate(member_obj.uuid)
-                
-
-    def remove_pod_from_service(self, service_id, pod_id, port=None):
-        lb = LoadbalancerKM.get(service_id)
-        if not lb:
-            return
-
-        listener_found = True
-        for ll_id in list(lb.loadbalancer_listeners):
-            ll = LoadbalancerListenerKM.get(ll_id)
-            if not ll:
-                continue
-            if not ll.params['protocol_port']:
-                continue
-
-            if port:
-                if ll.params['protocol_port'] != port['port'] or \
-                   ll.params['protocol'] != port['protocol']:
-                    listener_found = False
-
-            if not listener_found:
-                continue
-            pool_id = ll.loadbalancer_pool
-            if not pool_id:
-                continue
-            pool = LoadbalancerPoolKM.get(pool_id)
-            if not pool:
-                continue
-            vm = VirtualMachineKM.get(pod_id)
-            if not vm: 
-                continue
-
-            for vmi_id in list(vm.virtual_machine_interfaces):
-                vmi = VirtualMachineInterfaceKM.get(vmi_id)
-                if not vmi:
-                    continue
-                member_match = False
-                for member_id in pool.members:
-                    member = LoadbalancerMemberKM.get(member_id)
-                    if member and member.vmi == vmi_id:
-                        member_match = True
-                        break
-                if member_match:
-                    self._vnc_delete_member(member.uuid)
-                    LoadbalancerMemberKM.delete(member.uuid)
-
-    def add_pods_to_service(self, service_id, pod_list, ports=None):
-        for pod_id in pod_list:
-            for port in ports:
-                self.add_pod_to_service(service_id, pod_id, port)
-
-    def _vnc_create_member(self, pool, vmi_id, protocol_port):
-        pool_obj = self.service_lb_pool_mgr.read(pool.uuid)
-        address = None
-        annotations = {}
-        annotations['vmi'] = vmi_id
-        member_obj = self.service_lb_member_mgr.create(pool_obj,
-                          address, protocol_port, annotations)
-        return member_obj
-
     def _vnc_create_pool(self, namespace, ll, port):
         proj_obj = self._get_project(namespace)
         ll_obj = self.service_ll_mgr.read(ll.uuid)
@@ -356,6 +243,10 @@ class VncService(object):
             err_msg = cfgm_common.utils.detailed_traceback()
             self.logger.error(err_msg)
             return None
+        except:
+            err_msg = cfgm_common.utils.detailed_traceback()
+            self.logger.error(err_msg)
+            return None
         fip = FloatingIpKM.locate(fip_obj.uuid)
         return fip.address
 
@@ -396,9 +287,21 @@ class VncService(object):
             if public_ip is not None:
                 public_ip = self._deallocate_floating_ip(service_id)
 
+    def _check_service_uuid_change(self, svc_uuid, svc_name, 
+                                   svc_namespace, ports):
+        lb_fq_name = ['default-domain', svc_namespace, svc_name]
+        lb_uuid = LoadbalancerKM.get_fq_name_to_uuid(lb_fq_name)
+        if lb_uuid != svc_uuid:
+            self.vnc_service_delete(lb_uuid, svc_name, svc_namespace, ports)
+
     def vnc_service_add(self, service_id, service_name,
                         service_namespace, service_ip, selectors, ports,
                         service_type, externalIp):
+        lb = LoadbalancerKM.get(service_id)
+        if not lb:
+            self._check_service_uuid_change(service_id, service_name, 
+                                            service_namespace, ports)
+
         self._lb_create(service_id, service_name, service_namespace,
                         service_ip, ports)
 
@@ -409,14 +312,9 @@ class VncService(object):
         if service_name == self._kubernetes_service_name:
             self._create_link_local_service(service_name, service_ip, ports)
 
-        if selectors:
-            self.check_service_selectors_actions(selectors, service_id, ports)
-
         self._update_service_public_ip(service_id, service_name,
                         service_namespace, service_type, externalIp)
 
-    def _vnc_delete_member(self, member_id):
-        self.service_lb_member_mgr.delete(member_id)
 
     def _vnc_delete_pool(self, pool_id):
         self.service_lb_pool_mgr.delete(pool_id)
@@ -424,7 +322,7 @@ class VncService(object):
     def _vnc_delete_listener(self, ll_id):
         self.service_ll_mgr.delete(ll_id)
 
-    def _vnc_delete_listeners(self, lb, ports):
+    def _vnc_delete_listeners(self, lb):
         listeners = lb.loadbalancer_listeners.copy()
         for ll_id in listeners or []:
             ll = LoadbalancerListenerKM.get(ll_id)
@@ -438,7 +336,7 @@ class VncService(object):
                     for member_id in members or []:
                         member = LoadbalancerMemberKM.get(member_id)
                         if member:
-                            self._vnc_delete_member(member_id)
+                            self.service_lb_member_mgr.delete(member_id)
                             LoadbalancerMemberKM.delete(member_id)
 
                 self._vnc_delete_pool(pool_id)
@@ -450,27 +348,23 @@ class VncService(object):
         self.service_lb_mgr.delete(lb_id)
 
     def _lb_delete(self, service_id, service_name,
-            service_namespace, service_ip, selectors, ports):
+                   service_namespace):
         lb = LoadbalancerKM.get(service_id)
         if not lb:
             return
-        self._vnc_delete_listeners(lb, ports)
+        self._vnc_delete_listeners(lb)
         self._vnc_delete_lb(service_id)
         LoadbalancerKM.delete(service_id)
 
     def vnc_service_delete(self, service_id, service_name,
-                           service_namespace, service_ip, selectors, ports):
+                           service_namespace, ports):
         self._deallocate_floating_ip(service_id)
-        self._lb_delete(service_id, service_name, service_namespace, service_ip,
-                        selectors, ports)
+        self._lb_delete(service_id, service_name, service_namespace)
 
         # Delete link local service that would have been allocated for
         # kubernetes service.
         if service_name == self._kubernetes_service_name:
             _delete_link_local_service(service_name, svc_ip, ports)
-
-        if selectors:
-            self.remove_service_selectors_from_cache(selectors, service_id, ports)
 
     def process(self, event):
         service_id = event['object']['metadata'].get('uid')
@@ -492,4 +386,4 @@ class VncService(object):
                 service_type, externalIp)
         elif event['type'] == 'DELETED':
             self.vnc_service_delete(service_id, service_name, service_namespace,
-                                    service_ip, selectors, ports)
+                                    ports)

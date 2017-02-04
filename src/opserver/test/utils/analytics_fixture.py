@@ -834,7 +834,6 @@ class AnalyticsFixture(fixtures.Fixture):
         # get generator list
         gen_list = vns.uve_query('generators',
             {'cfilt':'ModuleClientState:client_info'})
-        self.logger.info('Anish genlist %s' % str(gen_list))
         try:
             actual_gen_list = [gen['name'] for gen in gen_list]
             self.logger.info('generators: %s' % str(actual_gen_list))
@@ -968,8 +967,7 @@ class AnalyticsFixture(fixtures.Fixture):
         vns = VerificationOpsSrv('127.0.0.1', self.opserver_port,
             self.admin_user, self.admin_password)
         prefix_key_value_map = {'Source': socket.gethostname()[:-1],
-            'ModuleId': 'contrail-', 'Messagetype': 'Collector',
-            'Category': 'Discovery'}
+            'ModuleId': 'contrail-', 'Messagetype': 'Collector'}
         for key, value in prefix_key_value_map.iteritems():
             self.logger.info('verify where_prefix: %s = %s*' % (key, value))
             res = vns.post_query('MessageTable', start_time='-10m',

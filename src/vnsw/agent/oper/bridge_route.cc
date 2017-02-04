@@ -106,7 +106,8 @@ void BridgeAgentRouteTable::AddBridgeReceiveRouteReq(const Peer *peer,
                                                      const string &vn_name) {
     DBRequest req(DBRequest::DB_ENTRY_ADD_CHANGE);
     req.key.reset(new BridgeRouteKey(peer, vrf_name, mac, vxlan_id));
-    req.data.reset(new L2ReceiveRoute(vn_name, vxlan_id, 0, PathPreference()));
+    req.data.reset(new L2ReceiveRoute(vn_name, vxlan_id, 0, PathPreference(),
+                                      peer->sequence_number()));
     agent()->fabric_l2_unicast_table()->Enqueue(&req);
 }
 
@@ -117,7 +118,8 @@ void BridgeAgentRouteTable::AddBridgeReceiveRoute(const Peer *peer,
                                                   const string &vn_name) {
     DBRequest req(DBRequest::DB_ENTRY_ADD_CHANGE);
     req.key.reset(new BridgeRouteKey(peer, vrf_name, mac, vxlan_id));
-    req.data.reset(new L2ReceiveRoute(vn_name, vxlan_id, 0, PathPreference()));
+    req.data.reset(new L2ReceiveRoute(vn_name, vxlan_id, 0, PathPreference(),
+                                      peer->sequence_number()));
     Process(req);
 }
 
@@ -190,14 +192,16 @@ AgentRouteData *BridgeAgentRouteTable::BuildNonBgpPeerData(const string &vrf_nam
                                                            uint32_t tunnel_type,
                                                            Composite::Type type,
                                                            ComponentNHKeyList
-                                                           &component_nh_key_list) {
+                                                           &component_nh_key_list,
+                                                           bool pbb_nh,
+                                                           bool learning_enabled) {
     DBRequest nh_req(DBRequest::DB_ENTRY_ADD_CHANGE);
     nh_req.key.reset(new CompositeNHKey(type, false, component_nh_key_list,
                                         vrf_name));
-    nh_req.data.reset(new CompositeNHData());
+    nh_req.data.reset(new CompositeNHData(pbb_nh, learning_enabled));
     return (new MulticastRoute(vn_name, label,
                                vxlan_id, tunnel_type,
-                               nh_req, type));
+                               nh_req, type, 0));
 }
 
 AgentRouteData *BridgeAgentRouteTable::BuildBgpPeerData(const Peer *peer,
@@ -209,16 +213,17 @@ AgentRouteData *BridgeAgentRouteTable::BuildBgpPeerData(const Peer *peer,
                                                         uint32_t tunnel_type,
                                                         Composite::Type type,
                                                         ComponentNHKeyList
-                                                        &component_nh_key_list) {
+                                                        &component_nh_key_list,
+                                                        bool pbb_nh,
+                                                        bool learning_enabled) {
     const BgpPeer *bgp_peer = dynamic_cast<const BgpPeer *>(peer);
     assert(bgp_peer != NULL);
     DBRequest nh_req(DBRequest::DB_ENTRY_ADD_CHANGE);
     nh_req.key.reset(new CompositeNHKey(type, false, component_nh_key_list,
                                         vrf_name));
-    nh_req.data.reset(new CompositeNHData());
-    return (new MulticastRoute(vn_name, label,
-                                         ethernet_tag, tunnel_type,
-                                         nh_req, type));
+    nh_req.data.reset(new CompositeNHData(pbb_nh, learning_enabled));
+    return (new MulticastRoute(vn_name, label, ethernet_tag, tunnel_type,
+                               nh_req, type, bgp_peer->sequence_number()));
 }
 
 void BridgeAgentRouteTable::AddBridgeBroadcastRoute(const Peer *peer,
@@ -244,9 +249,17 @@ void BridgeAgentRouteTable::DeleteBroadcastReq(const Peer *peer,
     //For same BGP peer type comp type helps in identifying if its a delete
     //for TOR or EVPN path.
     //Only ethernet tag is required, rest are dummy.
-    req.data.reset(new MulticastRoute("", 0, ethernet_tag,
-                                      TunnelType::AllType(),
-                                      nh_req, type));
+    const BgpPeer *bgp_peer = dynamic_cast<const BgpPeer *>(peer);
+    if (bgp_peer) {
+        req.data.reset(new MulticastRoute("", 0,
+                                     ethernet_tag, TunnelType::AllType(),
+                                     nh_req, type,
+                                     bgp_peer->sequence_number()));
+    } else {
+        req.data.reset(new MulticastRoute("", 0, ethernet_tag,
+                                          TunnelType::AllType(),
+                                          nh_req, type, 0));
+    }
 
     BridgeTableEnqueue(Agent::GetInstance(), &req);
 }
@@ -540,9 +553,11 @@ void BridgeRouteEntry::HandleMulticastLabel(const Agent *agent,
             if (local_peer_path == NULL &&
                 local_vm_peer_path == NULL)
                 delete_label = true;
-        } 
-        if (delete_label)
+        }
+        if (delete_label) {
             agent->mpls_table()->DeleteMcastLabel(path->label());
+            FreeMplsLabel(path->label());
+        }
 
         return;
     }
@@ -563,7 +578,7 @@ void BridgeRouteEntry::HandleMulticastLabel(const Agent *agent,
         // XOR use - we shud never reach here when both are NULL or set.
         // Only one should be present.
         assert((local_vm_peer_path != NULL) ^ (local_peer_path != NULL));
-        *evpn_label = agent->mpls_table()->AllocLabel();
+        *evpn_label = AllocateMplsLabel();
     }
     assert(*evpn_label != MplsTable::kInvalidLabel);
     path->set_label(*evpn_label);
@@ -681,6 +696,8 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         return true;
     }
 
+    bool learning_enabled = false;
+    bool pbb_nh = false;
     uint32_t old_fabric_mpls_label = 0;
     if (multicast_peer_path == NULL) {
         multicast_peer_path = new AgentPath(agent->multicast_peer(), NULL);
@@ -707,6 +724,15 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         std::auto_ptr<const NextHopKey> key2(evpn_peer_key);
         ComponentNHKeyPtr component_nh_data2(new ComponentNHKey(0, key2));
         component_nh_list.push_back(component_nh_data2);
+
+        const CompositeNH *cnh = dynamic_cast<const CompositeNH *>(
+                evpn_peer_path->ComputeNextHop(agent));
+        if (cnh && cnh->learning_enabled() == true) {
+            learning_enabled = true;
+        }
+        if (cnh && cnh->pbb_nh() == true) {
+            pbb_nh = true;
+        }
     }
 
     if (fabric_peer_path) {
@@ -716,6 +742,15 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         std::auto_ptr<const NextHopKey> key3(fabric_peer_key);
         ComponentNHKeyPtr component_nh_data3(new ComponentNHKey(0, key3));
         component_nh_list.push_back(component_nh_data3);
+
+        const CompositeNH *cnh = dynamic_cast<const CompositeNH *>(
+                fabric_peer_path->ComputeNextHop(agent));
+        if (cnh && cnh->learning_enabled() == true) {
+            learning_enabled = true;
+        }
+        if (cnh && cnh->pbb_nh() == true) {
+            pbb_nh = true;
+        }
     }
 
     if (local_vm_peer_path) {
@@ -725,6 +760,15 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         std::auto_ptr<const NextHopKey> key4(local_vm_peer_key);
         ComponentNHKeyPtr component_nh_data4(new ComponentNHKey(0, key4));
         component_nh_list.push_back(component_nh_data4);
+
+        const CompositeNH *cnh = dynamic_cast<const CompositeNH *>(
+                local_vm_peer_path->ComputeNextHop(agent));
+        if (cnh && cnh->learning_enabled() == true) {
+            learning_enabled = true;
+        }
+        if (cnh && cnh->pbb_nh() == true) {
+            pbb_nh = true;
+        }
     }
 
     DBRequest nh_req(DBRequest::DB_ENTRY_ADD_CHANGE);
@@ -732,7 +776,7 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
                                         false,
                                         component_nh_list,
                                         vrf()->GetName()));
-    nh_req.data.reset(new CompositeNHData());
+    nh_req.data.reset(new CompositeNHData(pbb_nh, learning_enabled));
     agent->nexthop_table()->Process(nh_req);
     NextHop *nh = static_cast<NextHop *>(agent->nexthop_table()->
                                  FindActiveEntry(nh_req.key.get()));
@@ -803,6 +847,7 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         //Delete Old label, in case label has changed for same peer.
         if (old_fabric_mpls_label != fabric_peer_path->label()) {
             agent->mpls_table()->DeleteMcastLabel(old_fabric_mpls_label);
+            FreeMplsLabel(old_fabric_mpls_label);
         }
     }
 
@@ -857,8 +902,6 @@ bool BridgeRouteEntry::DBEntrySandesh(Sandesh *sresp, bool stale) const {
          it != GetPathList().end(); it++) {
         const AgentPath *path = static_cast<const AgentPath *>(it.operator->());
         if (path) {
-            if (stale && !path->is_stale())
-                continue;
             PathSandeshData pdata;
             path->SetSandeshData(pdata);
             if (is_multicast()) {

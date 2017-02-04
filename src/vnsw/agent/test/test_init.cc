@@ -13,6 +13,8 @@
 #include <vrouter/ksync/test/ksync_test.h>
 #include <boost/functional/factory.hpp>
 #include <cmn/agent_factory.h>
+#include <controller/controller_ifmap.h>
+#include <controller/controller_peer.h>
 
 namespace opt = boost::program_options;
 
@@ -52,7 +54,7 @@ TestClient *TestInit(const char *init_file, bool ksync_init, bool pkt_init,
                      bool services_init, bool uve_init,
                      int agent_stats_interval, int flow_stats_interval,
                      bool asio, bool ksync_sync_mode,
-                     int vrouter_stats_interval) {
+                     int vrouter_stats_interval, bool backup_enable) {
 
     TestClient *client = new TestClient(new TestAgentInit());
     TestAgentInit *init = client->agent_init();
@@ -65,6 +67,7 @@ TestClient *TestInit(const char *init_file, bool ksync_init, bool pkt_init,
     param->set_agent_stats_interval(agent_stats_interval);
     param->set_flow_stats_interval(flow_stats_interval);
     param->set_vrouter_stats_interval(vrouter_stats_interval);
+    param->set_restart_backup_enable(backup_enable);
 
     // Initialize the agent-init control class
     int introspect_port = 0;
@@ -133,6 +136,7 @@ TestClient *VGwInit(const string &init_file, bool ksync_init) {
     init->set_agent_param(param);
     init->ProcessOptions(init_file, "test");
 
+    param->set_restart_backup_enable(false);
     init->set_ksync_enable(ksync_init);
     init->set_packet_enable(true);
     init->set_services_enable(true);
@@ -171,9 +175,14 @@ TestClient *VGwInit(const string &init_file, bool ksync_init) {
 
 void ShutdownAgentController(Agent *agent) {
     TaskScheduler::GetInstance()->Stop();
-    agent->controller()->multicast_cleanup_timer().cleanup_timer_->Fire();
-    agent->controller()->unicast_cleanup_timer().cleanup_timer_->Fire();
-    agent->controller()->config_cleanup_timer().cleanup_timer_->Fire();
+    for (uint8_t count = 0; count < MAX_XMPP_SERVERS; count++) {
+        if (agent->ifmap_xmpp_channel(count)) {
+            agent->ifmap_xmpp_channel(count)->
+                config_cleanup_timer()->controller_timer_->Fire();
+            agent->ifmap_xmpp_channel(count)->
+                end_of_config_timer()->controller_timer_->Fire();
+        }
+    }
     TaskScheduler::GetInstance()->Start();
     client->WaitForIdle();
     agent->controller()->Cleanup();

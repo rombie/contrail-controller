@@ -51,6 +51,7 @@
 #include <oper/route_common.h>
 #include <oper/vrf_assign.h>
 #include <oper/sg.h>
+#include <oper/bridge_domain.h>
 #include <oper/ecmp_load_balance.h>
 #include <uve/stats_collector.h>
 #include <uve/agent_uve.h>
@@ -90,8 +91,7 @@ using namespace std;
     desc.add_options()                          \
         ("help", "Print help message")          \
         ("config", opt::value<string>(), "Specify Init config file")  \
-        ("kernel", "Run with vrouter")          \
-        ("headless", "Run headless vrouter");   \
+        ("kernel", "Run with vrouter");         \
     opt::store(opt::parse_command_line(argc, argv, desc), vm); \
     opt::notify(vm);                            \
     if (vm.count("help")) {                     \
@@ -106,8 +106,6 @@ using namespace std;
     } else {                                    \
         strcpy(init_file, DEFAULT_VNSW_CONFIG_FILE); \
     }                                           \
-
-#define HEADLESS_MODE vm.count("headless")
 
 struct PortInfo {
     char name[32];
@@ -613,7 +611,7 @@ TestClient *TestInit(const char *init_file = NULL, bool ksync_init = false,
                      int flow_stats_interval = AgentParam::kFlowStatsInterval,
                      bool asio = true, bool ksync_sync_mode = true,
                      int vrouter_stats_interval =
-                     AgentParam::kVrouterStatsInterval);
+                     AgentParam::kVrouterStatsInterval, bool backup_enable = false);
 
 TestClient *VGwInit(const string &init_file, bool ksync_init);
 void TestShutdown();

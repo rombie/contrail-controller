@@ -153,7 +153,10 @@ void Agent::SetAgentTaskPolicy() {
         AGENT_INIT_TASKNAME,
         AGENT_SANDESH_TASKNAME,
         kTaskConfigManager,
-        INSTANCE_MANAGER_TASK_NAME
+        INSTANCE_MANAGER_TASK_NAME,
+        kAgentResourceBackUpTask,
+        kAgentResourceRestoreTask,
+        kTaskMacLearning
     };
     SetTaskPolicyOne("db::DBTable", db_exclude_list, 
                      sizeof(db_exclude_list) / sizeof(char *));
@@ -280,7 +283,9 @@ void Agent::SetAgentTaskPolicy() {
         "http client",
         "db::DBTable",
         AGENT_SANDESH_TASKNAME,
-        AGENT_SHUTDOWN_TASKNAME
+        AGENT_SHUTDOWN_TASKNAME,
+        kAgentResourceBackUpTask,
+        kAgentResourceRestoreTask
     };
     SetTaskPolicyOne(AGENT_INIT_TASKNAME, agent_init_exclude_list,
                      sizeof(agent_init_exclude_list) / sizeof(char *));
@@ -323,6 +328,7 @@ void Agent::SetAgentTaskPolicy() {
     };
     SetTaskPolicyOne("Agent::Profile", profile_task_exclude_list,
                      sizeof(profile_task_exclude_list) / sizeof(char *));
+
 }
 
 void Agent::CreateLifetimeManager() {
@@ -484,7 +490,6 @@ void Agent::CopyConfig(AgentParam *params) {
     else
         TunnelType::SetDefaultType(TunnelType::MPLS_GRE);
 
-    headless_agent_mode_ = params_->headless_mode();
     simulate_evpn_tor_ = params->simulate_evpn_tor();
     test_mode_ = params_->test_mode();
     tsn_enabled_ = params_->isTsnAgent();
@@ -639,6 +644,9 @@ void Agent::InitPeers() {
                                           false));
     mac_vm_binding_peer_.reset(new Peer(Peer::MAC_VM_BINDING_PEER,
                               MAC_VM_BINDING_PEER_NAME, false));
+    mac_learning_peer_.reset(new Peer(Peer::MAC_LEARNING_PEER,
+                                      MAC_LEARNING_PEER_NAME,
+                                      false));
 }
 
 void Agent::ReconfigSignalHandler(boost::system::error_code ec, int signum) {
@@ -657,7 +665,7 @@ Agent::Agent() :
     params_(NULL), cfg_(NULL), stats_(NULL), ksync_(NULL), uve_(NULL),
     stats_collector_(NULL), flow_stats_manager_(NULL), pkt_(NULL),
     services_(NULL), vgw_(NULL), rest_server_(NULL), oper_db_(NULL),
-    diag_table_(NULL), controller_(NULL), event_mgr_(NULL),
+    diag_table_(NULL), controller_(NULL), resource_manager_(), event_mgr_(NULL),
     tbb_awake_task_(NULL), agent_xmpp_channel_(), ifmap_channel_(),
     xmpp_client_(), xmpp_init_(), dns_xmpp_channel_(), dns_xmpp_client_(),
     dns_xmpp_init_(), agent_stale_cleaner_(NULL), cn_mcast_builder_(NULL),
@@ -686,14 +694,14 @@ Agent::Agent() :
     pkt_interface_name_("pkt0"), arp_proto_(NULL),
     dhcp_proto_(NULL), dns_proto_(NULL), icmp_proto_(NULL),
     dhcpv6_proto_(NULL), icmpv6_proto_(NULL), flow_proto_(NULL),
+    mac_learning_proto_(NULL), mac_learning_module_(NULL),
     local_peer_(NULL), local_vm_peer_(NULL), linklocal_peer_(NULL),
     ecmp_peer_(NULL), vgw_peer_(NULL), evpn_peer_(NULL), multicast_peer_(NULL),
     multicast_tor_peer_(NULL), multicast_tree_builder_peer_(NULL),
     mac_vm_binding_peer_(NULL), ifmap_parser_(NULL),
     router_id_configured_(false), mirror_src_udp_port_(0),
     lifetime_manager_(NULL), ksync_sync_mode_(false), mgmt_ip_(""),
-    vxlan_network_identifier_mode_(AUTOMATIC), headless_agent_mode_(false), 
-    vhost_interface_(NULL),
+    vxlan_network_identifier_mode_(AUTOMATIC), vhost_interface_(NULL),
     connection_state_(NULL), test_mode_(false),
     xmpp_dns_test_mode_(false),
     init_done_(false), resource_manager_ready_(false),
@@ -824,6 +832,14 @@ void Agent::set_health_check_table(HealthCheckTable *table) {
     health_check_table_ = table;
 }
 
+BridgeDomainTable* Agent::bridge_domain_table() const {
+    return bridge_domain_table_;
+}
+
+void Agent::set_bridge_domain_table(BridgeDomainTable *table) {
+    bridge_domain_table_ = table;
+}
+
 MetaDataIpAllocator *Agent::metadata_ip_allocator() const {
     return metadata_ip_allocator_.get();
 }
@@ -886,6 +902,14 @@ OperDB *Agent::oper_db() const {
 
 void Agent::set_oper_db(OperDB *oper_db) {
     oper_db_ = oper_db;
+}
+
+ResourceManager *Agent::resource_manager() const {
+    return resource_manager_;
+}
+
+void Agent::set_resource_manager(ResourceManager *val) {
+    resource_manager_ = val;
 }
 
 DomainConfig *Agent::domain_config_table() const {

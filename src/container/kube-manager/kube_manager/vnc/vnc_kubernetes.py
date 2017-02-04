@@ -59,14 +59,14 @@ class VncKubernetes(object):
             self.label_cache, self.args, self.logger, self.kube)
         self.pod_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_pod.VncPod', self.vnc_lib,
-            self.label_cache, self.service_mgr,
+            self.label_cache, self.service_mgr, self.q,
             svc_fip_pool = self._get_cluster_service_fip_pool())
         self.network_policy_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_network_policy.VncNetworkPolicy',
             self.vnc_lib, self.label_cache, self.logger)
         self.endpoints_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_endpoints.VncEndpoints',
-            self.vnc_lib, self.label_cache)
+            self.vnc_lib, self.logger, self.kube)
         self.ingress_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_ingress.VncIngress', self.args,
             self.vnc_lib, self.label_cache, self.logger, self.kube)
@@ -242,7 +242,6 @@ class VncKubernetes(object):
             if ipam_ref['to'] == ipam_obj.get_fq_name():
                 ipam_subnets = ipam_ref['attr'].get_ipam_subnets()
                 if not ipam_subnets:
-                    import pdb;pdb.set_trace()
                     continue
                 # We will use the first subnet in the matching IPAM.
                 svc_subnet_uuid = ipam_subnets[0].get_subnet_uuid()
@@ -296,6 +295,9 @@ class VncKubernetes(object):
 
     def _get_cluster_network(self):
         return VirtualNetworkKM.find_by_name_or_uuid('cluster-network')
+
+    def vnc_timer(self):
+        self.pod_mgr.pod_timer()
 
     def vnc_process(self):
         while True:
