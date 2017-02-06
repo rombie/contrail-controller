@@ -8,6 +8,7 @@
 #include <string>
 
 #include "bgp/bgp_server.h"
+#include "bgp/extended-community/etree.h"
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/extended-community/router_mac.h"
 #include "net/bgp_af.h"
@@ -941,6 +942,21 @@ void BgpAttr::set_leaf_olist(const BgpOListSpec *leaf_olist_spec) {
     }
 }
 
+std::string BgpAttr::origin_string() const {
+    switch (origin()) {
+    case BgpAttrOrigin::IGP:
+        return "igp";
+        break;
+    case BgpAttrOrigin::EGP:
+        return "egp";
+        break;
+    case BgpAttrOrigin::INCOMPLETE:
+        return "incomplete";
+        break;
+    }
+    return "unknown";
+}
+
 Address::Family BgpAttr::nexthop_family() const {
     if (nexthop_.is_v6()) {
         return Address::INET6;
@@ -962,6 +978,34 @@ uint32_t BgpAttr::sequence_number() const {
         if (ExtCommunity::is_mac_mobility(*it)) {
             MacMobility mm(*it);
             return mm.sequence_number();
+        }
+    }
+    return 0;
+}
+
+bool BgpAttr::evpn_sticky_mac() const {
+    if (!ext_community_)
+        return 0;
+    for (ExtCommunity::ExtCommunityList::const_iterator it =
+         ext_community_->communities().begin();
+         it != ext_community_->communities().end(); ++it) {
+        if (ExtCommunity::is_mac_mobility(*it)) {
+            MacMobility mm(*it);
+            return mm.sticky();
+        }
+    }
+    return 0;
+}
+
+bool BgpAttr::etree_leaf() const {
+    if (!ext_community_)
+        return 0;
+    for (ExtCommunity::ExtCommunityList::const_iterator it =
+         ext_community_->communities().begin();
+         it != ext_community_->communities().end(); ++it) {
+        if (ExtCommunity::is_etree(*it)) {
+            ETree etree(*it);
+            return etree.leaf();
         }
     }
     return 0;

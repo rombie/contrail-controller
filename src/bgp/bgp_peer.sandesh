@@ -184,6 +184,7 @@ struct ShowRoutePath {
     10: string as_path;
     11: string next_hop;
     12: u32 label;
+    26: string origin;
     13: bool replicated;
     14: string primary_table (link="ShowRouteReq");
     24: list<string> secondary_tables;
@@ -196,6 +197,7 @@ struct ShowRoutePath {
     21: ShowPmsiTunnel pmsi_tunnel;
     22: ShowLoadBalance load_balance;
     23: list<string> cluster_list;
+    27: string originator_id;
 }
 
 struct ShowRoute {
@@ -326,6 +328,7 @@ struct ShowRoutingInstance {
     5: list<string> export_target;                  // Export Route targets
     10: bool always_subscribe;                      // Always subscribe for RTF
     12: bool allow_transit;                         // Allow transit
+    13: bool pbb_evpn_enable;                       // PBB EVPN enabled
     7: bool deleted;                                // Deletion in progress
     9: string deleted_at;                           // Delete timestamp
     2: optional list<ShowRoutingInstanceTable> tables;
@@ -575,6 +578,7 @@ struct ShowBgpInstanceConfig {
     4: list<string> export_target;
     10: bool has_pnf;
     13: bool allow_transit;
+    14: bool pbb_evpn_enable;
     9: string last_change_at;
     5: list<ShowBgpServiceChainConfig> service_chain_infos;
     6: list<ShowBgpStaticRouteConfig> static_routes;

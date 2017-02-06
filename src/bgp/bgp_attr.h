@@ -820,6 +820,7 @@ public:
     friend std::size_t hash_value(BgpAttr const &attr);
 
     BgpAttrOrigin::OriginType origin() const { return origin_; }
+    std::string origin_string() const;
     const IpAddress &nexthop() const { return nexthop_; }
     Address::Family nexthop_family() const;
     uint32_t med() const { return med_; }
@@ -853,6 +854,8 @@ public:
     BgpOListPtr leaf_olist() const { return leaf_olist_; }
     BgpAttrDB *attr_db() const { return attr_db_; }
     uint32_t sequence_number() const;
+    bool evpn_sticky_mac() const;
+    bool etree_leaf() const;
     MacAddress mac_address() const;
 
 private:
