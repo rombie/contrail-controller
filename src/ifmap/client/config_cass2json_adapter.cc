@@ -76,8 +76,6 @@ void ConfigCass2JsonAdapter::AddOneEntry(Value *jsonObject,
 
         // security_group_id may beeds to be quoted due to bug in config server.
         string c_value = c.value;
-        if (c.key == "prop:security_group_id" && c.value[0] != '\"')
-            c_value = "\"" + c.value + "\"";
         if (c.key == "prop:bgpaas_session_attributes")
             c_value = "\"\"";
         Document prop_document(&a);
