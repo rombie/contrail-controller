@@ -180,7 +180,90 @@ based on deployment scenarios.
 * GR/LLGR feature can be enabled for both BGP based and XMPP based peers
 * GR/LLGR configuration resides under global-system-config configuration section
 
-##4.2 contrail-vrouter-agent Work items
+##4.2 Capability negotiation in XMPP
+Custom message shall be added to exchange capability information between the
+two ends of the session (contrail-control and contrail-vrouter-agent). This
+message is exchanged between the two end-points when waiting in
+'XmppOpenConfirmed' state during initial session establishment.
+
+Normally, each end point send XmppOpen message to the other end-point, goes to
+XmppOpenSent state and waits for the reception of the open message (sent from
+the other end point). After receiving the open message, each entity goes to
+"OpenConfirmed" state and then sends a XmppKeepAlive message. Only after
+receiving the first keep alive message does the state moves to the final state
+'Established'.
+
+Here, we propose to send custom capabilities message when waiting in the
+'OpenConfirmed' state. (Before sending the first KeepAlive message). This keeps
+backward compatibility and also enables us to encode custom messages without
+violating the Xmpp chat message protocol.
+
+Capabilities shall have only GracefulRestart information for now. More can be
+added to this as necessary in future.
+
+```
+<capabilities>
+  <capability>
+    <type>GracefulRestart</type>
+    <parameters>
+        <!-- Restart Time in seconds -->
+        <restart-time>300</restart-time>
+
+        <!-- Long Lived Restart Time in seconds -->
+        <long-lived-restart-time>10000</long-lived-restart-time>
+
+        <!-- GR supported Address families list -->
+        <address-families>
+          <family>
+              <!-- Address family type -->
+              <inet-unicast/>
+
+              <!-- Whether forwarding state has been preserved or not  -->
+              <forwarding-state-preserved>yes</forwarding-state-preserved>
+          </family>
+          <family>
+              <!-- Address family type -->
+              <inet6-unicast/>
+
+              <!-- Whether forwarding state has been preserved or not  -->
+              <forwarding-state-preserved>yes</forwarding-state-preserved>
+          </family>
+        </address-families>
+    </parameters>
+  <capability>
+</capabilities>
+```
+
+End-Of-Rib marker shall be exchanged using empty items list in the update
+message.
+
+From contrail-vrouter-agent to contrail-control
+
+```
+<iq type='set'
+    from='agent@vnsw.contrailsystems.com/other-peer'
+    to='bgp.contrail.com'> 
+    <pubsub xmlns='http://jabber.org/protocol/pubsub'>
+      <!-- 0/0 indicates eor to all afis, or to specific afi/safi otherwise -->
+      <items node="0/0/EndOfRib"></items>
+    </pubsub>
+</iq>
+```
+
+From contrail-control to contrail-vrouter-agent
+
+```
+<iq type='set' from='bgp.contrail.com'
+    to='agent@vnsw.contrailsystems.com/bgp-peer'>
+  <event xmlns="http://jabber.org/protocol/pubsub">
+    <!-- 0/0 indicates eor to all afis, or to specific afi/safi otherwise -->
+    <items node="0/0/EndOfRib"></items>
+  </event>
+</iq>
+
+```
+
+##4.3 contrail-vrouter-agent Work items
 
 #5. Performance and scaling impact
 ##5.1 API and control plane
