@@ -78,9 +78,9 @@ def main(args_str=' '.join(sys.argv[1:])):
                     SandeshSystem.get_sandesh_send_rate_limit(),
               }
     sandesh_opts = {
-        'keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
-        'certfile': '/etc/contrail/ssl/certs/server.pem',
-        'ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
+        'sandesh_keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
+        'sandesh_certfile': '/etc/contrail/ssl/certs/server.pem',
+        'sandesh_ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
         'sandesh_ssl_enable': False,
         'introspect_ssl_enable': False
     }
@@ -135,11 +135,11 @@ def main(args_str=' '.join(sys.argv[1:])):
                              'ip1:port1 ip2:port2')
     parser.add_argument("--sandesh_send_rate_limit", type=int,
             help="Sandesh send rate limit in messages/sec")
-    parser.add_argument("--keyfile",
+    parser.add_argument("--sandesh_keyfile",
                         help="Sandesh ssl private key")
-    parser.add_argument("--certfile",
+    parser.add_argument("--sandesh_certfile",
                         help="Sandesh ssl certificate")
-    parser.add_argument("--ca_cert",
+    parser.add_argument("--sandesh_ca_cert",
                         help="Sandesh CA ssl certificate")
     parser.add_argument("--sandesh_ssl_enable", action="store_true",
                         help="Enable ssl for sandesh connection")
@@ -185,43 +185,82 @@ def main(args_str=' '.join(sys.argv[1:])):
 
     if _args.sandesh_send_rate_limit is not None:
         SandeshSystem.set_sandesh_send_rate_limit(_args.sandesh_send_rate_limit)
-    sandesh_config = SandeshConfig(_args.keyfile, _args.certfile,
-        _args.ca_cert, _args.sandesh_ssl_enable, _args.introspect_ssl_enable)
+    sandesh_config = SandeshConfig(_args.sandesh_keyfile,
+        _args.sandesh_certfile, _args.sandesh_ca_cert,
+        _args.sandesh_ssl_enable, _args.introspect_ssl_enable)
     # done parsing arguments
 
-    if not 'SUPERVISOR_SERVER_URL' in os.environ:
-        sys.stderr.write('Node manager must be run as a supervisor event '
-                         'listener\n')
-        sys.stderr.flush()
-        return
     prog = None
     if (node_type == 'contrail-analytics'):
+        if not rule_file:
+            rule_file = "/etc/contrail/supervisord_analytics_files/" + \
+                "contrail-analytics.rules"
+        unit_names = ['contrail-collector.service',
+                      'contrail-analytics-api.service',
+                      'contrail-snmp-collector.service',
+                      'contrail-query-engine.service',
+                      'contrail-alarm-gen.service',
+                      'contrail-topology.service',
+                      'contrail-analytics-nodemgr.service',
+                     ]
         prog = AnalyticsEventManager(
-            rule_file, discovery_server,
+            rule_file, unit_names, discovery_server,
             discovery_port, collector_addr, sandesh_config)
     elif (node_type == 'contrail-config'):
+        if not rule_file:
+            rule_file = "/etc/contrail/supervisord_config_files/" + \
+                "contrail-config.rules"
+        unit_names = ['contrail-api.service',
+                      'contrail-schema.service',
+                      'contrail-svc-monitor.service',
+                      'contrail-device-manager.service',
+                      'contrail-discovery.service',
+                      'contrail-config-nodemgr.service',
+                      'ifmap.service',
+                     ]
         cassandra_repair_interval = _args.cassandra_repair_interval
 	cassandra_repair_logdir = _args.cassandra_repair_logdir
         prog = ConfigEventManager(
-            rule_file, discovery_server,
+            rule_file, unit_names, discovery_server,
             discovery_port, collector_addr, sandesh_config,
             cassandra_repair_interval, cassandra_repair_logdir)
     elif (node_type == 'contrail-control'):
+        if not rule_file:
+            rule_file = "/etc/contrail/supervisord_control_files/" + \
+                "contrail-control.rules"
+        unit_names = ['contrail-control.service',
+                      'contrail-dns.service',
+                      'contrail-named.service',
+                      'contrail-control-nodemgr.service',
+                     ]
         prog = ControlEventManager(
-            rule_file, discovery_server,
+            rule_file, unit_names, discovery_server,
             discovery_port, collector_addr, sandesh_config)
     elif (node_type == 'contrail-vrouter'):
+        if not rule_file:
+            rule_file = "/etc/contrail/supervisord_vrouter_files/" + \
+                "contrail-vrouter.rules"
+        unit_names = ['contrail-vrouter-agent.service',
+                      'contrail-vrouter-nodemgr.service',
+                     ]
         prog = VrouterEventManager(
-            rule_file, discovery_server,
+            rule_file, unit_names, discovery_server,
             discovery_port, collector_addr, sandesh_config)
     elif (node_type == 'contrail-database'):
+        if not rule_file:
+            rule_file = "/etc/contrail/supervisord_database_files/" + \
+                "contrail-database.rules"
+        unit_names = ['contrail-database.service',
+                      'kafka.service',
+                      'contrail-database-nodemgr.service',
+                     ]
         hostip = _args.hostip
         minimum_diskgb = _args.minimum_diskgb
         contrail_databases = _args.contrail_databases
         cassandra_repair_interval = _args.cassandra_repair_interval
 	cassandra_repair_logdir = _args.cassandra_repair_logdir
         prog = DatabaseEventManager(
-            rule_file, discovery_server,
+            rule_file, unit_names, discovery_server,
             discovery_port, collector_addr, sandesh_config,
             hostip, minimum_diskgb, contrail_databases,
 	    cassandra_repair_interval, cassandra_repair_logdir)
@@ -240,7 +279,8 @@ def main(args_str=' '.join(sys.argv[1:])):
     """
     gevent.signal(signal.SIGHUP, prog.nodemgr_sighup_handler)
 
-    gevent.joinall([gevent.spawn(prog.runforever)])
+    gevent.joinall([gevent.spawn(prog.runforever),
+        gevent.spawn(prog.run_periodically(prog.do_periodic_events, 60))])
 
 if __name__ == '__main__':
     main()

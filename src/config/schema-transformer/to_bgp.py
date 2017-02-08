@@ -413,6 +413,7 @@ def parse_args(args_str):
         'kombu_ssl_ca_certs': '',
         'zk_timeout': 400,
         'logical_routers_enabled': True,
+        'acl_direction_comp': False,
     }
     secopts = {
         'use_certs': False,
@@ -430,9 +431,9 @@ def parse_args(args_str):
         'cassandra_password': None,
     }
     sandeshopts = {
-        'keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
-        'certfile': '/etc/contrail/ssl/certs/server.pem',
-        'ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
+        'sandesh_keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
+        'sandesh_certfile': '/etc/contrail/ssl/certs/server.pem',
+        'sandesh_ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
         'sandesh_ssl_enable': False,
         'introspect_ssl_enable': False
     }
@@ -548,6 +549,8 @@ def parse_args(args_str):
                         help="Timeout for ZookeeperClient")
     parser.add_argument("--logical_routers_enabled", type=_bool,
                         help="Enabled logical routers")
+    parser.add_argument("--acl_direction_comp", type=_bool,
+                        help="Acl direction compression")
 
     args = parser.parse_args(remaining_argv)
     args.conf_file = saved_conf_file
@@ -555,8 +558,8 @@ def parse_args(args_str):
         args.cassandra_server_list = args.cassandra_server_list.split()
     if type(args.collectors) is str:
         args.collectors = args.collectors.split()
-    args.sandesh_config = SandeshConfig(args.keyfile,
-        args.certfile, args.ca_cert,
+    args.sandesh_config = SandeshConfig(args.sandesh_keyfile,
+        args.sandesh_certfile, args.sandesh_ca_cert,
         args.sandesh_ssl_enable, args.introspect_ssl_enable)
 
     return args
