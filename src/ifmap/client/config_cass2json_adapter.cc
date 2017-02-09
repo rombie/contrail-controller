@@ -203,7 +203,6 @@ void ConfigCass2JsonAdapter::CreateJsonString(const string &obj_type,
                                               const CassColumnKVVec &cdvec) {
     if (cdvec.empty())
         return;
-
     Document::AllocatorType &a = json_document_.GetAllocator();
     Value jsonObject;
     jsonObject.SetObject();
