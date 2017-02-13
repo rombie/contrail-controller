@@ -11,15 +11,17 @@ import uuid
 from config_db import *
 from loadbalancer import *
 from vnc_api.vnc_api import *
+from kube_manager.common.kube_config_db import IngressKM
 
 from cfgm_common import importutils
 
 class VncIngress(object):
-    def __init__(self, args=None, vnc_lib=None, \
+    def __init__(self, args=None, queue=None, vnc_lib=None,
                  label_cache=None, logger=None, kube=None):
         self._args = args
         self._kube = kube
         self._vnc_lib = vnc_lib
+        self._queue = queue
         self._vn_obj = None
         self._service_subnet_uuid = None
         self._fip_pool_obj = None
@@ -146,6 +148,7 @@ class VncIngress(object):
 
     def _vnc_create_lb(self, uid, name, namespace):
         lb_provider = 'opencontrail'
+        name = 'ingress' + '-' + name
         proj_obj = self._get_project(namespace)
         vn_obj = self._get_network()
         if proj_obj is None or vn_obj is None:
@@ -153,8 +156,11 @@ class VncIngress(object):
 
         vip_address = None
         service_subnet_uuid = self._get_service_subnet_uuid()
-        lb_obj = self.service_lb_mgr.create(lb_provider, vn_obj, uid,
-                      name, proj_obj, vip_address, service_subnet_uuid)
+        annotations = {}
+        annotations['device_owner'] = 'K8S:INGRESS'
+        lb_obj = self.service_lb_mgr.create(lb_provider, vn_obj,
+                            uid, name, proj_obj, vip_address,
+                            service_subnet_uuid, annotations=annotations)
         if lb_obj:
             vip_info = {}
             vip_info['clusterIP'] = lb_obj._loadbalancer_properties.vip_address
@@ -210,6 +216,8 @@ class VncIngress(object):
                     value = kvp['value']
                     backend['annotations'][key] = value
                 backend['member'] = {}
+                if len(pool.members) == 0:
+                    continue
                 member_id = list(pool.members)[0]
                 member = LoadbalancerMemberKM.get(member_id)
                 if member.annotations is None:
@@ -435,6 +443,40 @@ class VncIngress(object):
 
     def _delete_ingress(self, uid):
         self._delete_lb(uid)
+
+    def _create_ingress_event(self, event_type, ingress_id, lb):
+        event = {}
+        object = {}
+        object['kind'] = 'Ingress'
+        object['spec'] = {}
+        object['metadata'] = {}
+        object['metadata']['uid'] = ingress_id
+        if event_type == 'delete':
+            event['type'] = 'DELETED'
+            event['object'] = object
+            self._queue.put(event)
+        return
+
+    def _sync_ingress_lb(self):
+        lb_uuid_list = list(LoadbalancerKM.keys())
+        ingress_uuid_list = list(IngressKM.keys())
+        for uuid in lb_uuid_list:
+            if uuid in ingress_uuid_list:
+                continue
+            lb = LoadbalancerKM.get(uuid)
+            if not lb:
+                continue
+            if not lb.annotations:
+                continue
+            for kvp in lb.annotations['key_value_pair'] or []:
+                if kvp['key'] == 'device_owner' \
+                   and kvp['value'] == 'K8S:INGRESS':
+                    self._create_ingress_event('delete', uuid, lb)
+                    break
+        return
+
+    def ingress_timer(self):
+        self._sync_ingress_lb()
 
     def process(self, event):
         name = event['object']['metadata'].get('name')

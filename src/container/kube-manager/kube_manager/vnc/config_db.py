@@ -5,9 +5,10 @@
 """
 This file contains implementation of data model for kube manager
 """
+import json
+
 from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
 from cfgm_common.vnc_db import DBBase
-
 
 class DBBaseKM(DBBase):
     obj_type = __name__
@@ -40,6 +41,7 @@ class LoadbalancerKM(DBBaseKM):
         self.virtual_machine_interfaces = set()
         self.loadbalancer_listeners = set()
         self.selectors = None
+        self.annotations = None
         obj_dict = self.update(obj_dict)
         super(LoadbalancerKM, self).__init__(uuid, obj_dict)
 
@@ -49,6 +51,7 @@ class LoadbalancerKM(DBBaseKM):
         self.name = obj['fq_name'][-1]
         self.fq_name = obj['fq_name']
         self.parent_uuid = obj['parent_uuid']
+        self.annotations = obj.get('annotations', None)
         self.update_multiple_refs('virtual_machine_interface', obj)
         self.update_multiple_refs('loadbalancer_listener', obj)
         return obj
@@ -247,7 +250,7 @@ class VirtualMachineKM(DBBaseKM):
         if self.annotations:
             for kvp in self.annotations['key_value_pair'] or []:
                 if kvp['key'] == 'labels':
-                    self.pod_labels = kvp['value']
+                    self.pod_labels = json.loads(kvp['value'])
                     break
         self.update_single_ref('virtual_router', obj)
         self.update_multiple_refs('virtual_machine_interface', obj)

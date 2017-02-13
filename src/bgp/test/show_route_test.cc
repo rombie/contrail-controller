@@ -1013,6 +1013,223 @@ TEST_F(ShowRouteTest2, MatchingPrefix7) {
     }
 }
 
+// Limit routes by shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix8) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *prefix_formats[] = {
+        "192.168.11.255/32",
+        "192.168.11.254/31",
+        "192.168.11.252/30",
+        "192.168.11.248/29",
+        "192.168.11.240/28"
+    };
+    BOOST_FOREACH(const char *prefix, prefix_formats) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result = list_of(1)(1);
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix(prefix);
+        show_req->set_shorter_match(true);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by non-existent shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix9) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *prefix_formats[] = {
+        "192.168.14.255/32",
+        "192.168.14.254/31",
+        "192.168.14.252/30",
+        "192.168.14.248/29",
+        "192.168.14.240/28"
+    };
+    BOOST_FOREACH(const char *prefix, prefix_formats) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result;
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix(prefix);
+        show_req->set_shorter_match(true);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by instance and shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix10) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *instance_names[] = { "blue", "red" };
+    BOOST_FOREACH(const char *instance, instance_names) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result = list_of(1);
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix("192.168.11.240/28");
+        show_req->set_shorter_match(true);
+        show_req->set_routing_instance(instance);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by non-existent instance and shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix11) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *instance_names[] = { "green", "blue1", "red1" };
+    BOOST_FOREACH(const char *instance, instance_names) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result;
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix("192.168.11.240/28");
+        show_req->set_shorter_match(true);
+        show_req->set_routing_instance(instance);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by table and shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix12) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *table_names[] = { "blue.inet.0", "red.inet.0" };
+    BOOST_FOREACH(const char *table, table_names) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result = list_of(1);
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix("192.168.11.240/28");
+        show_req->set_shorter_match(true);
+        show_req->set_routing_table(table);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by non-existent table and shorter matching prefix.
+TEST_F(ShowRouteTest2, MatchingPrefix13) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *table_names[] = { "green.inet.0", "blue.inet.1", "red.inet.1" };
+    BOOST_FOREACH(const char *table, table_names) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result;
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix("192.168.11.240/28");
+        show_req->set_shorter_match(true);
+        show_req->set_routing_table(table);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by regex prefix.
+// Regex matches all prefixes in both tables.
+TEST_F(ShowRouteTest2, MatchingPrefix14) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *prefix_formats[] = {
+        "192.168",
+        "/24",
+        "168.1[1-3].0/24"
+    };
+    BOOST_FOREACH(const char *prefix, prefix_formats) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result = list_of(3)(3);
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix(prefix);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by regex prefix.
+// Regex matches subset of prefixes in both tables.
+TEST_F(ShowRouteTest2, MatchingPrefix15) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *prefix_formats[] = {
+        "2.168.1[1-2]",
+        "192.168.1[1-2]",
+        "168.1[1-2].0/24"
+    };
+    BOOST_FOREACH(const char *prefix, prefix_formats) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result = list_of(2)(2);
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix(prefix);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
+// Limit routes by regex prefix.
+// Regex does not match any prefixes.
+TEST_F(ShowRouteTest2, MatchingPrefix16) {
+    BgpSandeshContext sandesh_context;
+    sandesh_context.bgp_server = a_.get();
+    Sandesh::set_client_context(&sandesh_context);
+
+    const char *prefix_formats[] = {
+        "192.168.14",
+        "168.17",
+        "168.1[4-9]",
+    };
+    BOOST_FOREACH(const char *prefix, prefix_formats) {
+        ShowRouteReq *show_req = new ShowRouteReq;
+        vector<int> result;
+        Sandesh::set_response_callback(
+            boost::bind(ValidateShowRouteSandeshResponse, _1, result, __LINE__));
+        show_req->set_prefix(prefix);
+        validate_done_ = false;
+        show_req->HandleRequest();
+        show_req->Release();
+        TASK_UTIL_EXPECT_EQ(true, validate_done_);
+    }
+}
+
 // Start from middle of blue table and go through red table.
 TEST_F(ShowRouteTest2, StartPrefix1) {
     BgpSandeshContext sandesh_context;
@@ -1321,7 +1538,8 @@ TEST_F(ShowRouteTest3, PageLimit1) {
     // (kMaxCount+1) routes. Read should return the first kMaxCount entries.
     ShowRouteReq *show_req = new ShowRouteReq;
     vector<int> result = list_of(100);
-    string next_batch = "||||||red||red.inet.0||10.1.1.0/24||0||||||||false";
+    string next_batch =
+        "||||||red||red.inet.0||10.1.1.0/24||0||||||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_start_routing_instance("red");
@@ -1446,7 +1664,8 @@ TEST_F(ShowRouteTest3, PageLimit4) {
     // We will get back [blue:all routes] and [red:1.2.3.0 to 1.2.3.9].
     show_req = new ShowRouteReq;
     result = list_of(90)(10);
-    next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||||||||false";
+    next_batch =
+        "||||||red||red.inet.0||1.2.3.10/32||80||||||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -1970,7 +2189,7 @@ TEST_F(ShowRouteTest3, PageLimit8) {
     ShowRouteReq *show_req = new ShowRouteReq;
     vector<int> result = list_of(90)(10);
     string next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||" +
-                        peers_[0]->ToString() + "||||||false";
+                        peers_[0]->ToString() + "||||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -1986,7 +2205,8 @@ TEST_F(ShowRouteTest3, PageLimit8) {
     // matching protocol based filter is also specified.
     show_req = new ShowRouteReq;
     result = list_of(90)(10);
-    next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||||BGP||||false";
+    next_batch =
+        "||||||red||red.inet.0||1.2.3.10/32||80||||BGP||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -2003,7 +2223,7 @@ TEST_F(ShowRouteTest3, PageLimit8) {
     show_req = new ShowRouteReq;
     result = list_of(90)(10);
     next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||" +
-                        peers_[0]->ToString() + "||BGP||||false";
+                        peers_[0]->ToString() + "||BGP||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -2021,7 +2241,7 @@ TEST_F(ShowRouteTest3, PageLimit8) {
     show_req = new ShowRouteReq;
     result = list_of(90)(10);
     next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||" +
-                        peers_[0]->ToString() + "||||inet||false";
+                        peers_[0]->ToString() + "||||inet||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -2039,7 +2259,7 @@ TEST_F(ShowRouteTest3, PageLimit8) {
     show_req = new ShowRouteReq;
     result = list_of(90)(10);
     next_batch = "||||||red||red.inet.0||1.2.3.10/32||80||" +
-                        peers_[0]->ToString() + "||BGP||inet||false";
+                        peers_[0]->ToString() + "||BGP||inet||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     show_req->set_count(180);
@@ -2154,7 +2374,8 @@ TEST_F(ShowRouteTest3, SimulateClickingNextBatch) {
     // i.e. 100 entries
     ShowRouteReq *show_req = new ShowRouteReq;
     vector<int> result = list_of(100);
-    string next_batch = "||||||red||red.inet.0||1.2.0.100/32||300||||||||false";
+    string next_batch =
+        "||||||red||red.inet.0||1.2.0.100/32||300||||||||false||false";
     show_req->set_count(400);
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
@@ -2171,7 +2392,7 @@ TEST_F(ShowRouteTest3, SimulateClickingNextBatch) {
     show_req->set_start_prefix("1.2.0.100/32");
     show_req->set_count(300);
     show_req->set_longer_match(false);
-    next_batch = "||||||red||red.inet.0||1.2.0.200/32||200||||||||false";
+    next_batch = "||||||red||red.inet.0||1.2.0.200/32||200||||||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     validate_done_ = false;
@@ -2187,7 +2408,7 @@ TEST_F(ShowRouteTest3, SimulateClickingNextBatch) {
     show_req->set_start_prefix("1.2.0.200/32");
     show_req->set_count(200);
     show_req->set_longer_match(false);
-    next_batch = "||||||red||red.inet.0||1.2.1.44/32||100||||||||false";
+    next_batch = "||||||red||red.inet.0||1.2.1.44/32||100||||||||false||false";
     Sandesh::set_response_callback(boost::bind(
         ValidateShowRouteSandeshResponse, _1, result, __LINE__, next_batch));
     validate_done_ = false;

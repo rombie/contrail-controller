@@ -5,6 +5,7 @@
 #include "bgp/bgp_sandesh.h"
 
 #include <boost/assign/list_of.hpp>
+#include <boost/regex.hpp>
 #include <sandesh/request_pipeline.h>
 
 #include "bgp/bgp_peer_internal_types.h"
@@ -14,6 +15,8 @@
 #include "bgp/routing-instance/routing_instance.h"
 
 using boost::assign::list_of;
+using boost::regex;
+using boost::regex_search;
 using std::auto_ptr;
 using std::string;
 using std::vector;
@@ -146,7 +149,8 @@ public:
     };
 
     ShowRouteHandler(const ShowRouteReq *req, int inst_id) :
-        req_(req), inst_id_(inst_id) {}
+        req_(req), inst_id_(inst_id), prefix_expr_(req->get_prefix()) {
+    }
 
     // Search for interesting prefixes in a given table for given partition
     void BuildShowRouteTable(BgpTable *table, vector<ShowRoute> *route_list,
@@ -157,12 +161,7 @@ public:
             static_cast<DBTablePartition *>(table->GetTablePartition(inst_id_));
         BgpRoute *route = NULL;
 
-        bool exact_lookup = false;
-        if (!req_->get_prefix().empty() && !req_->get_longer_match()) {
-            exact_lookup = true;
-            auto_ptr<DBEntry> key = table->AllocEntryStr(req_->get_prefix());
-            route = static_cast<BgpRoute *>(partition->Find(key.get()));
-        } else if (table->name() == req_->get_start_routing_table()) {
+        if (table->name() == req_->get_start_routing_table()) {
             auto_ptr<DBEntry> key =
                 table->AllocEntryStr(req_->get_start_prefix());
             route = static_cast<BgpRoute *>(partition->lower_bound(key.get()));
@@ -172,28 +171,33 @@ public:
         for (int i = 0; route && (!count || i < count);
              route = static_cast<BgpRoute *>(partition->GetNext(route)), ++i) {
             if (!MatchPrefix(req_->get_prefix(), route,
-                             req_->get_longer_match()))
+                             req_->get_longer_match(),
+                             req_->get_shorter_match()))
                 continue;
             ShowRoute show_route;
             route->FillRouteInfo(table, &show_route, req_->get_source(),
                                  req_->get_protocol());
             if (!show_route.get_paths().empty())
                 route_list->push_back(show_route);
-            if (exact_lookup)
-                break;
         }
     }
 
     bool MatchPrefix(const string &expected_prefix, BgpRoute *route,
-                     bool longer_match) {
-        if (expected_prefix == "")
+                     bool longer_match, bool shorter_match) {
+        if (expected_prefix.empty())
             return true;
-        if (!longer_match) {
-            return expected_prefix == route->ToString();
-        }
+        if (!longer_match && !shorter_match)
+            return regex_search(route->ToString(), prefix_expr_);
 
-        // Do longest prefix match.
-        return route->IsMoreSpecific(expected_prefix);
+        // Do longer match.
+        if (longer_match && route->IsMoreSpecific(expected_prefix))
+            return true;
+
+        // Do shorter match.
+        if (shorter_match && route->IsLessSpecific(expected_prefix))
+            return true;
+
+        return false;
     }
 
     bool match(const string &expected, const string &actual) {
@@ -235,6 +239,7 @@ public:
 private:
     const ShowRouteReq *req_;
     int inst_id_;
+    regex prefix_expr_;
 };
 
 uint32_t ShowRouteHandler::GetMaxRouteCount(const ShowRouteReq *req) {
@@ -259,7 +264,8 @@ bool ShowRouteHandler::ConvertReqIterateToReq(
     req->set_context(req_iterate->context());
 
     // Format of route_info:
-    // UserRI||UserRT||UserPfx||NextRI||NextRT||NextPfx||count||longer_match
+    // UserRI||UserRT||UserPfx||NextRI||NextRT||NextPfx||count||longer_match||
+    // shorter_match
     //
     // User* values were entered by the user and Next* values indicate 'where'
     // we need to start this iteration.
@@ -335,7 +341,14 @@ bool ShowRouteHandler::ConvertReqIterateToReq(
     string user_family = route_info.substr((pos9 + sep_size),
                                            pos10 - (pos9 + sep_size));
 
-    string longer_match = route_info.substr(pos10 + sep_size);
+    size_t pos11 = route_info.find(kIterSeparator, (pos10 + sep_size));
+    if (pos11 == string::npos) {
+        return false;
+    }
+    string longer_match = route_info.substr((pos10 + sep_size),
+                                            pos11 - (pos10 + sep_size));
+
+    string shorter_match = route_info.substr(pos11 + sep_size);
 
     req->set_routing_instance(user_ri);
     req->set_routing_table(user_rt);
@@ -348,6 +361,7 @@ bool ShowRouteHandler::ConvertReqIterateToReq(
     req->set_protocol(user_protocol);
     req->set_family(user_family);
     req->set_longer_match(StringToBool(longer_match));
+    req->set_shorter_match(StringToBool(shorter_match));
 
     return true;
 }
@@ -536,7 +550,8 @@ string ShowRouteHandler::SaveContextAndPopLast(const ShowRouteReq *req,
             req->get_source() + kIterSeparator +
             req->get_protocol() + kIterSeparator +
             req->get_family() + kIterSeparator +
-            BoolToString(req->get_longer_match());
+            BoolToString(req->get_longer_match()) + kIterSeparator +
+            BoolToString(req->get_shorter_match());
     }
 
     // Pop off the last entry only after we have captured its values in

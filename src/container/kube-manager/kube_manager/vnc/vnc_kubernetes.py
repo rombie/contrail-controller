@@ -56,19 +56,19 @@ class VncKubernetes(object):
             cluster_pod_subnets = self.args.pod_subnets)
         self.service_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_service.VncService', self.vnc_lib,
-            self.label_cache, self.args, self.logger, self.kube)
-        self.pod_mgr = importutils.import_object(
-            'kube_manager.vnc.vnc_pod.VncPod', self.vnc_lib,
-            self.label_cache, self.service_mgr, self.q,
-            svc_fip_pool = self._get_cluster_service_fip_pool())
+            self.label_cache, self.args, self.logger, self.q, self.kube)
         self.network_policy_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_network_policy.VncNetworkPolicy',
             self.vnc_lib, self.label_cache, self.logger)
+        self.pod_mgr = importutils.import_object(
+            'kube_manager.vnc.vnc_pod.VncPod', self.vnc_lib,
+            self.label_cache, self.service_mgr, self.network_policy_mgr,
+            self.q, svc_fip_pool = self._get_cluster_service_fip_pool())
         self.endpoints_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_endpoints.VncEndpoints',
             self.vnc_lib, self.logger, self.kube)
         self.ingress_mgr = importutils.import_object(
-            'kube_manager.vnc.vnc_ingress.VncIngress', self.args,
+            'kube_manager.vnc.vnc_ingress.VncIngress', self.args, self.q,
             self.vnc_lib, self.label_cache, self.logger, self.kube)
 
     def _vnc_connect(self):
@@ -202,10 +202,11 @@ class VncKubernetes(object):
         try:
             self.vnc_lib.virtual_network_create(vn_obj)
         except RefsExistError:
-            vn_obj = self.vnc_lib.virtual_network_read(
-                fq_name=vn_obj.get_fq_name())
+            pass
 
-        VirtualNetworkKM.locate(vn_obj.uuid)
+        # FIP pool creation requires a vnc object. Get it.
+        vn_obj = self.vnc_lib.virtual_network_read(
+            fq_name=vn_obj.get_fq_name())
 
         # Create service floating ip pool.
         self._create_cluster_service_fip_pool(vn_obj, svc_ipam_obj)
@@ -297,6 +298,8 @@ class VncKubernetes(object):
         return VirtualNetworkKM.find_by_name_or_uuid('cluster-network')
 
     def vnc_timer(self):
+        self.ingress_mgr.ingress_timer()
+        self.service_mgr.service_timer()
         self.pod_mgr.pod_timer()
 
     def vnc_process(self):
@@ -309,7 +312,6 @@ class VncKubernetes(object):
                     event['object']['metadata'].get('name')))
                 if event['object'].get('kind') == 'Pod':
                     self.pod_mgr.process(event)
-                    self.network_policy_mgr.process(event)
                 elif event['object'].get('kind') == 'Service':
                     self.service_mgr.process(event)
                 elif event['object'].get('kind') == 'Namespace':
