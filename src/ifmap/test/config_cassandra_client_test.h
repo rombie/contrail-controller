@@ -62,10 +62,10 @@ public:
         UUIDIndexMap::iterator it = db_index_[idx].find(uuid);
         int index = it->second;
 
-        for (rapidjson::Value::ConstMemberIterator k =
-             events_[rapidjson::SizeType(index)]["db"]
+        for (contrail_rapidjson::Value::ConstMemberIterator k =
+             events_[contrail_rapidjson::SizeType(index)]["db"]
                 [uuid.c_str()].MemberBegin();
-             k != events_[rapidjson::SizeType(index)]["db"]
+             k != events_[contrail_rapidjson::SizeType(index)]["db"]
                 [uuid.c_str()].MemberEnd();
              ++k) {
             const char *k1 = k->name.GetString();
@@ -85,16 +85,16 @@ public:
 
     bool BulkDataSync() {
         ConfigCassandraClient::ObjTypeUUIDList uuid_list;
-        for (rapidjson::Value::ConstMemberIterator k =
-             events_[rapidjson::SizeType(cevent_-1)]
+        for (contrail_rapidjson::Value::ConstMemberIterator k =
+             events_[contrail_rapidjson::SizeType(cevent_-1)]
                 ["OBJ_FQ_NAME_TABLE"].MemberBegin();
-             k != events_[rapidjson::SizeType(cevent_-1)]
+             k != events_[contrail_rapidjson::SizeType(cevent_-1)]
                 ["OBJ_FQ_NAME_TABLE"].  MemberEnd(); ++k) {
             std::string obj_type = k->name.GetString();
-            for (rapidjson::Value::ConstMemberIterator l =
-                    events_[rapidjson::SizeType(cevent_-1)]
+            for (contrail_rapidjson::Value::ConstMemberIterator l =
+                    events_[contrail_rapidjson::SizeType(cevent_-1)]
                         ["OBJ_FQ_NAME_TABLE"][obj_type.c_str()].MemberBegin();
-                 l != events_[rapidjson::SizeType(cevent_-1)]
+                 l != events_[contrail_rapidjson::SizeType(cevent_-1)]
                     ["OBJ_FQ_NAME_TABLE"][obj_type.c_str()].MemberEnd(); l++) {
                 UpdateCache(l->name.GetString(), obj_type, uuid_list);
             }
@@ -102,13 +102,13 @@ public:
         return EnqueueUUIDRequest(uuid_list);
     }
 
-    rapidjson::Document *events() { return &events_; }
+    contrail_rapidjson::Document *events() { return &events_; }
     size_t *cevent() { return &cevent_; }
 
 private:
     typedef std::map<std::string, int> UUIDIndexMap;
     std::vector<UUIDIndexMap> db_index_;
-    rapidjson::Document events_;
+    contrail_rapidjson::Document events_;
     size_t cevent_;
 };
 
