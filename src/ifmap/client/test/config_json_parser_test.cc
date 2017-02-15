@@ -34,9 +34,9 @@
 #include "testing/gunit.h"
 
 using namespace std;
-using rapidjson::Document;
-using rapidjson::SizeType;
-using rapidjson::Value;
+using contrail_rapidjson::Document;
+using contrail_rapidjson::SizeType;
+using contrail_rapidjson::Value;
 
 class ConfigJsonParserTest : public ::testing::Test {
 protected:

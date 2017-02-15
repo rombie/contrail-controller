@@ -21,6 +21,8 @@
 #include "utils.h"
 #include <database/cassandra/cql/cql_if.h>
 #include <boost/make_shared.hpp>
+#include "qe_sandesh.h"
+#include <algorithm>
 
 using std::map;
 using std::string;
@@ -105,18 +107,18 @@ PostProcessingQuery::PostProcessingQuery(
 
         if (iter->first == QUERY_SORT_FIELDS)
         {
-            rapidjson::Document d;
+            contrail_rapidjson::Document d;
             std::string json_string = "{ \"sort_fields\" : " + 
                 iter->second + " }";
             json_string_ += json_string;
             json_string_ += " ";
 
             d.Parse<0>(const_cast<char *>(json_string.c_str()));
-            const rapidjson::Value& json_sort_fields =
+            const contrail_rapidjson::Value& json_sort_fields =
                 d["sort_fields"]; 
             QE_PARSE_ERROR(json_sort_fields.IsArray());
             QE_TRACE(DEBUG, "# of sort fields:"<< json_sort_fields.Size());
-            for (rapidjson::SizeType i = 0; i<json_sort_fields.Size(); i++) 
+            for (contrail_rapidjson::SizeType i = 0; i<json_sort_fields.Size(); i++) 
             {
                 QE_PARSE_ERROR(json_sort_fields[i].IsString());
                 std::string sort_str(json_sort_fields[i].GetString());
@@ -149,21 +151,21 @@ PostProcessingQuery::PostProcessingQuery(
          * both modes are supported with the below code
          */
         if (iter->first == QUERY_FILTER) {
-            rapidjson::Document d;
+            contrail_rapidjson::Document d;
             std::string json_string = "{ \"filter\" : " + 
                 iter->second + " }";
             json_string_ += json_string;
             json_string_ += " ";
 
             d.Parse<0>(const_cast<char *>(json_string.c_str()));
-            const rapidjson::Value& json_filters =
+            const contrail_rapidjson::Value& json_filters =
                 d["filter"]; 
             QE_PARSE_ERROR(json_filters.IsArray());
             QE_TRACE(DEBUG, "# of filters:"<< json_filters.Size());
             bool single_list = false;
             if (json_filters.Size()) {
-                rapidjson::SizeType zeroth = 0;
-                const rapidjson::Value& json_filters_0 = json_filters[zeroth];
+                contrail_rapidjson::SizeType zeroth = 0;
+                const contrail_rapidjson::Value& json_filters_0 = json_filters[zeroth];
                 if (!json_filters_0.IsArray()) {
                     single_list = true;
                 }
@@ -172,17 +174,17 @@ PostProcessingQuery::PostProcessingQuery(
             if (single_list) {
                 //parse the old format 
                 std::vector<filter_match_t> filter_and;
-                for (rapidjson::SizeType j = 0; j<json_filters.Size(); j++) 
+                for (contrail_rapidjson::SizeType j = 0; j<json_filters.Size(); j++) 
                   {
                     filter_match_t filter;
                     QE_PARSE_ERROR((json_filters[j].HasMember(WHERE_MATCH_NAME)
                         && json_filters[j].HasMember(WHERE_MATCH_VALUE)
                         && json_filters[j].HasMember(WHERE_MATCH_OP)));
-                    const rapidjson::Value& name_value = 
+                    const contrail_rapidjson::Value& name_value = 
                         json_filters[j][WHERE_MATCH_NAME];
-                    const rapidjson::Value&  value_value = 
+                    const contrail_rapidjson::Value&  value_value = 
                         json_filters[j][WHERE_MATCH_VALUE];
-                    const rapidjson::Value& op_value = 
+                    const contrail_rapidjson::Value& op_value = 
                         json_filters[j][WHERE_MATCH_OP];
 
                     // do some validation checks
@@ -232,22 +234,22 @@ PostProcessingQuery::PostProcessingQuery(
                 filter_list.push_back(filter_and);
             } else {
                 //new OR of ANDs
-                for (rapidjson::SizeType j = 0; j<json_filters.Size(); j++) {
+                for (contrail_rapidjson::SizeType j = 0; j<json_filters.Size(); j++) {
                     std::vector<filter_match_t> filter_and;
-                    const rapidjson::Value& json_filter_and = json_filters[j];
+                    const contrail_rapidjson::Value& json_filter_and = json_filters[j];
                     QE_PARSE_ERROR(json_filter_and.IsArray());
 
-                    for (rapidjson::SizeType k = 0; k<json_filter_and.Size(); k++) {
+                    for (contrail_rapidjson::SizeType k = 0; k<json_filter_and.Size(); k++) {
                         filter_match_t filter;
                         QE_PARSE_ERROR((
                             json_filter_and[k].HasMember(WHERE_MATCH_NAME)
                             && json_filter_and[k].HasMember(WHERE_MATCH_VALUE)
                             && json_filter_and[k].HasMember(WHERE_MATCH_OP)));
-                        const rapidjson::Value& name_value = 
+                        const contrail_rapidjson::Value& name_value = 
                             json_filter_and[k][WHERE_MATCH_NAME];
-                        const rapidjson::Value&  value_value = 
+                        const contrail_rapidjson::Value&  value_value = 
                             json_filter_and[k][WHERE_MATCH_VALUE];
-                        const rapidjson::Value& op_value = 
+                        const contrail_rapidjson::Value& op_value = 
                             json_filter_and[k][WHERE_MATCH_OP];
 
                         // do some validation checks
@@ -402,6 +404,18 @@ bool AnalyticsQuery::can_parallelize_query() {
     return parallelize_query_;
 }
 
+/* parse the stat name and attribute which can be used
+ * to collect stats. Table name is of the format,
+ * StatTable.TableName.AttrName
+ * The functions sets the stat_name_attr member, which is later
+ * used to collect stats information
+ */
+void AnalyticsQuery::ParseStatName(std::string& stat_table_name) {
+     string stat_table("StatTable.");
+     stat_name_attr = stat_table_name.substr(stat_table.length());
+     std::replace(stat_name_attr.begin(), stat_name_attr.end(), '.', ':');
+}
+
 void AnalyticsQuery::Init(std::string qid,
     std::map<std::string, std::string>& json_api_data,
     int32_t or_number)
@@ -442,6 +456,7 @@ void AnalyticsQuery::Init(std::string qid,
         QE_TRACE(DEBUG,  " table is " << table_);
         if (is_stat_table_query(table_)) {
             stats_.reset(new StatsQuery(table_));
+            ParseStatName(table_);
         }
     }
 
@@ -709,7 +724,7 @@ void  query_result_unit_t::get_stattable_info(
 
 }
 
-static void get_uuid_from_json(const rapidjson::Document &dd,
+static void get_uuid_from_json(const contrail_rapidjson::Document &dd,
     boost::uuids::uuid *u) {
     const std::vector<std::string> &frnames(g_viz_constants.FlowRecordNames);
     // First get UUID
@@ -721,7 +736,7 @@ static void get_uuid_from_json(const rapidjson::Document &dd,
     }
 }
 
-static void get_stats_from_json(const rapidjson::Document &dd,
+static void get_stats_from_json(const contrail_rapidjson::Document &dd,
     flow_stats *stats) {
     const std::vector<std::string> &frnames(g_viz_constants.FlowRecordNames);
     const std::string &tdiff_bytes_s(
@@ -744,7 +759,7 @@ static void get_stats_from_json(const rapidjson::Document &dd,
     }
 }
 
-static void get_8tuple_from_json(const rapidjson::Document &dd,
+static void get_8tuple_from_json(const contrail_rapidjson::Document &dd,
     flow_tuple *tuple) {
     const std::vector<std::string> &frnames(g_viz_constants.FlowRecordNames);
     const std::string &tvrouter_s(
@@ -805,7 +820,7 @@ static void get_8tuple_from_json(const rapidjson::Document &dd,
 
 void get_uuid_stats_8tuple_from_json(const std::string &jsonline,
     boost::uuids::uuid *u, flow_stats *stats, flow_tuple *tuple) {
-    rapidjson::Document dd;
+    contrail_rapidjson::Document dd;
     dd.Parse<0>(jsonline.c_str());
     // First get UUID
     if (u) {
@@ -1359,6 +1374,16 @@ QueryEngine::QueryExec(void * handle, QueryParams qp, uint32_t chunk,
     return true;
 }
 
+bool QueryEngine::GetCumulativeStats(std::vector<GenDb::DbTableInfo> *vdbti,
+        GenDb::DbErrors *dbe, std::vector<GenDb::DbTableInfo> *vstats_dbti)
+        const {
+    {
+        tbb::mutex::scoped_lock lock(smutex_);
+        stable_stats_.GetCumulative(vstats_dbti);
+    }
+    return dbif_->Db_GetCumulativeStats(vdbti, dbe);
+}
+
 
 std::ostream &operator<<(std::ostream &out, query_result_unit_t& res)
 {
@@ -1553,3 +1578,37 @@ std::ostream& operator<<(std::ostream& out, const flow_tuple& ft) {
         << ft.direction;
     return out;
 }
+
+bool QueryEngine::GetDiffStats(std::vector<GenDb::DbTableInfo> *vdbti,
+    GenDb::DbErrors *dbe, std::vector<GenDb::DbTableInfo> *vstats_dbti) {
+    {
+        tbb::mutex::scoped_lock lock(smutex_);
+        stable_stats_.GetDiffs(vstats_dbti);
+    }
+    return dbif_->Db_GetStats(vdbti, dbe);
+}
+
+bool QueryEngine::GetCqlStats(cass::cql::DbStats *stats) const {
+    cass::cql::CqlIf *cql_if(dynamic_cast<cass::cql::CqlIf *>(dbif_.get()));
+    if (cql_if == NULL) {
+        return false;
+    }
+    cql_if->Db_GetCqlStats(stats);
+    return true;
+}
+
+void ShowQEDbStatsReq::HandleRequest() const {
+    std::vector<GenDb::DbTableInfo> vdbti, vstats_dbti;
+    GenDb::DbErrors dbe;
+    QESandeshContext *qec = static_cast<QESandeshContext *>(
+                                        Sandesh::client_context());
+    assert(qec);
+    ShowQEDbStatsResp *resp(new ShowQEDbStatsResp);
+    qec->QE()->GetCumulativeStats(&vdbti, &dbe, &vstats_dbti);
+    resp->set_table_info(vdbti);
+    resp->set_errors(dbe);
+    resp->set_statistics_table_info(vstats_dbti);
+    resp->set_context(context());
+    resp->Response();
+}
+
