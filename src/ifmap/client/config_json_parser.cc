@@ -101,6 +101,8 @@ bool ConfigJsonParser::ParseRef(const Value &ref_entry,
     std::replace(from_underscore.begin(), from_underscore.end(), '-', '_');
     string link_name =
         config_mgr()->GetLinkName(from_underscore, to_underscore);
+    if (link_name.empty())
+        return false;
     string metaname = link_name;
     std::replace(metaname.begin(), metaname.end(), '-', '_');
 
@@ -200,7 +202,7 @@ bool ConfigJsonParser::Receive(const string &uuid,
                                IFMapOrigin::Origin origin) {
     ConfigClientManager::RequestList req_list;
 
-    if (document.HasParseError()) {
+    if (document.HasParseError() || !document.IsObject()) {
         size_t pos = document.GetErrorOffset();
         // GetParseError returns const char *
         IFMAP_WARN(IFMapJsonLoadError,
