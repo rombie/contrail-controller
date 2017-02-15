@@ -62,7 +62,8 @@ public:
         UUIDIndexMap::iterator it = db_index_[idx].find(uuid);
         int index = it->second;
 
-        if (!events_[contrail_rapidjson::SizeType(index)]["db"].HasMember(uuid.c_str()))
+        if (!events_[contrail_rapidjson::SizeType(index)]["db"].HasMember(
+                    uuid.c_str()))
             return true;
         for (contrail_rapidjson::Value::ConstMemberIterator k =
              events_[contrail_rapidjson::SizeType(index)]["db"]

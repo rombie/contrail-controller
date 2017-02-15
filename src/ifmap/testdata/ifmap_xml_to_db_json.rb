@@ -133,6 +133,7 @@ def parse_links (record)
             if record.include? "metadata"
                 record["metadata"].values.first.each { |k, v|
                     if !k.start_with?("xmlns:") and !k.start_with?("ifmap_")
+                        v = [v] if k == "ipam_subnets" and !v.kind_of? Array
                         a[k] = v
                     end
                 }
@@ -161,8 +162,9 @@ def parse_nodes (record)
     # return if obj.nil?
 
     record["metadata"].each { |k, v|
-        if v.kind_of? Hash and v.key? "mac_address"
-            v["mac_address"] = v["mac_address"].split(":")
+        if v.kind_of? Hash and v.key? "mac_address" and \
+            !v["mac_address"].kind_of? Array
+            v["mac_address"] = [v["mac_address"]]
         end
         obj["prop:" + k] = v
     }
