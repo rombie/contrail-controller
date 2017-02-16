@@ -8,7 +8,7 @@ def init_globals
     @db = Hash.new
     @events = [ ]
     @seen = Hash.new(false)
-    @only_initial_sync = true
+    @only_initial_sync = false
 end
 
 def get_uuid (u)

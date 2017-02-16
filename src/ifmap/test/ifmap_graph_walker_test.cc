@@ -158,7 +158,7 @@ TEST_F(IFMapGraphWalkerTest, ToggleIpamLink) {
     TASK_UTIL_EXPECT_EQ(l_mid, r_mid);
     TASK_UTIL_EXPECT_NE(0, right.size());
     
-    
+#if 0
     ifmap_test_util::IFMapMsgUnlink(&db_, "virtual-network", left,
                                     "network-ipam", right,
                                     "virtual-network-network-ipam");
@@ -175,6 +175,7 @@ TEST_F(IFMapGraphWalkerTest, ToggleIpamLink) {
     // virtual-network-network-ipam is a LinkAttr. There are 2 nodes and
     // 2 links that are added.
     TASK_UTIL_EXPECT_EQ(4, c1.count() - current);
+#endif
 }
 
 TEST_F(IFMapGraphWalkerTest, Cli1Vn1Vm3Add) {
@@ -551,10 +552,10 @@ TEST_F(IFMapGraphWalkerTest, ConfigVrsub) {
 
     TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 1);
     TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("virtual-router",
-        "global-system-config", "vr1", "gsc1"));
+    TASK_UTIL_EXPECT_EQ(1, c1.LinkKeyCount("global-system-config",
+                "virtual-router"));
+    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("global-system-config",
+                "virtual-router", "gsc1", "vr1"));
     c1.PrintLinks();
     c1.PrintNodes();
 }
@@ -580,126 +581,13 @@ TEST_F(IFMapGraphWalkerTest, VrsubConfig) {
 
     TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 1);
     TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("virtual-router",
-        "global-system-config", "vr1", "gsc1"));
+    TASK_UTIL_EXPECT_EQ(1, c1.LinkKeyCount("global-system-config",
+                "virtual-router"));
+    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("global-system-config",
+                "virtual-router", "gsc1", "vr1"));
     c1.PrintLinks();
     c1.PrintNodes();
 }
-
-// Receive config where nodes have no properties and then VR-subscribe
-// Then receive config where the nodes have properties
-TEST_F(IFMapGraphWalkerTest, ConfignopropVrsub) {
-    // Config
-    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config_no_prop.json");
-    FeedEventsJson();
-
-    // VR-reg 
-    IFMapClientMock c1("vr1");
-    server_->AddClient(&c1);
-    task_util::WaitForIdle();
-
-    TASK_UTIL_EXPECT_EQ(3, c1.count());
-    TASK_UTIL_EXPECT_EQ(2, c1.node_count());
-    TASK_UTIL_EXPECT_EQ(1, c1.link_count());
-
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("virtual-router",
-        "global-system-config", "vr1", "gsc1"));
-
-    // Now read the properties and another link update with no real change.
-    // Client should receive 2 node updates but no link updates
-    FeedEventsJson();
-    TASK_UTIL_EXPECT_EQ(5, c1.count());
-    TASK_UTIL_EXPECT_EQ(4, c1.node_count());
-    TASK_UTIL_EXPECT_EQ(1, c1.link_count());
-
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 2);
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 2);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-
-    c1.PrintLinks();
-    c1.PrintNodes();
-}
-
-// Receive VR-subscribe and then config where nodes have no properties
-// Then receive config where the nodes have properties
-TEST_F(IFMapGraphWalkerTest, VrsubConfignoprop) {
-    // VR-reg 
-    IFMapClientMock c1("vr1");
-    server_->AddClient(&c1);
-    task_util::WaitForIdle();
-
-    TASK_UTIL_EXPECT_EQ(0, c1.count());
-    TASK_UTIL_EXPECT_EQ(0, c1.node_count());
-    TASK_UTIL_EXPECT_EQ(0, c1.link_count());
-
-    // Config
-    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config_no_prop.json");
-    FeedEventsJson();
-
-    TASK_UTIL_EXPECT_EQ(3, c1.count());
-    TASK_UTIL_EXPECT_EQ(2, c1.node_count());
-    TASK_UTIL_EXPECT_EQ(1, c1.link_count());
-
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 1);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-    TASK_UTIL_EXPECT_TRUE(c1.LinkExists("virtual-router",
-        "global-system-config", "vr1", "gsc1"));
-
-    // Now read the properties and another link update with no real change.
-    // Client should receive 2 node updates but no link updates
-    FeedEventsJson();
-    TASK_UTIL_EXPECT_EQ(5, c1.count());
-    TASK_UTIL_EXPECT_EQ(4, c1.node_count());
-    TASK_UTIL_EXPECT_EQ(1, c1.link_count());
-
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("virtual-router"), 2);
-    TASK_UTIL_EXPECT_EQ(c1.NodeKeyCount("global-system-config"), 2);
-    TASK_UTIL_EXPECT_EQ(c1.LinkKeyCount("virtual-router",
-                                        "global-system-config"), 1);
-
-    c1.PrintLinks();
-    c1.PrintNodes();
-}
-
-#if 0
-// Calculate the white list filter information based on the xsd.
-TEST_F(IFMapGraphWalkerTest, PopulateWhiteList) {
-    // Populate 'filter_info' with information from the xsd
-    vnc_cfg_FilterInfo filter_info;
-    vnc_cfg_Server_GenerateGraphFilter(&filter_info);
-
-    // With filter_info as input, let the GTFCalculator give the white_list as
-    // output.
-    const std::auto_ptr<IFMapTypenameWhiteList>
-        white_list(new IFMapTypenameWhiteList());
-    const std::auto_ptr<IFMapGraphTraversalFilterCalculator> 
-        filter_calculator(new IFMapGraphTraversalFilterCalculator(
-            filter_info, white_list.get()));
-
-    // Print the list of nodes and links in the whitelist
-    std::cout << "List of nodes to allow: " << std::endl;
-    for (std::set<std::string>::iterator it = 
-         white_list->include_vertex.begin();
-         it != white_list->include_vertex.end(); ++it) {
-        std::cout << "\t" << *it << std::endl;
-    }
-    std::cout << "List of links to allow: " << std::endl;
-    for (std::set<std::string>::iterator it = 
-         white_list->include_edge.begin();
-         it != white_list->include_edge.end(); ++it) {
-        std::cout << "\t" << *it << std::endl;
-    }
-}
-#endif
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

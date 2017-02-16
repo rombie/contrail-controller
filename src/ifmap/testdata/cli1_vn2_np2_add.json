@@ -264,7 +264,6 @@
       "695d391b-65e6-4091-bea5-78e5eae32e66": {
         "fq_name": "[\"695d391b-65e6-4091-bea5-78e5eae32e66\"]",
         "type": "\"virtual_machine\"",
-        "ref:virtual_machine_interface:4efc1e06-c799-4e0d-b913-402c10f17e23": "{\"attr\":{}}",
         "prop:id_perms": "{\"permissions\":{\"owner\":\"cloud-admin\",\"owner_access\":\"7\",\"group\":\"cloud-admin-group\",\"group_access\":\"7\",\"other_access\":\"7\"},\"uuid\":{\"uuid_mslong\":\"7592287336653013137\",\"uuid_lslong\":\"13737519167247167078\"},\"enable\":\"true\",\"created\":null,\"last_modified\":null}"
       },
       "82865c2d-5166-4619-b860-768255356b45": {
@@ -324,6 +323,7 @@
         "fq_name": "[\"5f25dd5e-5442-4edf-89d1-6a318c0d213b\",\"606d59b7-c17b-491b-b4fe-f3b264c842bf\"]",
         "type": "\"virtual_machine_interface\"",
         "ref:virtual_network:308c7052-41ee-482b-839f-f97850832f11": "{\"attr\":{}}",
+        "ref:virtual_machine:5f25dd5e-5442-4edf-89d1-6a318c0d213b": "{\"attr\":{}}",
         "prop:virtual_machine_interface_mac_addresses": "{\"xmlns:contrail\":\"http://www.contrailsystems.com/vnc_cfg.xsd\",\"ifmap_cardinality\":\"singleValue\",\"ifmap_publisher_id\":\"api-server-1--0000000001-1\",\"ifmap_timestamp\":\"2013-03-12T04:11:28-07:00\",\"mac_address\":[\"02:60:6d:59:b7:c1\"]}",
         "prop:id_perms": "{\"permissions\":{\"owner\":\"cloud-admin\",\"owner_access\":\"7\",\"group\":\"cloud-admin-group\",\"group_access\":\"7\",\"other_access\":\"7\"},\"uuid\":{\"uuid_mslong\":\"6948308445862512923\",\"uuid_lslong\":\"13042129518432109247\"},\"enable\":\"true\",\"created\":null,\"last_modified\":null}"
       },
@@ -351,7 +351,6 @@
       "5f25dd5e-5442-4edf-89d1-6a318c0d213b": {
         "fq_name": "[\"5f25dd5e-5442-4edf-89d1-6a318c0d213b\"]",
         "type": "\"virtual_machine\"",
-        "ref:virtual_machine_interface:606d59b7-c17b-491b-b4fe-f3b264c842bf": "{\"attr\":{}}",
         "prop:id_perms": "{\"permissions\":{\"owner\":\"cloud-admin\",\"owner_access\":\"7\",\"group\":\"cloud-admin-group\",\"group_access\":\"7\",\"other_access\":\"7\"},\"uuid\":{\"uuid_mslong\":\"6856129404951744223\",\"uuid_lslong\":\"9930835414364266811\"},\"enable\":\"true\",\"created\":null,\"last_modified\":null}"
       },
       "73fe4e53-9f6e-41ea-b206-a51391295a70": {
@@ -431,6 +430,7 @@
         "fq_name": "[\"695d391b-65e6-4091-bea5-78e5eae32e66\",\"4efc1e06-c799-4e0d-b913-402c10f17e23\"]",
         "type": "\"virtual_machine_interface\"",
         "ref:virtual_network:989b07c8-6476-43eb-89e7-c9a9b0d2ebaa": "{\"attr\":{}}",
+        "ref:virtual_machine:695d391b-65e6-4091-bea5-78e5eae32e66": "{\"attr\":{}}",
         "prop:virtual_machine_interface_mac_addresses": "{\"xmlns:contrail\":\"http://www.contrailsystems.com/vnc_cfg.xsd\",\"ifmap_cardinality\":\"singleValue\",\"ifmap_publisher_id\":\"api-server-1--0000000001-1\",\"ifmap_timestamp\":\"2013-03-12T04:10:59-07:00\",\"mac_address\":[\"02:4e:fc:1e:06:c7\"]}",
         "prop:id_perms": "{\"permissions\":{\"owner\":\"cloud-admin\",\"owner_access\":\"7\",\"group\":\"cloud-admin-group\",\"group_access\":\"7\",\"other_access\":\"7\"},\"uuid\":{\"uuid_mslong\":\"5691457043556814349\",\"uuid_lslong\":\"13336073479581171235\"},\"enable\":\"true\",\"created\":null,\"last_modified\":null}"
       },
