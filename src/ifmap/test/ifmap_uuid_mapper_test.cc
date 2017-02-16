@@ -166,6 +166,7 @@ protected:
     boost::scoped_ptr<ConfigClientManager> config_client_manager_;
     boost::scoped_ptr<IFMapSandeshContext> ifmap_sandesh_context_;
     ConfigCassandraClientTest *config_cassandra_client_;
+    IFMapServerParser *parser_;
     IFMapVmUuidMapper *vm_uuid_mapper_;
 };
 
@@ -215,12 +216,10 @@ TEST_P(IFMapVmUuidMapperTestWithParam1, ConfigThenSubscribe) {
     EXPECT_EQ(0, vm_uuid_mapper_->PendingVmRegCount());
     TASK_UTIL_EXPECT_EQ(3, c1.NodeKeyCount("virtual-machine"));
 
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_EQ(3, c1.NodeKeyCount("virtual-machine-interface"));
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_TRUE(c1.NodeExists("virtual-network",
                                         "default-domain:demo:vn27"));
-#endif
 }
 
 // Add all the config and then simulate receiving a vm-subscribe just after the
@@ -548,12 +547,10 @@ TEST_P(IFMapVmUuidMapperTestWithParam1, CfgSubUnsub) {
     TASK_UTIL_EXPECT_TRUE(c1.NodeExists("virtual-router",
         "default-global-system-config:a1s27.contrail.juniper.net"));
     TASK_UTIL_EXPECT_EQ(3, c1.NodeKeyCount("virtual-machine"));
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_TRUE(c1.NodeExists("virtual-network",
                                         "default-domain:demo:vn27"));
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_EQ(3, c1.NodeKeyCount("virtual-machine-interface"));
-#endif
     EXPECT_EQ(3, vm_uuid_mapper_->UuidMapperCount());
     EXPECT_EQ(3, vm_uuid_mapper_->NodeUuidMapCount());
     EXPECT_EQ(0, vm_uuid_mapper_->PendingVmRegCount());
@@ -564,19 +561,15 @@ TEST_P(IFMapVmUuidMapperTestWithParam1, CfgSubUnsub) {
         "2d308482-c7b3-4e05-af14-e732b7b50117", false, 1);
     TASK_UTIL_EXPECT_EQ(2, c1.NodeKeyCount("virtual-machine"));
 
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_EQ(2, c1.NodeKeyCount("virtual-machine-interface"));
-#endif
 
     server_->ProcessVmSubscribe(
         "default-global-system-config:a1s27.contrail.juniper.net",
         "93e76278-1990-4905-a472-8e9188f41b2c", false, 2);
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-machine"));
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-machine-interface"));
-#endif
     server_->ProcessVmSubscribe(
         "default-global-system-config:a1s27.contrail.juniper.net",
         "43d086ab-52c4-4a1f-8c3d-63b321e36e8a", false, 3);
@@ -643,20 +636,16 @@ TEST_P(IFMapVmUuidMapperTestWithParam1, SubscribeConfigUnsub) {
         "2d308482-c7b3-4e05-af14-e732b7b50117", false, 1);
     TASK_UTIL_EXPECT_EQ(2, c1.NodeKeyCount("virtual-machine"));
 
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_EQ(2, c1.NodeKeyCount("virtual-machine-interface"));
-#endif
 
     server_->ProcessVmSubscribe(
         "default-global-system-config:a1s27.contrail.juniper.net",
         "93e76278-1990-4905-a472-8e9188f41b2c", false, 2);
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-machine"));
 
-#ifdef IFMAP_UT_TODO
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-network"));
     TASK_UTIL_EXPECT_EQ(1, c1.NodeKeyCount("virtual-machine-interface"));
-#endif
 
     server_->ProcessVmSubscribe(
         "default-global-system-config:a1s27.contrail.juniper.net",
