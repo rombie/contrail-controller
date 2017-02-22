@@ -21,8 +21,11 @@ using namespace std;
     do {                                                                       \
         if (condition)                                                         \
             break;                                                             \
-        IFMAP_WARN(ConfigurationMalformed ## t, key, value, adapter.type(),    \
-                   adapter.uuid());                                            \
+        IFMAP_WARN_LOG(ConfigurationMalformed ## t ## Warning ## Log,          \
+                       Category::IFMAP, key, value, adapter.type(),            \
+                       adapter.uuid());                                        \
+        IFMAP_TRACE(ConfigurationMalformed ## t ## Warning ## Trace,           \
+                    key, value, adapter.type(), adapter.uuid());               \
         if (ConfigCass2JsonAdapter::assert_on_parse_error())                   \
             assert(false);                                                     \
         return false;                                                          \
