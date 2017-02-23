@@ -8,7 +8,15 @@
 #include "control-node/control_node.h"
 #include "db/db.h"
 #include "db/db_graph.h"
+#include "ifmap/client/config_amqp_client.h"
+#include "ifmap/client/config_cass2json_adapter.h"
+#include "ifmap/client/config_cassandra_client.h"
+#include "ifmap/client/config_client_manager.h"
+#include "ifmap/client/config_json_parser.h"
+#include "ifmap/ifmap_factory.h"
+#include "ifmap/ifmap_sandesh_context.h"
 #include "ifmap/ifmap_client.h"
+#include "ifmap/ifmap_config_options.h"
 #include "ifmap/ifmap_exporter.h"
 #include "ifmap/ifmap_link.h"
 #include "ifmap/ifmap_link_table.h"
@@ -21,7 +29,9 @@
 #include "ifmap/ifmap_util.h"
 #include "ifmap/ifmap_uuid_mapper.h"
 #include "ifmap/ifmap_xmpp.h"
+#include "ifmap/test/config_cassandra_client_test.h"
 #include "ifmap/test/ifmap_xmpp_client_mock.h"
+#include "schema/bgp_schema_types.h"
 #include "schema/vnc_cfg_types.h"
 #include "io/event_manager.h"
 #include "io/test/event_manager_test.h"
@@ -34,6 +44,9 @@
 #include <fstream>
 
 using namespace std;
+using contrail_rapidjson::Document;
+using contrail_rapidjson::SizeType;
+using contrail_rapidjson::Value;
 
 class XmppIfmapTest : public ::testing::Test {
 protected:
@@ -43,56 +56,153 @@ protected:
     static const string kDefaultXmppServerConfigName;
 
     XmppIfmapTest()
-         : db_(TaskScheduler::GetInstance()->GetTaskId("db::IFMapTable")),
+         : thread_(&evm_),
+           db_(TaskScheduler::GetInstance()->GetTaskId("db::IFMapTable")),
            ifmap_server_(&db_, &graph_, evm_.io_service()),
-           exporter_(ifmap_server_.exporter()), parser_(NULL),
+           config_client_manager_(new ConfigClientManager(&evm_,
+               &ifmap_server_, "localhost", "config-test", config_options_)),
+           ifmap_sandesh_context_(new IFMapSandeshContext(&ifmap_server_)),
+           exporter_(ifmap_server_.exporter()),
            xmpp_server_(NULL), vm_uuid_mapper_(NULL) {
+        config_cassandra_client_=dynamic_cast<ConfigCassandraClientTest *>(
+            config_client_manager_->config_db_client());
+    }
+
+    void SandeshSetup() {
+        if (!getenv("CONFIG_JSON_PARSER_TEST_INTROSPECT"))
+            return;
+        int port =
+            strtoul(getenv("CONFIG_JSON_PARSER_TEST_INTROSPECT"), NULL, 0);
+        if (!port)
+            port = 5910;
+        boost::system::error_code error;
+        string hostname(boost::asio::ip::host_name(error));
+        Sandesh::set_module_context("IFMap", ifmap_sandesh_context_.get());
+        Sandesh::InitGenerator("ConfigJsonParserTest", hostname, "IFMapTest",
+            "Test", &evm_, port, ifmap_sandesh_context_.get());
+        std::cout << "Introspect at http://localhost:" << Sandesh::http_port()
+            << std::endl;
+    }
+
+    void SandeshTearDown() {
+        if (!getenv("CONFIG_JSON_PARSER_TEST_INTROSPECT"))
+            return;
+        Sandesh::Uninit();
+        task_util::WaitForIdle();
     }
 
     virtual void SetUp() {
         IFMap_Initialize();
 
         xmpp_server_ = new XmppServer(&evm_, kDefaultXmppServerName);
-        thread_.reset(new ServerThread(&evm_));
         xmpp_server_->Initialize(0, false);
 
         LOG(DEBUG, "Created Xmpp Server at port " << xmpp_server_->GetPort());
         ifmap_channel_mgr_.reset(new IFMapChannelManager(xmpp_server_,
                                                          &ifmap_server_));
         ifmap_server_.set_ifmap_channel_manager(ifmap_channel_mgr_.get());
-        thread_->Start();
+        thread_.Start();
     }
 
     virtual void TearDown() {
         ifmap_server_.Shutdown();
         task_util::WaitForIdle();
 
-        IFMapLinkTable_Clear(&db_);
         IFMapTable::ClearTables(&db_);
+        config_client_manager_->config_json_parser()->MetadataClear("vnc_cfg");
         task_util::WaitForIdle();
 
         db_.Clear();
         DB::ClearFactoryRegistry();
-        parser_->MetadataClear("vnc_cfg");
 
         xmpp_server_->Shutdown();
         task_util::WaitForIdle();
         TcpServerManager::DeleteServer(xmpp_server_);
         xmpp_server_ = NULL;
         evm_.Shutdown();
-        if (thread_.get() != NULL) {
-            thread_->Join();
-        }
+        thread_.Join();
+        task_util::WaitForIdle();
     }
 
     void IFMap_Initialize() {
-        IFMapLinkTable_Init(ifmap_server_.database(), ifmap_server_.graph());
-        parser_ = IFMapServerParser::GetInstance("vnc_cfg");
-        vnc_cfg_ParserInit(parser_);
-        vnc_cfg_Server_ModuleInit(ifmap_server_.database(),
-                                  ifmap_server_.graph());
-        ifmap_server_.Initialize();
+        ConfigCass2JsonAdapter::set_assert_on_parse_error(true);
+        IFMapLinkTable_Init(&db_, &graph_);
+        vnc_cfg_JsonParserInit(config_client_manager_->config_json_parser());
+        vnc_cfg_Server_ModuleInit(&db_, &graph_);
+        bgp_schema_JsonParserInit(config_client_manager_->config_json_parser());
+        bgp_schema_Server_ModuleInit(&db_, &graph_);
+        SandeshSetup();
         vm_uuid_mapper_ = ifmap_server_.vm_uuid_mapper();
+    }
+
+    void ParseEventsJson (string eventsFile) {
+        string json_message = FileRead(eventsFile);
+        assert(json_message.size() != 0);
+        Document *doc = config_cassandra_client_->events();
+        doc->Parse<0>(json_message.c_str());
+        if (doc->HasParseError()) {
+            size_t pos = doc->GetErrorOffset();
+            // GetParseError returns const char *
+            std::cout << "Error in parsing JSON message from rabbitMQ at "
+                << pos << "with error description"
+                << doc->GetParseError()
+                << std::endl;
+            exit(-1);
+        }
+
+        if (doc->IsObject() && doc->HasMember("cassandra") &&
+                (*doc)["cassandra"].HasMember("config_db_uuid")) {
+            Document *db_load = config_cassandra_client_->db_load();
+            Document::AllocatorType &a = db_load->GetAllocator();
+            db_load->SetArray();
+            Value v;
+            db_load->PushBack(v.SetObject(), a);
+            (*db_load)[0].AddMember("operation", "db_sync", a);
+            (*db_load)[0].AddMember("OBJ_FQ_NAME_TABLE",
+                (*doc)["cassandra"]["config_db_uuid"]["obj_fq_name_table"], a);
+            (*db_load)[0].AddMember("db",
+                (*doc)["cassandra"]["config_db_uuid"]["obj_uuid_table"], a);
+        } else if (doc->IsObject() && doc->HasMember("cassandra") &&
+                (*doc)["cassandra"].HasMember("obj_fq_name_table")) {
+            Document *db_load = config_cassandra_client_->db_load();
+            Document::AllocatorType &a = db_load->GetAllocator();
+            db_load->SetArray();
+            Value v;
+            db_load->PushBack(v.SetObject(), a);
+            (*db_load)[0].AddMember("operation", "db_sync", a);
+            (*db_load)[0].AddMember("OBJ_FQ_NAME_TABLE",
+                (*doc)["cassandra"]["obj_fq_name_table"], a);
+            (*db_load)[0].AddMember("db",
+                (*doc)["cassandra"]["obj_uuid_table"], a);
+        }
+    }
+
+    void FeedEventsJson () {
+        Document *events = config_cassandra_client_->events();
+        while ((*config_cassandra_client_->cevent())++ < events->Size()) {
+            size_t cevent = *config_cassandra_client_->cevent() - 1;
+            if ((*events)[SizeType(cevent)]["operation"].GetString() ==
+                           string("pause")) {
+                break;
+            }
+
+            if ((*events)[SizeType(cevent)]["operation"].GetString() ==
+                           string("db_sync")) {
+                config_cassandra_client_->BulkDataSync();
+                continue;
+            }
+
+            config_client_manager_->config_amqp_client()->ProcessMessage(
+                (*events)[SizeType(cevent)]["message"].GetString());
+        }
+        task_util::WaitForIdle();
+    }
+
+    string FileRead(const string &filename) {
+        ifstream file(filename.c_str());
+        string content((istreambuf_iterator<char>(file)),
+                       istreambuf_iterator<char>());
+        return content;
     }
 
     IFMapNode *TableLookup(const string &type, const string &name) {
@@ -285,14 +395,16 @@ protected:
                                                   index);
     }
 
+    EventManager evm_;
+    ServerThread thread_;
     DB db_;
     DBGraph graph_;
-    EventManager evm_;
+    const IFMapConfigOptions config_options_;
     IFMapServer ifmap_server_;
+    boost::scoped_ptr<ConfigClientManager> config_client_manager_;
+    boost::scoped_ptr<IFMapSandeshContext> ifmap_sandesh_context_;
+    ConfigCassandraClientTest *config_cassandra_client_;
     IFMapExporter *exporter_;
-    IFMapServerParser *parser_;
-
-    auto_ptr<ServerThread> thread_;
     XmppServer *xmpp_server_;
     auto_ptr<IFMapChannelManager> ifmap_channel_mgr_;
     IFMapVmUuidMapper *vm_uuid_mapper_;
@@ -327,13 +439,6 @@ static bool ServerIsEstablished(XmppServer *server, const string &client_name) {
     return (connection->GetStateMcState() == xmsm::ESTABLISHED); 
 }
 
-static string FileRead(const string &filename) {
-    ifstream file(filename.c_str());
-    string content((istreambuf_iterator<char>(file)),
-                   istreambuf_iterator<char>());
-    return content;
-}
-
 bool IsIFMapClientUnregistered(IFMapServer *ifmap_server,
                                const string &client_name) {
     if (ifmap_server->FindClient(client_name) == NULL) {
@@ -344,14 +449,8 @@ bool IsIFMapClientUnregistered(IFMapServer *ifmap_server,
 
 TEST_F(XmppIfmapTest, Connection) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name(kDefaultClientName);
@@ -413,14 +512,8 @@ TEST_F(XmppIfmapTest, Connection) {
 // Create 2 client connections back2back with the same client name
 TEST_F(XmppIfmapTest, CheckClientGraphCleanupTest) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name(kDefaultClientName);
@@ -545,12 +638,8 @@ TEST_F(XmppIfmapTest, CheckClientGraphCleanupTest) {
 
 TEST_F(XmppIfmapTest, DeleteProperty) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection1.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name(kDefaultClientName);
@@ -584,10 +673,8 @@ TEST_F(XmppIfmapTest, DeleteProperty) {
     size_t cli_index = static_cast<size_t>(client->index());
 
     // Deleting one property
-    content = FileRead("controller/src/ifmap/testdata/vn_prop_del.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    // content = FileRead("controller/src/ifmap/testdata/vn_prop_del.xml");
+    FeedEventsJson();
     TASK_UTIL_EXPECT_EQ(3, vnsw_client->Count());
 
     vnsw_client->OutputRecvBufferToFile();
@@ -620,12 +707,8 @@ TEST_F(XmppIfmapTest, DeleteProperty) {
 
 TEST_F(XmppIfmapTest, VrVmSubUnsub) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Give the read file to the parser
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -734,12 +817,8 @@ TEST_F(XmppIfmapTest, VrVmSubUnsub) {
 
 TEST_F(XmppIfmapTest, VrVmSubUnsubTwice) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -891,12 +970,8 @@ TEST_F(XmppIfmapTest, VrVmSubUnsubTwice) {
 // 3 consecutive subscribe requests with no unsubscribe in between
 TEST_F(XmppIfmapTest, VrVmSubThrice) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -1042,12 +1117,8 @@ TEST_F(XmppIfmapTest, VrVmSubThrice) {
 // 1 subscribe followed by 3 consecutive unsubscribe requests
 TEST_F(XmppIfmapTest, VrVmUnsubThrice) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -1188,12 +1259,8 @@ TEST_F(XmppIfmapTest, VrVmUnsubThrice) {
 TEST_F(XmppIfmapTest, VrVmSubConnClose) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
     string unknown_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5baaa";
-
-    // Give the read file to the parser
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -1296,10 +1363,8 @@ TEST_F(XmppIfmapTest, VrVmSubConnClose) {
 
 TEST_F(XmppIfmapTest, RegBeforeConfig) {
     string host_vm_name = "aad4c946-9390-4a53-8bbd-09d346f5ba6c";
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -1346,8 +1411,6 @@ TEST_F(XmppIfmapTest, RegBeforeConfig) {
 
     // Give the read file to the parser
     size_t num_msgs = vnsw_client->Count();
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
     TASK_UTIL_EXPECT_EQ(true, vnsw_client->HasNMessages(num_msgs + 2));
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", kDefaultClientName)
@@ -1416,15 +1479,9 @@ TEST_F(XmppIfmapTest, RegBeforeConfig) {
 }
 
 TEST_F(XmppIfmapTest, Cli1Vn1Vm3Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content =
-        FileRead("controller/src/ifmap/testdata/cli1_vn1_vm3_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli1_vn1_vm3_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -1500,15 +1557,9 @@ TEST_F(XmppIfmapTest, Cli1Vn1Vm3Add) {
 }
 
 TEST_F(XmppIfmapTest, Cli1Vn2Np1Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content =
-        FileRead("controller/src/ifmap/testdata/cli1_vn2_np1_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli1_vn2_np1_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -1581,15 +1632,9 @@ TEST_F(XmppIfmapTest, Cli1Vn2Np1Add) {
 }
 
 TEST_F(XmppIfmapTest, Cli1Vn2Np2Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content = 
-        FileRead("controller/src/ifmap/testdata/cli1_vn2_np2_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli1_vn2_np2_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -1662,15 +1707,9 @@ TEST_F(XmppIfmapTest, Cli1Vn2Np2Add) {
 }
 
 TEST_F(XmppIfmapTest, Cli2Vn2Np2Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content = 
-        FileRead("controller/src/ifmap/testdata/cli2_vn2_np2_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli2_vn2_np2_add.json");
+    FeedEventsJson();
 
     // Establish client a1s27
     string cli_name1 =
@@ -1784,15 +1823,9 @@ TEST_F(XmppIfmapTest, Cli2Vn2Np2Add) {
 }
 
 TEST_F(XmppIfmapTest, Cli2Vn2Vm2Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content=
-        FileRead("controller/src/ifmap/testdata/cli2_vn2_vm2_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli2_vn2_vm2_add.json");
+    FeedEventsJson();
 
     // Establish client a1s27
     string cli_name1 =
@@ -1906,15 +1939,9 @@ TEST_F(XmppIfmapTest, Cli2Vn2Vm2Add) {
 }
 
 TEST_F(XmppIfmapTest, Cli2Vn3Vm6Np2Add) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content =
-        FileRead("controller/src/ifmap/testdata/cli2_vn3_vm6_np2_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/cli2_vn3_vm6_np2_add.json");
+    FeedEventsJson();
 
     // Establish client a1s27
     string cli_name1 =
@@ -2047,15 +2074,9 @@ TEST_F(XmppIfmapTest, Cli2Vn3Vm6Np2Add) {
 
 // Read config, then vm-sub followed by vm-unsub followed by close
 TEST_F(XmppIfmapTest, CfgSubUnsub) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content =
-        FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -2205,14 +2226,9 @@ TEST_F(XmppIfmapTest, CfgSubUnsub) {
 // Config-add followed by vm-reg followed by config-delete followed by vm-unreg
 // followed by close
 TEST_F(XmppIfmapTest, CfgAdd_Reg_CfgDel_Unreg) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -2300,12 +2316,7 @@ TEST_F(XmppIfmapTest, CfgAdd_Reg_CfgDel_Unreg) {
     EXPECT_TRUE(LinkOriginLookup(link, IFMapOrigin::XMPP));
 
     // Delete the vr and all the vms via config
-    string content1 = 
-        FileRead("controller/src/ifmap/testdata/vr_3vm_delete.xml");
-    assert(content1.size() != 0);
-    parser_->Receive(&db_, content1.data(), content1.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_3vm_delete.xml"
 
     EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     EXPECT_TRUE(TableLookup("virtual-machine",
@@ -2445,12 +2456,8 @@ TEST_F(XmppIfmapTest, Reg_CfgAdd_CfgDel_Unreg) {
     EXPECT_TRUE(TableLookup("virtual-machine",
                 "43d086ab-52c4-4a1f-8c3d-63b321e36e8a") == NULL);
 
-    // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     vr = TableLookup("virtual-router", client_name);
@@ -2492,12 +2499,7 @@ TEST_F(XmppIfmapTest, Reg_CfgAdd_CfgDel_Unreg) {
     EXPECT_TRUE(NodeOriginLookup(vm3, IFMapOrigin::XMPP));
 
     // Delete the vr and all the vms via config
-    string content1 = 
-        FileRead("controller/src/ifmap/testdata/vr_3vm_delete.xml");
-    assert(content1.size() != 0);
-    parser_->Receive(&db_, content1.data(), content1.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_3vm_delete.xml"
 
     EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     EXPECT_TRUE(TableLookup("virtual-machine",
@@ -2639,12 +2641,8 @@ TEST_F(XmppIfmapTest, Reg_CfgAdd_Unreg_CfgDel) {
                 "43d086ab-52c4-4a1f-8c3d-63b321e36e8a") == NULL);
 
     // Read the ifmap data from file and give it to the parser
-    string content =
-        FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     vr = TableLookup("virtual-router", client_name);
@@ -2717,12 +2715,7 @@ TEST_F(XmppIfmapTest, Reg_CfgAdd_Unreg_CfgDel) {
     TASK_UTIL_EXPECT_TRUE(LinkLookup(vr, vm3, "virtual-router-virtual-machine") == NULL);
 
     // Delete the vr and all the vms via config
-    string content1 = 
-        FileRead("controller/src/ifmap/testdata/vr_3vm_delete.xml");
-    assert(content1.size() != 0);
-    parser_->Receive(&db_, content1.data(), content1.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_3vm_delete.xml"
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) == NULL);
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-machine",
@@ -2819,11 +2812,8 @@ TEST_F(XmppIfmapTest, Reg_CfgAdd_Unreg_Close) {
                 "43d086ab-52c4-4a1f-8c3d-63b321e36e8a") == NULL);
 
     // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_NE(0, vnsw_client->Count());
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
@@ -2996,11 +2986,8 @@ TEST_F(XmppIfmapTest, CheckIFMapObjectSeqInList) {
     vm_uuid_mapper_->PrintAllPendingVmRegEntries();
 
     // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     IFMapNode *vr = TableLookup("virtual-router", client_name);
@@ -3069,12 +3056,7 @@ TEST_F(XmppIfmapTest, CheckIFMapObjectSeqInList) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 7);
 
     // Delete the vr and all the vms via config
-    string content1 =
-        FileRead("controller/src/ifmap/testdata/vr_3vm_delete.xml");
-    assert(content1.size() != 0);
-    parser_->Receive(&db_, content1.data(), content1.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_3vm_delete.xml"
 
     // Wait for the other 2 VMs just to sequence events
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-machine",
@@ -3121,11 +3103,7 @@ TEST_F(XmppIfmapTest, CheckIFMapObjectSeqInList) {
     // New cycle - the nodes do not exist right now
     
     // Read from config first
-    content1 = string(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content1.size() != 0);
-    parser_->Receive(&db_, content1.data(), content1.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_3vm_add.xml"
 
     // Wait for the other 2 VMs just to sequence events
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-machine",
@@ -3238,15 +3216,9 @@ TEST_F(XmppIfmapTest, ReadyNotready) {
 }
 
 TEST_F(XmppIfmapTest, Bug788) {
-
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
-    usleep(1000);
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name =
@@ -3369,14 +3341,8 @@ TEST_F(XmppIfmapTest, Bug788) {
 
 // 2 consecutive vr subscribe requests with no unsubscribe in between
 TEST_F(XmppIfmapTest, SpuriousVrSub) {
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -3442,14 +3408,8 @@ TEST_F(XmppIfmapTest, SpuriousVrSub) {
 }
 
 TEST_F(XmppIfmapTest, VmSubUnsubWithNoVrSub) {
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/two-vn-connection"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/two-vn-connection.json");
+    FeedEventsJson();
 
     // Create the mock client
     string client_name(kDefaultClientName);
@@ -3511,14 +3471,8 @@ TEST_F(XmppIfmapTest, VmSubUnsubWithNoVrSub) {
 
 // Receive config and then VR-subscribe
 TEST_F(XmppIfmapTest, ConfigVrsubVrUnsub) {
-
-    // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/vr_gsc_config.xml"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config.json");
+    FeedEventsJson();
 
     string client_name("vr1");
     string gsc_str("gsc1");
@@ -3603,12 +3557,8 @@ TEST_F(XmppIfmapTest, VrsubConfigVrunsub) {
     TASK_UTIL_EXPECT_EQ(0, vnsw_client->Count());
 
     // Read the ifmap data from file
-    string content(FileRead("controller/src/ifmap/testdata/vr_gsc_config.xml"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     IFMapNode *vr = TableLookup("virtual-router", client_name);
@@ -3645,15 +3595,8 @@ TEST_F(XmppIfmapTest, VrsubConfigVrunsub) {
 // Receive config where nodes have no properties and then VR-subscribe
 // Then receive config where the nodes have properties
 TEST_F(XmppIfmapTest, ConfignopropVrsub) {
-
-    // Read the ifmap data from file
-    string content(FileRead(
-        "controller/src/ifmap/testdata/vr_gsc_config_no_prop.xml"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config_no_prop.json");
+    FeedEventsJson();
 
     string client_name("vr1");
     string gsc_str("gsc1");
@@ -3690,10 +3633,7 @@ TEST_F(XmppIfmapTest, ConfignopropVrsub) {
 
     // Now read the properties and another link update with no real change.
     // Client should receive one more message.
-    content = FileRead("controller/src/ifmap/testdata/vr_gsc_config.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    usleep(10000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_gsc_config.xml"
     TASK_UTIL_EXPECT_EQ(2, vnsw_client->Count());
 
     // Client close generates a TcpClose event on server
@@ -3747,13 +3687,8 @@ TEST_F(XmppIfmapTest, VrsubConfignoprop) {
     TASK_UTIL_EXPECT_EQ(0, vnsw_client->Count());
 
     // Read the ifmap data from file
-    string content(FileRead(
-        "controller/src/ifmap/testdata/vr_gsc_config_no_prop.xml"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config_no_prop.json");
+    FeedEventsJson();
 
     TASK_UTIL_EXPECT_TRUE(TableLookup("virtual-router", client_name) != NULL);
     IFMapNode *vr = TableLookup("virtual-router", client_name);
@@ -3767,10 +3702,7 @@ TEST_F(XmppIfmapTest, VrsubConfignoprop) {
 
     // Now read the properties and another link update with no real change.
     // Client should receive one more message.
-    content = FileRead("controller/src/ifmap/testdata/vr_gsc_config.xml");
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    usleep(10000);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_gsc_config.xml"
     TASK_UTIL_EXPECT_EQ(2, vnsw_client->Count());
 
     // Client close generates a TcpClose event on server
@@ -3814,13 +3746,8 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(0, vnsw_client->Count());
 
     // Read the ifmap data from file
-    string content(FileRead(
-        "controller/src/ifmap/testdata/vr_gsc_config_no_prop.xml"));
-    assert(content.size() != 0);
-
-    // Give the read file to the parser
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_gsc_config_no_prop.json");
+    FeedEventsJson();
 
     // subscribe to config
     vnsw_client->SendConfigSubscribe();
@@ -3834,10 +3761,7 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 1);
 
     // Add the 'id-perms' property
-    content = (FileRead("controller/src/ifmap/testdata/vr_with_1prop.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_with_1prop.xml"
     // Checks. Only 'id-perms' should be set.
     vrnode = TableLookup("virtual-router", client_name);
     ASSERT_TRUE(vrnode != NULL);
@@ -3852,10 +3776,7 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 2);
 
     // Add 'id-perms' and 'display-name' to the vrnode
-    content = (FileRead("controller/src/ifmap/testdata/vr_with_2prop.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_with_2prop.xml"
     // Checks. 'id-perms' and 'display-name' should be set.
     vrnode = TableLookup("virtual-router", client_name);
     ASSERT_TRUE(vrnode != NULL);
@@ -3870,10 +3791,7 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 3);
 
     // Remove 'display-name' from the vrnode
-    content = (FileRead("controller/src/ifmap/testdata/vr_del_1prop.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_del_1prop.xml"
     // Checks. Only 'id-perms' should be set.
     vrnode = TableLookup("virtual-router", client_name);
     ASSERT_TRUE(vrnode != NULL);
@@ -3888,10 +3806,7 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 4);
 
     // Add 'id-perms' and 'display-name' to the vrnode
-    content = (FileRead("controller/src/ifmap/testdata/vr_with_2prop.xml"));
-    assert(content.size() != 0);
-    db_.SetQueueDisable(true);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_with_2prop.xml"
     db_.SetQueueDisable(false);
     task_util::WaitForIdle();
     // Checks. 'id-perms' and 'display-name' should be set.
@@ -3908,10 +3823,7 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
     TASK_UTIL_EXPECT_EQ(vnsw_client->Count(), 5);
 
     // Remove both properties from the vrnode
-    content = (FileRead("controller/src/ifmap/testdata/vr_del_2prop.xml"));
-    assert(content.size() != 0);
-    db_.SetQueueDisable(true);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
+    FeedEventsJson(); // "controller/src/ifmap/testdata/vr_del_2prop.xml"
     db_.SetQueueDisable(false);
     task_util::WaitForIdle();
     // Checks. The node should exist since it has a neighbor. But, the object
@@ -3945,12 +3857,8 @@ TEST_F(XmppIfmapTest, NodePropertyChanges) {
 
 TEST_F(XmppIfmapTest, DeleteClientPendingVmregCleanup) {
     SetObjectsPerMessage(1);
-
-    // Read the ifmap data from file and give it to the parser
-    string content(FileRead("controller/src/ifmap/testdata/vr_3vm_add.xml"));
-    assert(content.size() != 0);
-    parser_->Receive(&db_, content.data(), content.size(), 0);
-    task_util::WaitForIdle();
+    ParseEventsJson("controller/src/ifmap/testdata/vr_3vm_add.json");
+    FeedEventsJson();
 
     // create the mock client
     string client_name =
@@ -4011,6 +3919,9 @@ TEST_F(XmppIfmapTest, DeleteClientPendingVmregCleanup) {
 static void SetUp() {
     LoggingInit();
     ControlNode::SetDefaultSchedulingPolicy();
+    ConfigAmqpClient::set_disable(true);
+    IFMapFactory::Register<ConfigCassandraClient>(
+        boost::factory<ConfigCassandraClientTest *>());
 }
 
 static void TearDown() {
