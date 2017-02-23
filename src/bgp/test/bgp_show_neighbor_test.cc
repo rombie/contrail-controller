@@ -127,10 +127,6 @@ protected:
     bool RequestIsDetail() const { return false; }
 
     virtual void SetUp() {
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        bgp_schema_ParserInit(parser);
-        vnc_cfg_ParserInit(parser);
-
         bgp_server_x_.reset(new BgpServerTest(&evm_, "X"));
         bgp_server_x_->session_manager()->Initialize(0);
         xmpp_server_x_ =
@@ -172,17 +168,11 @@ protected:
 
         DeleteAgents();
 
-        IFMapCleanUp();
         task_util::WaitForIdle();
 
         evm_.Shutdown();
         thread_.Join();
         task_util::WaitForIdle();
-    }
-
-    void IFMapCleanUp() {
-        IFMapServerParser::GetInstance("vnc_cfg")->MetadataClear("vnc_cfg");
-        IFMapServerParser::GetInstance("schema")->MetadataClear("schema");
     }
 
     void Configure() {
@@ -212,8 +202,8 @@ protected:
     }
 
     void NetworkConfig(const vector<string> &instance_names) {
-        bgp_util::NetworkConfigGenerate(&bgp_server_x_->config_db(),
-                                       instance_names);
+        bgp_util::NetworkConfigGenerate(bgp_server_x_->config_db(),
+                                        instance_names);
     }
 
     void VerifyNetworkConfig(BgpServerTest *server,

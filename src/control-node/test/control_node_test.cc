@@ -145,17 +145,12 @@ void ControlNodeTest::SetUp() {
     if (node_count_++) {
         return;
     }
-    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
-    vnc_cfg_ParserInit(parser);
-    bgp_schema_ParserInit(parser);    
 }
 
 void ControlNodeTest::TearDown() {
     if (--node_count_) {
         return;
     }
-    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
-    parser->MetadataClear("vnc_cfg");
 }
 
 }  // namespace test

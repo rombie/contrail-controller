@@ -139,9 +139,6 @@ protected:
     }
 
     virtual void SetUp() {
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        vnc_cfg_ParserInit(parser);
-        bgp_schema_ParserInit(parser);
         BgpIfmapConfigManager *config_manager =
                 static_cast<BgpIfmapConfigManager *>(
                     bgp_server_->config_manager());
@@ -158,8 +155,6 @@ protected:
         task_util::WaitForIdle();
         TASK_UTIL_ASSERT_EQ(0, bgp_server_->routing_instance_mgr()->count());
         db_util::Clear(&config_db_);
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->MetadataClear("schema");
     }
 
     void NetworkConfig(const vector<string> &instance_names,

@@ -142,9 +142,6 @@ protected:
 
     virtual void SetUp() {
         InitParams();
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        vnc_cfg_ParserInit(parser);
-        bgp_schema_ParserInit(parser);
         BgpIfmapConfigManager *config_manager =
                 static_cast<BgpIfmapConfigManager *>(
                     bgp_server_->config_manager());
@@ -160,9 +157,6 @@ protected:
                                 "Waiting for all routing-instances' deletion");
         task_util::WaitForIdle();
         db_util::Clear(&config_db_);
-        task_util::WaitForIdle();
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->MetadataClear("schema");
         task_util::WaitForIdle();
     }
 

@@ -210,9 +210,6 @@ protected:
 
     virtual void SetUp() {
         ConcurrencyScope scope("bgp::Config");
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        vnc_cfg_ParserInit(parser);
-        bgp_schema_ParserInit(parser);
         BgpIfmapConfigManager *config_manager =
                 static_cast<BgpIfmapConfigManager *>(
                     bgp_server_->config_manager());
@@ -225,8 +222,6 @@ protected:
         bgp_server_->Shutdown();
         task_util::WaitForIdle();
         db_util::Clear(&config_db_);
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->MetadataClear("schema");
     }
 
     void NetworkConfig(const vector<string> &instance_names) {

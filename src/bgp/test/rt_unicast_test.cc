@@ -128,7 +128,7 @@ class RtUnicastTest : public ::testing::Test {
 
     void ApplyNetworkConfiguration() {
         for (size_t i = 0; i < control_nodes_.size(); ++i) {
-            bgp_util::NetworkConfigGenerate(&control_nodes_[i]->config_db(),
+            bgp_util::NetworkConfigGenerate(control_nodes_[i]->config_db(),
                 instance_names_, connections_);
         }
     }

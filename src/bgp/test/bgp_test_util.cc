@@ -61,7 +61,8 @@ string NetworkConfigGenerate(DB *db,
             new autogen::VirtualNetworkType();;
         vn_property->network_id = value;
         ifmap_test_util::IFMapMsgNodeAdd(db, "virtual-network", vn, 0,
-                                         "network-id", vn_property);
+                                         "virtual-network-properties",
+                                         vn_property);
         net_id.append_child(node_pcdata).set_value(value_str);
         index++;
     }
