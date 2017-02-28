@@ -6,7 +6,11 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <pugixml/pugixml.hpp>
+
+#include <fstream>
+#include <iostream>
 
 using pugi::xml_document;
 using pugi::xml_node;
@@ -106,7 +110,26 @@ string NetworkConfigGenerate(
     }
     ostringstream oss;
     xdoc.save(oss);
-    return oss.str();
+    std::string xml = oss.str();
+
+
+    char *filename = tempnam("/tmp/", NULL);
+    ofstream xml_file;
+    xml_file.open(filename);
+    xml_file << xml;
+    xml_file.close();
+
+    char cmd[128];
+    sprintf(cmd, "controller/src/ifmap/testdata/ifmap_xml_to_db_json.rb %s",
+            filename);
+
+    system(cmd);
+    char json_file[128];
+    sprintf(json_file, "%s.json", filename);
+    ifstream f(json_file);
+    string content((istreambuf_iterator<char>(f)), istreambuf_iterator<char>());
+    cout << content << endl;
+    return xml;
 }
 
 }
