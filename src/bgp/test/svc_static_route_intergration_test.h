@@ -501,13 +501,10 @@ protected:
                        const multimap<string, string> &connections,
                        const std::vector<string> &networks,
                        const std::vector<int> &network_ids) {
-        string netconf(bgp_util::NetworkConfigGenerate(
-            instance_names, connections, networks, network_ids));
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->Receive(cn1_->config_db(), netconf.data(), netconf.length(), 0);
-        task_util::WaitForIdle();
-        parser->Receive(cn2_->config_db(), netconf.data(), netconf.length(), 0);
-        task_util::WaitForIdle();
+        bgp_util::NetworkConfigGenerate(&cn1_->config_db(), instance_names,
+            connections, networks, network_ids);
+        bgp_util::NetworkConfigGenerate(&cn2_->config_db(), instance_names,
+            connections, networks, network_ids);
     }
 
     void VerifyNetworkConfig(BgpServerTest *server,

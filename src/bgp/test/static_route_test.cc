@@ -230,10 +230,7 @@ protected:
     }
 
     void NetworkConfig(const vector<string> &instance_names) {
-        string netconf(bgp_util::NetworkConfigGenerate(instance_names));
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->Receive(&config_db_, netconf.data(), netconf.length(), 0);
-        task_util::WaitForIdle();
+        bgp_util::NetworkConfigGenerate(&config_db_, instance_names);
     }
 
     void CreatePeers() {

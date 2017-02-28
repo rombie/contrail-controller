@@ -460,13 +460,10 @@ protected:
 
     void NetworkConfig(const vector<string> &instance_names,
         const multimap<string, string> &connections) {
-        string netconf(
-            bgp_util::NetworkConfigGenerate(instance_names, connections));
-        IFMapServerParser *parser = IFMapServerParser::GetInstance("schema");
-        parser->Receive(cn1_->config_db(), netconf.data(), netconf.length(), 0);
-        task_util::WaitForIdle();
-        parser->Receive(cn2_->config_db(), netconf.data(), netconf.length(), 0);
-        task_util::WaitForIdle();
+        bgp_util::NetworkConfigGenerate(&cn1_->config_db(), instance_names,
+                                        connections);
+        bgp_util::NetworkConfigGenerate(&cn2_->config_db(), instance_names,
+                                        connections);
     }
 
     void UnconfigureBgpPeering(BgpServerTest *server1, BgpServerTest *server2) {

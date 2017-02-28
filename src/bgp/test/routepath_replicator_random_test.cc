@@ -174,11 +174,8 @@ protected:
 
     void NetworkConfig(const VrfList &instance_names,
                        const ConnectionMap &connections) {
-        string netconf(
-            bgp_util::NetworkConfigGenerate(instance_names, connections));
-        IFMapServerParser *parser =
-            IFMapServerParser::GetInstance("schema");
-        parser->Receive(&config_db_, netconf.data(), netconf.length(), 0);
+        bgp_util::NetworkConfigGenerate(&config_db_, instance_names,
+                                        connections);
     }
 
     void DeleteRoutingInstance(string name, bool wait = true) {

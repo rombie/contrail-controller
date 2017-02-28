@@ -99,11 +99,6 @@ void ControlNodeTest::BgpConfig(const std::string &config) {
     bgp_server_->Configure(config);
 }
 
-void ControlNodeTest::IFMapMessage(const std::string &msg) {
-    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
-    parser->Receive(bgp_server_->config_db(), msg.data(), msg.length(), 0);
-}
-
 void ControlNodeTest::VerifyRoutingInstance(const std::string instance,
                                             bool verify_network_index) {
     const RoutingInstanceMgr *ri_mgr = bgp_server_->routing_instance_mgr();

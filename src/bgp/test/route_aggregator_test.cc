@@ -164,11 +164,8 @@ protected:
 
     void NetworkConfig(const vector<string> &instance_names,
                        const multimap<string, string> &connections) {
-        string netconf(
-            bgp_util::NetworkConfigGenerate(instance_names, connections));
-        IFMapServerParser *parser =
-            IFMapServerParser::GetInstance("schema");
-        parser->Receive(&config_db_, netconf.data(), netconf.length(), 0);
+        bgp_util::NetworkConfigGenerate(&config_db_, instance_names,
+                                        connections);
     }
 
 

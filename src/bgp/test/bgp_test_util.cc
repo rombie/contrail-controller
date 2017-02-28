@@ -6,11 +6,13 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <pugixml/pugixml.hpp>
 
-#include <fstream>
-#include <iostream>
+#include "base/test/task_test_util.h"
+#include "db/db.h"
+#include "ifmap/test/ifmap_test_util.h"
+#include "schema/bgp_schema_types.h"
+#include "schema/vnc_cfg_types.h"
 
 using pugi::xml_document;
 using pugi::xml_node;
@@ -18,7 +20,7 @@ using pugi::node_pcdata;
 using namespace std;
 
 namespace bgp_util {
-string NetworkConfigGenerate(
+string NetworkConfigGenerate(DB *db,
         const vector<string> &instance_names,
         const multimap<string, string> &connections,
         const vector<string> &networks,
@@ -37,7 +39,7 @@ string NetworkConfigGenerate(
          iter != instance_names.end(); ++iter) {
         xml_node item = update.append_child("resultItem");
         xml_node id = item.append_child("identity");
-        string vn("virtual-network:");
+        string vn;
         if (networks.empty()) {
             vn.append(*iter);
         } else {
@@ -55,6 +57,11 @@ string NetworkConfigGenerate(
         }
         char value_str[16];
         snprintf(value_str, sizeof(value), "%d", value);
+        autogen::VirtualNetworkType *vn_property =
+            new autogen::VirtualNetworkType();;
+        vn_property->network_id = value;
+        ifmap_test_util::IFMapMsgNodeAdd(db, "virtual-network", vn, 0,
+                                         "network-id", vn_property);
         net_id.append_child(node_pcdata).set_value(value_str);
         index++;
     }
@@ -63,15 +70,17 @@ string NetworkConfigGenerate(
          iter != instance_names.end(); ++iter) {
         xml_node item = update.append_child("resultItem");
         xml_node id1 = item.append_child("identity");
-        string instance("routing-instance:");
+        string instance;
         instance.append(*iter);
         id1.append_attribute("name") = instance.c_str();
         xml_node id2 = item.append_child("identity");
         ostringstream target;
-        target << "route-target:target:64496:" << (index + 1);
+        target << "target:64496:" << (index + 1);
         id2.append_attribute("name") = target.str().c_str();
         xml_node meta = item.append_child("metadata");
         meta.append_child("instance-target");
+        ifmap_test_util::IFMapMsgLink(db, "routing-instance", instance,
+            "route-target", target.str(), "instance-target");
         index++;
     }
     index = 0;
@@ -79,7 +88,7 @@ string NetworkConfigGenerate(
          iter != instance_names.end(); ++iter) {
         xml_node item = update.append_child("resultItem");
         xml_node id1 = item.append_child("identity");
-        string vn("virtual-network:");
+        string vn;
         if (networks.empty()) {
             vn.append(*iter);
         } else {
@@ -87,49 +96,37 @@ string NetworkConfigGenerate(
         }
         id1.append_attribute("name") = vn.c_str();
         xml_node id2 = item.append_child("identity");
-        string instance("routing-instance:");
+        string instance;
         instance.append(*iter);
         id2.append_attribute("name") = instance.c_str();
         xml_node meta = item.append_child("metadata");
         meta.append_child("virtual-network-routing-instance");
+        ifmap_test_util::IFMapMsgLink(db, "virtual-network", vn,
+                                      "routing-instance", instance,
+                                      "virtual-network-routing-instance");
         index++;
     }
     for (multimap<string, string>::const_iterator iter = connections.begin();
          iter != connections.end(); ++iter) {
         xml_node item = update.append_child("resultItem");
         xml_node id1 = item.append_child("identity");
-        string instance1("routing-instance:");
+        string instance1;
         instance1.append(iter->first);
         id1.append_attribute("name") = instance1.c_str();
         xml_node id2 = item.append_child("identity");
-        string instance2("routing-instance:");
+        string instance2;
         instance2.append(iter->second);
         id2.append_attribute("name") = instance2.c_str();
         xml_node meta = item.append_child("metadata");
         meta.append_child("connection");
+        ifmap_test_util::IFMapMsgLink(db, "routing-instance", instance1,
+                                      "routing-instance", instance2,
+                                      "connection");
     }
     ostringstream oss;
     xdoc.save(oss);
-    std::string xml = oss.str();
-
-
-    char *filename = tempnam("/tmp/", NULL);
-    ofstream xml_file;
-    xml_file.open(filename);
-    xml_file << xml;
-    xml_file.close();
-
-    char cmd[128];
-    sprintf(cmd, "controller/src/ifmap/testdata/ifmap_xml_to_db_json.rb %s",
-            filename);
-
-    system(cmd);
-    char json_file[128];
-    sprintf(json_file, "%s.json", filename);
-    ifstream f(json_file);
-    string content((istreambuf_iterator<char>(f)), istreambuf_iterator<char>());
-    cout << content << endl;
-    return xml;
+    task_util::WaitForIdle();
+    return oss.str();
 }
 
 }
