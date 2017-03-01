@@ -12,7 +12,7 @@
 class DB;
 
 namespace bgp_util {
-std::string NetworkConfigGenerate(DB *db,
+void NetworkConfigGenerate(DB *db,
     const std::vector<std::string> &instance_names,
     const std::multimap<std::string, std::string> &connections =
         std::multimap<std::string, std::string>(),

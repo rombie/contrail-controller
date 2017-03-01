@@ -99,6 +99,11 @@ void ControlNodeTest::BgpConfig(const std::string &config) {
     bgp_server_->Configure(config);
 }
 
+void ControlNodeTest::IFMapMessage(const std::string &msg) {
+    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
+    parser->Receive(bgp_server_->config_db(), msg.data(), msg.length(), 0);
+}
+
 void ControlNodeTest::VerifyRoutingInstance(const std::string instance,
                                             bool verify_network_index) {
     const RoutingInstanceMgr *ri_mgr = bgp_server_->routing_instance_mgr();
@@ -145,12 +150,17 @@ void ControlNodeTest::SetUp() {
     if (node_count_++) {
         return;
     }
+    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
+    vnc_cfg_ParserInit(parser);
+    bgp_schema_ParserInit(parser);    
 }
 
 void ControlNodeTest::TearDown() {
     if (--node_count_) {
         return;
     }
+    IFMapServerParser *parser = IFMapServerParser::GetInstance("vnc_cfg");
+    parser->MetadataClear("vnc_cfg");
 }
 
 }  // namespace test

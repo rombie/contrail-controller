@@ -294,7 +294,6 @@ static string network_name(const char *rti_name) {
     return "<nil>";
 }
 
-
 TEST_F(MiniSystemTest, SameNode) {
     SCOPED_TRACE(__FUNCTION__);
     const char *net_1 = "default-domain:b47d0eacc9c446eabc9b4eea3d6f6133:vn1:vn1";
