@@ -23,7 +23,7 @@ env.Prepend(LIBS = ['db', 'dbtest', 'gunit', 'task_test', 'io', 'sandesh',
                     'pugixml', 'boost_program_options'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt'])
+    env.Append(LIBS=['boost_chrono'])
 
 db_test = env.UnitTest('db_test', ['db_test.cc'])
 env.Alias('src/db:db_test', db_test)

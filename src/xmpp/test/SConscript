@@ -35,7 +35,7 @@ env.Prepend(LIBS = ['task_test', 'gunit', 'xmpp', 'xml', 'pugixml', 'sandesh',
                     'boost_regex', 'xmpptest', 'db', 'sandesh'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 xmpp_server_test = env.UnitTest('xmpp_server_test', ['xmpp_server_test.cc'])
 env.Alias('controller/xmpp:xmpp_server_test', xmpp_server_test)

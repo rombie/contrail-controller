@@ -27,7 +27,7 @@ env.Prepend(LIBS = ['gunit', 'io', 'sandesh', 'http', 'net',
                     'boost_program_options', 'pugixml', 'sandeshvns'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 options_test = env.UnitTest('options_test', ['../buildinfo.o', '../options.o',
                                              'options_test.cc'])

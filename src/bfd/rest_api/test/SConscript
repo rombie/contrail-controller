@@ -27,7 +27,7 @@ env.Prepend(LIBS = ['bfd_rest_api', 'bfd', 'gunit', 'task_test', 'io', 'sandesh'
                     'process_info'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt'])
+    env.Append(LIBS=['boost_chrono'])
 
 except_env = env.Clone()
 cflags = except_env['CCFLAGS']

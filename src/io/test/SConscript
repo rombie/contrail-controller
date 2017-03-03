@@ -22,7 +22,7 @@ env.Prepend(LIBS = ['gunit', 'task_test', 'io', 'sandesh', 'http',
                     'boost_program_options', 'pugixml', 'ssl', 'crypto'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 event_manager_test = env.UnitTest('event_manager_test',
                                   ['event_manager_test.cc'],

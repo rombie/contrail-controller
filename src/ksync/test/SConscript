@@ -29,7 +29,7 @@ env.Prepend(LIBS=['thrift','xmpp', 'peer_sandesh',
                   'cpuinfo', 'pugixml'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt'])
+    env.Append(LIBS=['boost_chrono'])
     env.Prepend(LIBS=['ksync', 'ksyncnl'])
 
 libs = MapBuildDir(['db', 'bgp', 'xmpp', 'xml', 'pugixml', 'io', 'ksync',

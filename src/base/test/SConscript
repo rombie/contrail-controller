@@ -18,7 +18,7 @@ env.Prepend(LIBS = ['base', 'gunit', 'task_test', 'io', 'sandesh', 'sandeshvns',
                     'io', 'crypto', 'http_parser', 'curl', 'pugixml', 'boost_program_options'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 libtask_test = env.Library('task_test',
                            ['task_test_util.cc',

@@ -29,7 +29,7 @@ env.Prepend(LIBS = ['ifmap_server', 'ifmapio', 'xmpp',
                     'boost_program_options', 'libbgp_schema'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS = ['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 env.Library('ifmap_test_util',
             ['ifmap_test_util.cc'])

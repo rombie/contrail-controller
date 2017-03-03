@@ -135,7 +135,7 @@ env.Append(LIBS = ['xmpp_unicast', 'xmpp_multicast', 'xmpp_enet',
                    'boost_regex', 'boost_program_options', 'boost_chrono'])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt'])
+    env.Append(LIBS = ['boost_chrono'])
 
 except_env = env.Clone()
 except_env.CppEnableExceptions()

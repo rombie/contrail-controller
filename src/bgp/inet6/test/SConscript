@@ -97,7 +97,7 @@ env.Prepend(LIBS = [
                     ])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt', 'extended_community'])
+    env.Append(LIBS=['boost_chrono', 'extended_community'])
     env.Prepend(LINKFLAGS = ['-Wl,--whole-archive',
                              '-lbgp_ermvpn',
                              '-lbgp_evpn',

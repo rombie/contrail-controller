@@ -97,7 +97,7 @@ env.Prepend(LIBS = [
                     ])
 
 if sys.platform != 'darwin':
-    env.Append(LIBS=['rt'])
+    env.Append(LIBS = ['boost_chrono'])
     env.Prepend(LINKFLAGS = ['-Wl,--whole-archive',
                              '-lbgp_test_factory',
                              '-lbgp_inet',
