@@ -23,6 +23,7 @@
 #include "config_json_parser.h"
 #include "io/event_manager.h"
 #include "database/cassandra/cql/cql_if.h"
+#include "ifmap/ifmap_factory.h"
 #include "ifmap/ifmap_log.h"
 #include "ifmap/ifmap_log_types.h"
 #include "ifmap/ifmap_server_show_types.h"
@@ -43,8 +44,8 @@ ConfigCassandraClient::ConfigCassandraClient(ConfigClientManager *mgr,
         : ConfigDbClient(options), mgr_(mgr), evm_(evm), parser_(in_parser),
         num_workers_(num_workers), uuid_read_list_(num_workers),
         uuid_read_set_(num_workers), object_cache_map_(num_workers) {
-    dbif_.reset(new cass::cql::CqlIf(evm, config_db_ips(),
-                GetFirstConfigDbPort(), "", ""));
+    dbif_.reset(IFMapFactory::Create<cass::cql::CqlIf>(evm, config_db_ips(),
+                    GetFirstConfigDbPort(), "", ""));
 
     // Initialized the casssadra connection status;
     cassandra_connection_up_ = false;
@@ -393,6 +394,17 @@ bool ConfigCassandraClient::ParseFQNameRowGetUUIDList(const string &obj_type,
     return true;
 }
 
+void ConfigCassandraClient::PraseAndEnqueueToIFMapTable(
+    const string &uuid_key, const ConfigCassandraParseContext &context,
+    const CassColumnKVVec &cass_data_vec) {
+
+    // Convert column data to json string.
+    ConfigCass2JsonAdapter ccja(uuid_key, this, context.obj_type,
+                                cass_data_vec);
+    // Enqueue Json document to the parser here.
+    parser_->Receive(ccja, IFMapOrigin::CASSANDRA);
+}
+
 bool ConfigCassandraClient::ParseRowAndEnqueueToParser(const string &uuid_key,
                                            const GenDb::ColList &col_list) {
     CassColumnKVVec cass_data_vec;
@@ -430,10 +442,7 @@ bool ConfigCassandraClient::ParseRowAndEnqueueToParser(const string &uuid_key,
             }
         }
 
-        // Convert column data to json string.
-        ConfigCass2JsonAdapter ccja(uuid_key, this, context.obj_type, cass_data_vec);
-        // Enqueue Json document to the parser here.
-        parser_->Receive(ccja, IFMapOrigin::CASSANDRA);
+        PraseAndEnqueueToIFMapTable(uuid_key, context, cass_data_vec);
     } else {
         IFMAP_WARN(IFMapGetRowError, "Parsing row response failed for table",
                    kUuidTableName, uuid_key);
@@ -494,7 +503,7 @@ bool ConfigCassandraClient::ReadUuidTableRows(set<string> *uuid_list) {
     field_vec.push_back(boost::make_tuple("value", false, false, true));
 
     if (dbif_->Db_GetMultiRow(&col_list_vec, kUuidTableName, keys,
-                         crange, field_vec)) {
+                              crange, field_vec)) {
         // Failure is returned due to connectivity issue or consistency
         // issues in reading from cassandra
         HandleCassandraConnectionStatus(true);
@@ -511,7 +520,7 @@ bool ConfigCassandraClient::ReadUuidTableRows(set<string> *uuid_list) {
         }
     } else {
         HandleCassandraConnectionStatus(false);
-        IFMAP_WARN(IFMapGetRowError, "Db_GetMultiRow failed for table",
+        IFMAP_WARN(IFMapGetRowError, "GetMultiRow failed for table",
                    kUuidTableName, "");
         //
         // Task is rescheduled to read the request queue
@@ -580,10 +589,8 @@ bool ConfigCassandraClient::FQNameReader() {
             if (!column_name.empty()) {
                 GenDb::Blob col_filter(reinterpret_cast<const uint8_t *>
                                    (column_name.c_str()), column_name.size());
-                //
                 // Start reading the next set of entries from where we ended in
                 // last read
-                //
                 crange.start_ =
                     boost::assign::list_of(GenDb::DbDataValue(col_filter));
             }
@@ -593,40 +600,32 @@ bool ConfigCassandraClient::FQNameReader() {
             // entries. So read each obj-type fq-name entries in chunk of
             // kNumFQNameEntriesToRead rows at a time
             //
-            crange.count_ = kNumFQNameEntriesToRead;
+            crange.count_ = GetCRangeCount();
 
             GenDb::FieldNamesToReadVec field_vec;
             field_vec.push_back(boost::make_tuple("key", true, false, false));
-            field_vec.push_back(boost::make_tuple("column1", false, true, false));
+            field_vec.push_back(boost::make_tuple("column1", false, true,
+                                                  false));
 
             GenDb::ColList col_list;
             if (dbif_->Db_GetRow(&col_list, kFqnTableName, key,
                      GenDb::DbConsistency::QUORUM, crange, field_vec)) {
                 HandleCassandraConnectionStatus(true);
-                if (col_list.columns_.size()) {
-                    ObjTypeUUIDList uuid_list;
-                    string last_column;
-                    ParseFQNameRowGetUUIDList(*it, col_list, uuid_list,
-                                              &last_column);
-                    //
-                    // If the last_column we read this time is same as
-                    // where we started the current read, move to next obj-type
-                    //
-                    if (last_column == column_name)
-                        break;
-                    EnqueueUUIDRequest(uuid_list);
-                    //
-                    // If we read less than kNumFQNameEntriesToRead entries,
-                    // it means there are no more entries for current obj-type.
-                    // We move to next obj-type
-                    //
-                    if (col_list.columns_.size() < kNumFQNameEntriesToRead)
-                        break;
-                    column_name = last_column;
-                } else {
-                    // No entries for this obj-type
+
+                // No entries for this obj-type
+                if (!col_list.columns_.size())
                     break;
-                }
+
+                ObjTypeUUIDList uuid_list;
+                ParseFQNameRowGetUUIDList(*it, col_list, uuid_list,
+                                          &column_name);
+                EnqueueUUIDRequest(uuid_list);
+
+                // If we read less than kNumFQNameEntriesToRead entries,
+                // it means there are no more entries for current obj-type.
+                // We move to next obj-type.
+                if (col_list.columns_.size() < GetCRangeCount())
+                    break;
             } else {
                 HandleCassandraConnectionStatus(false);
                 IFMAP_WARN(IFMapGetRowError, "GetRow failed for table",

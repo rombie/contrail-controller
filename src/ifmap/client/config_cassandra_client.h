@@ -50,7 +50,7 @@ public:
     static const int kInitRetryTimeSec = 5;
     static const int kMaxRequestsToYield = 512;
     static const int kMaxNumUUIDToRead = 64;
-    static const int kNumFQNameEntriesToRead = 4096;
+    static const int kNumFQNameEntriesToRead = 4;
 
     typedef boost::scoped_ptr<GenDb::GenDbIf> GenDbIfPtr;
     typedef std::pair<std::string, std::string> ObjTypeFQNPair;
@@ -121,6 +121,10 @@ protected:
     bool EnqueueUUIDRequest(const ObjTypeUUIDList &uuid_list);
     virtual std::string FetchUUIDFromFQNameEntry(const std::string &key) const;
     virtual std::string GetUUID(const std::string &key) const;
+    virtual void PraseAndEnqueueToIFMapTable(const string &uuid_key,
+        const ConfigCassandraParseContext &context,
+        const CassColumnKVVec &cass_data_vec);
+    virtual uint32_t GetCRangeCount() const { return kNumFQNameEntriesToRead; }
 
 private:
     class ConfigReader;

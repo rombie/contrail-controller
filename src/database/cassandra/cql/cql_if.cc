@@ -846,7 +846,7 @@ static std::string CassSelectFromTableInternal(const std::string &table,
         if (!ck_range.start_.empty()) {
             int ck_start_size(ck_range.start_.size());
             std::ostringstream start_ss;
-            start_ss << " >= (";
+            start_ss << " > (";
             CassQueryPrinter start_vprinter(start_ss);
             query << " AND (";
             for (int i = 0; i < ck_start_size; i++) {
