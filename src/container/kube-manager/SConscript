@@ -45,6 +45,7 @@ local_sources = [
     'kube_manager/vnc/reaction_map.py',
     'kube_manager/vnc/vnc_kubernetes.py',
     'kube_manager/vnc/vnc_kubernetes_config.py',
+    'kube_manager/vnc/vnc_common.py',
     'kube_manager/vnc/vnc_namespace.py',
     'kube_manager/vnc/vnc_network_policy.py',
     'kube_manager/vnc/vnc_pod.py',
@@ -114,7 +115,6 @@ test_cmd = env.Command('test.log', sdist_gen,
 
 test_depends = ['/config/common/dist/cfgm_common-0.1dev.tar.gz',
                 '/api-lib/dist/vnc_api-0.1dev.tar.gz',
-                '/discovery/client/dist/discoveryclient-0.1dev.tar.gz',
                 '/tools/sandesh/library/python/dist/sandesh-0.1dev.tar.gz',
                 '/sandesh/common/dist/sandesh-common-0.1dev.tar.gz',
                 '/config/api-server/dist/vnc_cfg_api_server-0.1dev.tar.gz',]

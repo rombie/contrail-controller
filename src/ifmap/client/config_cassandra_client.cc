@@ -182,7 +182,7 @@ bool ConfigCassandraClient::ConfigReader(int worker_id) {
                 }
                 num_req_handled += bunch_req_list.size();
                 RemoveObjReqEntries(worker_id, bunch_req_list);
-                if (num_req_handled >= kMaxRequestsToYield) {
+                if (num_req_handled >= getMaxRequestsToYield()) {
                     return false;
                 }
             }
@@ -193,7 +193,7 @@ bool ConfigCassandraClient::ConfigReader(int worker_id) {
             BulkSyncDone(worker_id);
         }
         RemoveObjReqEntry(worker_id, obj_req);
-        if (++num_req_handled == kMaxRequestsToYield) {
+        if (++num_req_handled == getMaxRequestsToYield()) {
             return false;
         }
     }

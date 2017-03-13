@@ -601,23 +601,15 @@ TcpSession::Endpoint BgpXmppChannel::endpoint() const {
 
 bool BgpXmppChannel::XmppDecodeAddress(int af, const string &address,
                                        IpAddress *addrp, bool zero_ok) {
-    switch (af) {
-    case BgpAf::IPv4:
-        break;
-    default:
+    if (af != BgpAf::IPv4 && af != BgpAf::IPv6)
         return false;
-    }
 
     error_code error;
     *addrp = IpAddress::from_string(address, error);
-    if (error) {
+    if (error)
         return false;
-    }
-    if (zero_ok) {
-        return true;
-    } else {
-        return (addrp->to_v4().to_ulong() != 0);
-    }
+
+    return (zero_ok ? true : !addrp->is_unspecified());
 }
 
 //
@@ -1221,6 +1213,13 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
         return false;
     }
 
+    // Rules for routes in master instance:
+    // - Label must be 0
+    // - Only the first nexthop is used
+    // - Tunnel encapsulation is not required
+    // - Do not add SourceRd and ExtCommunitySpec
+    bool master = (vrf_name == BgpConfigManager::kMasterInstance);
+
     // vector<Address::Family> family_list = list_of(Address::INET6)(Address::EVPN);
     vector<Address::Family> family_list = list_of(Address::INET6);
     BOOST_FOREACH(Address::Family family, family_list) {
@@ -1296,14 +1295,14 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
                             router_mac.GetExtCommunityValue());
                     }
                 } else {
-                    if (nit->label > 0xFFFFF) {
+                    if (nit->label > 0xFFFFF || (master && nit->label)) {
                         BGP_LOG_PEER_INSTANCE_WARNING(Peer(), vrf_name,
                             BGP_LOG_FLAG_ALL,
-                            "Bad label " << nit->vni <<
+                            "Bad label " << nit->label <<
                             " for inet6 route " << inet6_prefix.ToString());
                         return false;
                     }
-                    if (!nit->label)
+                    if (!master && !nit->label)
                         continue;
                 }
 
@@ -1345,7 +1344,7 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
 
                 // Mark the path as infeasible if all tunnel encaps published
                 // by agent are invalid.
-                if (!no_tunnel_encap && no_valid_tunnel_encap) {
+                if (!no_tunnel_encap && no_valid_tunnel_encap && !master) {
                     flags = BgpPath::NoTunnelEncap;
                 }
 
@@ -1353,9 +1352,14 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
                 nexthop.address_ = nhop_address;
                 nexthop.label_ =
                     family == Address::INET6 ? nit->label : nit->vni;
-                nexthop.source_rd_ = RouteDistinguisher(
-                    nhop_address.to_v4().to_ulong(), instance_id);
+                if (!master) {
+                    nexthop.source_rd_ = RouteDistinguisher(
+                        nhop_address.to_v4().to_ulong(), instance_id);
+                }
                 nexthops.push_back(nexthop);
+
+                if (master)
+                    break;
             }
 
             // Skip if there are no valid next hops for the inet6/evpn route.
@@ -1388,12 +1392,16 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
                 comm.communities.push_back(rt_community);
             }
 
-            BgpAttrNextHop nexthop(nh_address.to_v4().to_ulong());
+            BgpAttrNextHop nexthop(nh_address);
             attrs.push_back(&nexthop);
 
-            BgpAttrSourceRd source_rd(
-                RouteDistinguisher(nh_address.to_v4().to_ulong(), instance_id));
-            attrs.push_back(&source_rd);
+            BgpAttrSourceRd source_rd;
+            if (!master) {
+                uint32_t addr = nh_address.to_v4().to_ulong();
+                source_rd =
+                    BgpAttrSourceRd(RouteDistinguisher(addr, instance_id));
+                attrs.push_back(&source_rd);
+            }
 
             // Process security group list.
             const SecurityGroupListType &isg_list =
@@ -1420,7 +1428,7 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
 
             if (!comm.communities.empty())
                 attrs.push_back(&comm);
-            if (!ext.communities.empty())
+            if (!master && !ext.communities.empty())
                 attrs.push_back(&ext);
 
             BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);

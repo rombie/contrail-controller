@@ -91,7 +91,7 @@ public:
 
     virtual void GetConnectionInfo(ConfigDBConnInfo &status) const;
 
-    static uint32_t GetNumReadRequestToBunch();
+    virtual uint32_t GetNumReadRequestToBunch();
 
 protected:
     struct ConfigCassandraParseContext {
@@ -125,6 +125,7 @@ protected:
         const ConfigCassandraParseContext &context,
         const CassColumnKVVec &cass_data_vec);
     virtual uint32_t GetCRangeCount() const { return kNumFQNameEntriesToRead; }
+    virtual const int getMaxRequestsToYield() { return kMaxRequestsToYield; }
 
 private:
     class ConfigReader;

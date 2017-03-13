@@ -67,12 +67,14 @@ static int get_row_have_index_;
 static bool get_multirow_result_;
 static int get_multirow_result_index_;
 static int asked = 4;
-static vector<size_t> get_row_have_sizes = boost::assign::list_of
-    (0)(asked/2)(asked-1)(asked)(asked+1)(asked*3/2)(asked*2)(asked*2+1);
-static vector<string> col_list_vec_choices = boost::assign::list_of
+static vector<size_t> get_row_sizes = boost::assign::list_of
+    (0)(asked/2)(asked-1)(asked)(asked+1)(asked*3/2)(asked*2)(asked*2+1)(asked*3)(asked*3 + 1)(asked * 4);
+static vector<string> type_choices = boost::assign::list_of
     ("type")("fqname")("prop:display_name")("junk");
-static vector<vector<string> > col_list_vec_options =
-    getAllSubsets(col_list_vec_choices);
+static vector<string> value_choices = boost::assign::list_of
+    ("\"virtual_network\"")("[\"default-domain\",\"admin\",\"vn1\"]")("\"vn1\"")("\"junkv\"");
+static vector<vector<string> > type_subsets = getAllSubsets(type_choices);
+static vector<vector<string> > value_subsets = getAllSubsets(value_choices);
 
 static const string fq_name_uuids[] = {
     "default-domain:admin:vn1:vn1:7acf5d97-d48b-4409-a30c-000000000001",
@@ -88,6 +90,7 @@ static const string fq_name_uuids[] = {
     "default-domain:admin:vn1:vn1:7acf5d97-d48b-4409-a30c-00000000000B",
     "default-domain:admin:vn1:vn1:7acf5d97-d48b-4409-a30c-00000000000C",
 };
+static size_t fq_names = sizeof(fq_name_uuids)/sizeof(fq_name_uuids[0]);
 
 class CqlIfTest : public cass::cql::CqlIf {
 public:
@@ -120,7 +123,7 @@ public:
         if (type_name == "virtual_network")
             return true;
 
-        if (!get_row_have_sizes[get_row_have_index_])
+        if (!get_row_sizes[get_row_have_index_])
             return true;
         
         string column_name;
@@ -134,15 +137,15 @@ public:
 
         // Find the first entry > column_name.
         size_t i = 0;
-        while (i < get_row_have_sizes[get_row_have_index_] &&
+        while (i < get_row_sizes[get_row_have_index_] && i < fq_names &&
                 column_name >= fq_name_uuids[i]) {
             i++;
         }
 
-        if (i >= get_row_have_sizes[get_row_have_index_])
+        if (i >= get_row_sizes[get_row_have_index_] || i >= fq_names)
             return true;
 
-        for (int pushed = 0; i < get_row_have_sizes[get_row_have_index_]; i++) {
+        for (int pushed = 0; i < get_row_sizes[get_row_have_index_]; i++) {
             GenDb::DbDataValueVec *n = new GenDb::DbDataValueVec();
             n->push_back(GenDb::Blob(reinterpret_cast<const uint8_t *>
                 (fq_name_uuids[i].c_str()), fq_name_uuids[i].size()));
@@ -152,12 +155,36 @@ public:
         }
         return true;
     }
+
     virtual bool Db_GetMultiRow(GenDb::ColListVec *out,
         const std::string &cfname,
         const std::vector<GenDb::DbDataValueVec> &v_rowkey,
         const GenDb::ColumnNameRange &crange,
         const GenDb::FieldNamesToReadVec &read_vec) {
         // if (!get_multirow_result_) return false;
+
+        BOOST_FOREACH(const GenDb::DbDataValueVec &key, v_rowkey) {
+            GenDb::ColList *val = new GenDb::ColList();
+            out->push_back(val);
+            val->rowkey_ = key;
+            for (size_t i = 0;
+                 i < type_subsets[get_multirow_result_index_].size(); i++) {
+                string type = type_subsets[get_multirow_result_index_][i];
+                string value = value_subsets[get_multirow_result_index_][i];
+
+                GenDb::DbDataValueVec *tp = new GenDb::DbDataValueVec();
+                tp->push_back(GenDb::Blob(reinterpret_cast<const uint8_t *>(
+                                type.c_str()), type.size()));
+
+                GenDb::DbDataValueVec *vl = new GenDb::DbDataValueVec();
+                vl->push_back(value);
+
+                GenDb::DbDataValueVec *ts = new GenDb::DbDataValueVec();
+                ts->push_back(UTCTimestampUsec());
+
+                val->columns_.push_back(new GenDb::NewCol(tp, vl, 10, ts));
+            }
+        }
         return true;
     }
     virtual std::vector<GenDb::Endpoint> Db_GetEndpoints() const {
@@ -179,6 +206,8 @@ private:
         const CassColumnKVVec &cass_data_vec) {
     }
     virtual uint32_t GetCRangeCount() const { return asked; }
+    virtual uint32_t GetNumReadRequestToBunch() { return asked; }
+    virtual const int getMaxRequestsToYield() { return asked/2; }
 };
 
 typedef std::tr1::tuple<bool, size_t, bool, size_t> TestParams;
@@ -238,9 +267,9 @@ INSTANTIATE_TEST_CASE_P(ConfigCassandraClientTestWithParams,
                         ConfigCassandraClientTest,
 ::testing::Combine(
     ::testing::Bool(), // Result: True/False
-    ::testing::Range<size_t>(0, get_row_have_sizes.size()), // Db_GetRow
+    ::testing::Range<size_t>(0, get_row_sizes.size()), // Db_GetRow
     ::testing::Bool(), // Result: True/False
-    ::testing::Range<size_t>(0, col_list_vec_options.size()) // Db_GetMultiRow
+    ::testing::Range<size_t>(0, type_subsets.size()) // Db_GetMultiRow
 ));
 
 int main(int argc, char **argv) {
