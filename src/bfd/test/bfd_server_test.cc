@@ -11,8 +11,6 @@
 
 #include "base/test/task_test_util.h"
 
-using namespace BFD;
-
 class ServerTest : public ::testing::Test {
  protected:
 };
