@@ -4,6 +4,8 @@
 
 #include <boost/asio.hpp>
 
+#include "base/logging.h"
+#include "bfd/bfd_connection.h"
 #include "bfd/bfd_server.h"
 #include "bfd/bfd_session.h"
 
@@ -11,11 +13,11 @@ using namespace BFD;
 
 class Communicator : public Connection {
  public:
-    Communicator() {
+    Communicator() { }
     virtual void SendPacket(const boost::asio::ip::address &dstAddr,
                             const ControlPacket *packet) {
     }
-    virtual ~TestCommunicator() { }
+    virtual ~Communicator() { }
  private:
 
 };

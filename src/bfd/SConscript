@@ -9,6 +9,7 @@ import sys
 env = BuildEnv.Clone()
 
 env.Append(LIBPATH = env['TOP'] + '/base')
+env.Append(LIBPATH = env['TOP'] + '/bfd')
 env.Append(LIBPATH = env['TOP'] + '/io')
 
 source = ['bfd_state_machine.cc', 'bfd_control_packet.cc', 'bfd_session.cc',
@@ -22,5 +23,7 @@ env.Prepend(LIBS = ['io', 'base', 'bfd', 'gunit', 'io', 'sandesh',
                     'sandeshvns', 'process_info', 'base', 'http', 'io',
                     'ssl', 'crypto', 'http_parser', 'curl', 'pugixml',
                     'boost_program_options', 'boost_thread', 'boost_chrono'])
+
 contrail_bfd = env.Program(target = 'contrail-bfd', source = ['main.cc'])
+env.Depends(contrail_bfd, [libbfd])
 env.Alias('contrail-bfd', contrail_bfd)
