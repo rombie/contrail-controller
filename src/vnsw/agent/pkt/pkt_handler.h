@@ -215,6 +215,7 @@ public:
         INVALID,
         FLOW,
         ARP,
+        BFD,
         DHCP,
         DHCPV6,
         DNS,

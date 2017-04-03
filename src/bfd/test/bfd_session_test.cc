@@ -17,6 +17,19 @@ static const Discriminator remoteDiscriminator = 0x87654321;
 static const int detectionTimeMultiplier = 3;
 const boost::asio::ip::address addr = boost::asio::ip::address::from_string("1.1.1.1");
 
+class SessionMock : public Session {
+public:
+    SessionMock(Discriminator localDiscriminator,
+            boost::asio::ip::address remoteHost,
+            EventManager *evm,
+            const SessionConfig &config,
+            Connection *communicator) :
+            Session(localDiscriminator, remoteHost, evm, config, communicator) {
+    }
+
+    bool TriggerRecvTimerExpired() { return RecvTimerExpired(); }
+};
+
 class SessionTest : public ::testing::Test {
   public:
     SessionTest() {
@@ -57,17 +70,18 @@ class SessionTest : public ::testing::Test {
 
 TEST_F(SessionTest, UpTest) {
     TestConnection tc;
-    Session session(localDiscriminator, addr, &evm, config, &tc);
+    SessionMock session(localDiscriminator, addr, &evm, config, &tc);
 
     EXPECT_EQ(kInit, session.local_state());
     packet.state = kInit;
     session.ProcessControlPacket(&packet);
     EXPECT_EQ(kUp, session.local_state());
+    std::cout << session.toString();
 }
 
 TEST_F(SessionTest, PollRecvTest) {
     TestConnection tc;
-    Session session(localDiscriminator, addr, &evm, config, &tc);
+    SessionMock session(localDiscriminator, addr, &evm, config, &tc);
 
     packet.poll = true;
     session.ProcessControlPacket(&packet);
@@ -84,7 +98,7 @@ TEST_F(SessionTest, PollRecvTest) {
 
 TEST_F(SessionTest, PollSendTest) {
     TestConnection tc;
-    Session session(localDiscriminator, addr, &evm, config, &tc);
+    SessionMock session(localDiscriminator, addr, &evm, config, &tc);
 
     session.ProcessControlPacket(&packet);
     session.InitPollSequence();
@@ -105,9 +119,21 @@ TEST_F(SessionTest, PollSendTest) {
     evm.Shutdown();
 }
 
+TEST_F(SessionTest, RecvTimerExpiredTest) {
+    TestConnection tc;
+    SessionMock session(localDiscriminator, addr, &evm, config, &tc);
+
+    EXPECT_EQ(kInit, session.local_state());
+    packet.state = kInit;
+    session.ProcessControlPacket(&packet);
+    EXPECT_EQ(kUp, session.local_state());
+
+    session.TriggerRecvTimerExpired();
+    EXPECT_EQ(kDown, session.local_state());
+}
+
 int main(int argc, char **argv) {
     LoggingInit();
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-

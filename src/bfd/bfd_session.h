@@ -49,7 +49,7 @@ class Session {
             EventManager *evm,
             const SessionConfig &config,
             Connection *communicator);
-    ~Session();
+    virtual ~Session();
 
     void Stop();
     ResultCode ProcessControlPacket(const ControlPacket *packet);
@@ -74,11 +74,13 @@ class Session {
     // reference count drops to zero.
     int reference_count();
 
+ protected:
+    bool RecvTimerExpired();
+
  private:
     typedef std::map<ClientId, StateMachine::ChangeCb> Callbacks;
 
     bool SendTimerExpired();
-    bool RecvTimerExpired();
     void ScheduleSendTimer();
     void ScheduleRecvDeadlineTimer();
     void PreparePacket(const SessionConfig &config, ControlPacket *packet);

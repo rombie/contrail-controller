@@ -63,18 +63,20 @@ test_suite = [
     bfd_parser_test,
     bfd_udp_connection_test,
     bfd_state_machine_test,
+    bfd_server_test,
     bfd_session_test,
 ]
 
 flaky_test_suite = [
-    bfd_server_test,
 #   bfd_external_test,
 ]
 
 test = env.TestSuite('bfd-test', test_suite)
-env.Alias('controller/src/bfd:test', test)
+env.Alias('controller/src/bfd:test',
+          [test, 'controller/src/bfd/rest_api:test'])
 
 flaky_test = env.TestSuite('bfd-flaky-test', flaky_test_suite)
-env.Alias('controller/src/bfd:flaky-test', flaky_test)
+env.Alias('controller/src/bfd:flaky-test',
+          [flaky_test, 'controller/src/bfd/rest_api:flaky-test'])
 
 Return('test_suite')
