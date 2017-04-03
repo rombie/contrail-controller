@@ -1,24 +1,27 @@
 <h1>TODO</h1>
 
 ```
-contrail-bfd scons target
-command line options with default /etc/contrail/contrail-bfd.conf
-packaging
-provisioning
-add rest-url to push bfd state change notifications
-integration with contrail-vrouter-agent
-introspect
-logs, debugs, traces, uves and counters
+Add contrail-bfd scons target
+Add command line options with default /etc/contrail/contrail-bfd.conf
+Add to packaging
+Add to provisioning
+Add rest-url to push bfd state change notifications
+Integrate with contrail-vrouter-agent
+Add introspect
+Add logs, debugs, traces, uves and counters
 
-schema changes to add bfd as new health-checker option
-bfd configuration parameters (on a per session/vmi basis ?)
+Add schema changes to add bfd as new health-checker option
+Add bfd configuration parameters (on a per session/vmi basis ?)
 
-contrail-voruter-agent restart
-contrail-bfd restart
-compute node restart
+Support contrail-voruter-agent restart
+Support contrail-bfd restart
+Support compute node restart
 
-contrail-vrouter-agent upgrade
-contrail-bfd upgrade
+Support contrail-vrouter-agent upgrade
+Support contrail-bfd upgrade
+
+Add more unit tests
+Add integration tests (with agent ??)
 
 scaling -- impact on cpu with large number of bfd sessions
            Phase 2: Investigate bfd data operations to vrouter kernel module
