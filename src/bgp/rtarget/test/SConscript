@@ -87,6 +87,7 @@ if sys.platform != 'darwin':
                     'gendb',
                ])
 
+env.Append(LIBS = ['rt', 'boost_chrono'])
 
 rtarget_address_test = env.UnitTest('rtarget_address_test', 
                                     ['rtarget_address_test.cc'])

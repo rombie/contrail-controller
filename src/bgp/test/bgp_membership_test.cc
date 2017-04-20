@@ -115,8 +115,10 @@ protected:
             BgpNeighborConfig *config = new BgpNeighborConfig();
             config->set_instance_name(rtinstance->name());
             config->set_name(out.str());
+#ifndef VALGRIND
             boost::uuids::random_generator gen;
             config->set_uuid(UuidToString(gen()));
+#endif
             BgpTestPeer *peer = static_cast<BgpTestPeer *>(
                 rtinstance->peer_manager()->PeerLocate(server_.get(), config));
             peers_.push_back(peer);

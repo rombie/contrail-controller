@@ -124,6 +124,7 @@ else:
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6])
     lib_inet6vpn = Dir('../../inet6vpn').path + '/libbgp_inet6vpn.a'
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6vpn])
+env.Append(LIBS = ['rt', 'boost_chrono'])
 
 evpn_prefix_test = env.UnitTest('evpn_prefix_test', ['evpn_prefix_test.cc'])
 env.Alias('src/bgp/evpn:evpn_prefix_test', evpn_prefix_test)
