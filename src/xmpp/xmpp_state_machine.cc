@@ -1463,14 +1463,17 @@ void XmppStateMachine::ProcessMessage(XmppSession *session,
                         ProcessEvent(xmsm::EvTlsProceed(session, msg));
                         break;
                     default:
+                        delete msg;
                         break;
                 }
-
             } else if (stream_msg->strmtype ==
                     XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER ||
                 stream_msg->strmtype ==
-                    XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER_RESP)
+                    XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER_RESP) {
                 ProcessStreamHeaderMessage(session, msg);
+            } else {
+                delete msg;
+            }
             break;
         case XmppStanza::WHITESPACE_MESSAGE_STANZA:
             ProcessEvent(xmsm::EvXmppKeepalive(session, msg));
@@ -1490,7 +1493,6 @@ void XmppStateMachine::ProcessMessage(XmppSession *session,
             delete msg;
             break;
     }
-
 }
 
 void XmppStateMachine::Clear() {
