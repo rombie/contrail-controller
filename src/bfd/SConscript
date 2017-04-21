@@ -10,21 +10,21 @@ env = BuildEnv.Clone()
 
 env.Append(LIBPATH = env['TOP'] + '/base')
 env.Append(LIBPATH = env['TOP'] + '/bfd')
-env.Append(LIBPATH = env['TOP'] + '/bfd/rest_api')
 env.Append(LIBPATH = env['TOP'] + '/io')
 
 source = ['bfd_state_machine.cc', 'bfd_control_packet.cc', 'bfd_session.cc',
-          'bfd_server.cc', 'bfd_udp_connection.cc', 'bfd_common.cc']
+          'bfd_server.cc', 'bfd_common.cc', 'bfd_client.cc']
 libbfd = env.Library('bfd', source)
+libbfd_udp = env.Library('bfd_udp', ['bfd_udp_connection.cc'])
 
-env.Prepend(LIBS = ['io', 'base', 'bfd_rest', 'bfd', 'gunit', 'io',
+env.Prepend(LIBS = ['io', 'base', 'bfd', 'gunit', 'io',
                     'sandesh', 'sandeshvns', 'process_info', 'base', 'http',
                     'io', 'ssl', 'crypto', 'http_parser', 'curl', 'pugixml',
                     'boost_program_options', 'boost_thread', 'boost_chrono',
                     'boost_regex'])
 
 contrail_bfd = env.Program(target = 'contrail-bfd', source = ['bfdd.cc'])
-env.Depends(contrail_bfd, [libbfd, File('../bfd/rest_api/libbfd_rest.a')])
+# env.Depends(contrail_bfd, [libbfd, File('../bfd/rest_api/libbfd_rest.a')])
 env.Alias('contrail-bfd', contrail_bfd)
 
 bfd_test_suite = env.SConscript('rest_api/SConscript', exports='BuildEnv',

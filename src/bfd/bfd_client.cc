@@ -1,9 +1,37 @@
+/*
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
+ */
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
+#include <boost/function.hpp>
+#include <boost/scoped_ptr.hpp>
+#include <boost/random.hpp>
+#include <set>
+
+#include "base/logging.h"
+#include "bfd/bfd_client.h"
+#include "bfd/bfd_common.h"
+#include "bfd/bfd_connection.h"
+#include "bfd/bfd_server.h"
+#include "bfd/bfd_session.h"
 
 using namespace BFD;
 using boost::bind;
 
-Client::Client(Server *server, ClientId client_id) :
-    client_id_(client_id), server_(server), cb_(cb), changed_(true) {
+Client::Client(Connection *cm, ClientId id) : id_(id), cm_(cm) {
+}
+
+Client::~Client() {
+    for (Sessions::iterator it = bfd_sessions_.begin();
+         it != bfd_sessions_.end(); ++it) {
+        DeleteConnection(*it);
+    }
+}
+
+Session *Client::GetSession(const boost::asio::ip::address& ip) const {
+    if (bfd_sessions_.find(ip) == bfd_sessions_.end())
+        return NULL;
+    return cm_->GetServer()->SessionByAddress(ip);
 }
 
 ResultCode Client::AddConnection(
@@ -15,44 +43,28 @@ ResultCode Client::AddConnection(
 
     Discriminator discriminator;
     ResultCode result =
-      server_->ConfigureSession(remoteHost, config, &discriminator);
+      cm_->GetServer()->ConfigureSession(remoteHost, config, &discriminator);
     bfd_sessions_.insert(remoteHost);
 
     Session *session = GetSession(remoteHost);
-    if (NULL == session)
+    if (!session)
       return kResultCode_Error;
-    session->RegisterChangeCallback(client_id_, bind(&Client::Notify, this));
-    Notify();
+    session->RegisterChangeCallback(id_, bind(&Client::Notify, this, _1,
+                                              session));
+    Notify(session->local_state(), session);
     return result;
 }
 
-void Client::Notify() {
-    LOG(DEBUG, "Notify: " << client_id_);
-    if (!bfd_sessions_.empty() && http_sessions_.empty()) {
-        changed_ = true;
-        return;
-    }
-    changed_ = false;
+void Client::Notify(const BFD::BFDState &new_state, Session *session) {
+    cm_->NotifyStateChange(session->remote_host(), new_state == kUp);
+}
 
-    if (http_sessions_.empty())
-        return;
-
-    REST::JsonStateMap map;
-    for (Sessions::iterator it = bfd_sessions_.begin();
-         it != bfd_sessions_.end(); ++it) {
-        Session *session = GetSession(*it);
-        map.states[session->remote_host()] = session->local_state();
+ResultCode Client::DeleteConnection(
+    const boost::asio::ip::address& remoteHost) {
+    if (bfd_sessions_.find(remoteHost) == bfd_sessions_.end()) {
+        return kResultCode_UnknownSession;
     }
-
-    std::string json;
-    map.EncodeJsonString(&json);
-    for (HttpSessionSet::iterator it = http_sessions_.begin();
-         it != http_sessions_.end(); ++it) {
-        if (false == it->get()->IsClosed()) {
-            LOG(DEBUG, "Notify: " << client_id_ << " Send notification to "
-              << it->get()->ToString());
-            REST::SendResponse(it->get(), json);
-        }
-    }
-    http_sessions_.clear();
+    ResultCode result = cm_->GetServer()->RemoveSessionReference(remoteHost);
+    bfd_sessions_.erase(remoteHost);
+    return result;
 }

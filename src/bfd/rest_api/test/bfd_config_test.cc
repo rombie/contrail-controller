@@ -52,7 +52,8 @@ class BFDTestServer {
                             &config_server, _1, _2));
         http->Initialize(port);
         communicationManager->registerServer(addr,
-            boost::bind(&Server::ProcessControlPacket, &bfd_server, _1));
+            boost::bind(&Server::ProcessControlPacket, &bfd_server, _1, _2, _3,
+                        _4));
     }
 
     void Shutdown() {

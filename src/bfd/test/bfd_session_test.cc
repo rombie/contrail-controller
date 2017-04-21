@@ -2,6 +2,7 @@
  * Copyright (c) 2014 CodiLime, Inc. All rights reserved.
  */
 
+#include "bfd/bfd_server.h"
 #include "bfd/bfd_session.h"
 #include "bfd/test/bfd_test_utils.h"
 
@@ -54,14 +55,34 @@ class SessionTest : public ::testing::Test {
     }
     class TestConnection : public Connection {
       public:
-        virtual void SendPacket(const boost::asio::ip::address &dstAddr, const ControlPacket *packet)  {
+        virtual void SendPacket(const boost::asio::ip::address &dstAddr,
+                            const boost::asio::mutable_buffer &pkt,
+                            int pktSize) {
+            ControlPacket *packet =
+                ParseControlPacket(boost::asio::buffer_cast<const uint8_t *>(
+                                       pkt), pktSize);
             ASSERT_EQ(localDiscriminator, packet->sender_discriminator);
             ASSERT_EQ(remoteDiscriminator, packet->receiver_discriminator);
-            ASSERT_EQ(detectionTimeMultiplier, packet->detection_time_multiplier);
+            ASSERT_EQ(detectionTimeMultiplier,
+                      packet->detection_time_multiplier);
             savedPacket = *packet;
         }
+        virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
+                               boost::asio::ip::udp::endpoint remote_endpoint,
+                               std::size_t bytes_transferred,
+                               const boost::system::error_code& error) {
+            Connection::HandleReceive(recv_buffer, remote_endpoint,
+                                      bytes_transferred, error);
+        }
+        virtual void NotifyStateChange(
+                const boost::asio::ip::address& remoteHost, const bool &up) {
+        }
+        virtual Server *GetServer() const { return server_; }
+        virtual void SetServer(Server *server) { server_ = server; }
         boost::optional<ControlPacket> savedPacket;
         virtual ~TestConnection() {}
+      private:
+        Server *server_;
     };
     SessionConfig config;
     ControlPacket packet;

@@ -23,9 +23,9 @@ class SessionConfig;
 class ControlPacket;
 
 struct SessionConfig {
-    TimeInterval desiredMinTxInterval;
-    TimeInterval requiredMinRxInterval;
-    int detectionTimeMultiplier;
+    TimeInterval desiredMinTxInterval;  // delay
+    TimeInterval requiredMinRxInterval; // timeout
+    int detectionTimeMultiplier;        // max-retries ?
 };
 
 struct BFDRemoteSessionState {
