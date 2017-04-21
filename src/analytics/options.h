@@ -113,6 +113,7 @@ public:
 
     Options();
     bool Parse(EventManager &evm, int argc, char **argv);
+    void ParseReConfig();
 
     const Cassandra get_cassandra_options() const {
         return cassandra_options_;
@@ -144,6 +145,18 @@ public:
     }
     const std::vector<std::string> kafka_broker_list() const {
         return kafka_broker_list_;
+    }
+    const std::vector<std::string> collector_structured_syslog_tcp_forward_destination() const {
+        return collector_structured_syslog_tcp_forward_destination_;
+    }
+    const std::vector<std::string> collector_structured_syslog_kafka_broker_list() const {
+        return collector_structured_syslog_kafka_broker_list_;
+    }
+    const std::string collector_structured_syslog_kafka_topic() const {
+        return collector_structured_syslog_kafka_topic_;
+    }
+    const uint16_t collector_structured_syslog_kafka_partitions() const {
+        return collector_structured_syslog_kafka_partitions_;
     }
     const uint16_t partitions() const { return partitions_; }
     const std::string collector_server() const { return collector_server_; }
@@ -214,6 +227,7 @@ public:
     const std::string keystone_certfile() const { return ks_cert_; }
     const std::string keystone_cafile() const { return ks_ca_; }
     const SandeshConfig &sandesh_config() const { return sandesh_config_; }
+    const int api_server_checksum() const { return api_server_checksum_; }
     const std::vector<std::string> api_server_list() const {
         return api_server_list_;
     }
@@ -244,6 +258,7 @@ private:
             boost::program_options::options_description &cmdline_options);
     void Initialize(EventManager &evm,
                     boost::program_options::options_description &options);
+    uint32_t GenerateHash(std::vector<std::string> &);
 
     std::string collector_server_;
     uint16_t collector_port_;
@@ -251,6 +266,10 @@ private:
     bool collector_protobuf_port_configured_;
     uint16_t collector_structured_syslog_port_;
     bool collector_structured_syslog_port_configured_;
+    std::vector<std::string> collector_structured_syslog_tcp_forward_destination_;
+    std::vector<std::string> collector_structured_syslog_kafka_broker_list_;
+    std::string collector_structured_syslog_kafka_topic_;
+    uint16_t collector_structured_syslog_kafka_partitions_;
     std::vector<std::string> config_file_;
     std::string redis_server_;
     uint16_t redis_port_;
@@ -300,6 +319,7 @@ private:
     std::string ks_key_;
     std::string ks_ca_;
     SandeshConfig sandesh_config_;
+    uint32_t api_server_checksum_;
     std::vector<std::string> api_server_list_;
     bool api_server_use_ssl_;
 

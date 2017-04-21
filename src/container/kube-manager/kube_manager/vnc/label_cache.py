@@ -5,12 +5,17 @@
 class LabelCache(object):
 
     def __init__(self):
+        self.ns_label_cache = {}
         self.pod_label_cache = {}
         self.service_selector_cache = {}
 
     def _get_key(self, label):
         key = label[0] + ':' + label[1]
         return key
+
+    def _get_namespace_label(self, namespace):
+        label = {'namespace': namespace}
+        return label
 
     def _locate_label(self, key, cache, label, uuid):
         key = label[0] + ':' + label[1]
@@ -23,5 +28,7 @@ class LabelCache(object):
         if key in cache:
             try:
                 cache[key].remove(uuid)
+                if not len(cache[key]):
+                    del cache[key]
             except KeyError:
                 pass

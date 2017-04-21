@@ -207,17 +207,19 @@ struct NextHop {
             tunnel_encapsulations_.push_back(tunnel);
         }
     }
-    NextHop(std::string address, uint32_t label, uint32_t l3_label,
-            const std::string virtual_network = "") :
-                address_(address), no_label_(false), label_(label),
+    NextHop(std::string address, std::string mac, uint32_t label,
+        uint32_t l3_label, const std::string virtual_network = "") :
+                address_(address), mac_(mac), no_label_(false), label_(label),
                 l3_label_(l3_label), virtual_network_(virtual_network) {
         tunnel_encapsulations_.push_back("vxlan");
     }
 
     bool operator==(NextHop other) {
         if (address_ != other.address_) return false;
+        if (mac_ != other.mac_) return false;
         if (no_label_ != other.no_label_) return false;
         if (label_ != other.label_) return false;
+        if (l3_label_ != other.l3_label_) return false;
         if (tunnel_encapsulations_.size() !=
                 other.tunnel_encapsulations_.size()) {
             return false;
@@ -237,14 +239,13 @@ struct NextHop {
     }
 
     std::string address_;
+    std::string mac_;
     bool no_label_;
     int label_;
     int l3_label_;
     std::vector<std::string> tunnel_encapsulations_;
     std::string virtual_network_;
 };
-
-typedef std::vector<NextHop> NextHops;
 
 class XmppDocumentMock {
 public:
@@ -262,29 +263,28 @@ public:
     pugi::xml_document *AddEorMarker();
     pugi::xml_document *RouteAddXmlDoc(const std::string &network,
         const std::string &prefix,
-        const NextHops &nexthops = NextHops(),
+        const NextHop &nh = NextHop(),
         const RouteAttributes &attributes = RouteAttributes());
     pugi::xml_document *RouteDeleteXmlDoc(const std::string &network, 
         const std::string &prefix);
 
     pugi::xml_document *Inet6RouteAddXmlDoc(const std::string &network,
-        const std::string &prefix, const NextHops &nexthops,
+        const std::string &prefix, const NextHop &nh,
         const RouteAttributes &attributes);
     pugi::xml_document *Inet6RouteChangeXmlDoc(const std::string &network,
-        const std::string &prefix, const NextHops &nexthops,
+        const std::string &prefix, const NextHop &nh,
         const RouteAttributes &attributes);
     pugi::xml_document *Inet6RouteDeleteXmlDoc(const std::string &network,
         const std::string &prefix);
     pugi::xml_document *Inet6RouteAddBogusXmlDoc(const std::string &network,
-        const std::string &prefix, NextHops nexthops, TestErrorType error_type);
+        const std::string &prefix, NextHop nh, TestErrorType error_type);
 
     pugi::xml_document *RouteEnetAddXmlDoc(const std::string &network,
                                            const std::string &prefix,
-                                           const NextHops &nexthops,
+                                           const NextHop &nh,
                                            const RouteAttributes &attributes);
     pugi::xml_document *RouteEnetDeleteXmlDoc(const std::string &network,
-                                              const std::string &prefix,
-                                              NextHops nexthops = NextHops());
+                                              const std::string &prefix);
     pugi::xml_document *RouteMcastAddXmlDoc(const std::string &network, 
                                             const std::string &sg,
                                             const std::string &nexthop,
@@ -309,16 +309,15 @@ private:
             const std::string &network, int id, bool no_ribout, bool sub,
             std::string type);
     pugi::xml_document *Inet6RouteAddDeleteXmlDoc(const std::string &network,
-            const std::string &prefix, Oper oper,
-            const NextHops &nexthops = NextHops(),
+            const std::string &prefix, Oper oper, const NextHop &nh = NextHop(),
             const RouteAttributes &attributes = RouteAttributes());
     pugi::xml_document *RouteAddDeleteXmlDoc(const std::string &network,
             const std::string &prefix, bool add,
-            const NextHops &nexthop = NextHops(),
+            const NextHop &nh = NextHop(),
             const RouteAttributes &attributes = RouteAttributes());
     pugi::xml_document *RouteEnetAddDeleteXmlDoc(const std::string &network,
             const std::string &prefix, bool add,
-            const NextHops &nexthops = NextHops(),
+            const NextHop &nh = NextHop(),
             const RouteAttributes &attributes = RouteAttributes());
     pugi::xml_document *RouteMcastAddDeleteXmlDoc(const std::string &network,
             const std::string &sg, bool add,
@@ -504,27 +503,22 @@ public:
     void AddRoute(const std::string &network, const std::string &prefix,
                   const std::string nexthop = "",
                   int local_pref = 0, int med = 0);
-    void AddRoute(const std::string &network, const std::string &prefix,
-                  const NextHops &nexthops, int local_pref = 0);
-    void AddRoute(const std::string &network, const std::string &prefix,
-                  const NextHop &nexthop, const RouteAttributes &attributes);
-    void AddRoute(const std::string &network, const std::string &prefix,
-                  const NextHops &nexthops, const RouteAttributes &attributes);
     void AddRoute(const string &network_name, const string &prefix,
                   const string &nexthop, const RouteAttributes &attributes);
+    void AddRoute(const std::string &network, const std::string &prefix,
+                  const NextHop &nexthop,
+                  const RouteAttributes &attributes = RouteAttributes());
     void DeleteRoute(const std::string &network, const std::string &prefix);
 
     void AddInet6Route(const std::string &network, const std::string &prefix,
-        const NextHop &nexthop, const RouteAttributes &attributes);
-    void AddInet6Route(const std::string &network, const std::string &prefix,
-        const NextHops &nexthops = NextHops(),
+        const NextHop &nh = NextHop(),
         const RouteAttributes &attributes = RouteAttributes());
     void AddInet6Route(const std::string &network, const std::string &prefix,
         const std::string &nexthop_str, int local_pref = 100, int med = 0);
     void AddInet6Route(const std::string &network, const std::string &prefix,
         const std::string &nexthop, const RouteAttributes &attributes);
     void ChangeInet6Route(const std::string &network, const std::string &prefix,
-        const NextHops &nexthops = NextHops(),
+        const NextHop &nh = NextHop(),
         const RouteAttributes &attributes = RouteAttributes());
     void DeleteInet6Route(const std::string &network,
         const std::string &prefix);
@@ -552,19 +546,11 @@ public:
                       const std::string nexthop = "",
                       const RouteParams *params = NULL);
     void AddEnetRoute(const std::string &network, const std::string &prefix,
-                      const NextHop &nexthop,
-                      const RouteParams *params = NULL);
+                      const NextHop &nh, const RouteParams *params = NULL);
     void AddEnetRoute(const std::string &network, const std::string &prefix,
-                      const NextHops &nexthops,
-                      const RouteParams *params = NULL);
-    void AddEnetRoute(const std::string &network, const std::string &prefix,
-                      const NextHop &nexthop,
-                      const RouteAttributes &attributes);
+                      const NextHop &nh, const RouteAttributes &attributes);
     void AddEnetRoute(const std::string &network, const std::string &prefix,
                       const std::string &nexthop,
-                      const RouteAttributes &attributes);
-    void AddEnetRoute(const std::string &network, const std::string &prefix,
-                      const NextHops &nexthops,
                       const RouteAttributes &attributes);
     void DeleteEnetRoute(const std::string &network, const std::string &prefix);
 

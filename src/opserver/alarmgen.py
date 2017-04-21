@@ -890,6 +890,14 @@ class Controller(object):
             self._chksum = hashlib.md5("".join(self._conf.collectors())).hexdigest()
             self._conf.random_collectors = random.sample(self._conf.collectors(), \
                                                         len(self._conf.collectors()))
+        self._api_server_checksum = ""
+        api_server_list = self._conf.api_server_config()['api_server_list']
+        if api_server_list:
+            self._api_server_checksum = hashlib.md5("".join(
+                api_server_list)).hexdigest()
+            random_api_servers = random.sample(api_server_list,
+                len(api_server_list))
+            self._conf.set_api_server_list(random_api_servers)
         self._sandesh.init_generator(self._moduleid, self._hostname,
                                       self._node_type_name, self._instance_id,
                                       self._conf.random_collectors,
@@ -1103,7 +1111,7 @@ class Controller(object):
         uveq_trace.uves = uves.keys()
         uveq_trace.part = part
         if part not in self._uveq:
-            self._uveq[part] = {}
+            self._uveq[part] = OrderedDict()
             self._logger.error('Created uveQ for part %s' % str(part))
             uveq_trace.oper = "create"
         else:
@@ -1259,9 +1267,6 @@ class Controller(object):
                 self._logger.error("Agg unexpected key %s from inst:part %s:%d" % \
                         (check_keys_list[idx], inst, part))
                 ppe5.srem("AGPARTKEYS:%s:%d" % (inst, part), check_keys_list[idx])
-                # TODO: alarmgen should have already figured out if all structs of 
-                #       the UVE are gone, and should have sent a UVE delete
-                #       We should not need to figure this out again
                 retry = True
             idx += 1
         ppe5.execute()
@@ -1270,7 +1275,6 @@ class Controller(object):
 
         if retry:
             self._logger.error("Agg unexpected rows %s" % str(rows))
-            raise SystemExit(1)
         
     def send_alarm_update(self, tab, uk):
         ustruct = None
@@ -1916,7 +1920,8 @@ class Controller(object):
         self._logger.info("Got UVETableAlarmReq : %s" % str(parts))
         np = 1
         for pt in parts:
-            resp = UVETableAlarmResp(table = pt)
+            if pt not in self.tab_alarms:
+                continue
             uves = []
             for uk,uv in self.tab_alarms[pt].iteritems():
                 for ak,av in uv.iteritems():
@@ -1927,6 +1932,7 @@ class Controller(object):
                         uves.append(UVEAlarmStateMachineInfo(
                             uai = UVEAlarms(name = uk, alarms = alm_copy),
                             uac = av.get_uac(), uas = av.get_uas()))
+            resp = UVETableAlarmResp(table = pt)
             resp.uves = uves 
             if np == len(parts):
                 mr = False
@@ -1944,6 +1950,8 @@ class Controller(object):
         self._logger.info("Got UVETablePerfReq : %s" % str(parts))
         np = 1
         for pt in parts:
+            if pt not in self.tab_perf_prev:
+                continue
             resp = UVETablePerfResp(table = pt)
             resp.call_time = self.tab_perf_prev[pt].call_result()
             resp.get_time = self.tab_perf_prev[pt].get_result()
@@ -2320,6 +2328,9 @@ class Controller(object):
             else:
                 self._logger.error("Periodic collection took %s sec" % duration)
 
+    def _TraceRead(self, trace_sandesh, more):
+        self._logger.error(trace_sandesh.log(trace=True))
+
     def run(self):
         self.gevs = [ gevent.spawn(self.run_process_stats),
                       gevent.spawn(self.run_uve_processing),
@@ -2334,6 +2345,7 @@ class Controller(object):
         except gevent.GreenletExit:
             self._logger.error('AlarmGen Exiting on gevent-kill')
         except:
+            self._sandesh.trace_buffer_read("UVEQTrace", "", 0, self._TraceRead)
             raise
         finally:
             self._logger.error('AlarmGen stopping everything')
@@ -2377,6 +2389,23 @@ class Controller(object):
                             self._sandesh.reconfig_collectors(random_collectors)
                 except ConfigParser.NoOptionError as e:
                     pass
+            if 'API_SERVER' in config.sections():
+                try:
+                    api_servers = config.get('API_SERVER', 'api_server_list')
+                except ConfigParser.NoOptionError:
+                    pass
+                else:
+                    if isinstance(api_servers, basestring):
+                        api_servers = api_servers.split()
+                    new_api_server_checksum = hashlib.md5("".join(
+                        api_servers)).hexdigest()
+                    if new_api_server_checksum != self._api_server_checksum:
+                        self._api_server_checksum = new_api_server_checksum
+                        random_api_servers = random.sample(api_servers,
+                            len(api_servers))
+                        self._conf.set_api_server_list(random_api_servers)
+                        self._config_handler.update_api_server_list(
+                            random_api_servers)
       # end sighup_handler
 
 def setup_controller(argv):

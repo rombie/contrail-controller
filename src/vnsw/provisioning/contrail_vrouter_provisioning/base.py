@@ -26,8 +26,6 @@ class ContrailSetup(object):
     def __init__(self):
         (self.pdist, self.pdistversion, self.pdistrelease) = platform.dist()
         self.hostname = socket.gethostname()
-        if self.pdist == 'Ubuntu':
-            local("sudo ln -sf /bin/true /sbin/chkconfig")
 
         self._temp_dir_name = tempfile.mkdtemp()
         self.contrail_bin_dir = '/opt/contrail/bin'
@@ -76,7 +74,7 @@ class ContrailSetup(object):
             kcmd += "/etc/default/grub.d/kexec-tools.cfg"
             local(kcmd, warn_only=True)
             cmd = "[ -f /etc/default/kdump-tools ] && "
-            cmd += "sudo sed -i 's/USE_KDUMP=0/USE_KDUMP=1/'"
+            cmd += "sudo sed -i 's/USE_KDUMP=0/USE_KDUMP=1/' "
             cmd += "/etc/default/kdump-tools"
             local(cmd, warn_only=True)
         else:
@@ -184,7 +182,8 @@ class ContrailSetup(object):
 
     def disable_iptables(self):
         # Disable iptables
-        local("sudo chkconfig iptables off", warn_only=True)
+        if self.pdist not in ['Ubuntu']:
+            local("sudo chkconfig iptables off", warn_only=True)
         local("sudo iptables --flush", warn_only=True)
         if self.pdist == 'redhat' or \
            self.pdist == 'centos' and self.pdistversion.startswith('7'):

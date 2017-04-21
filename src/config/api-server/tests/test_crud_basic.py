@@ -260,6 +260,36 @@ class TestListUpdate(test_case.ApiServerTestCase):
         self._vnc_lib.network_policy_delete(id=policy_obj.uuid)
     # end test_policy_create_wo_rules
 
+    def test_policy_create_w_sg_in_rules(self):
+        policy_obj = NetworkPolicy('test-policy-create-w-sg-in-rules')
+        np_rules = [
+            PolicyRuleType(direction='<>',
+                           action_list=ActionListType(simple_action='pass'),
+                           protocol='any',
+                           src_addresses=
+                               [AddressType(security_group='local')],
+                           src_ports=[PortType(-1, -1)],
+                           dst_addresses=[AddressType(security_group='any')],
+                           dst_ports=[PortType(-1, -1)]),
+
+            PolicyRuleType(direction='<>',
+                           action_list=ActionListType(simple_action='deny'),
+                           protocol='any',
+                           src_addresses=
+                               [AddressType(virtual_network='local')],
+                           src_ports=[PortType(-1, -1)],
+                           dst_addresses=[AddressType(virtual_network='any')],
+                           dst_ports=[PortType(-1, -1)]),
+        ]
+        policy_obj.set_network_policy_entries(PolicyEntriesType(np_rules))
+
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.network_policy_create(policy_obj)
+
+        # cleanup
+        self._vnc_lib.network_policy_delete(id=policy_obj.uuid)
+    # end test_policy_create_w_sg_in_rules
+
 # end class TestListUpdate
 
 class TestCrud(test_case.ApiServerTestCase):
@@ -402,18 +432,28 @@ class TestCrud(test_case.ApiServerTestCase):
         #service_interface_type are: management|left|right|other[0-9]*
         with ExpectedException(BadRequest) as e:
             port_id = self._vnc_lib.virtual_machine_interface_create(port_obj)
-       #end test_service_interface_type_value
+       # end test_service_interface_type_value
 
     def test_physical_router_credentials(self):
+        phy_rout_name = self.id() + '-phy-router-1'
         user_cred_create = UserCredentials(username="test_user", password="test_pswd")
-        phy_rout = PhysicalRouter(physical_router_user_credentials=user_cred_create)
+        phy_rout = PhysicalRouter(phy_rout_name, physical_router_user_credentials=user_cred_create)
         self._vnc_lib.physical_router_create(phy_rout)
 
         phy_rout_obj = self._vnc_lib.physical_router_read(id=phy_rout.uuid)
         user_cred_read = phy_rout_obj.get_physical_router_user_credentials()
         if user_cred_read.password != '**Password Hidden**':
             raise Exception("ERROR: physical-router: password should be hidden")
-       #end test_physical_router_credentials
+       # end test_physical_router_credentials
+
+    def test_physical_router_w_no_user_credentials(self):
+        phy_rout_name = self.id() + '-phy-router-2'
+        phy_router = PhysicalRouter(phy_rout_name)
+        self._vnc_lib.physical_router_create(phy_router)
+        # reading Physical Router object when user credentials
+        # are set to None should be successfull.
+        phy_rout_obj = self._vnc_lib.physical_router_read(id=phy_router.uuid)
+        # end test_physical_router_w_no_user_credentials
 
     def test_bridge_domain_with_multiple_bd_in_vn(self):
         vn1_name = self.id() + '-vn-1'
@@ -584,6 +624,48 @@ class TestCrud(test_case.ApiServerTestCase):
         with ExpectedException(BadRequest) as e:
             sub_vmi2_id = self._vnc_lib.virtual_machine_interface_create(sub_vmi_obj2)
     # end test_create_sub_vmi_with_primary_vmi_as_another_sub_vmi
+
+    def test_sub_interfaces_on_diff_vns_with_same_vlan_tags(self):
+        vn1 = VirtualNetwork('vn1-%s' %(self.id()))
+        self._vnc_lib.virtual_network_create(vn1)
+        vn2 = VirtualNetwork('vn2-%s' %(self.id()))
+        self._vnc_lib.virtual_network_create(vn2)
+
+        vmi_prop = VirtualMachineInterfacePropertiesType(sub_interface_vlan_tag=256)
+
+        vmi_obj = VirtualMachineInterface(
+                  str(uuid.uuid4()), parent_obj=Project())
+
+        vmi_obj2 = VirtualMachineInterface(
+                  str(uuid.uuid4()), parent_obj=Project())
+
+        vmi_obj.uuid = vmi_obj.name
+        vmi_obj.set_virtual_network(vn1)
+        vmi_id = self._vnc_lib.virtual_machine_interface_create(vmi_obj)
+
+        vmi_obj2.uuid = vmi_obj2.name
+        vmi_obj2.set_virtual_network(vn2)
+        vmi_id2 = self._vnc_lib.virtual_machine_interface_create(vmi_obj2)
+
+        sub_vmi_obj = VirtualMachineInterface(
+                      str(uuid.uuid4()), parent_obj=Project(),
+                      virtual_machine_interface_properties=vmi_prop)
+        sub_vmi_obj.uuid = sub_vmi_obj.name
+        sub_vmi_obj.set_virtual_network(vn1)
+        sub_vmi_obj.set_virtual_machine_interface(vmi_obj)
+        sub_vmi_id = self._vnc_lib.virtual_machine_interface_create(sub_vmi_obj)
+
+        sub_vmi_obj2 = VirtualMachineInterface(
+                       str(uuid.uuid4()), parent_obj=Project(),
+                       virtual_machine_interface_properties=vmi_prop)
+        sub_vmi_obj2.uuid = sub_vmi_obj2.name
+        sub_vmi_obj2.set_virtual_network(vn2)
+        sub_vmi_obj2.set_virtual_machine_interface(vmi_obj2)
+
+        # creating two sub interfacs with same vlan_tag
+        # on different VNs should get succedded
+        sub_vmi2_id = self._vnc_lib.virtual_machine_interface_create(sub_vmi_obj2)
+    # end test_sub_interfaces_on_diff_vns_with_same_vlan_tags
 
 # end class TestCrud
 

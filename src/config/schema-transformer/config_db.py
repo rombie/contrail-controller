@@ -146,7 +146,8 @@ class GlobalSystemConfigST(DBBaseST):
     _dict = {}
     obj_type = 'global_system_config'
     _autonomous_system = 0
-    _ibgp_auto_mesh = None
+    ibgp_auto_mesh = None
+    prop_fields = ['autonomous_system', 'ibgp_auto_mesh']
 
     @classmethod
     def reinit(cls):
@@ -165,10 +166,10 @@ class GlobalSystemConfigST(DBBaseST):
     # end __init__
 
     def update(self, obj=None):
-        self.obj = obj or self.read_vnc_obj(uuid=self.uuid)
-        ret = self.update_autonomous_system(self.obj.autonomous_system)
-        ret = self.update_ibgp_auto_mesh(self.obj.ibgp_auto_mesh) or ret
-        return ret
+        changed = self.update_vnc_obj(obj)
+        if 'autonomous_system' in changed :
+            self.update_autonomous_system(self.obj.autonomous_system)
+        return changed
     # end update
 
     @classmethod
@@ -178,7 +179,9 @@ class GlobalSystemConfigST(DBBaseST):
 
     @classmethod
     def get_ibgp_auto_mesh(cls):
-        return cls._ibgp_auto_mesh
+        if cls.ibgp_auto_mesh is None:
+            return True
+        return cls.ibgp_auto_mesh
     # end get_ibgp_auto_mesh
 
     @classmethod
@@ -241,17 +244,6 @@ class GlobalSystemConfigST(DBBaseST):
             router.update_autonomous_system(self._autonomous_system)
         # end for router
     # end evaluate
-
-    @classmethod
-    def update_ibgp_auto_mesh(cls, value):
-        if value is None:
-            value = True
-        if cls._ibgp_auto_mesh == value:
-            return False
-        cls._ibgp_auto_mesh = value
-        return True
-    # end update_ibgp_auto_mesh
-
 # end GlobalSystemConfigST
 
 
@@ -3588,13 +3580,14 @@ class VirtualMachineInterfaceST(DBBaseST):
             self._set_vrf_assign_table(None)
             return
 
+        policy_rule_count = 0
+        vrf_table = VrfAssignTableType()
         for vm_pt in vm_pt_list:
             smode = vm_pt.get_service_mode()
             if smode not in ['in-network', 'in-network-nat']:
                 self._set_vrf_assign_table(None)
                 return
 
-            vrf_table = VrfAssignTableType()
             ip_list = []
             for ip_name in self.instance_ips:
                 ip = InstanceIpST.get(ip_name)
@@ -3624,7 +3617,6 @@ class VirtualMachineInterfaceST(DBBaseST):
                                              ignore_acl=False)
                 vrf_table.add_vrf_assign_rule(vrf_rule)
 
-            policy_rule_count = 0
             si_name = vm_pt.service_instance
             if smode == 'in-network-nat' and self.service_interface_type == 'right':
                 vn_service_chains = []
@@ -3657,11 +3649,10 @@ class VirtualMachineInterfaceST(DBBaseST):
                     # end for sp
                 # end for service_chain
             # end for service_chain_list
-
-            if policy_rule_count == 0:
-                vrf_table = None
-            self._set_vrf_assign_table(vrf_table)
         # end for vm_pt_list
+        if policy_rule_count == 0:
+            vrf_table = None
+        self._set_vrf_assign_table(vrf_table)
     # end recreate_vrf_assign_table
 
     def _set_vrf_assign_table(self, vrf_table):

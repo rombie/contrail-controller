@@ -9,6 +9,7 @@
 #include <boost/assign/list_of.hpp>
 #include <boost/asio/ip/host_name.hpp>
 #include <boost/assign/list_of.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "analytics/buildinfo.h"
 #include "base/contrail_ports.h"
@@ -128,6 +129,15 @@ void Options::Initialize(EventManager &evm,
 
     string default_api_server("127.0.0.1:8082");
     vector<string> default_api_server_list = list_of(default_api_server);
+
+    vector<string> default_structured_syslog_tcp_forward_destination;
+    default_structured_syslog_tcp_forward_destination.push_back("");
+
+    vector<string> default_structured_syslog_kafka_broker_list;
+    default_structured_syslog_kafka_broker_list.push_back("");
+
+    string default_structured_syslog_kafka_topic("structured_syslog");
+    uint16_t default_structured_syslog_kafka_partitions = 30;
 
     // Command line and config file options.
     opt::options_description cassandra_config("Cassandra Configuration options");
@@ -251,10 +261,26 @@ void Options::Initialize(EventManager &evm,
             opt::value<uint16_t>()->default_value(
                 default_collector_protobuf_port),
          "Listener port of Google Protocol Buffer collector server")
-        ("COLLECTOR.structured_syslog_port",
+        ("STRUCTURED_SYSLOG_COLLECTOR.port",
             opt::value<uint16_t>()->default_value(
                 default_collector_structured_syslog_port),
          "Listener port of Structured Syslog collector server")
+        ("STRUCTURED_SYSLOG_COLLECTOR.tcp_forward_destination",
+           opt::value<vector<string> >()->default_value(
+               default_structured_syslog_tcp_forward_destination, ""),
+             "Structured Syslog Forward Destination List")
+        ("STRUCTURED_SYSLOG_COLLECTOR.kafka_broker_list",
+           opt::value<vector<string> >()->default_value(
+               default_structured_syslog_kafka_broker_list, ""),
+             "Structured Syslog Kafka Broker List")
+        ("STRUCTURED_SYSLOG_COLLECTOR.kafka_topic",
+           opt::value<string>()->default_value(
+               default_structured_syslog_kafka_topic, "structured_syslog"),
+             "Structured Syslog Kafka Topic")
+        ("STRUCTURED_SYSLOG_COLLECTOR.kafka_partitions",
+           opt::value<uint16_t>()->default_value(
+               default_structured_syslog_kafka_partitions),
+             "Structured Syslog Number of Kafka Partitions")
         ;
 
     // Command line and config file options.
@@ -504,6 +530,16 @@ static bool ValidateCompactionStrategyOption(
     return true;
 }
 
+uint32_t Options::GenerateHash(std::vector<std::string> &list) {
+    std::string concat_servers;
+    std::vector<std::string>::iterator iter;
+    for (iter = list.begin(); iter != list.end(); iter++) {
+        concat_servers += *iter;
+    }
+    boost::hash<std::string> string_hash;
+    return(string_hash(concat_servers));
+}
+
 // Process command line options. They can come from a conf file as well. Options
 // from command line always overrides those that come from the config file.
 void Options::Process(int argc, char *argv[],
@@ -604,11 +640,22 @@ void Options::Process(int argc, char *argv[],
         "DATABASE.low_watermark2.message_severity_level");
 
     if (GetOptValueIfNotDefaulted<uint16_t>(var_map, collector_structured_syslog_port_,
-            "COLLECTOR.structured_syslog_port")) {
+            "STRUCTURED_SYSLOG_COLLECTOR.port")) {
         collector_structured_syslog_port_configured_ = true;
     } else {
         collector_structured_syslog_port_configured_ = false;
     }
+    GetOptValue< vector<string> >(var_map, collector_structured_syslog_tcp_forward_destination_,
+                                  "STRUCTURED_SYSLOG_COLLECTOR.tcp_forward_destination");
+
+    GetOptValue< vector<string> >(var_map, collector_structured_syslog_kafka_broker_list_,
+                                  "STRUCTURED_SYSLOG_COLLECTOR.kafka_broker_list");
+
+    GetOptValue<string>(var_map, collector_structured_syslog_kafka_topic_,
+                                  "STRUCTURED_SYSLOG_COLLECTOR.kafka_topic");
+
+    GetOptValue<uint16_t>(var_map, collector_structured_syslog_kafka_partitions_,
+                                  "STRUCTURED_SYSLOG_COLLECTOR.kafka_partitions");
 
     GetOptValue<uint64_t>(var_map, analytics_data_ttl_,
                      "DEFAULT.analytics_data_ttl");
@@ -710,6 +757,32 @@ void Options::Process(int argc, char *argv[],
 
     GetOptValue< vector<string> >(var_map, api_server_list_,
                                   "API_SERVER.api_server_list");
+    api_server_checksum_ = GenerateHash(api_server_list_);
+    std::random_shuffle(api_server_list_.begin(), api_server_list_.end());
+
     GetOptValue<bool>(var_map, api_server_use_ssl_,
                       "API_SERVER.api_server_use_ssl");
+}
+
+void Options::ParseReConfig() {
+    // ReParse the filtered config params
+    opt::variables_map var_map;
+    ifstream config_file_in;
+    for(std::vector<int>::size_type i = 0; i != config_file_.size(); i++) {
+        config_file_in.open(config_file_[i].c_str());
+        if (config_file_in.good()) {
+           opt::store(opt::parse_config_file(config_file_in,
+                                    config_file_options_, true), var_map);
+        }
+        config_file_in.close();
+    }
+    api_server_list_.clear();
+    GetOptValue< vector<string> >(var_map, api_server_list_,
+                                  "API_SERVER.api_server_list");
+    uint32_t new_checksum = GenerateHash(api_server_list_);
+    if (api_server_checksum_ != new_checksum) {
+        api_server_checksum_ = new_checksum;
+        std::random_shuffle(api_server_list_.begin(),
+                            api_server_list_.end());
+    }
 }

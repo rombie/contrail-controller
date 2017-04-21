@@ -194,8 +194,7 @@ bool FlowProto::Validate(PktInfo *msg) {
                        msg->agent_hdr.vrf,
                        msg->ip_saddr.to_string(),
                        msg->ip_daddr.to_string(),
-                       "Flow : Non-IP packet. Dropping",
-                       msg->l3_forwarding);
+                       "Flow : Non-IP packet. Dropping", false);
         } else {
             assert(0);
         }
@@ -693,11 +692,15 @@ TokenPtr FlowProto::GetToken(FlowEvent::Event event) {
     return add_tokens_.GetToken(NULL);
 }
 
-bool FlowProto::TokenCheck(const FlowTokenPool *pool) {
+bool FlowProto::TokenCheck(const FlowTokenPool *pool) const {
     return pool->TokenCheck();
 }
 
-void FlowProto::TokenAvailable(FlowTokenPool *pool) {
+void FlowProto::TokenAvailable(TokenPool *pool_base) {
+    FlowTokenPool *pool = dynamic_cast<FlowTokenPool *>(pool_base);
+    if (pool_base == NULL)
+        return;
+
     pool->IncrementRestarts();
     if (pool == &add_tokens_) {
         for (uint32_t i = 0; i < flow_event_queue_.size(); i++) {

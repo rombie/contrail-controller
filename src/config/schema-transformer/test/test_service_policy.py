@@ -21,8 +21,9 @@ from vnc_api.vnc_api import (VirtualNetwork, SequenceType, VirtualNetworkType,
         VirtualMachineInterface, InterfaceMirrorType, MirrorActionType,
         ServiceChainInfo, RoutingPolicy, RoutingPolicyServiceInstanceType,
         RouteListType, RouteAggregate,RouteTargetList, ServiceInterfaceTag,
-        PolicyBasedForwardingRuleType, PortTuple, Project)
+        PolicyBasedForwardingRuleType)
 
+from cfgm_common.exceptions import RefsExistError
 from test_case import STTestCase, retries
 from test_policy import VerifyPolicy
 sys.path.append("../common/tests")
@@ -278,15 +279,6 @@ class VerifyServicePolicy(VerifyPolicy):
                         return
         raise Exception('subnets assigned not matched in ACL rules for %s; sc: %s' %
                         (fq_name, sc_ri_fq_name))
-
-    @retries(5)
-    def check_vmi_port_tuple(self, vmi_fq_name, pt_uuid):
-        vmi_obj = self._vnc_lib.virtual_machine_interface_read(fq_name=vmi_fq_name)
-        for pt in vmi_obj.get_port_tuple_refs():
-            if pt['uuid'] == pt_uuid:
-                return
-        raise Exception('Port Tuple with UUID %s not attached with VMI %s' %
-                        (pt_uuid, vmi_fq_name))
 
     @retries(10)
     def get_si_vm_obj(self, si_obj):
@@ -1809,14 +1801,6 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
         self.delete_vn(fq_name=vn2_obj.get_fq_name())
     #end test vrf_assign_rules
 
-    @retries(5)
-    def delete_vmis(self, vmis=[]):
-        for vmi in vmis or []:
-            try:
-                self._vnc_lib.virtual_machine_interface_delete(id=vmi['uuid'])
-            except RefsExistError:
-                raise Exception('virtual machine interface %s still exists' % vmi['uuid'])
-
     def test_service_policy_vmi_with_multi_port_tuples(self):
 
         #              -------
@@ -1842,63 +1826,111 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
         vn3_obj = self.create_virtual_network(vn3_name, '30.0.0.0/24')
 
         si1 = [self.id() + '_s1']
-        np = self.create_network_policy(vn1_obj, vn3_obj, si1,
-                                         auto_policy=False,
-                                         service_mode='in-network',
-                                         version=2)
-        right_vmi = self._vnc_lib.virtual_machine_interface_read(fq_name=[u'default-domain',
-                                                                          u'default-project',
-                                                                          si1[0] + 'right'])
-
-        # Creating a service instance SI2 but the right network being the
-        # same VMI as the one created earlier.
         si2_name = self.id() + '_s2'
-        si2 = self._create_service([('left', vn2_obj.get_fq_name_str()), ('right', vn3_obj.get_fq_name_str())],
-                                   si2_name, False)
-        si2_obj = self._vnc_lib.service_instance_read(fq_name_str=si2)
 
-        proj = Project()
-        pt = PortTuple('pt-'+si2_name, parent_obj=si2_obj)
-        self._vnc_lib.port_tuple_create(pt)
-        port = VirtualMachineInterface(si2_name+'left', parent_obj=proj)
-        vmi_props = VirtualMachineInterfacePropertiesType(service_interface_type='left')
-        port.set_virtual_machine_interface_properties(vmi_props)
-        port.add_virtual_network(vn2_obj)
-        port.add_port_tuple(pt)
-        self._vnc_lib.virtual_machine_interface_create(port)
-        right_vmi.add_port_tuple(pt)
+        # Creating a SI(ver2) between VN1 and VN3 
+        np1 = self.create_network_policy(vn1_obj, vn3_obj, si1,
+                                        auto_policy=False,
+                                        service_mode='in-network',
+                                        version=2)
+        
+        seq = SequenceType(1, 1)
+        vnp = VirtualNetworkPolicyType(seq)
+
+        vn1_obj.set_network_policy(np1, vnp)
+        vn3_obj.set_network_policy(np1, vnp)
+        vn1_obj.set_multi_policy_service_chains_enabled(True)
+        vn3_obj.set_multi_policy_service_chains_enabled(True)
+        self._vnc_lib.virtual_network_update(vn1_obj)
+        self._vnc_lib.virtual_network_update(vn3_obj)
+
+        si1_sc_ri_uuid = self.wait_to_get_sc(check_create=True)
+        si1_sc_ri_name = 'service-' +\
+                         si1_sc_ri_uuid +\
+                         '-default-domain_default-project_' +\
+                         si1[0]
+
+        right_vmi = self._vnc_lib.virtual_machine_interface_read(fq_name=[u'default-domain',
+                                                                 u'default-project',
+                                                                 si1[0] + 'right'])
+        # Creating a network policy between VN2 and VN3 but with the 
+        # right VMI for the SI skipped.
+        np2 = self.create_network_policy(vn2_obj, vn3_obj,
+                                         [self.id() + '_s2'],
+                                         auto_policy = False,
+                                         create_right_port = False,
+                                         service_mode = 'in-network',
+                                         version =2)
+        # Adding the Right VMI of SI1 to SI2.
+        si2_pt_fqdn = [u'default-domain',
+                       u'default-project',
+                       si2_name,
+                       u'pt-' + si2_name]
+        si2_pt_obj = self._vnc_lib.port_tuple_read(fq_name = si2_pt_fqdn)
+        right_vmi.add_port_tuple(si2_pt_obj)
         self._vnc_lib.virtual_machine_interface_update(right_vmi)
 
-        pt1_obj = self._vnc_lib.port_tuple_read(fq_name=[u'default-domain',
-                                                         u'default-project',
-                                                         si1[0],
-                                                         'pt-'+si1[0]])
-        pt2_obj = self._vnc_lib.port_tuple_read(fq_name=[u'default-domain',
-                                                         u'default-project',
-                                                         si2_name,
-                                                         'pt-'+si2_name])
+        vn2_obj.set_network_policy(np2, vnp)
+        vn3_obj.add_network_policy(np2, vnp)
+        vn2_obj.set_multi_policy_service_chains_enabled(True)
+        self._vnc_lib.virtual_network_update(vn2_obj)
+        self._vnc_lib.virtual_network_update(vn3_obj)
 
-        self.check_vmi_port_tuple(right_vmi.fq_name, pt1_obj.uuid)
-        self.check_vmi_port_tuple(right_vmi.fq_name, pt2_obj.uuid)
+        si2_sc_ri_uuid = self.wait_to_get_sc(left_vn=vn2_obj.get_fq_name_str(), 
+                                             right_vn=vn3_obj.get_fq_name_str(), 
+                                             check_create=True)
+        si2_sc_ri_name = 'service-' + si2_sc_ri_uuid +\
+                         '-default-domain_default-project_' +\
+                         si2_name
 
-        self._vnc_lib.service_instance_delete(fq_name=[u'default-domain',
-                                                       u'default-project',
-                                                       si1[0]])
-        self._vnc_lib.service_instance_delete(fq_name=[u'default-domain',
-                                                       u'default-project',
-                                                       si2_name])
+        # Checking the VRF assign rules.
+        self.check_acl_action_assign_rules(vn1_obj.get_fq_name(),
+                          vn1_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn1_obj, si1_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn1_obj.get_fq_name(),
+                          vn3_obj.get_fq_name_str(),
+                          vn1_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn1_obj, si1_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn3_obj.get_fq_name(),
+                          vn1_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn3_obj, si1_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn3_obj.get_fq_name(),
+                          vn1_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn3_obj, si1_sc_ri_name)))
 
-        vmis = self._vnc_lib.virtual_machine_interfaces_list().get('virtual-machine-interfaces')
-        self.delete_vmis(vmis)
+        self.check_acl_action_assign_rules(vn2_obj.get_fq_name(),
+                          vn2_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn2_obj, si2_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn2_obj.get_fq_name(),
+                          vn3_obj.get_fq_name_str(),
+                          vn2_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn2_obj, si2_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn3_obj.get_fq_name(),
+                          vn2_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn3_obj, si2_sc_ri_name)))
+        self.check_acl_action_assign_rules(vn3_obj.get_fq_name(),
+                          vn2_obj.get_fq_name_str(),
+                          vn3_obj.get_fq_name_str(),
+                          ':'.join(self.get_ri_name(vn3_obj, si2_sc_ri_name)))
 
-        vn1_obj.del_network_policy(np)
-        vn2_obj.del_network_policy(np)
-        vn3_obj.del_network_policy(np)
-
+        vn1_obj.del_network_policy(np1)
+        vn3_obj.del_network_policy(np1)
+        vn2_obj.del_network_policy(np2)
+        vn3_obj.del_network_policy(np2)
         self._vnc_lib.virtual_network_update(vn1_obj)
         self._vnc_lib.virtual_network_update(vn2_obj)
         self._vnc_lib.virtual_network_update(vn3_obj)
-        self._vnc_lib.network_policy_delete(id=np.uuid)
+
+        self.delete_network_policy(np1)
+        self.delete_network_policy(np2)
+        self.delete_vn(fq_name=vn1_obj.get_fq_name())
+        self.delete_vn(fq_name=vn2_obj.get_fq_name())
+        self.delete_vn(fq_name=vn3_obj.get_fq_name())
     #end test_service_policy_vmi_with_multi_port_tuples
 
     def test_mps_with_nat(self, version=2):
@@ -1940,6 +1972,8 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
 
     def assign_vn_subnet(self, vn_obj, subnet_list):
         subnet_info = []
+        ipam_fq_name = [
+            'default-domain', 'default-project', 'default-network-ipam']
         for subnet in subnet_list:
             cidr = IPNetwork(subnet)
             subnet_info.append(IpamSubnetType(
@@ -1947,15 +1981,11 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
                                        str(cidr.network),
                                        int(cidr.prefixlen),
                                    ),
-                                   default_gateway = str(IPAddress(cidr.last - 1)),
-                                   subnet_uuid = str(uuid.uuid4()),
+                                   default_gateway = str(IPAddress(cidr.last - 1))
                                )
                            )
-        ipam_fq_name = [
-            'default-domain', 'default-project', 'default-network-ipam']
-        ipam_obj = self._vnc_lib.network_ipam_read(fq_name=ipam_fq_name)
         subnet_data = VnSubnetsType(subnet_info)
-        vn_obj.add_network_ipam(ipam_obj, subnet_data)
+        vn_obj.set_network_ipam_list([ipam_fq_name], [subnet_data])
         self._vnc_lib.virtual_network_update(vn_obj)
         vn_obj.clear_pending_updates()
 
@@ -1965,17 +1995,20 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
         # (for example, IP address assignment) then the
         # RI needs to be updated with the new info.
 
-        # Create VN without subnets
+        #create vn1
         vn1_name = self.id() + 'vn1'
+        vn1_obj = self.create_virtual_network(vn1_name, '10.0.0.0/24')
+
+        #create vn2
         vn2_name = self.id() + 'vn2'
-        vn1_obj = VirtualNetwork(name=vn1_name)
-        self._vnc_lib.virtual_network_create(vn1_obj)
-        vn2_obj = VirtualNetwork(name=vn2_name)
-        self._vnc_lib.virtual_network_create(vn2_obj)
+        vn2_obj = self.create_virtual_network(vn2_name, '20.0.0.0/24')
 
         # Create SC
         service_name = self.id() + 's1'
-        np = self.create_network_policy(vn1_obj, vn2_obj, [service_name], version=2)
+        np = self.create_network_policy(vn1_obj, vn2_obj, 
+                                        service_list = [service_name], 
+                                        version = 2,
+                                        service_mode = 'in-network')
         seq = SequenceType(1, 1)
         vnp = VirtualNetworkPolicyType(seq)
 
@@ -1996,24 +2029,24 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
                                   self.get_ri_name(vn2_obj))
 
         # Checking the Service chain address in the service RI
-        v4_service_chain_address = '10.0.0.251'
-        v6_service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffb'
-
         sci = ServiceChainInfo(prefix = ['10.0.0.0/24'],
                                routing_instance = ':'.join(self.get_ri_name(vn1_obj)),
-                               service_chain_address = v4_service_chain_address,
-                               service_instance = 'default-domain:default-project:' + service_name)
+                               service_chain_address = '20.0.0.252',
+                               service_instance = 'default-domain:default-project:' + service_name,
+                               source_routing_instance = ':'.join(self.get_ri_name(vn2_obj)))
         self.check_service_chain_info(self.get_ri_name(vn2_obj, sc_ri_name), sci)
         sci.prefix = ['1000::/16']
-        sci.service_chain_address = v6_service_chain_address
+        sci.service_chain_address = '2000:ffff:ffff:ffff:ffff:ffff:ffff:fffc' 
         self.check_v6_service_chain_info(self.get_ri_name(vn2_obj, sc_ri_name), sci)
+
         sci = ServiceChainInfo(prefix = ['20.0.0.0/24'],
                                routing_instance = ':'.join(self.get_ri_name(vn2_obj)),
-                               service_chain_address = v4_service_chain_address,
-                               service_instance = 'default-domain:default-project:' + service_name)
+                               service_chain_address = '10.0.0.252',
+                               service_instance = 'default-domain:default-project:' + service_name,
+                               source_routing_instance = ':'.join(self.get_ri_name(vn1_obj)))
         self.check_service_chain_info(self.get_ri_name(vn1_obj, sc_ri_name), sci)
         sci.prefix = ['2000::/16']
-        sci.service_chain_address = v6_service_chain_address
+        sci.service_chain_address = '1000:ffff:ffff:ffff:ffff:ffff:ffff:fffc'
         self.check_v6_service_chain_info(self.get_ri_name(vn1_obj, sc_ri_name), sci)
 
         left_ri_fq_name = ['default-domain', 'default-project', vn1_name, sc_ri_name]
@@ -2027,6 +2060,11 @@ class TestServicePolicy(STTestCase, VerifyServicePolicy):
         self._vnc_lib.virtual_network_update(vn2_obj)
         vn1_obj.del_network_policy(np)
         self._vnc_lib.virtual_network_update(vn1_obj)
-        self._vnc_lib.network_policy_delete(id=np.uuid)
+
+        self.delete_network_policy(np)
+        self.delete_vn(fq_name=vn1_obj.get_fq_name())
+        self.delete_vn(fq_name=vn2_obj.get_fq_name())
+
     #end test_service_policy_with_v4_v6_subnets
+
 # end class TestServicePolicy

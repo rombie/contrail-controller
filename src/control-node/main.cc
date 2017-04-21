@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
     // TODO Coming Soon
     ConfigClientManager *config_client_manager =
         new ConfigClientManager(&evm, &ifmap_server, options.hostname(),
-                                module_name, options.ifmap_config_options());
+                                module_name, options.configdb_options());
     IFMap_Initialize(&ifmap_server, config_client_manager);
     ifmap_server.set_config_manager(config_client_manager);
 
@@ -285,6 +285,7 @@ int main(int argc, char *argv[]) {
 
     // Create Xmpp Server.
     XmppChannelConfig xmpp_cfg(false);
+    xmpp_cfg.dscp_value = bgp_server->global_qos()->control_dscp();
     XmppServer *xmpp_server = CreateXmppServer(&evm, &options, &xmpp_cfg);
     if (xmpp_server == NULL) {
         exit(1);

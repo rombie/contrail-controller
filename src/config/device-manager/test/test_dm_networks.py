@@ -11,6 +11,7 @@ from device_api.juniper_common_xsd import *
 from device_manager.dm_utils import *
 from test_common import *
 from test_dm_common import *
+from test_dm_utils import FakeDeviceConnect
 
 #
 # All Networks related DM test cases should go here
@@ -79,22 +80,6 @@ class TestNetworkDM(TestCommonDM):
         vrf_name_l3 = DMUtils.make_vrf_name(vn1_obj.fq_name[-1], vn1_obj.virtual_network_network_id, 'l3')
 
         self.check_interface_ip_config('lo0', vrf_name_l3, '11.1.1.8/32', 'v4', vn1_obj.virtual_network_network_id)
-
-        #set fwd mode l2 and check lo0 ip alloc, should not be allocated
-        vn1_obj_properties = VirtualNetworkType()
-        vn1_obj_properties.set_forwarding_mode('l2')
-        vn1_obj.set_virtual_network_properties(vn1_obj_properties)
-        self._vnc_lib.virtual_network_update(vn1_obj)
-
-        self.check_interface_ip_config('lo0', vrf_name_l3, '11.1.1.8/32', 'v4', vn1_obj.virtual_network_network_id, True)
-
-        #set fwd mode l2_l3 and check lo0 ip alloc
-        vn1_obj_properties = VirtualNetworkType()
-        vn1_obj_properties.set_forwarding_mode('l2_l3')
-        vn1_obj.set_virtual_network_properties(vn1_obj_properties)
-        self._vnc_lib.virtual_network_update(vn1_obj)
-
-        self.check_interface_ip_config('lo0', vrf_name_l3, '11.1.1.8/32', 'v4', vn1_obj.virtual_network_network_id, True)
 
         #detach vn from PR and check
         pr.del_virtual_network(vn1_obj)

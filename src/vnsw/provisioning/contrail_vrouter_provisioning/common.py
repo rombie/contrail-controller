@@ -18,10 +18,20 @@ from contrail_vrouter_provisioning.network import ComputeNetworkSetup
 log = logging.getLogger('contrail_vrouter_provisioning.common')
 
 
-class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
-    def __init__(self, compute_args, args_str=None):
-        super(ComputeBaseSetup, self).__init__()
-        self._args = compute_args
+def insert_line_to_file(line, file_name, pattern=None):
+    if pattern:
+        local('sed -i \'/%s/d\' %s' % (pattern, file_name), warn_only=True)
+    local('printf "%s\n" >> %s' % (line, file_name))
+
+
+class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
+    def __init__(self, args):
+        super(CommonComputeSetup, self).__init__()
+        self._args = args
+
+        # Using keystone admin password for nova/neutron if not supplied
+        if not self._args.neutron_password:
+            self._args.neutron_password = self._args.keystone_admin_password
 
         self.multi_net = False
         if self._args.non_mgmt_ip:
@@ -40,12 +50,12 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
         else:
             # Deduce the phy interface from ip, if configured
             self.dev = self.get_device_by_ip(self.vhost_ip)
-        self.config_nova = not(getattr(self._args, 'no_nova_config', False))
 
     def enable_kernel_core(self):
         self.enable_kernel_core()
-        for svc in ['abrt-vmcore', 'abrtd', 'kdump']:
-            local('sudo chkconfig %s on' % svc)
+        if self.pdist not in ['Ubuntu']:
+            for svc in ['abrt-vmcore', 'abrtd', 'kdump']:
+                local('sudo chkconfig %s on' % svc)
 
     def fixup_config_files(self):
         self.add_dev_tun_in_cgroup_device_acl()
@@ -66,7 +76,7 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
         fl = "/etc/libvirt/qemu.conf"
         ret = local("sudo grep -q '^cgroup_device_acl' %s" % fl,
                     warn_only=True)
-        if ret.return_code == 1:
+        if ret.failed:
             if self.pdist in ['centos', 'redhat']:
                 local('sudo echo "clear_emulator_capabilities = 1" >> %s' % fl,
                       warn_only=True)
@@ -92,10 +102,258 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
                   warn_only=True)
 
     def fixup_contrail_vrouter_nodemgr(self):
+        # Workaround https://bugs.launchpad.net/juniperopenstack/+bug/1681172
+        cfgfile = '/etc/contrail/contrail-vrouter-nodemgr.conf'
+        if not os.path.isfile(cfgfile):
+            local('sudo touch %s' % cfgfile)
         collector_list = ' '.join('%s:%s' % (server, '8086')
                                   for server in self._args.collectors)
-        self.set_config('/etc/contrail/contrail-vrouter-nodemgr.conf',
-                        'COLLECTOR', 'server_list', collector_list)
+        self.set_config(cfgfile, 'COLLECTOR', 'server_list', collector_list)
+
+    def setup_hugepages_node(self, dpdk_args):
+        """Setup hugepages on one or list of nodes
+        """
+        # How many times DPDK inits hugepages (rte_eal_init())
+        # See function map_all_hugepages() in DPDK
+        DPDK_HUGEPAGES_INIT_TIMES = 2
+
+        # get required size of hugetlbfs
+        factor = int(dpdk_args['huge_pages'])
+
+        print dpdk_args
+
+        if factor == 0:
+            factor = 1
+
+        # set number of huge pages
+        memsize = local("sudo grep MemTotal /proc/meminfo |"
+                        " tr -s ' ' | cut -d' ' -f 2 | tr -d '\n'",
+                        capture=True, warn_only=True)
+        pagesize = local("sudo grep Hugepagesize /proc/meminfo"
+                         " | tr -s ' 'i | cut -d' ' -f 2 | tr -d '\n'",
+                         capture=True, warn_only=True)
+        reserved = local("sudo grep HugePages_Total /proc/meminfo"
+                         " | tr -s ' 'i | cut -d' ' -f 2 | tr -d '\n'",
+                         capture=True, warn_only=True)
+
+        if (reserved == ""):
+            reserved = "0"
+
+        requested = ((int(memsize) * factor) / 100) / int(pagesize)
+
+        if (requested > int(reserved)):
+            pattern = "^vm.nr_hugepages ="
+            line = "vm.nr_hugepages = %d" % requested
+            insert_line_to_file(pattern=pattern, line=line,
+                                file_name='/etc/sysctl.conf')
+
+        current_max_map_count = local("sudo sysctl -n "
+                                      "vm.max_map_count")
+        if current_max_map_count == "":
+            current_max_map_count = 0
+
+        current_huge_pages = max(int(requested), int(reserved))
+
+        requested_max_map_count = (DPDK_HUGEPAGES_INIT_TIMES
+                                   * int(current_huge_pages))
+
+        if int(requested_max_map_count) > int(current_max_map_count):
+            pattern = "^vm.max_map_count ="
+            line = "vm.max_map_count = %d" % requested_max_map_count
+            insert_line_to_file(pattern=pattern, line=line,
+                                file_name='/etc/sysctl.conf')
+
+        mounted = local("sudo mount | grep hugetlbfs | cut -d' ' -f 3",
+                        capture=True, warn_only=False)
+        if (mounted != ""):
+            print "hugepages already mounted on %s" % mounted
+        else:
+            local("sudo mkdir -p /hugepages", warn_only=False)
+            pattern = "^hugetlbfs"
+            line = "hugetlbfs    "\
+                   "/hugepages    hugetlbfs defaults      0       0"
+            insert_line_to_file(pattern=pattern, line=line,
+                                file_name='/etc/fstab')
+            local("sudo mount -t hugetlbfs hugetlbfs /hugepages",
+                  warn_only=False)
+
+    def setup_coremask_node(self, dpdk_args):
+        """Setup core mask on one or list of nodes
+        """
+        vrouter_file = ('/etc/contrail/supervisord_vrouter_files/' +
+                        'contrail-vrouter-dpdk.ini')
+
+        try:
+            coremask = dpdk_args['coremask']
+        except KeyError:
+            raise RuntimeError("Core mask for host %s is not defined."
+                               % (dpdk_args))
+
+        if not coremask:
+            raise RuntimeError("Core mask for host %s is not defined."
+                               % dpdk_args)
+
+        # if a list of cpus is provided, -c flag must be passed to taskset
+        if (',' in coremask) or ('-' in coremask):
+            taskset_param = ' -c'
+        else:
+            taskset_param = ''
+
+        # supported coremask format: hex: (0x3f); list: (0,3-5), (0,1,2,3,4,5)
+        # try taskset on a dummy command
+        if local('sudo taskset%s %s true' % (taskset_param, coremask),
+                 capture=True, warn_only=False).succeeded:
+            local('sudo sed -i \'s/command=/command=taskset%s %s /\' %s'
+                  % (taskset_param, coremask, vrouter_file), warn_only=False)
+        else:
+            raise RuntimeError("Error: Core mask %s for host %s is invalid."
+                               % (coremask, dpdk_args))
+
+    def setup_vm_coremask_node(self, q_coremask, dpdk_args):
+        """
+        Setup CPU affinity for QEMU processes based on
+        vRouter/DPDK core affinity on a given node.
+
+        Supported core mask format:
+            vRouter/DPDK:   hex (0x3f), list (0,1,2,3,4,5), range (0,3-5)
+            QEMU/nova.conf: list (0,1,2,3,4,5), range (0,3-5),
+                            exclusion (0-5,^4)
+
+        QEMU needs to be pinned to different cores than vRouter. Because of
+        different core mask formats, it is not possible to just set QEMU to
+        <not vRouter cores>. This function takes vRouter core mask from
+        testbed, changes it to list of cores and removes them from list
+        of all possible cores (generated as a list from 0 to N-1, where
+        N = number of cores). This is changed back to string and passed to
+        openstack-config.
+        """
+
+        try:
+            vr_coremask = dpdk_args['coremask']
+        except KeyError:
+            raise RuntimeError("vRouter core mask for "
+                               "host %s is not defined." % (dpdk_args))
+
+        if not vr_coremask:
+            raise RuntimeError("vRouter core mask for host "
+                               "%s is not defined." % dpdk_args)
+
+        if not q_coremask:
+            try:
+                cpu_count = int(local(
+                    'sudo grep -c processor /proc/cpuinfo',
+                    capture=True))
+            except ValueError:
+                log.info("Cannot count CPUs on host %s. VM core "
+                         "mask cannot be computed." % (dpdk_args))
+                raise
+
+            if not cpu_count or cpu_count == -1:
+                raise ValueError("Cannot count CPUs on host %s. "
+                                 "VM core mask cannot be computed."
+                                 % (dpdk_args))
+
+            all_cores = [x for x in xrange(cpu_count)]
+
+            if 'x' in vr_coremask:  # String containing hexadecimal mask.
+                vr_coremask = int(vr_coremask, 16)
+
+                """
+                Convert hexmask to a string with numbers of cores to be
+                used, eg.
+                0x19 -> 11001 -> 10011 -> [(0,1), (1,0), (2,0),
+                (3,1), (4,1)] -> '0,3,4'
+                """
+                vr_coremask = [
+                        x[0] for x in enumerate(reversed(bin(vr_coremask)[2:]))
+                        if x[1] == '1']
+            # Range or list of cores.
+            elif (',' in vr_coremask) or ('-' in vr_coremask):
+                # Get list of core numbers and/or core ranges.
+                vr_coremask = vr_coremask.split(',')
+
+                # Expand ranges like 0-4 to 0, 1, 2, 3, 4.
+                vr_coremask_expanded = []
+                for rng in vr_coremask:
+                    if '-' in rng:  # If it's a range - expand it.
+                        a, b = rng.split('-')
+                        vr_coremask_expanded += range(int(a), int(b)+1)
+                    else:  # If not, just add to the list.
+                        vr_coremask_expanded.append(int(rng))
+
+                vr_coremask = vr_coremask_expanded
+            else:  # A single core.
+                try:
+                    single_core = int(vr_coremask)
+                except ValueError:
+                    log.error("vRouter core mask %s for host %s is invalid."
+                              % (vr_coremask, dpdk_args))
+                    raise
+
+                vr_coremask = []
+                vr_coremask.append(single_core)
+
+            # From list of all cores remove list of vRouter cores
+            # and stringify.
+            diff = set(all_cores) - set(vr_coremask)
+            q_coremask = ','.join(str(x) for x in diff)
+
+            # If we have no spare cores for VMs
+            if not q_coremask:
+                raise RuntimeError("Setting QEMU core mask for host %s "
+                                   "failed - empty string."
+                                   % (dpdk_args))
+
+        # This can fail eg. because openstack-config is not present.
+        # There's no sanity check in openstack-config.
+        if local("sudo crudini --set /etc/nova/nova.conf "
+                 "DEFAULT vcpu_pin_set %s"
+                 % q_coremask, capture=True, warn_only=False).succeeded:
+            log.info("QEMU coremask on host %s set to %s."
+                     % (dpdk_args, q_coremask))
+        else:
+            raise RuntimeError("Error: setting QEMU core mask %s for "
+                               "host %s failed." % (vr_coremask, dpdk_args))
+
+    def setup_uio_driver(self, dpdk_args):
+        """Setup UIO driver to use for DPDK
+        (igb_uio, uio_pci_generic or vfio-pci)
+        """
+        vrouter_agent_file = '/etc/contrail/contrail-vrouter-agent.conf'
+
+        if 'uio_driver' in dpdk_args:
+            uio_driver = dpdk_args['uio_driver']
+        else:
+            print "No UIO driver defined for host, skipping..."
+            return
+
+        if local('sudo modprobe %s'
+                 % (uio_driver), capture=True, warn_only=False).succeeded:
+            log.info("Setting UIO driver to %s for host..." % uio_driver)
+            local('sudo sed -i.bak \'s/physical_uio_driver='
+                  '.*/physical_uio_driver=%s/\' %s'
+                  % (uio_driver, vrouter_agent_file))
+        else:
+            raise RuntimeError("Error: invalid UIO driver %s for host"
+                               % (uio_driver))
+
+    def dpdk_increase_vrouter_limit(self,
+                                    vrouter_module_params_args):
+        """Increase the maximum number of mpls label
+        and nexthop on tsn node"""
+
+        vrouter_file = ('/etc/contrail/supervisord_vrouter_files/' +
+                        'contrail-vrouter-dpdk.ini')
+        cmd = "--vr_mpls_labels %s "\
+              % vrouter_module_params_args.setdefault('mpls_labels', '5120')
+        cmd += "--vr_nexthops %s "\
+               % vrouter_module_params_args.setdefault('nexthops', '65536')
+        cmd += "--vr_vrfs %s "\
+               % vrouter_module_params_args.setdefault('vrfs', '5120')
+        cmd += "--vr_bridge_entries %s "\
+               % vrouter_module_params_args.setdefault('macs', '262144')
+        local('sudo sed -i \'s#\(^command=.*$\)#\\1 %s#\' %s'
+              % (cmd, vrouter_file), warn_only=False)
 
     def fixup_contrail_vrouter_agent(self):
         compute_ip = self._args.self_ip
@@ -175,17 +433,45 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
             pci_dev = ""
             platform_mode = "default"
             if self._args.dpdk:
+                dpdk_args = dict(
+                        u.split("=") for u in self._args.dpdk.split(","))
+                log.info(dpdk_args)
                 platform_mode = "dpdk"
                 iface = self.dev
                 if self.is_interface_vlan(self.dev):
                     iface = self.get_physical_interface_of_vlan(self.dev)
+                local("ls /opt/contrail/bin/dpdk_nic_bind.py", warn_only=False)
                 cmd = "sudo /opt/contrail/bin/dpdk_nic_bind.py --status | "
                 cmd += "sudo grep -w %s | cut -d' ' -f 1" % iface
-                pci_dev = local(cmd, capture=True)
+                pci_dev = local(cmd, capture=True, warn_only=False)
                 # If there is no PCI address, the device is a bond.
                 # Bond interface in DPDK has zero PCI address.
                 if not pci_dev:
                     pci_dev = "0000:00:00.0"
+
+                self.setup_hugepages_node(dpdk_args)
+                self.setup_coremask_node(dpdk_args)
+                self.setup_vm_coremask_node(False, dpdk_args)
+
+                if self._args.vrouter_module_params:
+                    vrouter_module_params_args = dict(
+                            u.split("=") for u in
+                            self._args.vrouter_module_params.split(","))
+                    self.dpdk_increase_vrouter_limit(
+                            vrouter_module_params_args)
+
+                if self.pdist == 'Ubuntu':
+                    # Fix /dev/vhost-net permissions. It is required for
+                    # multiqueue operation
+                    local('sudo echo \'KERNEL=="vhost-net", '
+                          'GROUP="kvm", MODE="0660"\' > '
+                          '/etc/udev/rules.d/vhost-net.rules', warn_only=True)
+                    # The vhost-net module has to be loaded at startup to
+                    # ensure the correct permissions while the qemu is being
+                    # launched
+                    local('sudo echo "vhost-net" >> /etc/modules')
+
+                self.setup_uio_driver(dpdk_args)
 
             control_servers = ' '.join('%s:%s' % (server, '5269')
                                        for server in self._args.control_nodes)
@@ -199,10 +485,12 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
                         'gateway_mode': gateway_mode,
                         'physical_interface_address': pci_dev,
                         'physical_interface_mac': self.mac,
-                        'collectors': collector_servers},
+                        'collectors': collector_servers,
+                        'xmpp_auth_enable': self._args.xmpp_auth_enable},
                     'NETWORKS': {
                         'control_network_ip': compute_ip},
                     'VIRTUAL-HOST-INTERFACE': {
+                        'name': 'vhost0',
                         'ip': cidr,
                         'gateway': self.gateway,
                         'physical_interface': self.dev},
@@ -214,6 +502,9 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
                         'servers': control_servers},
                     'DNS': {
                         'servers': dns_servers},
+                    'SANDESH': {
+                        'sandesh_ssl_enable': self._args.sandesh_ssl_enable,
+                        'introspect_ssl_enable': self._args.introspect_ssl_enable}
                     }
 
             # VGW configs
@@ -279,8 +570,8 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
                 configs['METADATA'] = {
                     'metadata_proxy_secret': self._args.metadata_secret}
 
-            for section, key_vals in configs:
-                for key, val in key_vals:
+            for section, key_vals in configs.items():
+                for key, val in key_vals.items():
                     self.set_config(
                             '/etc/contrail/contrail-vrouter-agent.conf',
                             section, key, val)
@@ -300,11 +591,13 @@ class ComputeBaseSetup(ContrailSetup, ComputeNetworkSetup):
                     'auth_url': auth_url,
                     'region': 'RegionOne'}
                   }
-        for section, key_vals in configs:
-            for key, val in key_vals:
-                self.set_config(
-                        '/etc/contrail/contrail-lbaas-auth.conf',
-                        section, key, val)
+        # Workaround https://bugs.launchpad.net/juniperopenstack/+bug/1681172
+        cfgfile = '/etc/contrail/contrail-lbaas-auth.conf'
+        if not os.path.isfile(cfgfile):
+            local('sudo touch %s' % cfgfile)
+        for section, key_vals in configs.items():
+            for key, val in key_vals.items():
+                self.set_config(cfgfile, section, key, val)
 
     def fixup_vhost0_interface_configs(self):
         if self.pdist in ['centos', 'fedora', 'redhat']:
@@ -359,8 +652,10 @@ SUBCHANNELS=1,2,3
 
                 local("sudo mv %s /etc/contrail/" % ifcfg_tmp, warn_only=True)
 
-                local("sudo chkconfig network on", warn_only=True)
-                local("sudo chkconfig supervisor-vrouter on", warn_only=True)
+                if self.pdist not in ['Ubuntu']:
+                    local("sudo chkconfig network on", warn_only=True)
+                    local("sudo chkconfig supervisor-vrouter on",
+                          warn_only=True)
         # end self.pdist == centos | fedora | redhat
         # setup lbaas prereqs
         self.setup_lbaas_prereq()
@@ -374,14 +669,15 @@ SUBCHANNELS=1,2,3
         # end self.pdist == ubuntu
 
     def run_services(self):
-        for svc in ['supervisor-vrouter']:
-            local('sudo chkconfig %s on' % svc)
+        if self.pdist not in ['Ubuntu']:
+            for svc in ['supervisor-vrouter']:
+                local('sudo chkconfig %s on' % svc)
 
     def add_vnc_config(self):
         compute_ip = self._args.self_ip
         compute_hostname = socket.gethostname()
         use_ssl = False
-        if self._args.quantum_service_protocol == 'https':
+        if self._args.keystone_auth_protocol == 'https':
             use_ssl = True
         prov_args = "--host_name %s --host_ip %s --api_server_ip %s "\
                     "--oper add --admin_user %s --admin_password %s "\
@@ -395,14 +691,13 @@ SUBCHANNELS=1,2,3
                        use_ssl)
         if self._args.dpdk:
             prov_args += " --dpdk_enabled"
-        local("sudo python /opt/contrail/utils/provision_vrouter.py %s" %
-              prov_args)
+        cmd = "sudo python /opt/contrail/utils/provision_vrouter.py "
+        local(cmd + prov_args)
 
     def setup(self):
         self.disable_selinux()
         self.disable_iptables()
         self.setup_coredump()
-        if not self._args.vcenter_server:
-            self.fixup_config_files()
-            self.run_services()
-            self.add_vnc_config()
+        self.fixup_config_files()
+        self.run_services()
+        self.add_vnc_config()

@@ -35,6 +35,10 @@ public:
             unsigned short protobuf_listen_port,
             bool structured_syslog_collector_enabled,
             unsigned short structured_syslog_listen_port,
+            const vector<string> &structured_syslog_tcp_forward_dst,
+            const std::string &structured_syslog_kafka_broker,
+            const std::string &structured_syslog_kafka_topic,
+            uint16_t structured_syslog_kafka_partitions,
             const std::string &redis_uve_ip, unsigned short redis_uve_port,
             const std::string &redis_password,
             const std::map<std::string, std::string>& aggconf,
@@ -47,7 +51,7 @@ public:
             bool use_zookeeper,
             const DbWriteOptions &db_write_options,
             const SandeshConfig &sandesh_config,
-            const ConfigDBConnection::ApiServerList &api_server_list,
+            const std::vector<std::string> &api_server_list,
             const VncApiConfig &api_config);
     VizCollector(EventManager *evm, DbHandlerPtr db_handler,
                  Ruleeng *ruleeng,
@@ -80,6 +84,10 @@ public:
         if (rsc) {
             redis_gen_ ++;
         }
+    }
+    void ReConfigApiServerList(const std::vector<std::string> &api_server_list) {
+        DbHandlerPtr db_handler = db_initializer_->GetDbHandler();
+        db_handler->ReConfigApiServerList(api_server_list);
     }
     void SendDbStatistics();
     void SendProtobufCollectorStatistics();

@@ -36,6 +36,10 @@ VizCollector::VizCollector(EventManager *evm, unsigned short listen_port,
             unsigned short protobuf_listen_port,
             bool structured_syslog_collector_enabled,
             unsigned short structured_syslog_listen_port,
+            const vector<string> &structured_syslog_tcp_forward_dst,
+            const std::string &structured_syslog_kafka_broker,
+            const std::string &structured_syslog_kafka_topic,
+            uint16_t structured_syslog_kafka_partitions,
             const std::string &redis_uve_ip, unsigned short redis_uve_port,
             const std::string &redis_password,
             const std::map<std::string, std::string>& aggconf,
@@ -48,7 +52,7 @@ VizCollector::VizCollector(EventManager *evm, unsigned short listen_port,
             bool use_zookeeper,
             const DbWriteOptions &db_write_options,
             const SandeshConfig &sandesh_config,
-            const ConfigDBConnection::ApiServerList &api_server_list,
+            const std::vector<std::string> &api_server_list,
             const VncApiConfig &api_config) :
     db_initializer_(new DbHandlerInitializer(evm, DbGlobalName(dup),
         std::string("collector:DbIf"),
@@ -82,7 +86,11 @@ VizCollector::VizCollector(EventManager *evm, unsigned short listen_port,
     }
     if (structured_syslog_collector_enabled) {
         structured_syslog_collector_.reset(new StructuredSyslogCollector(evm,
-            structured_syslog_listen_port, db_initializer_->GetDbHandler()));
+            structured_syslog_listen_port, structured_syslog_tcp_forward_dst,
+            structured_syslog_kafka_broker,
+            structured_syslog_kafka_topic,
+            structured_syslog_kafka_partitions,
+            db_initializer_->GetDbHandler()));
     }
 }
 

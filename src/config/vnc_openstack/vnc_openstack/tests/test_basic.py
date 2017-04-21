@@ -203,10 +203,10 @@ class TestBasic(test_case.NeutronBackendTestCase):
             return json.loads(resp.text)
 
         # for collections that are objects in contrail model
-        for (objects, res_url_pfx, res_xlate_name) in collection_types:
+        for (objs, res_url_pfx, res_xlate_name) in collection_types:
             res_dicts = list_resource(res_url_pfx)
             present_ids = [r['id'] for r in res_dicts]
-            for obj in objects:
+            for obj in objs:
                 self.assertIn(obj.uuid, present_ids)
 
             neutron_api_obj = FakeExtensionManager.get_extension_objects(
@@ -214,7 +214,7 @@ class TestBasic(test_case.NeutronBackendTestCase):
             neutron_db_obj = neutron_api_obj._npi._cfgdb
 
             def err_on_object_2(orig_method, res_obj, *args, **kwargs):
-                if res_obj.uuid == objects[2].uuid:
+                if res_obj.uuid == objs[2].uuid:
                     raise Exception('faking inconsistent element')
                 return orig_method(res_obj, *args, **kwargs)
 
@@ -222,11 +222,11 @@ class TestBasic(test_case.NeutronBackendTestCase):
                 neutron_db_obj, res_xlate_name, err_on_object_2):
                 res_dicts = list_resource(res_url_pfx)
                 present_ids = [r['id'] for r in res_dicts]
-                self.assertNotIn(objects[2].uuid, present_ids)
+                self.assertNotIn(objs[2].uuid, present_ids)
 
             res_dicts = list_resource(res_url_pfx)
             present_ids = [r['id'] for r in res_dicts]
-            for obj in objects:
+            for obj in objs:
                 self.assertIn(obj.uuid, present_ids)
         # end for collections that are objects in contrail model
 
@@ -246,6 +246,10 @@ class TestBasic(test_case.NeutronBackendTestCase):
             res_dicts = list_resource('subnet')
             present_ids = [r['id'] for r in res_dicts]
             self.assertNotIn(sn2_id, present_ids)
+        for obj_type, obj_list in objects.items():
+            delete_method = getattr(self._vnc_lib, obj_type+'_delete')
+            for obj in obj_list:
+                delete_method(id=obj.uuid)
     # end test_list_with_inconsistent_members
 
     def test_extra_fields_on_network(self):
@@ -388,6 +392,58 @@ class TestBasic(test_case.NeutronBackendTestCase):
         sgr = [rule.rule_uuid for rule in
                sg1_obj.get_security_group_entries().get_policy_rule() or []]
         self.assertIn(sgr_uuid, sgr)
+
+    def test_sg_list_with_remote(self):
+        proj_obj = self._vnc_lib.project_read(
+            fq_name=['default-domain', 'default-project'])
+        sg1_dict = self.create_resource('security_group',
+                                       proj_obj.uuid,
+                                       'sg1-%s' % self.id())
+        sg2_dict = self.create_resource('security_group',
+                                       proj_obj.uuid,
+                                       'sg2-%s' % self.id())
+        sgr1_dict = self.create_resource('security_group_rule',
+                                       proj_obj.uuid,
+                                       'sgr1-%s' % self.id(),
+                                       extra_res_fields={
+                                           'security_group_id': sg1_dict['id'],
+                                           'remote_ip_prefix': None,
+                                           'remote_group_id': sg2_dict['id'],
+                                           'port_range_min': None,
+                                           'port_range_max': None,
+                                           'protocol': None,
+                                           'ethertype': None,
+                                           'direction': 'egress',
+                                       }
+                                       )
+        sgr2_dict = self.create_resource('security_group_rule',
+                                       proj_obj.uuid,
+                                       'sgr2-%s' % self.id(),
+                                       extra_res_fields={
+                                           'security_group_id': sg2_dict['id'],
+                                           'remote_ip_prefix': None,
+                                           'remote_group_id': sg1_dict['id'],
+                                           'port_range_min': None,
+                                           'port_range_max': None,
+                                           'protocol': None,
+                                           'ethertype': None,
+                                           'direction': 'ingress',
+                                       }
+                                       )
+        sg_list = self.list_resource('security_group', proj_obj.uuid)
+        found = 0
+        for sg in sg_list:
+            if sg['id'] == sg1_dict['id']:
+                for rule in sg['security_group_rules']:
+                    if rule['direction'] == 'ingress':
+                        self.assertEqual(rule['remote_group_id'], sg2_dict['id'])
+                found += 1
+            if sg['id'] == sg2_dict['id']:
+                for rule in sg['security_group_rules']:
+                    if rule['direction'] == 'ingress':
+                        self.assertEqual(rule['remote_group_id'], sg1_dict['id'])
+                found += 1
+        self.assertEqual(found, 2)
 
     def test_delete_irt_for_subnet_host_route(self):
         proj_obj = self._vnc_lib.project_read(

@@ -37,6 +37,7 @@ from cStringIO import StringIO
 # import GreenletProfiler
 
 from cfgm_common import vnc_cgitb
+from cfgm_common import has_role
 
 logger = logging.getLogger(__name__)
 
@@ -725,8 +726,7 @@ class VncApiServer(object):
         ret_obj_dict = {}
         ret_obj_dict.update(obj_dict)
         r_class = self.get_resource_class(resource_type)
-        obj_links = (r_class.ref_fields | r_class.backref_fields | r_class.children_fields) \
-                     & set(obj_dict.keys())
+        obj_links = r_class.obj_links & set(obj_dict.keys())
         obj_uuids = [ref['uuid'] for link in obj_links for ref in list(obj_dict[link])]
         obj_dicts = self._db_conn._object_db.object_raw_read(obj_uuids, ["perms2"])
         uuid_to_perms2 = dict((o['uuid'], o['perms2']) for o in obj_dicts)
@@ -1482,6 +1482,8 @@ class VncApiServer(object):
         self._permissions = vnc_perms.VncPermissions(self, self._args)
         if self.is_rbac_enabled():
             self._create_default_rbac_rule()
+        if self.is_multi_tenancy_set():
+            self._generate_obj_view_links()
 
         if os.path.exists('/usr/bin/contrail-version'):
             cfgm_cpu_uve = ModuleCpuState()
@@ -1680,7 +1682,7 @@ class VncApiServer(object):
         for field in ('HTTP_X_API_ROLE', 'HTTP_X_ROLE'):
             if field in env:
                 roles = env[field].split(',')
-                return self.cloud_admin_role in [x.lower() for x in roles]
+                return has_role(self.cloud_admin_role, roles)
         return False
 
     def get_auth_headers_from_token(self, request, token):
@@ -1689,6 +1691,11 @@ class VncApiServer(object):
 
         return self._auth_svc.get_auth_headers_from_token(request, token)
     # end get_auth_headers_from_token
+
+    def _generate_obj_view_links(self):
+        for object_type, resource_type in all_resource_type_tuples:
+            r_class = self.get_resource_class(resource_type)
+            r_class.obj_links = (r_class.ref_fields | r_class.backref_fields | r_class.children_fields)
 
     # Check for the system created VN. Disallow such VN delete
     def virtual_network_http_delete(self, id):
@@ -1784,8 +1791,8 @@ class VncApiServer(object):
                 elif 'token' in token_info:
                     roles_list = [roles['name'] for roles in \
                         token_info['token']['roles']]
-                result['is_cloud_admin_role'] = self.cloud_admin_role in roles_list
-                result['is_global_read_only_role'] = self.global_read_only_role in roles_list
+                result['is_cloud_admin_role'] = has_role(self.cloud_admin_role, roles_list)
+                result['is_global_read_only_role'] = has_role(self.global_read_only_role, roles_list)
                 if obj_uuid:
                     result['permissions'] = self._permissions.obj_perms(get_request(), obj_uuid)
             else:
@@ -2153,6 +2160,7 @@ class VncApiServer(object):
         res_type, res_class = self._validate_resource_type(type)
         obj_uuid = get_request().json.get('uuid')
         ref_type = get_request().json.get('ref-type')
+        ref_field = '%s_refs' %(ref_type.replace('-', '_'))
         ref_res_type, ref_class = self._validate_resource_type(ref_type)
         operation = get_request().json.get('operation')
         ref_uuid = get_request().json.get('ref-uuid')
@@ -2199,8 +2207,9 @@ class VncApiServer(object):
 
         # To invoke type specific hook and extension manager
         try:
+            obj_fields = [ref_field]
             (read_ok, read_result) = self._db_conn.dbe_read(
-                                         obj_type, get_request().json['uuid'])
+                obj_type, obj_uuid, obj_fields)
         except NoIdError:
             raise cfgm_common.exceptions.HttpError(
                 404, 'Object Not Found: '+obj_uuid)
@@ -2212,7 +2221,9 @@ class VncApiServer(object):
             self.config_object_error(obj_uuid, None, obj_type, 'ref_update', read_result)
             raise cfgm_common.exceptions.HttpError(500, read_result)
 
-        obj_dict = copy.deepcopy(read_result)
+        obj_dict = {'uuid': obj_uuid}
+        if ref_field in read_result:
+            obj_dict[ref_field] = copy.deepcopy(read_result[ref_field])
 
         # invoke the extension
         try:
@@ -2384,9 +2395,18 @@ class VncApiServer(object):
     def useragent_kv_http_post(self):
         self._post_common(get_request(), None, None)
 
-        oper = get_request().json['operation']
-        key = get_request().json['key']
-        val = get_request().json.get('value', '')
+        request_params = get_request().json
+        oper = request_params.get('operation')
+        if oper is None:
+            err_msg = ("Error: Key/value store API needs 'operation' "
+                       "parameter")
+            raise cfgm_common.exceptions.HttpError(400, err_msg)
+        if 'key' not in request_params:
+            err_msg = ("Error: Key/value store API needs 'key' parameter")
+            raise cfgm_common.exceptions.HttpError(400, err_msg)
+        key = request_params.get('key')
+        val = request_params.get('value', '')
+
 
         # TODO move values to common
         if oper == 'STORE':

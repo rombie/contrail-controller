@@ -121,10 +121,10 @@ class CfgParser(object):
                 sandesh_opts.update(dict(config.items('SANDESH')))
                 if 'sandesh_ssl_enable' in config.options('SANDESH'):
                     sandesh_opts['sandesh_ssl_enable'] = config.getboolean(
-                        'sandesh', 'sandesh_ssl_enable')
+                        'SANDESH', 'sandesh_ssl_enable')
                 if 'introspect_ssl_enable' in config.options('SANDESH'):
                     sandesh_opts['introspect_ssl_enable'] = config.getboolean(
-                        'sandesh', 'introspect_ssl_enable')
+                        'SANDESH', 'introspect_ssl_enable')
         # Override with CLI options
         # Don't surpress add_help here so it will handle -h
         parser = argparse.ArgumentParser(
@@ -251,6 +251,9 @@ class CfgParser(object):
 
     def _mklist(self, s):
         return self._pat().split(s)
+
+    def set_api_server_list(self, api_servers):
+        self._args.api_server_list = api_servers
 
     def redis_uve_list(self):
         return self._args.redis_uve_list

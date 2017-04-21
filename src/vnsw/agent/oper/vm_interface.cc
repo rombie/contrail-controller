@@ -5540,6 +5540,49 @@ VmInterface::hc_instance_set() const {
     return hc_instance_set_;
 }
 
+bool VmInterface::IsHealthCheckEnabled() const {
+    return hc_instance_set_.size() != 0;
+}
+
+// Match the Health-Check instance for a packet from VM-Interface
+// A packet from vmi is assumed to be response for health-check request from
+// vhost0
+const HealthCheckInstance *VmInterface::GetHealthCheckFromVmiFlow
+(const IpAddress &sip, const IpAddress &dip, uint8_t proto,
+ uint16_t sport) const {
+    HealthCheckInstanceSet::const_iterator it = hc_instance_set_.begin();
+    while (it != hc_instance_set_.end()) {
+        const HealthCheckInstance *hc_instance = *it;
+        it++;
+
+        // Match ip-proto and health-check port
+        const HealthCheckService *hc_service = hc_instance->service();
+        if (hc_service == NULL)
+            continue;
+
+        if (hc_service->ip_proto() != proto)
+            continue;
+
+        if (hc_service->url_port() != sport)
+            continue;
+
+        // The source-ip and destination-ip can be matched from MetaDataIp
+        // allocated for HealthCheck
+        const MetaDataIp *mip = hc_instance->ip();
+        if (mip == NULL)
+            continue;
+
+        if (mip->destination_ip() != sip)
+            continue;
+
+        if (mip->service_ip() != dip)
+            continue;
+
+        return hc_instance;
+    }
+
+    return NULL;
+}
 ////////////////////////////////////////////////////////////////////////////
 // VRF assign rule routines
 ////////////////////////////////////////////////////////////////////////////
@@ -5942,24 +5985,25 @@ uint32_t VmInterface::GetIsid() const {
     for (; it != bridge_domain_list_.list_.end(); it++) {
         return it->bridge_domain_->isid();
     }
-    assert(0);
     return kInvalidIsid;
 }
 
 uint32_t VmInterface::GetPbbVrf() const {
     BridgeDomainEntrySet::const_iterator it = bridge_domain_list_.list_.begin();
     for (; it != bridge_domain_list_.list_.end(); it++) {
-        return it->bridge_domain_->vrf()->vrf_id();
+        if (it->bridge_domain_->vrf()) {
+            return it->bridge_domain_->vrf()->vrf_id();
+        }
     }
-    assert(0);
     return VrfEntry::kInvalidIndex;
 }
 
 uint32_t VmInterface::GetPbbLabel() const {
     BridgeDomainEntrySet::const_iterator it = bridge_domain_list_.list_.begin();
     for (; it != bridge_domain_list_.list_.end(); it++) {
-        return it->bridge_domain_->vrf()->table_label();
+        if (it->bridge_domain_->vrf()) {
+            return it->bridge_domain_->vrf()->table_label();
+        }
     }
-    assert(0);
     return MplsTable::kInvalidLabel;
 }

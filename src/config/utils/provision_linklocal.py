@@ -7,7 +7,9 @@ import sys
 import argparse
 import ConfigParser
 
+from cfgm_common.exceptions import RefsExistError
 from vnc_api.vnc_api import *
+from vnc_admin_api import VncApiAdmin
 
 class MetadataProvisioner(object):
 
@@ -17,7 +19,8 @@ class MetadataProvisioner(object):
             args_str = ' '.join(sys.argv[1:])
         self._parse_args(args_str)
 
-        self._vnc_lib = VncApi(
+        self._vnc_lib = VncApiAdmin(
+            self._args.use_admin_api,
             self._args.admin_user, self._args.admin_password,
             self._args.admin_tenant_name,
             self._args.api_server_ip,
@@ -38,12 +41,15 @@ class MetadataProvisioner(object):
                                 fq_name=['default-global-system-config',
                                          'default-global-vrouter-config'])
         except Exception as e:
-            if self._args.oper == "add":
-                linklocal_services_obj=LinklocalServicesTypes([linklocal_obj])
-                conf_obj=GlobalVrouterConfig(linklocal_services=linklocal_services_obj)
-                result=self._vnc_lib.global_vrouter_config_create(conf_obj)
-                print 'Created.UUID is %s'%(result)
-            return
+            try:
+                if self._args.oper == "add":
+                    linklocal_services_obj=LinklocalServicesTypes([linklocal_obj])
+                    conf_obj=GlobalVrouterConfig(linklocal_services=linklocal_services_obj)
+                    result=self._vnc_lib.global_vrouter_config_create(conf_obj)
+                    print 'Created.UUID is %s'%(result)
+                return
+            except RefsExistError:
+                print "Already created!"
 
         current_linklocal=current_config.get_linklocal_services()
         if current_linklocal is None:
@@ -133,8 +139,6 @@ class MetadataProvisioner(object):
         defaults.update(ksopts)
         parser.set_defaults(**defaults)
 
-        parser.add_argument(
-            "--api_server_ip", help="IP address of api server")
         parser.add_argument("--api_server_port", help="Port of api server")
         parser.add_argument("--api_server_use_ssl",
                         help="Use SSL to connect with API server")
@@ -158,6 +162,13 @@ class MetadataProvisioner(object):
             "--admin_user", help="Name of keystone admin user")
         parser.add_argument(
             "--admin_password", help="Password of keystone admin user")
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument(
+            "--api_server_ip", help="IP address of api server")
+        group.add_argument("--use_admin_api",
+                            default=False,
+                            help = "Connect to local api-server on admin port",
+                            action="store_true")
 
         self._args = parser.parse_args(remaining_argv)
         if not self._args.linklocal_service_name:

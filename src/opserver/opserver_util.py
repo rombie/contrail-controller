@@ -109,7 +109,7 @@ class AnalyticsDiscovery(gevent.Greenlet):
             if child in self._wchildren[watcher]:
                 del self._wchildren[watcher][child]
         if self._watchers[watcher]:
-            self._watchers[watcher](sorted(self._wchildren[watcher].values()))
+            self._pendingcb.add(watcher)
 
     def _zk_watcher(self, watcher, children):
         self._logger.error("Analytics Discovery Children %s" % children)
@@ -133,6 +133,7 @@ class AnalyticsDiscovery(gevent.Greenlet):
         self._pubinfo = None
         self._watchers = watchers
         self._wchildren = {}
+        self._pendingcb = set()
         self._zpostfix = zpostfix
         self._basepath = "/analytics-discovery-" + self._zpostfix
         self._reconnect = None
@@ -210,11 +211,20 @@ class AnalyticsDiscovery(gevent.Greenlet):
 
             while True:
                 try:
+                    if not self._reconnect:
+                        pending_list = list(self._pendingcb)
+                        self._pendingcb = set()
+                        for wk in pending_list:
+                            if self._watchers[wk]:
+                                self._watchers[wk](\
+                                        sorted(self._wchildren[wk].values()))
+
                     # If a reconnect happens during processing, don't lose it
                     while self._reconnect:
                         self._logger.error("Analytics Discovery %s reconnect" \
                                 % self._svc_name)
                         self._reconnect = False
+                        self._pendingcb = set()
                         self.publish(self._pubinfo)
 
                         for wk in self._watchers.keys():
@@ -390,6 +400,17 @@ class OpServerUtils(object):
                         'now' in end_time:
                     ostart_time = start_time
                     oend_time = end_time
+                    now = OpServerUtils.utc_timestamp_usec()
+                    td = OpServerUtils.convert_to_time_delta(ostart_time[len('now'):])
+                    if td == None:
+                        ostart_time = now
+                    else:
+                        ostart_time = now + (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6)
+                    td = OpServerUtils.convert_to_time_delta(oend_time[len('now'):])
+                    if td == None:
+                        oend_time = now
+                    else:
+                        oend_time = now + (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6)
                 elif start_time.isdigit() and \
                         end_time.isdigit():
                     ostart_time = int(start_time)
@@ -534,6 +555,8 @@ class OpServerUtils(object):
 
     @staticmethod
     def convert_to_time_delta(time_str):
+        if time_str == '' or time_str == None:
+            return None
         num = int(time_str[:-1])
         if time_str.endswith('s'):
             return datetime.timedelta(seconds=num)
