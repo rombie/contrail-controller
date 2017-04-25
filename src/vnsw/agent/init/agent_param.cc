@@ -367,6 +367,7 @@ void AgentParam::ParseQueue() {
 
 void AgentParam::ParseCollectorArguments
     (const boost::program_options::variables_map &var_map) {
+    collector_server_list_.clear();
     GetOptValue< vector<string> >(var_map, collector_server_list_,
                                   "DEFAULT.collectors");
     if (collector_server_list_.size() == 1) {
@@ -377,6 +378,7 @@ void AgentParam::ParseCollectorArguments
 
 void AgentParam::ParseControllerServersArguments
     (const boost::program_options::variables_map &var_map) {
+    controller_server_list_.clear();
     GetOptValue< vector<string> >(var_map, controller_server_list_,
                                   "CONTROL-NODE.servers");
     if (controller_server_list_.size() == 1) {
@@ -387,6 +389,7 @@ void AgentParam::ParseControllerServersArguments
 
 void AgentParam::ParseDnsServersArguments
     (const boost::program_options::variables_map &var_map) {
+    dns_server_list_.clear();
     GetOptValue< vector<string> >(var_map, dns_server_list_,
                                   "DNS.servers");
     if (dns_server_list_.size() == 1) {
@@ -539,6 +542,8 @@ void AgentParam::ParseTaskSectionArguments
                           "TASK.log_schedule_threshold");
     GetOptValue<uint32_t>(var_map, tbb_keepawake_timeout_,
                           "TASK.tbb_keepawake_timeout");
+    GetOptValue<uint32_t>(var_map, task_monitor_timeout_msec_,
+                          "TASK.task_monitor_timeout");
     GetOptValue<string>(var_map, ksync_thread_cpu_pin_policy_,
                         "TASK.ksync_thread_cpu_pin_policy");
     GetOptValue<uint32_t>(var_map, flow_netlink_pin_cpuid_,
@@ -756,7 +761,6 @@ void AgentParam::InitFromConfig() {
             if (it->unregistered) {
                 tree_.put(it->string_key,it->value.at(0));
             }
-
         }
     }
     config_file_in.close();
@@ -791,10 +795,25 @@ void AgentParam::ProcessArguments() {
 }
 
 void AgentParam::ReInitFromConfig() {
-    InitFromConfig();
-    ParseControllerServersArguments(var_map_);
-    ParseDnsServersArguments(var_map_);
-    ParseCollectorArguments(var_map_);
+
+    // Read and parse INI
+    opt::variables_map var_map;
+    ifstream config_file_in;
+    config_file_in.open(config_file_.c_str());
+    if (config_file_in.good()) {
+        opt::basic_parsed_options<char> ParsedOptions =
+            opt::parse_config_file(config_file_in, config_file_options_, true);
+        boost::program_options::store(ParsedOptions, var_map);
+
+        ParseControllerServersArguments(var_map);
+        ParseDnsServersArguments(var_map);
+        ParseCollectorArguments(var_map);
+
+        LogFilteredConfig();
+    }
+    config_file_in.close();
+    LOG(DEBUG, "Config file re-parsing completed. \n");
+    
     return;
 }
 
@@ -1021,6 +1040,33 @@ void AgentParam::ReInit() {
     ReInitFromConfig();
 }
 
+void AgentParam::LogFilteredConfig() const {
+    std::string concat_servers;
+    std::vector<string> list = controller_server_list();
+    std::vector<string>::iterator iter;
+    for (iter = list.begin();
+         iter != list.end(); iter++) {
+         concat_servers += *iter + " ";
+    }
+    LOG(DEBUG, "Xmpp Servers                : " << concat_servers);
+
+    concat_servers.clear();
+    list = dns_server_list();
+    for (iter = list.begin();
+         iter != list.end(); iter++) {
+         concat_servers += *iter + " ";
+    }
+    LOG(DEBUG, "DNS Servers                 : " << concat_servers);
+
+    concat_servers.clear();
+    list = collector_server_list();
+    for (iter = list.begin();
+         iter != list.end(); iter++) {
+         concat_servers += *iter + " ";
+    }
+    LOG(DEBUG, "COLLECTOR Servers                 : " << concat_servers);
+}
+ 
 void AgentParam::LogConfig() const {
     LOG(DEBUG, "vhost interface name        : " << vhost_.name_);
     LOG(DEBUG, "vhost IP Address            : " << vhost_.addr_.to_string()
@@ -1059,6 +1105,14 @@ void AgentParam::LogConfig() const {
         LOG(DEBUG, "Xmpp Server Key         : " << xmpp_server_key_);
         LOG(DEBUG, "Xmpp CA Certificate     : " << xmpp_ca_cert_);
     }
+
+    concat_servers.clear();
+    list = collector_server_list();
+    for (iter = list.begin();
+         iter != list.end(); iter++) { 
+         concat_servers += *iter + " ";
+    }
+    LOG(DEBUG, "COLLECTOR Servers                 : " << concat_servers);
 
     LOG(DEBUG, "Tunnel-Type                 : " << tunnel_type_);
     LOG(DEBUG, "Metadata-Proxy Shared Secret: " << metadata_shared_secret_);
@@ -1248,6 +1302,7 @@ AgentParam::AgentParam(bool enable_flow_options,
         tbb_exec_delay_(0),
         tbb_schedule_delay_(0),
         tbb_keepawake_timeout_(Agent::kDefaultTbbKeepawakeTimeout),
+        task_monitor_timeout_msec_(Agent::kDefaultTaskMonitorTimeout),
         default_nic_queue_(Agent::kInvalidQueueId),
         llgr_params_() {
 
@@ -1536,6 +1591,8 @@ AgentParam::AgentParam(bool enable_flow_options,
          "Log message if task takes more than threshold (msec) to schedule")
         ("TASK.tbb_keepawake_timeout", opt::value<uint32_t>()->default_value(default_tbb_keepawake_timeout),
          "Timeout for the TBB keepawake timer")
+        ("TASK.task_monitor_timeout", opt::value<uint32_t>(),
+         "Timeout for the Task monitoring")
         ("TASK.ksync_thread_cpu_pin_policy", opt::value<string>(),
          "Pin ksync io task to CPU")
         ("TASK.flow_netlink_pin_cpuid", opt::value<uint32_t>(),

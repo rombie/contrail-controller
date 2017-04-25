@@ -190,8 +190,9 @@ class ServiceLbManager(VncCommon):
                       operating_status='ONLINE', vip_address=vip_address)
         lb_obj.set_loadbalancer_properties(props)
 
-        self.add_annotations(lb_obj, LoadbalancerKM.kube_fq_name_key,
-                      service_ns, service_name, k8s_event_type=k8s_event_type)
+        LoadbalancerKM.add_annotations(self, lb_obj, service_ns, service_name,
+            k8s_type=k8s_event_type)
+
         try:
             self._vnc_lib.loadbalancer_create(lb_obj)
         except RefsExistError:
@@ -239,8 +240,8 @@ class ServiceLbListenerManager(VncCommon):
             props.set_protocol_port(port['port'])
 
         ll_obj.set_loadbalancer_listener_properties(props)
-        if 'targetPort' in port:
-            ll_obj.add_annotations(KeyValuePair(key='targetPort', value=str(port['targetPort'])))
+        if 'name' in port:
+            ll_obj.add_annotations(KeyValuePair(key='portName', value=str(port['name'])))
 
         try:
             self._vnc_lib.loadbalancer_listener_create(ll_obj)
