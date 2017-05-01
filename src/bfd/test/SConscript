@@ -60,8 +60,12 @@ bfd_external_test = env.UnitTest('bfd_external_test',
                             ['bfd_external_test.cc'])
 env.Alias('src/bfd:bfd_external_test', bfd_external_test)
 
+bfd_client_test = env.UnitTest('bfd_client_test', ['bfd_client_test.cc'])
+env.Alias('src/bfd:bfd_client_test', bfd_client_test)
+
 # All Tests
 test_suite = [
+    bfd_client_test,
     bfd_parser_test,
     bfd_udp_connection_test,
     bfd_state_machine_test,
