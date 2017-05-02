@@ -568,6 +568,62 @@ class TestBasic(test_case.NeutronBackendTestCase):
         self.delete_resource('security_group', proj_obj.uuid, sg_q['id'])
     # end test_fixed_ip_conflicts_with_floating_ip
 
+    def test_empty_floating_ip_body_disassociates(self):
+        proj_obj = self._vnc_lib.project_read(fq_name=['default-domain', 'default-project'])
+        sg_q = self.create_resource('security_group', proj_obj.uuid)
+
+        pvt_net_q = self.create_resource('network', proj_obj.uuid,
+            extra_res_fields={'router:external': True})
+        pvt_subnet_q = self.create_resource('subnet', proj_obj.uuid,
+            extra_res_fields={
+                'network_id': pvt_net_q['id'],
+                'cidr': '1.1.1.0/24',
+                'ip_version': 4,
+            })
+        port_q = self.create_resource('port', proj_obj.uuid,
+            extra_res_fields={
+                'network_id': pvt_net_q['id'],
+                'security_groups': [sg_q['id']],
+            })
+
+
+        pub_net_q = self.create_resource('network', proj_obj.uuid,
+            extra_res_fields={'router:external': True})
+        pub_subnet_q = self.create_resource('subnet', proj_obj.uuid,
+            extra_res_fields={
+                'network_id': pub_net_q['id'],
+                'cidr': '10.1.1.0/24',
+                'ip_version': 4,
+            })
+        fip_q = self.create_resource('floatingip', proj_obj.uuid,
+            extra_res_fields={
+                'floating_network_id': pub_net_q['id'],
+                'port_id': port_q['id'],
+            })
+
+        # update fip with no 'resource' key and assert port disassociated
+        context = {'operation': 'UPDATE',
+                   'user_id': '',
+                   'is_admin': False,
+                   'roles': '',
+                   'tenant_id': proj_obj.uuid}
+        data = {'id': fip_q['id']}
+        body = {'context': context, 'data': data}
+        resp = self._api_svr_app.post_json('/neutron/floatingip', body)
+        self.assertEqual(resp.status_code, 200)
+        fip_read = self.read_resource('floatingip', fip_q['id'])
+        self.assertEqual(fip_read['port_id'], None)
+
+        # cleanup
+        self.delete_resource('port', proj_obj.uuid, port_q['id'])
+        self.delete_resource('subnet', proj_obj.uuid, pvt_subnet_q['id'])
+        self.delete_resource('network', proj_obj.uuid, pvt_net_q['id'])
+        self.delete_resource('floatingip', proj_obj.uuid, fip_q['id'])
+        self.delete_resource('subnet', proj_obj.uuid, pub_subnet_q['id'])
+        self.delete_resource('network', proj_obj.uuid, pub_net_q['id'])
+        self.delete_resource('security_group', proj_obj.uuid, sg_q['id'])
+    # end test_empty_floating_ip_body_disassociates
+
     def test_floating_ip_list(self):
         proj_objs = []
         for i in range(3):
@@ -691,6 +747,41 @@ class TestBasic(test_case.NeutronBackendTestCase):
             fip_dicts[created[0]['ports'][1]['id']]['fixed_ip_address'])
     # end test_floating_ip_list
 
+    def test_network_delete_when_fip_associated_w_port(self):
+        proj_obj = vnc_api.Project('proj-%s' %(self.id()), vnc_api.Domain())
+        self._vnc_lib.project_create(proj_obj)
+
+        vn_obj = vnc_api.VirtualNetwork(self.id(), proj_obj)
+        vn_obj.set_network_ipam(vnc_api.NetworkIpam(),
+            vnc_api.VnSubnetsType(
+                [vnc_api.IpamSubnetType(vnc_api.SubnetType('20.1.1.0', 24))]))
+        self._vnc_lib.virtual_network_create(vn_obj)
+
+        vmi_obj = vnc_api.VirtualMachineInterface(
+                      'vmi-%s' %(self.id()), proj_obj)
+        vmi_obj.set_virtual_network(vn_obj)
+        self._vnc_lib.virtual_machine_interface_create(vmi_obj)
+
+        fip_pool_obj = vnc_api.FloatingIpPool(self.id(), vn_obj)
+        self._vnc_lib.floating_ip_pool_create(fip_pool_obj)
+
+        fip_obj = vnc_api.FloatingIp('fip-%s' %(self.id()), fip_pool_obj)
+        fip_obj.set_project(proj_obj)
+        fip_obj.add_virtual_machine_interface(vmi_obj)
+        self._vnc_lib.floating_ip_create(fip_obj)
+
+        # deleting network when it has associated fip
+        # should give an error.
+        with ExpectedException(webtest.app.AppError):
+            self.delete_resource('network', proj_obj.uuid, vn_obj.uuid)
+
+        # cleanup
+        self._vnc_lib.floating_ip_delete(id=fip_obj.uuid)
+        self._vnc_lib.floating_ip_pool_delete(id=fip_pool_obj.uuid)
+        self._vnc_lib.virtual_machine_interface_delete(id=vmi_obj.uuid)
+        self._vnc_lib.virtual_network_delete(id=vn_obj.uuid)
+        self._vnc_lib.project_delete(id=proj_obj.uuid)
+    # end test_network_delete_when_fip_associated_w_port
 # end class TestBasic
 
 class TestExtraFieldsPresenceByKnob(test_case.NeutronBackendTestCase):
@@ -735,6 +826,26 @@ class TestExtraFieldsAbsenceByKnob(test_case.NeutronBackendTestCase):
 
 
 class TestListWithFilters(test_case.NeutronBackendTestCase):
+
+    def list_resource(self, url_pfx,
+        proj_uuid=None, req_fields=None, req_filters=None,
+        is_admin=False):
+        if proj_uuid == None:
+            proj_uuid = self._vnc_lib.fq_name_to_id('project',
+            fq_name=['default-domain', 'default-project'])
+
+        context = {'operation': 'READALL',
+                   'user_id': '',
+                   'tenant_id': proj_uuid,
+                   'roles': '',
+                   'is_admin': is_admin}
+        data = {'fields': req_fields, 'filters': req_filters or {}}
+        body = {'context': context, 'data': data}
+        resp = self._api_svr_app.post_json(
+            '/neutron/%s' %(url_pfx), body)
+        return json.loads(resp.text)
+    # end list_resource
+
     def test_filters_with_id(self):
         neutron_api_obj = FakeExtensionManager.get_extension_objects(
             'vnc_cfg_api.neutronApi')[0]
@@ -843,6 +954,56 @@ class TestListWithFilters(test_case.NeutronBackendTestCase):
         self._vnc_lib.virtual_network_delete(id=vn_obj.uuid)
         self._vnc_lib.project_delete(id=proj2_obj.uuid)
     # end test_filters_with_id
+
+    def test_filters_with_shared_and_router_external(self):
+        proj_obj = vnc_api.Project('proj-%s' %(self.id()), vnc_api.Domain())
+        self._vnc_lib.project_create(proj_obj)
+
+        vn1_obj = vnc_api.VirtualNetwork('vn1-%s' %(self.id()), proj_obj)
+        vn1_obj.set_is_shared(False)
+        self._vnc_lib.virtual_network_create(vn1_obj)
+
+        vn2_obj = vnc_api.VirtualNetwork('vn2-%s' %(self.id()), proj_obj)
+        vn2_obj.set_router_external(False)
+        self._vnc_lib.virtual_network_create(vn2_obj)
+
+        vn3_obj = vnc_api.VirtualNetwork('vn3-%s' %(self.id()), proj_obj)
+        vn3_obj.set_is_shared(False)
+        vn3_obj.set_router_external(True)
+        self._vnc_lib.virtual_network_create(vn3_obj)
+
+        #filter for list of shared network='False' should return 2
+        vn1_neutron_list = self.list_resource(
+                                'network', proj_uuid=proj_obj.uuid,
+                                req_filters={'shared': [False]})
+        self.assertEqual(len(vn1_neutron_list), 2)
+        vn_ids = []
+        vn_ids.append(vn1_neutron_list[0]['id'])
+        vn_ids.append(vn1_neutron_list[1]['id'])
+        self.assertIn(vn1_obj.uuid, vn_ids)
+        self.assertIn(vn3_obj.uuid, vn_ids)
+
+        #filter for list of router:external='False' network should return 1
+        vn2_neutron_list = self.list_resource(
+                                'network', proj_uuid=proj_obj.uuid,
+                                req_filters={'router:external': [False]})
+        self.assertEqual(len(vn2_neutron_list), 1)
+        self.assertEqual(vn2_neutron_list[0]['id'], vn2_obj.uuid)
+
+        #filter for list of router:external and
+        #shared network='Flase' should return 1
+        vn3_neutron_list = self.list_resource(
+                                'network', proj_uuid=proj_obj.uuid,
+                                req_filters={'shared': [False],
+                                             'router:external': [True]})
+        self.assertEqual(len(vn3_neutron_list), 1)
+        self.assertEqual(vn3_neutron_list[0]['id'], vn3_obj.uuid)
+
+
+        self._vnc_lib.virtual_network_delete(id=vn1_obj.uuid)
+        self._vnc_lib.virtual_network_delete(id=vn2_obj.uuid)
+        self._vnc_lib.virtual_network_delete(id=vn3_obj.uuid)
+    # end test_filters_with_shared_and_router_external
 # end class TestListWithFilters
 
 

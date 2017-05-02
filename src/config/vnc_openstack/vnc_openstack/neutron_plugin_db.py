@@ -502,7 +502,23 @@ class DBInterface(object):
         return fip_pool_uuid
     # end _floating_ip_pool_create
 
-    def _floating_ip_pool_delete(self, fip_pool_id):
+    def _floating_ip_pool_delete(self, fip_pool):
+        if 'floating_ips' in fip_pool:
+            fip_list = fip_pool.get('floating_ips')
+            fip_ids = [fip_id['uuid'] for fip_id in fip_list]
+            fip_dict = self._vnc_lib.floating_ips_list(obj_uuids=fip_ids,
+                        fields=['virtual_machine_interface_refs'],
+                        detail=False)
+            fips = fip_dict.get('floating-ips')
+
+            #Delete fip if it's not associated with any port
+            for fip in fips:
+                if 'virtual_machine_interface_refs' in fip:
+                    raise RefsExistError
+            for fip in fips:
+                self.floatingip_delete(fip_id=fip['uuid'])
+
+        fip_pool_id = fip_pool['uuid']
         fip_pool_uuid = self._vnc_lib.floating_ip_pool_delete(id=fip_pool_id)
     # end _floating_ip_pool_delete
 
@@ -662,41 +678,20 @@ class DBInterface(object):
         return project_obj.get_floating_ip_pool_refs()
     #end _fip_pool_refs_project
 
-    def _network_list_shared_and_ext(self):
-        ret_list = []
-        nets = self._network_list_project(project_id=None,
-            filters={'is_shared':True, 'router_external':True})
-        for net in nets:
-            if net.get_router_external() and net.get_is_shared():
-                ret_list.append(net)
-        return ret_list
-    # end _network_list_router_external
+    def _network_list_filter(self, shared=None, router_external=None):
+        filters = {}
+        if shared is not None:
+            filters['is_shared'] = shared
+        if router_external is not None:
+            filters['router_external'] = router_external
 
-    def _network_list_router_external(self):
-        ret_list = []
-        nets = self._network_list_project(project_id=None,
-            filters={'router_external':True})
-        for net in nets:
-            if not net.get_router_external():
-                continue
-            ret_list.append(net)
-        return ret_list
-    # end _network_list_router_external
-
-    def _network_list_shared(self):
-        ret_list = []
-        nets = self._network_list_project(project_id=None,
-            filters={'is_shared':True})
-        for net in nets:
-            if not net.get_is_shared():
-                continue
-            ret_list.append(net)
-        return ret_list
-    # end _network_list_shared
+        net_list = self._network_list_project(project_id=None, filters=filters)
+        return net_list
+    # end _network_list_filter
 
     # find networks of floating ip pools project has access to
     def _fip_pool_ref_networks(self, project_id):
-        ret_net_objs = self._network_list_shared()
+        ret_net_objs = self._network_list_filter(shared=True)
 
         proj_fip_pool_refs = self._fip_pool_refs_project(project_id)
         if not proj_fip_pool_refs:
@@ -713,8 +708,8 @@ class DBInterface(object):
     #end _fip_pool_ref_networks
 
     # find floating ip pools defined by network
-    def _fip_pool_list_network(self, net_id):
-        resp_dict = self._vnc_lib.floating_ip_pools_list(parent_id=net_id)
+    def _fip_pool_list_network(self, net_id, fields=None):
+        resp_dict = self._vnc_lib.floating_ip_pools_list(parent_id=net_id, fields=fields)
 
         return resp_dict['floating-ip-pools']
     #end _fip_pool_list_network
@@ -1976,7 +1971,10 @@ class DBInterface(object):
                 'binding:vnic_type' in port_q and port_q['binding:vnic_type'] == 'baremetal')
             if not allowed_port:
                 port_bindings = port_obj.get_virtual_machine_interface_bindings()
-                kvps = port_bindings.get_key_value_pair()
+                if port_bindings:
+                    kvps = port_bindings.get_key_value_pair()
+                else:
+                    kvps = []
                 for kvp in kvps:
                     if kvp.key == 'host_id' and kvp.value == "null":
                         allowed_port = True
@@ -2613,8 +2611,7 @@ class DBInterface(object):
             if fip_pools:
                 for fip_pool in fip_pools:
                     try:
-                        pool_id = fip_pool['uuid']
-                        self._floating_ip_pool_delete(fip_pool_id=pool_id)
+                        self._floating_ip_pool_delete(fip_pool)
                     except RefsExistError:
                         self._raise_contrail_exception('NetworkInUse',
                                                        net_id=net_id)
@@ -2640,14 +2637,9 @@ class DBInterface(object):
             return
 
         try:
-            fip_pools = net_obj.get_floating_ip_pools()
+            fip_pools = self._fip_pool_list_network(net_id, fields=['floating_ips'])
             for fip_pool in fip_pools or []:
-                fip_pool_obj = self._vnc_lib.floating_ip_pool_read(id=fip_pool['uuid'])
-                fips = fip_pool_obj.get_floating_ips()
-                for fip in fips or []:
-                    self.floatingip_delete(fip_id=fip['uuid'])
-                self._floating_ip_pool_delete(fip_pool_id=fip_pool['uuid'])
-
+                self._floating_ip_pool_delete(fip_pool=fip_pool)
             self._vnc_lib.virtual_network_delete(id=net_id)
         except RefsExistError:
             self._raise_contrail_exception('NetworkInUse', net_id=net_id)
@@ -2681,22 +2673,24 @@ class DBInterface(object):
             elif filters and 'name' in filters:
                 net_objs = self._network_list_project(context['tenant'])
                 all_net_objs.extend(net_objs)
-                all_net_objs.extend(self._network_list_shared())
-                all_net_objs.extend(self._network_list_router_external())
-            elif (filters and 'shared' in filters and filters['shared'][0] and
-                  'router:external' not in filters):
-                all_net_objs.extend(self._network_list_shared())
-            elif (filters and 'router:external' in filters and
-                  'shared' not in filters):
-                all_net_objs.extend(self._network_list_router_external())
-            elif (filters and 'router:external' in filters and
-                  'shared' in filters):
-                all_net_objs.extend(self._network_list_shared_and_ext())
+                all_net_objs.extend(self._network_list_filter(shared=True))
+                all_net_objs.extend(self._network_list_filter(
+                                    router_external=True))
+            elif filters and 'shared' in filters or 'router:external' in filters:
+                shared = None
+                router_external = None
+                if 'router:external' in filters:
+                    router_external = filters['router:external'][0]
+                if 'shared' in filters:
+                    shared = filters['shared'][0]
+                all_net_objs.extend(self._network_list_filter(
+                                    shared, router_external))
             else:
                 project_uuid = str(uuid.UUID(context['tenant']))
                 if not filters:
-                    all_net_objs.extend(self._network_list_router_external())
-                    all_net_objs.extend(self._network_list_shared())
+                    all_net_objs.extend(self._network_list_filter(
+                                 router_external=True))
+                    all_net_objs.extend(self._network_list_filter(shared=True))
                 all_net_objs.extend(self._network_list_project(project_uuid))
         # admin role from here on
         elif filters and 'tenant_id' in filters:
@@ -2711,7 +2705,8 @@ class DBInterface(object):
                 for p_id in self._validate_project_ids(context, filters) or []:
                     all_net_objs.extend(self._network_list_project(p_id))
                 if 'router:external' in filters:
-                    all_net_objs.extend(self._network_list_router_external())
+                    all_net_objs.extend(self._network_list_filter(
+                                 router_external=filters['router:external'][0]))
         elif filters and 'id' in filters:
             # required networks are specified, just read and populate ret_dict
             # prune is skipped because all_net_objs is empty
@@ -2719,19 +2714,18 @@ class DBInterface(object):
         elif filters and 'name' in filters:
             net_objs = self._network_list_project(None)
             all_net_objs.extend(net_objs)
-        elif filters and 'shared' in filters:
-            if filters['shared'][0] == True:
-                nets = self._network_list_shared()
-                for net in nets:
-                    net_info = self._network_vnc_to_neutron(net,
-                                                            net_repr='LIST')
-                    ret_dict[net.uuid] = net_info
-        elif filters and 'router:external' in filters:
-            nets = self._network_list_router_external()
-            if filters['router:external'][0] == True:
-                for net in nets:
-                    net_info = self._network_vnc_to_neutron(net, net_repr='LIST')
-                    ret_dict[net.uuid] = net_info
+        elif filters and 'shared' in filters or 'router:external' in filters:
+            shared = None
+            router_external = None
+            if 'router:external' in filters:
+                router_external = filters['router:external'][0]
+            if 'shared' in filters:
+                shared = filters['shared'][0]
+            nets = self._network_list_filter(shared, router_external)
+            for net in nets:
+                net_info = self._network_vnc_to_neutron(net,
+                                                        net_repr='LIST')
+                ret_dict[net.uuid] = net_info
         else:
             # read all networks in all projects
             all_net_objs.extend(self._virtual_network_list(detail=True))
@@ -3028,7 +3022,7 @@ class DBInterface(object):
                 proj_id = None
             net_objs = self._network_list_project(proj_id)
             all_net_objs.extend(net_objs)
-            net_objs = self._network_list_shared()
+            net_objs = self._network_list_filter(shared=True)
             all_net_objs.extend(net_objs)
 
         ret_dict = {}
@@ -3817,7 +3811,11 @@ class DBInterface(object):
     @wait_for_api_server_connection
     def port_create(self, context, port_q):
         net_id = port_q['network_id']
-        net_obj = self._network_read(net_id)
+        try:
+            net_obj = self._network_read(net_id)
+        except NoIdError:
+            self._raise_contrail_exception('NetworkNotFound',
+                                           net_id=net_id)
         tenant_id = self._get_tenant_id_for_create(context, port_q);
         proj_id = str(uuid.UUID(tenant_id))
 

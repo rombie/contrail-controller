@@ -383,8 +383,8 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                 self.gateway = non_mgmt_gw
             else:
                 self.gateway = self.find_gateway(self.dev)
-            cidr = str(netaddr.IPNetwork('%s/%s' % (self.vhost_ip,
-                                                    self.netmask)))
+            self.cidr = netaddr.IPNetwork('%s/%s' % (self.vhost_ip,
+                                                     self.netmask))
 
             if vgw_public_subnet:
                 os.chdir(self._temp_dir_name)
@@ -413,19 +413,12 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                         "/etc/contrail/agent_param.tmpl > agent_param.new"]
                 local(''.join(cmds))
                 local("sudo mv agent_param.new /etc/contrail/agent_param")
-            vmware_dev = ""
-            hypervisor_type = "kvm"
-            mode = ""
-            gateway_mode = ""
-            if self._args.mode == 'vcenter':
-                mode = "vcenter"
+
+            vmware_dev = None
+            gateway_mode = None
+            if (self._args.mode == 'vcenter' or
+                    self._args.hypervisor == 'vmware'):
                 vmware_dev = self.get_secondary_device(self.dev)
-                hypervisor_type = "vmware"
-            if self._args.vmware:
-                vmware_dev = self.get_secondary_device(self.dev)
-                hypervisor_type = "vmware"
-            if self._args.hypervisor == 'docker':
-                hypervisor_type = "docker"
             if compute_ip in gateway_server_list:
                 gateway_mode = "server"
 
@@ -482,7 +475,7 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
             configs = {
                     'DEFAULT': {
                         'platform': platform_mode,
-                        'gateway_mode': gateway_mode,
+                        'gateway_mode': gateway_mode or '',
                         'physical_interface_address': pci_dev,
                         'physical_interface_mac': self.mac,
                         'collectors': collector_servers,
@@ -491,20 +484,22 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                         'control_network_ip': compute_ip},
                     'VIRTUAL-HOST-INTERFACE': {
                         'name': 'vhost0',
-                        'ip': cidr,
+                        'ip': str(self.cidr),
                         'gateway': self.gateway,
                         'physical_interface': self.dev},
                     'HYPERVISOR': {
-                        'type': hypervisor_type,
-                        'vmware_mode': mode,
-                        'vmware_physical_interface': vmware_dev},
+                        'type': ('kvm' if self._args.hypervisor == 'libvirt'
+                                 else self._args.hypervisor),
+                        'vmware_mode': self._args.mode or '',
+                        'vmware_physical_interface': vmware_dev or ''},
                     'CONTROL-NODE': {
                         'servers': control_servers},
                     'DNS': {
                         'servers': dns_servers},
                     'SANDESH': {
                         'sandesh_ssl_enable': self._args.sandesh_ssl_enable,
-                        'introspect_ssl_enable': self._args.introspect_ssl_enable}
+                        'introspect_ssl_enable':
+                        self._args.introspect_ssl_enable}
                     }
 
             # VGW configs
@@ -576,7 +571,29 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                             '/etc/contrail/contrail-vrouter-agent.conf',
                             section, key, val)
 
-            self.fixup_vhost0_interface_configs()
+            if self.running_in_container:
+                self.config_vhost0_interface_in_container()
+            else:
+                self.fixup_vhost0_interface_configs()
+
+    def config_vhost0_interface_in_container(self):
+        # Insert vrouter and setup vrouter vifs
+        insert_cmd = "source /opt/contrail/bin/vrouter-functions.sh && "
+        insert_cmd += "insert_vrouter"
+        local(insert_cmd, executable='/bin/bash')
+        # Move ip address from vrouter physical device to vhost
+        config_vhost0_cmd = "ip address delete %s/%s dev %s && " % (
+                self.vhost_ip, self.cidr.prefixlen, self.dev)
+        config_vhost0_cmd += "ip address add %s/%s dev vhost0 && " % (
+                self.vhost_ip, self.cidr.prefixlen)
+        config_vhost0_cmd += "ip link set dev vhost0 up"
+        local(config_vhost0_cmd)
+        # Add default gateway to new device as link local if /32 IP Address
+        if self.cidr.prefixlen == 32:
+            local("ip route add unicast %s dev vhost0 scope link" %
+                  self.gateway)
+        # Add default gateway to vhost
+        local("ip route add default via %s dev vhost0" % self.gateway)
 
     def fixup_contrail_lbaas(self):
         auth_url = self._args.keystone_auth_protocol + '://'
@@ -672,6 +689,9 @@ SUBCHANNELS=1,2,3
         if self.pdist not in ['Ubuntu']:
             for svc in ['supervisor-vrouter']:
                 local('sudo chkconfig %s on' % svc)
+        if self.running_in_container:
+            for svc in ['contrail-vrouter-agent', 'contrail-vrouter-nodemgr']:
+                local('sudo service %s restart' % svc)
 
     def add_vnc_config(self):
         compute_ip = self._args.self_ip
@@ -700,4 +720,5 @@ SUBCHANNELS=1,2,3
         self.setup_coredump()
         self.fixup_config_files()
         self.run_services()
-        self.add_vnc_config()
+        if self._args.register:
+            self.add_vnc_config()

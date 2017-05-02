@@ -69,10 +69,12 @@ class STTestCase(test_common.TestCase):
 
     def setUp(self, extra_config_knobs=None):
         super(STTestCase, self).setUp(extra_config_knobs=extra_config_knobs)
+        cluster_id = self._cluster_id
         self._svc_mon_greenlet = gevent.spawn(test_common.launch_svc_monitor,
-            self.id(), self._api_server_ip, self._api_server_port)
+            cluster_id, self.id(), self._api_server_ip, self._api_server_port)
         self._st_greenlet = gevent.spawn(test_common.launch_schema_transformer,
-            self.id(), self._api_server_ip, self._api_server_port, extra_config_knobs)
+            cluster_id, self.id(), self._api_server_ip, self._api_server_port,
+            extra_config_knobs)
         test_common.wait_for_schema_transformer_up()
 
     def tearDown(self):
@@ -182,7 +184,8 @@ class STTestCase(test_common.TestCase):
                 action_list.apply_service=service_list
             else:
                 action_list.simple_action=rule["action"]
-            prule = PolicyRuleType(direction=rule["direction"], protocol=rule["protocol"],
+            prule = PolicyRuleType(rule_uuid=str(uuid.uuid4()),
+                               direction=rule["direction"], protocol=rule["protocol"],
                                src_addresses=[addr1], dst_addresses=[addr2],
                                src_ports=[src_port], dst_ports=[dst_port],
                                action_list=action_list)

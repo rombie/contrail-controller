@@ -484,16 +484,18 @@ class OpServer(object):
         self.disk_usage_percentage = 0
         self.pending_compaction_tasks = 0
         opserver_sandesh_req_impl = OpserverSandeshReqImpl(self)
-        # Reset the sandesh send rate limit value
-        if self._args.sandesh_send_rate_limit is not None:
-            SandeshSystem.set_sandesh_send_rate_limit( \
-                self._args.sandesh_send_rate_limit)
-
         self.random_collectors = self._args.collectors
         if self._args.collectors:
             self._chksum = hashlib.md5("".join(self._args.collectors)).hexdigest()
             self.random_collectors = random.sample(self._args.collectors, \
                                                    len(self._args.collectors))
+        self._api_server_checksum = ''
+        if self._args.api_server:
+            self._api_server_checksum = hashlib.md5(''.join(
+                self._args.api_server)).hexdigest()
+            self._args.api_server = random.sample(self._args.api_server,
+                len(self._args.api_server))
+
         self._sandesh.init_generator(
             self._moduleid, self._hostname, self._node_type_name,
             self._instance_id, self.random_collectors, 'opserver_context',
@@ -533,6 +535,7 @@ class OpServer(object):
         body = gevent.queue.Queue()
 
         self._vnc_api_client = None
+        self._vnc_api_client_connect = None
         if self._args.auth_conf_info.get('cloud_admin_access_only'):
             self._vnc_api_client = VncCfgApiClient(self._args.auth_conf_info,
                 self._sandesh, self._logger)
@@ -860,14 +863,13 @@ class OpServer(object):
             'partitions'        : 15,
             'zk_list'           : None,
             'zk_prefix'         : '',
-            'sandesh_send_rate_limit': SandeshSystem. \
-                 get_sandesh_send_rate_limit(),
             'aaa_mode'          : AAA_MODE_RBAC,
-            'api_server'        : '127.0.0.1:8082',
+            'api_server'        : ['127.0.0.1:8082'],
             'admin_port'        : OpServerAdminPort,
             'cloud_admin_role'  : CLOUD_ADMIN_ROLE,
             'api_server_use_ssl': False,
         }
+        defaults.update(SandeshConfig.get_default_options(['DEFAULTS']))
         redis_opts = {
             'redis_query_port'   : 6379,
             'redis_password'       : None,
@@ -888,13 +890,7 @@ class OpServer(object):
             'admin_password': 'contrail123',
             'admin_tenant_name': 'default-domain'
         }
-        sandesh_opts = {
-            'sandesh_keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
-            'sandesh_certfile': '/etc/contrail/ssl/certs/server.pem',
-            'sandesh_ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
-            'sandesh_ssl_enable': False,
-            'introspect_ssl_enable': False
-        }
+        sandesh_opts = SandeshConfig.get_default_options()
 
         # read contrail-analytics-api own conf file
         config = None
@@ -909,14 +905,7 @@ class OpServer(object):
                 cassandra_opts.update(dict(config.items('CASSANDRA')))
             if 'KEYSTONE' in config.sections():
                 keystone_opts.update(dict(config.items('KEYSTONE')))
-            if 'SANDESH' in config.sections():
-                sandesh_opts.update(dict(config.items('SANDESH')))
-                if 'sandesh_ssl_enable' in config.options('SANDESH'):
-                    sandesh_opts['sandesh_ssl_enable'] = config.getboolean(
-                        'SANDESH', 'sandesh_ssl_enable')
-                if 'introspect_ssl_enable' in config.options('SANDESH'):
-                    sandesh_opts['introspect_ssl_enable'] = config.getboolean(
-                        'SANDESH', 'introspect_ssl_enable')
+            SandeshConfig.update_options(sandesh_opts, config)
             if 'DATABASE' in config.sections():
                 database_opts.update(dict(config.items('DATABASE')))
 
@@ -1004,8 +993,6 @@ class OpServer(object):
             nargs="+")
         parser.add_argument("--zk_prefix",
             help="System Prefix for zookeeper")
-        parser.add_argument("--sandesh_send_rate_limit", type=int,
-            help="Sandesh send rate limit in messages/sec")
         parser.add_argument("--cloud_admin_role",
             help="Name of cloud-admin role")
         parser.add_argument("--aaa_mode", choices=APIAAAModes,
@@ -1023,21 +1010,13 @@ class OpServer(object):
         parser.add_argument("--admin_tenant_name",
             help="Tenant name for keystone admin user")
         parser.add_argument("--api_server",
-            help="Address of VNC API server in ip:port format")
+            help="List of api-servers in ip:port format separated by space",
+            nargs="+")
         parser.add_argument("--admin_port",
             help="Port with local auth for admin access")
         parser.add_argument("--api_server_use_ssl",
             help="Use SSL to connect with API server")
-        parser.add_argument("--sandesh_keyfile",
-            help="Sandesh ssl private key")
-        parser.add_argument("--sandesh_certfile",
-            help="Sandesh ssl certificate")
-        parser.add_argument("--sandesh_ca_cert",
-            help="Sandesh CA ssl certificate")
-        parser.add_argument("--sandesh_ssl_enable", action="store_true",
-            help="Enable ssl for sandesh connection")
-        parser.add_argument("--introspect_ssl_enable", action="store_true",
-            help="Enable ssl for introspect connection")
+        SandeshConfig.add_parser_arguments(parser)
         self._args = parser.parse_args(remaining_argv)
         if type(self._args.collectors) is str:
             self._args.collectors = self._args.collectors.split()
@@ -1047,6 +1026,8 @@ class OpServer(object):
             self._args.cassandra_server_list = self._args.cassandra_server_list.split()
         if type(self._args.zk_list) is str:
             self._args.zk_list= self._args.zk_list.split()
+        if type(self._args.api_server) is str:
+            self._args.api_server = self._args.api_server.split()
 
         auth_conf_info = {}
         auth_conf_info['admin_user'] = self._args.admin_user
@@ -1063,14 +1044,11 @@ class OpServer(object):
         auth_conf_info['cloud_admin_role'] = self._args.cloud_admin_role
         auth_conf_info['aaa_mode'] = self._args.aaa_mode
         auth_conf_info['admin_port'] = self._args.admin_port
-        api_server_info = self._args.api_server.split(':')
-        auth_conf_info['api_server_ip'] = api_server_info[0]
-        auth_conf_info['api_server_port'] = int(api_server_info[1])
+        auth_conf_info['api_servers'] = self._args.api_server
         self._args.auth_conf_info = auth_conf_info
         self._args.conf_file = args.conf_file
-        self._args.sandesh_config = SandeshConfig(self._args.sandesh_keyfile,
-            self._args.sandesh_certfile, self._args.sandesh_ca_cert,
-            self._args.sandesh_ssl_enable, self._args.introspect_ssl_enable)
+        self._args.sandesh_config = \
+            SandeshConfig.from_parser_arguments(self._args)
     # end _parse_args
 
     def get_args(self):
@@ -2531,7 +2509,9 @@ class OpServer(object):
             self._ad.start()
 
         if self._vnc_api_client:
-            self.gevs.append(gevent.spawn(self._vnc_api_client.connect))
+            self._vnc_api_client_connect = gevent.spawn(
+                self._vnc_api_client.connect)
+            self.gevs.append(self._vnc_api_client_connect)
         self._local_app = LocalApp(bottle.app(), self._args.auth_conf_info)
         self.gevs.append(gevent.spawn(self._local_app.start_http_server))
 
@@ -2573,6 +2553,9 @@ class OpServer(object):
             if 'DEFAULTS' in config.sections():
                 try:
                     collectors = config.get('DEFAULTS', 'collectors')
+                except ConfigParser.NoOptionError as e:
+                    pass
+                else:
                     if type(collectors) is str:
                         collectors = collectors.split()
                         new_chksum = hashlib.md5("".join(collectors)).hexdigest()
@@ -2580,8 +2563,28 @@ class OpServer(object):
                             self._chksum = new_chksum
                             random_collectors = random.sample(collectors, len(collectors))
                             self._sandesh.reconfig_collectors(random_collectors)
+                try:
+                    api_servers = config.get('DEFAULTS', 'api_server')
                 except ConfigParser.NoOptionError as e:
                     pass
+                else:
+                    if type(api_servers) is str:
+                        api_servers = api_servers.split()
+                    new_api_server_checksum = hashlib.md5(''.join(
+                        api_servers)).hexdigest()
+                    if new_api_server_checksum != self._api_server_checksum:
+                        self._api_server_checksum = new_api_server_checksum
+                        random_api_servers = random.sample(api_servers,
+                            len(api_servers))
+                        if self._vnc_api_client_connect:
+                            self.gevs.remove(self._vnc_api_client_connect)
+                            if not self._vnc_api_client_connect.ready():
+                                self._vnc_api_client_connect.kill()
+                        if self._vnc_api_client:
+                            self._vnc_api_client_connect = gevent.spawn(
+                                self._vnc_api_client.update_api_servers,
+                                    random_api_servers)
+                            self.gevs.append(self._vnc_api_client_connect)
     # end sighup_handler
 
 def main(args_str=' '.join(sys.argv[1:])):

@@ -26,6 +26,9 @@ class ContrailSetup(object):
     def __init__(self):
         (self.pdist, self.pdistversion, self.pdistrelease) = platform.dist()
         self.hostname = socket.gethostname()
+        self.running_in_container = False
+        if os.path.exists('/.dockerenv'):
+            self.running_in_container = True
 
         self._temp_dir_name = tempfile.mkdtemp()
         self.contrail_bin_dir = '/opt/contrail/bin'
@@ -279,6 +282,8 @@ class ContrailSetup(object):
         self.disable_iptables()
         self.setup_coredump()
         self.fixup_config_files()
+        self.setup_sriov_grub()
+        self.setup_sriov_vfs()
         self.run_services()
 
 

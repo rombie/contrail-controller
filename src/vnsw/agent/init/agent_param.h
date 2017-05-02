@@ -353,7 +353,6 @@ public:
         return physical_interface_mac_addr_;
     }
     std::string agent_base_dir() const { return agent_base_dir_; }
-    uint32_t sandesh_send_rate_limit() { return send_ratelimit_; }
     const std::string &bgp_as_a_service_port_range() const {
         return bgp_as_a_service_port_range_;
     }
@@ -361,6 +360,13 @@ public:
         return bgp_as_a_service_port_range_value_;
     }
     uint32_t services_queue_limit() { return services_queue_limit_; }
+    uint32_t bgpaas_max_shared_sessions() const {
+        return bgpaas_max_shared_sessions_;
+    }
+    void set_bgpaas_max_shared_sessions(uint32_t val) {
+        bgpaas_max_shared_sessions_ = val;
+    }
+
 
     const SandeshConfig &sandesh_config() const { return sandesh_config_; }
 
@@ -468,27 +474,6 @@ protected:
     virtual void ProcessArguments();
     boost::property_tree::ptree &tree() { return tree_; }
     template <typename ValueType>
-    bool GetOptValue(const boost::program_options::variables_map &var_map, 
-                     ValueType &var, const std::string &val) {
-        return GetOptValueImpl(var_map, var, val,
-            static_cast<ValueType *>(0));
-    }
-    // Implementation overloads
-    template <typename ValueType>
-    bool GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         ValueType &var, const std::string &val, ValueType*) {
-        // Check if the value is present.
-        if (var_map.count(val)) {
-            var = var_map[val].as<ValueType>();
-            return true;
-        }
-        return false;
-    }
-    template <typename ElementType>
-    bool GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         std::vector<ElementType> &var, const std::string &val,
-                         std::vector<ElementType> *);
-    template <typename ValueType>
     bool GetValueFromTree(ValueType &var, const std::string &val) {
         boost::optional<ValueType> opt;
 
@@ -518,6 +503,7 @@ protected:
 private:
     friend class AgentParamTest;
     void UpdateBgpAsaServicePortRange();
+    void UpdateBgpAsaServicePortRangeValue();
     void ComputeFlowLimits();
     static std::map<string, std::map<string, string> > ParseDerivedStats(
         const std::vector<std::string> &dsvec);
@@ -672,7 +658,6 @@ private:
     std::string physical_interface_pci_addr_;
     std::string physical_interface_mac_addr_;
     std::string agent_base_dir_;
-    uint32_t send_ratelimit_;
     uint16_t flow_thread_count_;
     bool flow_trace_enable_;
     uint16_t flow_latency_limit_;
@@ -680,6 +665,7 @@ private:
     std::string bgp_as_a_service_port_range_;
     std::vector<uint16_t> bgp_as_a_service_port_range_value_;
     uint32_t services_queue_limit_;
+    uint32_t bgpaas_max_shared_sessions_;
 
     // Sandesh config options
     SandeshConfig sandesh_config_;

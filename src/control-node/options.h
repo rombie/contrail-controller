@@ -7,6 +7,8 @@
 #include "ifmap/ifmap_config_options.h"
 #include "sandesh/sandesh.h"
 
+class ConfigClientManager;
+
 // Process command line/configuration file options for control-node.
 class Options {
 public:
@@ -71,7 +73,6 @@ public:
     bool optimize_snat() const { return optimize_snat_; }
     bool gr_helper_bgp_disable() const { return gr_helper_bgp_disable_; }
     bool gr_helper_xmpp_disable() const { return gr_helper_xmpp_disable_; }
-    uint32_t sandesh_send_rate_limit() const { return sandesh_ratelimit_; }
     const std::string cassandra_user() const { return cassandra_user_; }
     const std::string cassandra_password() const { return cassandra_password_; }
     const std::vector<std::string> cassandra_server_list() const {
@@ -81,30 +82,27 @@ public:
 
     void ParseReConfig();
 
+    void set_config_client_manager(ConfigClientManager *mgr) {
+        config_client_manager_ = mgr;
+    }
+
 private:
 
-    template <typename ValueType>
-    void GetOptValue(const boost::program_options::variables_map &var_map,
-                     ValueType &var, std::string val);
-    // Implementation overloads
-    template <typename ValueType>
-    void GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         ValueType &var, std::string val, ValueType*);
-    template <typename ElementType>
-    void GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         std::vector<ElementType> &var, std::string val,
-                         std::vector<ElementType> *);
     bool Process(int argc, char *argv[],
                  boost::program_options::options_description &cmdline_options);
     void Initialize(EventManager &evm,
                     boost::program_options::options_description &options);
-    uint32_t GenerateHash(std::vector<std::string> &);
+    void ParseConfigOptions(const boost::program_options::variables_map
+                            &var_map);
+    uint32_t GenerateHash(const std::vector<std::string> &);
+    uint32_t GenerateHash(const IFMapConfigOptions&);
 
     std::string bgp_config_file_;
     uint16_t bgp_port_;
     std::vector<std::string> collector_server_list_;
     std::vector<std::string> randomized_collector_server_list_;
     uint32_t collector_chksum_;
+    uint32_t configdb_chksum_;
     std::string config_file_;
     std::string hostname_;
     std::string host_ip_;
@@ -139,4 +137,5 @@ private:
     std::vector<std::string> default_collector_server_list_;
     SandeshConfig sandesh_config_;
     boost::program_options::options_description config_file_options_;
+    ConfigClientManager *config_client_manager_;
 };

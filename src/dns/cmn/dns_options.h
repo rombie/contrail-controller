@@ -7,6 +7,8 @@
 #include "ifmap/ifmap_config_options.h"
 #include "sandesh/sandesh.h"
 
+class ConfigClientManager;
+
 // Process command line/configuration file options for dns.
 class Options {
 public:
@@ -72,32 +74,29 @@ public:
     std::string xmpp_ca_cert() const { return xmpp_ca_cert_; }
     bool test_mode() const { return test_mode_; }
     bool collectors_configured() const { return collectors_configured_; }
-    uint32_t sandesh_send_rate_limit() const { return send_ratelimit_; }
     const SandeshConfig &sandesh_config() const {
         return sandesh_config_;
     }
+
+    void set_config_client_manager(ConfigClientManager *mgr) {
+        config_client_manager_ = mgr;
+    }
+
 private:
 
-    template <typename ValueType>
-    void GetOptValue(const boost::program_options::variables_map &var_map,
-                     ValueType &var, std::string val);
-    // Implementation overloads
-    template <typename ValueType>
-    void GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         ValueType &var, std::string val, ValueType*);
-    template <typename ElementType>
-    void GetOptValueImpl(const boost::program_options::variables_map &var_map,
-                         std::vector<ElementType> &var, std::string val,
-                         std::vector<ElementType> *);
     void Process(int argc, char *argv[],
             boost::program_options::options_description &cmdline_options);
     void Initialize(EventManager &evm,
                     boost::program_options::options_description &options);
-    uint32_t GenerateHash(std::vector<std::string> &);
+    void ParseConfigOptions(const boost::program_options::variables_map
+                            &var_map);
+    uint32_t GenerateHash(const std::vector<std::string> &);
+    uint32_t GenerateHash(const IFMapConfigOptions&);
 
     std::vector<std::string> collector_server_list_;
     std::vector<std::string> randomized_collector_server_list_;
     uint32_t collector_chksum_;
+    uint32_t configdb_chksum_;
     std::string dns_config_file_;
     std::string config_file_;
 
@@ -136,4 +135,5 @@ private:
     SandeshConfig sandesh_config_;
 
     boost::program_options::options_description config_file_options_;
+    ConfigClientManager *config_client_manager_;
 };

@@ -442,8 +442,8 @@ void BridgeRouteEntry::DeletePathUsingKeyData(const AgentRouteKey *key,
                 if (force_delete && (path->peer()->GetType() ==
                                      Peer::BGP_PEER)) {
                     delete_path = true;
-                } else if (is_multicast()) {
-                    assert(path->peer()->GetType() == Peer::BGP_PEER); 
+                } else if (is_multicast() &&
+                           (path->peer()->GetType() == Peer::BGP_PEER)) {
                     //BGP peer path uses channel peer unicast sequence number.
                     //If it is stale, then delete same.
                     if (data->CanDeletePath(agent, path, this) == false) {
@@ -644,7 +644,6 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
     AgentPath *tor_peer_path = NULL;
     AgentPath *local_peer_path = NULL;
     bool tor_path = false;
-    uint32_t old_fabric_mpls_label = 0;
 
     const CompositeNH *cnh =
          static_cast<const CompositeNH *>(path->nexthop());
@@ -696,7 +695,6 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         } else if (it_path->peer()->GetType() ==
                    Peer::MULTICAST_FABRIC_TREE_BUILDER) {
             fabric_peer_path = it_path;
-            old_fabric_mpls_label = fabric_peer_path->label();
         } else if (it_path->peer() == agent->multicast_peer()) {
             multicast_peer_path = it_path;
         } else if (it_path->peer() == agent->local_peer()) {
@@ -735,9 +733,18 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
 
     bool learning_enabled = false;
     bool pbb_nh = false;
+    uint32_t old_fabric_mpls_label = 0;
     if (multicast_peer_path == NULL) {
         multicast_peer_path = new AgentPath(agent->multicast_peer(), NULL);
         InsertPath(multicast_peer_path);
+    } else {
+        //Multicast peer path can have evpn or fabric label.
+        //Identify using isfabricmulticastlabel.
+        if (agent->mpls_table()->
+             IsFabricMulticastLabel(multicast_peer_path->label()))
+        {
+            old_fabric_mpls_label = multicast_peer_path->label();
+        }
     }
 
     ComponentNHKeyList component_nh_list;
@@ -827,7 +834,6 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
     std::string dest_vn_name = "";
     bool unresolved = false;
     uint32_t vxlan_id = 0;
-    uint32_t label = 0;
     uint32_t tunnel_bmap = TunnelType::AllType();
 
     //Select based on priority of path peer.
@@ -836,29 +842,27 @@ bool BridgeRouteEntry::ReComputeMulticastPaths(AgentPath *path, bool del) {
         unresolved = local_vm_peer_path->unresolved();
         vxlan_id = local_vm_peer_path->vxlan_id();
         tunnel_bmap = TunnelType::AllType();
-        label = local_vm_peer_path->label();
     } else if (tor_peer_path) {
         dest_vn_name = tor_peer_path->dest_vn_name();
         unresolved = tor_peer_path->unresolved();
         vxlan_id = tor_peer_path->vxlan_id();
         tunnel_bmap = TunnelType::VxlanType();
-        label = tor_peer_path->label();
     } else if (fabric_peer_path) {
         dest_vn_name = fabric_peer_path->dest_vn_name();
         unresolved = fabric_peer_path->unresolved();
         vxlan_id = fabric_peer_path->vxlan_id();
         tunnel_bmap = TunnelType::MplsType();
-        label = fabric_peer_path->label();
     } else if (evpn_peer_path) {
         dest_vn_name = evpn_peer_path->dest_vn_name();
         unresolved = evpn_peer_path->unresolved();
         vxlan_id = evpn_peer_path->vxlan_id();
         tunnel_bmap = TunnelType::VxlanType();
-        label = evpn_peer_path->label();
     }
 
+    //By default mark label stored in multicast_peer path to be evpn label.
+    uint32_t label = evpn_label;
     //Mpls label selection needs to be overridden by fabric label
-    //if fabric peer is present
+    //if fabric peer is present.
     if (fabric_peer_path) {
         label = fabric_peer_path->label();
     }

@@ -32,7 +32,8 @@ public:
         Links::const_iterator it = links_.find(this);
         if (it != links_.end()) {
             boost::system::error_code error;
-            it->second->HandleReceive(buffer, dstAddr, pktSize, error);
+            it->second->HandleReceive(buffer,
+                boost::asio::ip::udp::endpoint(dstAddr, 1234), pktSize, error);
         }
     }
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
@@ -51,6 +52,8 @@ public:
 private:
     Server *server_;
 };
+
+Communicator::Links Communicator::links_;
 
 class ClientTest : public ::testing::Test {
  protected:

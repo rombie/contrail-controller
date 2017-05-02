@@ -11,13 +11,16 @@
 #include "base/logging.h"
 #include "base/misc_utils.h"
 #include "base/util.h"
+#include <base/options_util.h>
 #include "cmn/buildinfo.h"
 #include "cmn/dns_options.h"
+#include "ifmap/client/config_client_manager.h"
 #include "net/address_util.h"
 
 using namespace std;
 using namespace boost::asio::ip;
 namespace opt = boost::program_options;
+using namespace options::util;
 
 // Process command line options for dns.
 Options::Options() {
@@ -141,10 +144,6 @@ void Options::Initialize(EventManager &evm,
              "Syslog facility to receive log lines")
         ("DEFAULT.test_mode", opt::bool_switch(&test_mode_),
              "Enable dns to run in test-mode")
-        ("DEFAULT.sandesh_send_rate_limit",
-              opt::value<uint32_t>()->default_value(
-              g_sandesh_constants.DEFAULT_SANDESH_SEND_RATELIMIT),
-              "Sandesh send rate limit in messages/sec")
 
         ("CONFIGDB.config_db_server_list",
              opt::value<vector<string> >()->default_value(
@@ -193,71 +192,31 @@ void Options::Initialize(EventManager &evm,
              opt::value<string>()->default_value(
              "/etc/contrail/ssl/certs/ca-cert.pem"),
              "XMPP CA ssl certificate")
-        ("SANDESH.sandesh_keyfile", opt::value<string>()->default_value(
-            "/etc/contrail/ssl/private/server-privkey.pem"),
-            "Sandesh ssl private key")
-        ("SANDESH.sandesh_certfile", opt::value<string>()->default_value(
-            "/etc/contrail/ssl/certs/server.pem"),
-            "Sandesh ssl certificate")
-        ("SANDESH.sandesh_ca_cert", opt::value<string>()->default_value(
-            "/etc/contrail/ssl/certs/ca-cert.pem"),
-            "Sandesh CA ssl certificate")
-        ("SANDESH.sandesh_ssl_enable",
-             opt::bool_switch(&sandesh_config_.sandesh_ssl_enable),
-             "Enable ssl for sandesh connection")
-        ("SANDESH.introspect_ssl_enable",
-             opt::bool_switch(&sandesh_config_.introspect_ssl_enable),
-             "Enable ssl for introspect connection")
         ;
+
+    sandesh::options::AddOptions(&config, &sandesh_config_);
 
     config_file_options_.add(config);
     cmdline_options.add(generic).add(config);
 }
 
-template <typename ValueType>
-void Options::GetOptValue(const boost::program_options::variables_map &var_map,
-                          ValueType &var, std::string val) {
-    GetOptValueImpl(var_map, var, val, static_cast<ValueType *>(0));
-}
-
-template <typename ValueType>
-void Options::GetOptValueImpl(
-    const boost::program_options::variables_map &var_map,
-    ValueType &var, std::string val, ValueType*) {
-    // Check if the value is present.
-    if (var_map.count(val)) {
-        var = var_map[val].as<ValueType>();
-    }
-}
-
-template <typename ElementType>
-void Options::GetOptValueImpl(
-    const boost::program_options::variables_map &var_map,
-    std::vector<ElementType> &var, std::string val, std::vector<ElementType>*) {
-    // Check if the value is present.
-    if (var_map.count(val)) {
-        std::vector<ElementType> tmp(
-            var_map[val].as<std::vector<ElementType> >());
-        // Now split the individual elements
-        for (typename std::vector<ElementType>::const_iterator it =
-                 tmp.begin();
-             it != tmp.end(); it++) {
-            std::stringstream ss(*it);
-            std::copy(istream_iterator<ElementType>(ss),
-                istream_iterator<ElementType>(),
-                std::back_inserter(var));
-        }
-    }
-}
-
-uint32_t Options::GenerateHash(std::vector<std::string> &list) {
+uint32_t Options::GenerateHash(const std::vector<std::string> &list) {
     std::string concat_servers;
-    std::vector<std::string>::iterator iter;
+    std::vector<std::string>::const_iterator iter;
     for (iter = list.begin(); iter != list.end(); iter++) {
         concat_servers += *iter;
     }
     boost::hash<std::string> string_hash;
     return(string_hash(concat_servers));
+}
+
+uint32_t Options::GenerateHash(const IFMapConfigOptions &config) {
+    uint32_t chk_sum = GenerateHash(config.config_db_server_list);
+    chk_sum += GenerateHash(config.rabbitmq_server_list);
+    boost::hash<std::string> string_hash;
+    chk_sum += string_hash(config.rabbitmq_user);
+    chk_sum += string_hash(config.rabbitmq_password);
+    return chk_sum;
 }
 
 // Process command line options. They can come from a conf file as well. Options
@@ -340,7 +299,7 @@ void Options::Process(int argc, char *argv[],
     GetOptValue<bool>(var_map, use_syslog_, "DEFAULT.use_syslog");
     GetOptValue<string>(var_map, syslog_facility_, "DEFAULT.syslog_facility");
     GetOptValue<uint32_t>(var_map, send_ratelimit_,
-                              "DEFAULT.sandesh_send_rate_limit");
+                          "DEFAULT.sandesh_send_rate_limit");
     GetOptValue< vector<string> >(var_map,
                                   configdb_options_.config_db_server_list,
                                   "CONFIGDB.config_db_server_list");
@@ -371,22 +330,14 @@ void Options::Process(int argc, char *argv[],
     GetOptValue<string>(var_map,
                      configdb_options_.rabbitmq_ssl_ca_certs,
                      "CONFIGDB.rabbitmq_ssl_ca_certs");
+    ParseConfigOptions(var_map);
 
     GetOptValue<bool>(var_map, xmpp_auth_enable_, "DEFAULT.xmpp_dns_auth_enable");
     GetOptValue<string>(var_map, xmpp_server_cert_, "DEFAULT.xmpp_server_cert");
     GetOptValue<string>(var_map, xmpp_server_key_, "DEFAULT.xmpp_server_key");
     GetOptValue<string>(var_map, xmpp_ca_cert_, "DEFAULT.xmpp_ca_cert");
 
-    GetOptValue<string>(var_map, sandesh_config_.keyfile,
-                        "SANDESH.sandesh_keyfile");
-    GetOptValue<string>(var_map, sandesh_config_.certfile,
-                        "SANDESH.sandesh_certfile");
-    GetOptValue<string>(var_map, sandesh_config_.ca_cert,
-                        "SANDESH.sandesh_ca_cert");
-    GetOptValue<bool>(var_map, sandesh_config_.sandesh_ssl_enable,
-                      "SANDESH.sandesh_ssl_enable");
-    GetOptValue<bool>(var_map, sandesh_config_.introspect_ssl_enable,
-                      "SANDESH.introspect_ssl_enable");
+    sandesh::options::ProcessOptions(var_map, &sandesh_config_);
 }
 
 void Options::ParseReConfig() {
@@ -415,4 +366,47 @@ void Options::ParseReConfig() {
         // ReConnect Collectors
         Sandesh::ReConfigCollectors(randomized_collector_server_list_);
     }
+
+    uint32_t old_config_chksum = configdb_chksum_;
+    ParseConfigOptions(var_map);
+    if ((old_config_chksum != configdb_chksum_) && config_client_manager_) {
+        config_client_manager_->ReinitConfigClient(configdb_options());
+    }
+}
+
+void Options::ParseConfigOptions(const boost::program_options::variables_map
+                                 &var_map) {
+    configdb_options_.config_db_server_list.clear();
+    GetOptValue< vector<string> >(var_map,
+                                  configdb_options_.config_db_server_list,
+                                  "CONFIGDB.config_db_server_list");
+    configdb_options_.rabbitmq_server_list.clear();
+    GetOptValue< vector<string> >(var_map,
+                     configdb_options_.rabbitmq_server_list,
+                     "CONFIGDB.rabbitmq_server_list");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_user,
+                     "CONFIGDB.rabbitmq_user");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_password,
+                     "CONFIGDB.rabbitmq_password");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_vhost,
+                     "CONFIGDB.rabbitmq_vhost");
+    GetOptValue<bool>(var_map,
+                     configdb_options_.rabbitmq_use_ssl,
+                     "CONFIGDB.rabbitmq_use_ssl");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_ssl_version,
+                     "CONFIGDB.rabbitmq_ssl_version");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_ssl_keyfile,
+                     "CONFIGDB.rabbitmq_ssl_keyfile");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_ssl_certfile,
+                     "CONFIGDB.rabbitmq_ssl_certfile");
+    GetOptValue<string>(var_map,
+                     configdb_options_.rabbitmq_ssl_ca_certs,
+                     "CONFIGDB.rabbitmq_ssl_ca_certs");
+    configdb_chksum_ = GenerateHash(configdb_options_);
 }

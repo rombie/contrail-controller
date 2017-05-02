@@ -181,7 +181,6 @@ int main(int argc, char *argv[]) {
     boost::system::error_code ec;
     string hostname = host_name(ec);
     Dns::SetHostName(hostname);
-    Sandesh::set_send_rate_limit(options.sandesh_send_rate_limit());
     {
         NodeType::type node_type =
             g_vns_constants.Module2NodeType.find(module)->second;
@@ -285,6 +284,7 @@ int main(int argc, char *argv[]) {
                     expected_connections), "ObjectDns");
 
     dns_manager.set_config_manager(config_client_manager);
+    options.set_config_client_manager(config_client_manager);
     config_client_manager->Initialize();
 
     Dns::GetEventManager()->Run();

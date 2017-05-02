@@ -71,19 +71,6 @@ class SvcMonitor(object):
             # Initialize logger
             self.logger = ServiceMonitorLogger(args)
 
-        # rotating log file for catchall errors
-        self._err_file = self._args.trace_file
-        self._svc_err_logger = logging.getLogger('SvcErrLogger')
-        self._svc_err_logger.setLevel(logging.ERROR)
-        try:
-            with open(self._err_file, 'a'):
-                handler = logging.handlers.RotatingFileHandler(
-                    self._err_file, maxBytes=64*1024, backupCount=2)
-                self._svc_err_logger.addHandler(handler)
-        except IOError:
-            self.logger.warning("Failed to open trace file %s" %
-                                    self._err_file)
-
         # init object_db
         self._object_db = ServiceMonitorDB(self._args, self.logger)
         DBBaseSM.init(self, self.logger, self._object_db)
@@ -697,7 +684,6 @@ def parse_args(args_str):
         'cluster_id': '',
         'logging_conf': '',
         'logger_class': None,
-        'sandesh_send_rate_limit': SandeshSystem.get_sandesh_send_rate_limit(),
         'check_service_interval': '60',
         'nova_endpoint_type': 'internalURL',
         'rabbit_use_ssl': False,
@@ -706,6 +692,7 @@ def parse_args(args_str):
         'kombu_ssl_certfile': '',
         'kombu_ssl_ca_certs': '',
     }
+    defaults.update(SandeshConfig.get_default_options(['DEFAULTS']))
     secopts = {
         'use_certs': False,
         'keyfile': '',
@@ -734,13 +721,7 @@ def parse_args(args_str):
         'cassandra_user': None,
         'cassandra_password': None,
     }
-    sandeshopts = {
-        'sandesh_keyfile': '/etc/contrail/ssl/private/server-privkey.pem',
-        'sandesh_certfile': '/etc/contrail/ssl/certs/server.pem',
-        'sandesh_ca_cert': '/etc/contrail/ssl/certs/ca-cert.pem',
-        'sandesh_ssl_enable': False,
-        'introspect_ssl_enable': False
-    }
+    sandeshopts = SandeshConfig.get_default_options()
 
     saved_conf_file = args.conf_file
     config = ConfigParser.SafeConfigParser()
@@ -757,14 +738,7 @@ def parse_args(args_str):
             schedops.update(dict(config.items("SCHEDULER")))
         if 'CASSANDRA' in config.sections():
             cassandraopts.update(dict(config.items('CASSANDRA')))
-        if 'SANDESH' in config.sections():
-            sandeshopts.update(dict(config.items('SANDESH')))
-            if 'sandesh_ssl_enable' in config.options('SANDESH'):
-                sandeshopts['sandesh_ssl_enable'] = config.getboolean(
-                    'SANDESH', 'sandesh_ssl_enable')
-            if 'introspect_ssl_enable' in config.options('SANDESH'):
-                sandeshopts['introspect_ssl_enable'] = config.getboolean(
-                    'SANDESH', 'introspect_ssl_enable')
+        SandeshConfig.update_options(sandeshopts, config)
 
     # Override with CLI options
     # Don't surpress add_help here so it will handle -h
@@ -841,10 +815,9 @@ def parse_args(args_str):
                         help="Cassandra user name")
     parser.add_argument("--cassandra_password",
                         help="Cassandra password")
-    parser.add_argument("--sandesh_send_rate_limit", type=int,
-                        help="Sandesh send rate limit in messages/sec.")
     parser.add_argument("--check_service_interval",
                         help="Check service interval")
+    SandeshConfig.add_parser_arguments(parser)
 
     args = parser.parse_args(remaining_argv)
     args._conf_file = saved_conf_file
@@ -860,16 +833,14 @@ def parse_args(args_str):
     if args.netns_availability_zone and \
             args.netns_availability_zone.lower() == 'none':
         args.netns_availability_zone = None
-    args.sandesh_config = SandeshConfig(args.sandesh_keyfile,
-        args.sandesh_certfile, args.sandesh_ca_cert,
-        args.sandesh_ssl_enable, args.introspect_ssl_enable)
+    args.sandesh_config = SandeshConfig.from_parser_arguments(args)
 
     return args
 
 
 def run_svc_monitor(sm_logger, args=None):
     sm_logger.notice("Elected master SVC Monitor node. Initializing... ")
-    sm_logger.sandesh_init()
+    sm_logger.introspect_init()
 
     monitor = SvcMonitor(sm_logger, args)
     monitor._zookeeper_client = _zookeeper_client

@@ -78,6 +78,7 @@ TEST_F(AgentParamTest, Agent_Conf_file_1) {
     EXPECT_EQ(ports2[0], 100);
     EXPECT_EQ(ports2[1], 199);
     EXPECT_EQ(param.services_queue_limit(), 8192);
+    EXPECT_EQ(param.bgpaas_max_shared_sessions(), 4);
 
     // By default, flow-tracing must be enabled
     EXPECT_TRUE(param.flow_trace_enable());
@@ -87,6 +88,7 @@ TEST_F(AgentParamTest, Agent_Conf_file_1) {
     EXPECT_EQ(param.get_nic_queue(3), 1);
     EXPECT_EQ(param.get_nic_queue(8), 2);
     EXPECT_EQ(param.get_nic_queue(105), 8);
+    EXPECT_FALSE(param.sandesh_config().disable_object_logs);
 }
 
 TEST_F(AgentParamTest, Agent_Conf_file_2) {
@@ -119,6 +121,7 @@ TEST_F(AgentParamTest, Agent_Conf_file_2) {
     // Default value for pkt0_tx_buffer_count
     EXPECT_EQ(param.pkt0_tx_buffer_count(), 1000);
     EXPECT_EQ(param.services_queue_limit(), 1024);
+    EXPECT_TRUE(param.sandesh_config().disable_object_logs);
 }
 
 TEST_F(AgentParamTest, Agent_Flows_Option_1) {
@@ -224,9 +227,10 @@ TEST_F(AgentParamTest, Agent_Conf_file_3) {
             param.bgp_as_a_service_port_range_value();
         EXPECT_EQ(ports[0], 100);
         EXPECT_EQ(ports[1], 199);
+        EXPECT_EQ(param.bgpaas_max_shared_sessions(), 4);
 
-        EXPECT_EQ(param.linklocal_system_flows(), 411);
-        EXPECT_EQ(param.linklocal_vm_flows(), 411);
+        EXPECT_EQ(param.linklocal_system_flows(), 511);
+        EXPECT_EQ(param.linklocal_vm_flows(), 511);
     }
 }
 
@@ -257,7 +261,7 @@ TEST_F(AgentParamTest, Agent_Conf_Xen_1) {
 }
 
 TEST_F(AgentParamTest, Agent_Param_1) {
-    int argc = 23;
+    int argc = 24;
     char *argv[] = {
         (char *) "",
         (char *) "--config_file", 
@@ -273,6 +277,7 @@ TEST_F(AgentParamTest, Agent_Param_1) {
         (char *) "--DEFAULT.dhcp_relay_mode",     (char *)"true",
         (char *) "--DEFAULT.agent_base_directory",     (char *)"/var/run/contrail",
         (char *) "--DEFAULT.pkt0_tx_buffers",  (char *)"3000",
+        (char *) "--SANDESH.disable_object_logs",
     };
 
     AgentParam param;
@@ -298,6 +303,7 @@ TEST_F(AgentParamTest, Agent_Param_1) {
     EXPECT_EQ(param.dhcp_relay_mode(), true);
     EXPECT_STREQ(param.agent_base_dir().c_str(), "/var/run/contrail");
     EXPECT_EQ(param.pkt0_tx_buffer_count(), 3000);
+    EXPECT_TRUE(param.sandesh_config().disable_object_logs);
 }
 
 TEST_F(AgentParamTest, Agent_Arg_Override_Config_1) {
@@ -375,6 +381,9 @@ TEST_F(AgentParamTest, Default_Cmdline_arg1) {
     EXPECT_STREQ(param.log_level().c_str(), "SYS_ERR");
     EXPECT_TRUE(param.isXenMode());
     EXPECT_EQ(param.agent_mode(), AgentParam::TSN_AGENT);
+    EXPECT_FALSE(param.use_syslog());
+    EXPECT_FALSE(param.log_flow());
+    EXPECT_FALSE(param.log_local());
 }
 
 /* Some command line args have default values. If user has not passed these
@@ -395,6 +404,9 @@ TEST_F(AgentParamTest, Default_Cmdline_arg2) {
     EXPECT_STREQ(param.log_level().c_str(), "SYS_DEBUG");
     EXPECT_TRUE(param.isKvmMode());
     EXPECT_EQ(param.agent_mode(), AgentParam::TOR_AGENT);
+    EXPECT_TRUE(param.use_syslog());
+    EXPECT_TRUE(param.log_flow());
+    EXPECT_TRUE(param.log_local());
 }
 
 /* Some command line args have default values. If user has explicitly passed 
