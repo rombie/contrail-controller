@@ -184,7 +184,6 @@ void Session::SendPacket(const ControlPacket *packet) {
     } else {
         communicator_->SendPacket(remoteHost_, buffer, pktSize);
     }
-    delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
 }
 
 TimeInterval Session::detection_time() {

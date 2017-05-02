@@ -40,6 +40,7 @@ public:
                 boost::asio::ip::udp::endpoint(it->second.second, 1234),
                 pktSize, error);
         }
+        delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
     }
 #if 0
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
