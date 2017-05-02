@@ -98,11 +98,11 @@ void Session::ScheduleRecvDeadlineTimer() {
                       boost::bind(&Session::RecvTimerExpired, this));
 }
 
-BFDState Session::local_state_non_locking() {
+BFDState Session::local_state_non_locking() const {
     return sm_->GetState();
 }
 
-BFDState Session::local_state() {
+BFDState Session::local_state() const {
     tbb::mutex::scoped_lock lock(mutex_);
 
     return local_state_non_locking();
@@ -215,7 +215,7 @@ TimeInterval Session::tx_interval() {
     return boost::posix_time::microseconds(dist(randomGen));
 }
 
-boost::asio::ip::address Session::remote_host() {
+boost::asio::ip::address Session::remote_host() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return remoteHost_;
 }
@@ -231,17 +231,17 @@ void Session::Stop() {
     }
 }
 
-SessionConfig Session::config() {
+SessionConfig Session::config() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return nextConfig_;
 }
 
-BFDRemoteSessionState Session::remote_state() {
+BFDRemoteSessionState Session::remote_state() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return remoteSession_;
 }
 
-Discriminator Session::local_discriminator() {
+Discriminator Session::local_discriminator() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return localDiscriminator_;
 }

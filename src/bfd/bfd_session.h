@@ -60,11 +60,11 @@ class Session {
     void UpdateConfig(const SessionConfig& config);
 
     std::string               toString() const;
-    boost::asio::ip::address  remote_host();
-    BFDState                  local_state();
-    SessionConfig             config();
-    BFDRemoteSessionState     remote_state();
-    Discriminator             local_discriminator();
+    boost::asio::ip::address  remote_host() const;
+    BFDState                  local_state() const;
+    SessionConfig             config() const;
+    BFDRemoteSessionState     remote_state() const;
+    Discriminator             local_discriminator() const;
     bool                      Up() const;
 
     TimeInterval detection_time();
@@ -88,7 +88,7 @@ class Session {
     void SendPacket(const ControlPacket *packet);
     void CallStateChangeCallbacks(const BFD::BFDState &new_state);
 
-    BFDState local_state_non_locking();
+    BFDState local_state_non_locking() const;
 
     mutable tbb::mutex       mutex_;
     Discriminator            localDiscriminator_;

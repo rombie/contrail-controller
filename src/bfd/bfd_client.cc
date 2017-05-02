@@ -34,7 +34,7 @@ Session *Client::GetSession(const boost::asio::ip::address& ip) const {
     return cm_->GetServer()->SessionByAddress(ip);
 }
 
-Session *Client::Up(const boost::asio::ip::address& ip) const {
+bool Client::Up(const boost::asio::ip::address& ip) const {
     Session *session = GetSession(ip);
     return session && session->Up();
 }
