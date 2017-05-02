@@ -12,6 +12,7 @@
 #include "bfd/bfd_session.h"
 #include "bfd/test/bfd_test_utils.h"
 
+#include "io/test/event_manager_test.h"
 #include "base/test/task_test_util.h"
 
 using namespace BFD;
@@ -62,7 +63,18 @@ class ClientTest : public ::testing::Test {
         server_test_(&evm_, &cm_test_), client_test_(&cm_test_) {
     }
 
+    virtual void SetUp() {
+        thread_.reset(new ServerThread(&evm_));
+        thread_->Start();
+    }
+
+    virtual void TearDown() {
+        evm_.Shutdown();
+        thread_->Join();
+    }
+
     EventManager evm_;
+    auto_ptr<ServerThread> thread_;
     Communicator cm_;
     Server server_;
     Client client_;
@@ -84,9 +96,15 @@ TEST_F(ClientTest, Basic) {
     boost::asio::ip::address client_test_address =
         boost::asio::ip::address::from_string("192.168.0.1");
     SessionConfig sc;
-    EXPECT_EQ(kResultCode_Ok, client_.AddConnection( client_address, sc));
+    sc.desiredMinTxInterval = boost::posix_time::milliseconds(300);
+    sc.requiredMinRxInterval = boost::posix_time::milliseconds(500);
+    sc.detectionTimeMultiplier = 5;
+    EXPECT_EQ(kResultCode_Ok, client_.AddConnection(client_address, sc));
 
     SessionConfig sc_t;
+    sc_t.desiredMinTxInterval = boost::posix_time::milliseconds(300);
+    sc_t.requiredMinRxInterval = boost::posix_time::milliseconds(500);
+    sc_t.detectionTimeMultiplier = 5;
     EXPECT_EQ(kResultCode_Ok, client_test_.AddConnection(client_test_address,
                                                          sc_t));
     TASK_UTIL_EXPECT_TRUE(client_.Up(client_address));
