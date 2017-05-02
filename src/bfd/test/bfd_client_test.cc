@@ -18,10 +18,13 @@
 using namespace BFD;
 using namespace std;
 
+using std::pair;
+using std::size_t;
+
 class Communicator : public Connection {
 public:
-    typedef std::map<boost::asio::ip::address,
-            std::pair<Connection *, boost::asio::ip::address> > Links;
+    typedef map<boost::asio::ip::address,
+            pair<Connection *, boost::asio::ip::address> > Links;
 
     Communicator() { }
     virtual ~Communicator() { }
@@ -40,7 +43,7 @@ public:
     }
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
                                boost::asio::ip::udp::endpoint remote_endpoint,
-                               std::size_t bytes_transferred,
+                               size_t bytes_transferred,
                                const boost::system::error_code& error) {
         Connection::HandleReceive(recv_buffer, remote_endpoint,
                                   bytes_transferred, error);
