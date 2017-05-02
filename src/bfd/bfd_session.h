@@ -65,6 +65,7 @@ class Session {
     SessionConfig             config();
     BFDRemoteSessionState     remote_state();
     Discriminator             local_discriminator();
+    bool                      Up() const;
 
     TimeInterval detection_time();
     TimeInterval tx_interval();

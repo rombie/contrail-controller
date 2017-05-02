@@ -274,4 +274,8 @@ int Session::reference_count() {
     return callbacks_.size();
 }
 
+bool Session::Up() const {
+    return local_state() == kUp;
+}
+
 }  // namespace BFD
