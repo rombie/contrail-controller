@@ -58,26 +58,26 @@ Communicator::Links Communicator::links_;
 class ClientTest : public ::testing::Test {
  protected:
     ClientTest() :
-        server_(&evm_, &client_), client_(&client_),
-        server_t_(&evm_, &client_test_), client_t_(&client_test_) {
+        server_(&evm_, &cm_), client_(&cm_),
+        server_test_(&evm_, &cm_test_), client_test_(&cm_test_) {
     }
 
     EventManager evm_;
-    Communicator client_;
+    Communicator cm_;
     Server server_;
     Client client_;
 
     // Test BFD end-points
-    Communicator client_test_;
-    Server server_t_;
-    Client client_t_;
+    Communicator cm_test_;
+    Server server_test_;
+    Client client_test_;
 };
 
 
 TEST_F(ClientTest, Basic) {
     // Connect two bfd links
-    Communicator::links_.insert(make_pair(&client_, &client_test_));
-    Communicator::links_.insert(make_pair(&client_test_, &client_));
+    Communicator::links_.insert(make_pair(&cm_, &cm_test_));
+    Communicator::links_.insert(make_pair(&cm_test_, &cm_));
 
     boost::asio::ip::address client_address =
         boost::asio::ip::address::from_string("10.10.10.1");
@@ -87,13 +87,10 @@ TEST_F(ClientTest, Basic) {
     EXPECT_EQ(kResultCode_Ok, client_.AddConnection( client_address, sc));
 
     SessionConfig sc_t;
-    EXPECT_EQ(kResultCode_Ok,
-              client_t_.AddConnection(client_test_address, sc_t));
-
-    TASK_UTIL_EXPECT_NE(NULL, client_->GetSession(client_address));
-    TASK_UTIL_EXPECT_TRUE(client_->GetSession(client_address)->Up());
-    TASK_UTIL_EXPECT_NE(NULL, client_test_->GetSession(client_address));
-    TASK_UTIL_EXPECT_TRUE(client_test_->GetSession(client_test_address)->Up());
+    EXPECT_EQ(kResultCode_Ok, client_test_.AddConnection(client_test_address,
+                                                         sc_t));
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_address));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_address));
 }
 
 int main(int argc, char **argv) {

@@ -19,6 +19,7 @@ public:
     ResultCode AddConnection(const boost::asio::ip::address &remoteHost,
                              const SessionConfig &config);
     ResultCode DeleteConnection(const boost::asio::ip::address &remoteHost);
+    bool Up(const boost::asio::ip::address& ip) const;
 
 private:
     void Notify(const BFD::BFDState &new_state, Session *session);

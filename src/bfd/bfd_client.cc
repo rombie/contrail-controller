@@ -34,6 +34,11 @@ Session *Client::GetSession(const boost::asio::ip::address& ip) const {
     return cm_->GetServer()->SessionByAddress(ip);
 }
 
+Session *Client::Up(const boost::asio::ip::address& ip) const {
+    Session *session = GetSession(ip);
+    return session && session->Up();
+}
+
 ResultCode Client::AddConnection(
     const boost::asio::ip::address& remoteHost, const SessionConfig &config) {
     if (bfd_sessions_.find(remoteHost) != bfd_sessions_.end()) {
