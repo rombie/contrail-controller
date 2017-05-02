@@ -41,6 +41,7 @@ public:
                 pktSize, error);
         }
     }
+#if 0
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
                                boost::asio::ip::udp::endpoint remote_endpoint,
                                size_t bytes_transferred,
@@ -48,7 +49,8 @@ public:
         Connection::HandleReceive(recv_buffer, remote_endpoint,
                                   bytes_transferred, error);
     }
-    virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
+#endif
+    virtual void NotifyStateChange(const boost::asio::ip::address &remoteHost,
                                    const bool &up) {
     }
     virtual Server *GetServer() const { return server_; }
