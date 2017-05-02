@@ -99,15 +99,15 @@ TEST_F(ClientTest, Basic) {
     cm_test_.links()->insert(make_pair(client_test_address,
                              make_pair(&cm_, client_address)));
     SessionConfig sc;
-    sc.desiredMinTxInterval = boost::posix_time::milliseconds(300);
-    sc.requiredMinRxInterval = boost::posix_time::milliseconds(500);
-    sc.detectionTimeMultiplier = 5;
+    sc.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc.detectionTimeMultiplier = 3;
     EXPECT_EQ(kResultCode_Ok, client_.AddConnection(client_address, sc));
 
     SessionConfig sc_t;
-    sc_t.desiredMinTxInterval = boost::posix_time::milliseconds(300);
-    sc_t.requiredMinRxInterval = boost::posix_time::milliseconds(500);
-    sc_t.detectionTimeMultiplier = 5;
+    sc_t.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc_t.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc_t.detectionTimeMultiplier = 3;
     EXPECT_EQ(kResultCode_Ok, client_test_.AddConnection(client_test_address,
                                                          sc_t));
     TASK_UTIL_EXPECT_TRUE(client_.Up(client_address));
