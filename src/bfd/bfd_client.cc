@@ -22,9 +22,11 @@ Client::Client(Connection *cm, ClientId id) : id_(id), cm_(cm) {
 }
 
 Client::~Client() {
-    for (Sessions::iterator it = bfd_sessions_.begin();
-         it != bfd_sessions_.end(); ++it) {
-        DeleteConnection(*it);
+    for (Sessions::iterator it = bfd_sessions_.begin(), next;
+         it != bfd_sessions_.end(); it = next) {
+        boost::asio::ip::address remoteHost = *it;
+        next = ++it;
+        DeleteConnection(remoteHost);
     }
 }
 

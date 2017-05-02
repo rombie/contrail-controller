@@ -174,16 +174,17 @@ ResultCode Session::ProcessControlPacket(const ControlPacket *packet) {
 
 void Session::SendPacket(const ControlPacket *packet) {
     LOG(DEBUG, __func__);
-    boost::asio::mutable_buffer send =
+    boost::asio::mutable_buffer buffer =
         boost::asio::mutable_buffer(new u_int8_t[kMinimalPacketLength],
                                     kMinimalPacketLength);
     int pktSize = EncodeControlPacket(packet,
-                                      boost::asio::buffer_cast<uint8_t *>(send),
-                                      kMinimalPacketLength);
-    if (pktSize != kMinimalPacketLength)
+        boost::asio::buffer_cast<uint8_t *>(buffer), kMinimalPacketLength);
+    if (pktSize != kMinimalPacketLength) {
         LOG(ERROR, "Unable to encode packet");
-    else
-        communicator_->SendPacket(remoteHost_, send, pktSize);
+    } else {
+        communicator_->SendPacket(remoteHost_, buffer, pktSize);
+    }
+    delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
 }
 
 TimeInterval Session::detection_time() {

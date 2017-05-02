@@ -20,8 +20,8 @@ using namespace std;
 
 class Communicator : public Connection {
 public:
-    typedef std::map<Connection *, Connection *> Links;
-    static Links links_;
+    typedef std::map<boost::asio::ip::address,
+            std::pair<Connection *, boost::asio::ip::address> > Links;
 
     Communicator() { }
     virtual ~Communicator() { }
@@ -30,11 +30,12 @@ public:
                             const boost::asio::mutable_buffer &buffer,
                             int pktSize) {
         // Find other end-point from the links map.
-        Links::const_iterator it = links_.find(this);
+        Links::const_iterator it = links_.find(dstAddr);
         if (it != links_.end()) {
             boost::system::error_code error;
-            it->second->HandleReceive(buffer,
-                boost::asio::ip::udp::endpoint(dstAddr, 1234), pktSize, error);
+            it->second.first->HandleReceive(buffer,
+                boost::asio::ip::udp::endpoint(it->second.second, 1234),
+                pktSize, error);
         }
     }
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
@@ -49,12 +50,12 @@ public:
     }
     virtual Server *GetServer() const { return server_; }
     virtual void SetServer(Server *server) { server_ = server; }
+    Links *links() { return &links_; }
 
 private:
     Server *server_;
+    Links links_;
 };
-
-Communicator::Links Communicator::links_;
 
 class ClientTest : public ::testing::Test {
  protected:
@@ -87,14 +88,16 @@ class ClientTest : public ::testing::Test {
 
 
 TEST_F(ClientTest, Basic) {
-    // Connect two bfd links
-    Communicator::links_.insert(make_pair(&cm_, &cm_test_));
-    Communicator::links_.insert(make_pair(&cm_test_, &cm_));
-
     boost::asio::ip::address client_address =
         boost::asio::ip::address::from_string("10.10.10.1");
     boost::asio::ip::address client_test_address =
         boost::asio::ip::address::from_string("192.168.0.1");
+
+    // Connect two bfd links
+    cm_.links()->insert(make_pair(client_address,
+                        make_pair(&cm_test_, client_test_address)));
+    cm_test_.links()->insert(make_pair(client_test_address,
+                             make_pair(&cm_, client_address)));
     SessionConfig sc;
     sc.desiredMinTxInterval = boost::posix_time::milliseconds(300);
     sc.requiredMinRxInterval = boost::posix_time::milliseconds(500);
