@@ -23,9 +23,9 @@ class SessionConfig;
 class ControlPacket;
 
 struct SessionConfig {
-    TimeInterval desiredMinTxInterval;
-    TimeInterval requiredMinRxInterval;
-    int detectionTimeMultiplier;
+    TimeInterval desiredMinTxInterval;  // delay
+    TimeInterval requiredMinRxInterval; // timeout
+    int detectionTimeMultiplier;        // max-retries ?
 };
 
 struct BFDRemoteSessionState {
@@ -49,7 +49,7 @@ class Session {
             EventManager *evm,
             const SessionConfig &config,
             Connection *communicator);
-    ~Session();
+    virtual ~Session();
 
     void Stop();
     ResultCode ProcessControlPacket(const ControlPacket *packet);
@@ -60,11 +60,12 @@ class Session {
     void UpdateConfig(const SessionConfig& config);
 
     std::string               toString() const;
-    boost::asio::ip::address  remote_host();
-    BFDState                  local_state();
-    SessionConfig             config();
-    BFDRemoteSessionState     remote_state();
-    Discriminator             local_discriminator();
+    boost::asio::ip::address  remote_host() const;
+    BFDState                  local_state() const;
+    SessionConfig             config() const;
+    BFDRemoteSessionState     remote_state() const;
+    Discriminator             local_discriminator() const;
+    bool                      Up() const;
 
     TimeInterval detection_time();
     TimeInterval tx_interval();
@@ -74,18 +75,20 @@ class Session {
     // reference count drops to zero.
     int reference_count();
 
+ protected:
+    bool RecvTimerExpired();
+
  private:
     typedef std::map<ClientId, StateMachine::ChangeCb> Callbacks;
 
     bool SendTimerExpired();
-    bool RecvTimerExpired();
     void ScheduleSendTimer();
     void ScheduleRecvDeadlineTimer();
     void PreparePacket(const SessionConfig &config, ControlPacket *packet);
     void SendPacket(const ControlPacket *packet);
     void CallStateChangeCallbacks(const BFD::BFDState &new_state);
 
-    BFDState local_state_non_locking();
+    BFDState local_state_non_locking() const;
 
     mutable tbb::mutex       mutex_;
     Discriminator            localDiscriminator_;

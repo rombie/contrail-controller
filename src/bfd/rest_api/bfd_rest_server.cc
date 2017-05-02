@@ -7,10 +7,11 @@
 #include <vector>
 #include <string>
 
-#include <boost/regex.hpp>
-#include <boost/bind.hpp>
-#include <boost/random.hpp>
 #include <boost/assign.hpp>
+#include <boost/bind.hpp>
+#include <boost/foreach.hpp>
+#include <boost/random.hpp>
+#include <boost/regex.hpp>
 
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
@@ -96,26 +97,6 @@ RESTServer::RESTServer(Server* bfd_server) :
         bfd_server_(bfd_server) {
 }
 
-void RESTServer::OnHttpSessionEvent(HttpSession* session,
-                                    enum TcpSession::Event event) {
-    tbb::mutex::scoped_lock lock(mutex_);
-
-    if (event == TcpSession::CLOSE) {
-        HttpSessionMap::iterator it = http_session_map_.find(session);
-        if (it != http_session_map_.end()) {
-            ClientId client_id = it->second;
-            ClientMap::iterator jt = client_sessions_.find(client_id);
-            if (jt != client_sessions_.end()) {
-                delete jt->second;
-                client_sessions_.erase(jt);
-            }
-            http_session_map_.erase(it);
-        } else {
-            LOG(ERROR, "Unable to find client session");
-        }
-    }
-}
-
 RESTClientSession* RESTServer::GetClientSession(ClientId client_id,
                                                 HttpSession* session) {
     ClientMap::iterator it = client_sessions_.find(client_id);
@@ -133,9 +114,6 @@ void RESTServer::CreateRESTClientSession(HttpSession* session,
     RESTClientSession* client_session =
         new RESTClientSession(bfd_server_, client_id);
     client_sessions_[client_id] = client_session;
-    http_session_map_[session] = client_id;
-    session->RegisterEventCb(boost::bind(&RESTServer::OnHttpSessionEvent,
-                                         this, _1, _2));
 
     contrail_rapidjson::Document document;
     document.SetObject();

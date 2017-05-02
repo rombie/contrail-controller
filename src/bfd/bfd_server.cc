@@ -16,6 +16,13 @@
 
 namespace BFD {
 
+Server::Server(EventManager *evm, Connection *communicator) :
+        evm_(evm),
+        communicator_(communicator),
+        session_manager_(evm) {
+    communicator->SetServer(this);
+}
+
 Session* Server::GetSession(const ControlPacket *packet) {
     if (packet->receiver_discriminator)
         return session_manager_.SessionByDiscriminator(
@@ -29,9 +36,31 @@ Session *Server::SessionByAddress(const boost::asio::ip::address &address) {
     return session_manager_.SessionByAddress(address);
 }
 
-ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
+ResultCode Server::ProcessControlPacket(
+        boost::asio::ip::udp::endpoint remote_endpoint,
+        const boost::asio::const_buffer &recv_buffer,
+        std::size_t bytes_transferred, const boost::system::error_code& error) {
     tbb::mutex::scoped_lock lock(mutex_);
+    LOG(DEBUG, __func__);
 
+    if (bytes_transferred != (std::size_t) kMinimalPacketLength) {
+        LOG(ERROR, __func__ <<  "Wrong packet size: " << bytes_transferred);
+        return kResultCode_InvalidPacket;
+    }
+
+    boost::scoped_ptr<ControlPacket> packet(ParseControlPacket(
+        boost::asio::buffer_cast<const uint8_t *>(recv_buffer),
+        bytes_transferred));
+    if (packet == NULL) {
+        LOG(ERROR, __func__ <<  "Unable to parse packet");
+        return kResultCode_InvalidPacket;
+    }
+
+    packet->sender_host = remote_endpoint.address();
+    return ProcessControlPacket(packet.get());
+}
+
+ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
     ResultCode result;
     result = packet->Verify();
     if (result != kResultCode_Ok) {
@@ -52,7 +81,6 @@ ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
         return result;
     }
     LOG(DEBUG, "Packet correctly processed");
-
     return kResultCode_Ok;
 }
 

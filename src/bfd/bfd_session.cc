@@ -98,11 +98,11 @@ void Session::ScheduleRecvDeadlineTimer() {
                       boost::bind(&Session::RecvTimerExpired, this));
 }
 
-BFDState Session::local_state_non_locking() {
+BFDState Session::local_state_non_locking() const {
     return sm_->GetState();
 }
 
-BFDState Session::local_state() {
+BFDState Session::local_state() const {
     tbb::mutex::scoped_lock lock(mutex_);
 
     return local_state_non_locking();
@@ -173,7 +173,17 @@ ResultCode Session::ProcessControlPacket(const ControlPacket *packet) {
 }
 
 void Session::SendPacket(const ControlPacket *packet) {
-    communicator_->SendPacket(remoteHost_, packet);
+    LOG(DEBUG, __func__);
+    boost::asio::mutable_buffer buffer =
+        boost::asio::mutable_buffer(new u_int8_t[kMinimalPacketLength],
+                                    kMinimalPacketLength);
+    int pktSize = EncodeControlPacket(packet,
+        boost::asio::buffer_cast<uint8_t *>(buffer), kMinimalPacketLength);
+    if (pktSize != kMinimalPacketLength) {
+        LOG(ERROR, "Unable to encode packet");
+    } else {
+        communicator_->SendPacket(remoteHost_, buffer, pktSize);
+    }
 }
 
 TimeInterval Session::detection_time() {
@@ -205,7 +215,7 @@ TimeInterval Session::tx_interval() {
     return boost::posix_time::microseconds(dist(randomGen));
 }
 
-boost::asio::ip::address Session::remote_host() {
+boost::asio::ip::address Session::remote_host() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return remoteHost_;
 }
@@ -221,17 +231,17 @@ void Session::Stop() {
     }
 }
 
-SessionConfig Session::config() {
+SessionConfig Session::config() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return nextConfig_;
 }
 
-BFDRemoteSessionState Session::remote_state() {
+BFDRemoteSessionState Session::remote_state() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return remoteSession_;
 }
 
-Discriminator Session::local_discriminator() {
+Discriminator Session::local_discriminator() const {
     tbb::mutex::scoped_lock lock(mutex_);
     return localDiscriminator_;
 }
@@ -262,6 +272,10 @@ void Session::UpdateConfig(const SessionConfig& config) {
 int Session::reference_count() {
     tbb::mutex::scoped_lock lock(mutex_);
     return callbacks_.size();
+}
+
+bool Session::Up() const {
+    return local_state() == kUp;
 }
 
 }  // namespace BFD

@@ -2,6 +2,7 @@
  * Copyright (c) 2014 CodiLime, Inc. All rights reserved.
  */
 
+#include "bfd/bfd_control_packet.h"
 #include "bfd/bfd_server.h"
 #include "bfd/bfd_session.h"
 #include "bfd/test/bfd_test_utils.h"
@@ -18,10 +19,9 @@ class ServerTest : public ::testing::Test {
 };
 
 static void processPacketAndVerifyResult(
-    boost::function<ResultCode(const ControlPacket *)> processPacket,
-                                         const ControlPacket *packet) {
-    ResultCode result = processPacket(packet);
-    LOG(INFO, "Result code:" << result);
+        boost::function<void(const ControlPacket *)> processPacket,
+        const ControlPacket *packet) {
+    processPacket(packet);
 }
 
 TEST_F(ServerTest, Test2) {

@@ -792,6 +792,9 @@ public:
     ArpProto *GetArpProto() const { return arp_proto_; }
     void SetArpProto(ArpProto *proto) { arp_proto_ = proto; }
 
+    BfdProto *GetBfdProto() const { return bfd_proto_; }
+    void SetBfdProto(BfdProto *proto) { bfd_proto_ = proto; }
+
     DhcpProto *GetDhcpProto() const { return dhcp_proto_; }
     void SetDhcpProto(DhcpProto *proto) { dhcp_proto_ = proto; }
 
@@ -1227,6 +1230,7 @@ private:
     std::string pkt_interface_name_;
 
     ArpProto *arp_proto_;
+    BfdProto *bfd_proto_;
     DhcpProto *dhcp_proto_;
     DnsProto *dns_proto_;
     IcmpProto *icmp_proto_;

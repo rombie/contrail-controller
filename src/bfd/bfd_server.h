@@ -10,6 +10,7 @@
 #include <tbb/mutex.h>
 
 #include <map>
+#include <boost/asio.hpp>
 #include <boost/asio/ip/address.hpp>
 
 class EventManager;
@@ -23,12 +24,12 @@ class SessionConfig;
 // This class manages sessions with other BFD peers.
 class Server {
  public:
-    Server(EventManager *evm, Connection *communicator) :
-        evm_(evm),
-        communicator_(communicator),
-        session_manager_(evm) {}
-
+    Server(EventManager *evm, Connection *communicator);
     ResultCode ProcessControlPacket(const ControlPacket *packet);
+    ResultCode ProcessControlPacket(
+        boost::asio::ip::udp::endpoint remote_endpoint,
+        const boost::asio::const_buffer &recv_buffer,
+        std::size_t bytes_transferred, const boost::system::error_code& error);
 
     // If a BFD session with specified [remoteHost] already exists, its
     // configuration is updated with [config], otherwise it gets created.
@@ -42,6 +43,7 @@ class Server {
     ResultCode RemoveSessionReference(const boost::asio::ip::address
                                       &remoteHost);
     Session *SessionByAddress(const boost::asio::ip::address &address);
+    Connection *communicator() const { return communicator_; }
 
  private:
     class SessionManager : boost::noncopyable {
