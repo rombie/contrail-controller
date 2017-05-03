@@ -12,6 +12,8 @@
 #include <string>
 #include <boost/intrusive_ptr.hpp>
 
+#include "io/tcp_session.h"
+
 class HttpSession;
 
 namespace BFD {
@@ -35,6 +37,8 @@ class RESTClientSession {
  private:
     typedef std::set<boost::asio::ip::address> Sessions;
     typedef std::set<boost::intrusive_ptr<HttpSession> > HttpSessionSet;
+
+    void OnHttpSessionEvent(HttpSession* session, enum TcpSession::Event event);
 
     ClientId client_id_;
     Server *server_;

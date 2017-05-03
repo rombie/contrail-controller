@@ -211,6 +211,13 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
         }
     }
 
+    // Look for BFD packets if corresponding service is enabled
+    if (intf->bfd_enabled() && (pkt_type == PktType::UDP)) {
+        if (pkt_info->dport == BFD_SERVER_PORT) {
+            return BFD;
+        }
+    }
+
     // Look for IP packets that need ARP resolution
     if (pkt_info->ip && hdr.cmd == AgentHdr::TRAP_RESOLVE) {
         return ARP;

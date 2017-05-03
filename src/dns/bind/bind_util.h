@@ -25,6 +25,7 @@ do {                                                                          \
 } while (false)                                                               \
 
 #define DNS_SERVER_PORT 53
+#define BFD_SERVER_PORT 3785
 
 // DNS Class
 #define DNS_CLASS_IN   1

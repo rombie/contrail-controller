@@ -28,9 +28,11 @@ void RESTClientSession::Notify() {
     if (!bfd_sessions_.empty() && http_sessions_.empty()) {
         changed_ = true;
         return;
-    } else {
-        changed_ = false;
     }
+    changed_ = false;
+
+    if (http_sessions_.empty())
+        return;
 
     REST::JsonStateMap map;
     for (Sessions::iterator it = bfd_sessions_.begin();
@@ -52,8 +54,20 @@ void RESTClientSession::Notify() {
     http_sessions_.clear();
 }
 
+// typedef std::map<HttpSession *, ClientId> HttpSessionMap;
+// HttpSessionMap http_session_map_;
+void RESTClientSession::OnHttpSessionEvent(HttpSession* session,
+                                           enum TcpSession::Event event) {
+    if (event == TcpSession::CLOSE) {
+        if (!http_sessions_.erase(session))
+            LOG(ERROR, "Unable to find client session");
+    }
+}
+
 void RESTClientSession::AddMonitoringHttpSession(HttpSession* session) {
     http_sessions_.insert(session);
+    session->RegisterEventCb(boost::bind(&RESTClientSession::OnHttpSessionEvent,
+                                         this, _1, _2));
     if (changed_)
         Notify();
 }
