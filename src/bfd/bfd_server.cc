@@ -24,11 +24,11 @@ Server::Server(EventManager *evm, Connection *communicator) :
 }
 
 Session* Server::GetSession(const ControlPacket *packet) {
-    if (packet->receiver_discriminator)
+    if (packet->receiver_discriminator) {
         return session_manager_.SessionByDiscriminator(
                 packet->receiver_discriminator);
-    return session_manager_.SessionByAddress(
-            packet->sender_host);
+    }
+    return session_manager_.SessionByAddress(packet->sender_host);
 }
 
 Session *Server::SessionByAddress(const boost::asio::ip::address &address) {
@@ -37,6 +37,7 @@ Session *Server::SessionByAddress(const boost::asio::ip::address &address) {
 }
 
 ResultCode Server::ProcessControlPacket(
+        boost::asio::ip::udp::endpoint local_endpoint,
         boost::asio::ip::udp::endpoint remote_endpoint,
         const boost::asio::const_buffer &recv_buffer,
         std::size_t bytes_transferred, const boost::system::error_code& error) {
@@ -57,6 +58,9 @@ ResultCode Server::ProcessControlPacket(
     }
 
     packet->sender_host = remote_endpoint.address();
+    packaet->bfd_port = local_endpoint.port();
+    packet->if_index = 0;
+    packet->vrf_index = 0;
     return ProcessControlPacket(packet.get());
 }
 
@@ -85,8 +89,8 @@ ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
 }
 
 ResultCode Server::ConfigureSession(const boost::asio::ip::address &remoteHost,
-                                     const SessionConfig &config,
-                                     Discriminator *assignedDiscriminator) {
+                                    const SessionConfig &config,
+                                    Discriminator *assignedDiscriminator) {
     tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.ConfigureSession(remoteHost, config,
                                              communicator_,

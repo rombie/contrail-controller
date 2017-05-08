@@ -19,6 +19,11 @@ enum BFDState {
     kAdminDown, kDown, kInit, kUp
 };
 
+enum Port {
+    kSingleHop = 3784,
+    kMultiHop = 4784
+};
+
 enum AuthType {
     kReserved,
     kSimplePassword,

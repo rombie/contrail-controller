@@ -27,6 +27,7 @@ class Server {
     Server(EventManager *evm, Connection *communicator);
     ResultCode ProcessControlPacket(const ControlPacket *packet);
     ResultCode ProcessControlPacket(
+        boost::asio::ip::udp::endpoint local_endpoint,
         boost::asio::ip::udp::endpoint remote_endpoint,
         const boost::asio::const_buffer &recv_buffer,
         std::size_t bytes_transferred, const boost::system::error_code& error);

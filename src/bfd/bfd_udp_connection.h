@@ -20,8 +20,8 @@ class UDPConnectionManager : public Connection {
                                  const boost::system::error_code& error)>
                 RecvCallback;
 
-    UDPConnectionManager(EventManager *evm, int recvPort = kRecvPortDefault,
-                         int remotePort = kRecvPortDefault);
+    UDPConnectionManager(EventManager *evm, int recvPort = kSingleHop,
+                         int remotePort = kSingleHop);
     ~UDPConnectionManager();
     void RegisterCallback(RecvCallback callback);
 
@@ -40,7 +40,6 @@ class UDPConnectionManager : public Connection {
                                    const bool &up);
 
  private:
-    static const int kRecvPortDefault = 3784;
     static const int kSendPortMin = 49152;
     static const int kSendPortMax = 65535;
 

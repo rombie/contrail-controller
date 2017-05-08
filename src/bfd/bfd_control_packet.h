@@ -24,7 +24,10 @@ struct ControlPacket : public ParseObject {
         multipoint(false),
         length(kMinimalPacketLength),
         diagnostic(kNoDiagnostic),
-        required_min_echo_rx_interval(boost::posix_time::microseconds(0)) {
+        required_min_echo_rx_interval(boost::posix_time::microseconds(0),
+        bfd_port(0),
+        if_index(0),
+        vrf_index(0) {
     }
 
     std::string toString() const;
@@ -48,6 +51,9 @@ struct ControlPacket : public ParseObject {
     TimeInterval required_min_rx_interval;
     TimeInterval required_min_echo_rx_interval;
 
+    uint16_t bfd_port;
+    uint32_t if_index;
+    uint32_t vrf_index;
     boost::asio::ip::address sender_host;
 };
 
