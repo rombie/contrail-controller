@@ -15,8 +15,6 @@ class Server;
 
 class Connection {
 public:
-    Connection();
-    virtual ~Connection();
     virtual void SendPacket(
             const boost::asio::ip::udp::endpoint &local_endpoint,
             const boost::asio::ip::udp::endpoint &remote_endpoint,
