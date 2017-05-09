@@ -87,6 +87,7 @@ class Session {
     void PreparePacket(const SessionConfig &config, ControlPacket *packet);
     void SendPacket(const ControlPacket *packet);
     void CallStateChangeCallbacks(const BFD::BFDState &new_state);
+    boost::asio::ip::udp::endpoint GetRandomLocalEndPoint() const;
 
     BFDState local_state_non_locking() const;
 
@@ -101,6 +102,8 @@ class Session {
     boost::scoped_ptr<StateMachine> sm_;
     bool                     pollSequence_;
     Connection               *communicator_;
+    boost::asio::ip::udp::endpoint local_endpoint_;
+    boost::asio::ip::udp::endpoint remote_endpoint_;
     bool                     stopped_;
     Callbacks                callbacks_;
 };

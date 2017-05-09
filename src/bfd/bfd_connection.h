@@ -14,10 +14,13 @@ class ControlPacket;
 class Server;
 
 class Connection {
- public:
-    virtual void SendPacket(const boost::asio::ip::address &dstAddr,
-                            const boost::asio::mutable_buffer &packet,
-                            int pktSize) = 0;
+public:
+    Connection();
+    virtual ~Connection();
+    virtual void SendPacket(
+            const boost::asio::ip::udp::endpoint &local_endpoint,
+            const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const boost::asio::mutable_buffer &packet, int pktSize) = 0;
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
                     const boost::asio::ip::udp::endpoint &local_endpoint,
                     const boost::asio::ip::udp::endpoint &remote_endpoint,
@@ -31,6 +34,9 @@ class Connection {
                                    const bool &up) = 0;
     virtual Server *GetServer() const = 0;
     virtual void SetServer(Server *server) = 0;
+private:
+    uint16_t src_port_;
+    uint16_t dst_port_;
 };
 
 }  // namespace BFD

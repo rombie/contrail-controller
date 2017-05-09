@@ -18,11 +18,11 @@
 namespace BFD {
 
 Session::Session(Discriminator localDiscriminator,
-        boost::asio::ip::address remoteHost,
+        const Sessioney &key,
         EventManager *evm,
         const SessionConfig &config, Connection *communicator) :
         localDiscriminator_(localDiscriminator),
-        remoteHost_(remoteHost),
+        key_(key),
         sendTimer_(TimerManager::CreateTimer(*evm->io_service(),
                                              "BFD TX timer")),
         recvTimer_(TimerManager::CreateTimer(*evm->io_service(),
@@ -32,11 +32,20 @@ Session::Session(Discriminator localDiscriminator,
         sm_(CreateStateMachine(evm)),
         pollSequence_(false),
         communicator_(communicator),
+        local_endpoint_(GetRandomLocalEndPoint()),
+        remote_endpoint_(key.remote_host),
         stopped_(false) {
     ScheduleSendTimer();
     ScheduleRecvDeadlineTimer();
     sm_->SetCallback(boost::optional<StateMachine::ChangeCb>(
         boost::bind(&Session::CallStateChangeCallbacks, this, _1)));
+}
+
+boost::asio::ip::udp::endpoint Session::GetRandomLocalEndPoint() const {
+    boost::random::uniform_int_distribution<> dist(kSendPortMin, kSendPortMax);
+    boost::asio::ip::udp::endpoint local_endpoint;
+    local_endpoint.port(dist(randomGen));
+    return local_endpoint;
 }
 
 Session::~Session() {
@@ -68,7 +77,7 @@ std::string Session::toString() const {
     tbb::mutex::scoped_lock lock(mutex_);
 
     std::ostringstream out;
-    out << "RemoteHost: " << remoteHost_ << "\n";
+    out << "SessoonKey: " << key_ << "\n";
     out << "LocalDiscriminator: 0x" << std::hex << localDiscriminator_ << "\n";
     out << "RemoteDiscriminator: 0x" << std::hex << remoteSession_.discriminator
         << "\n";
@@ -182,7 +191,10 @@ void Session::SendPacket(const ControlPacket *packet) {
     if (pktSize != kMinimalPacketLength) {
         LOG(ERROR, "Unable to encode packet");
     } else {
-        communicator_->SendPacket(remoteHost_, buffer, pktSize);
+        boost::asio::ip::udp::endpoint local_endpoint();
+        boost::asio::ip::udp::endpoint remote_endpoint(key_.address());
+        communicator_->SendPacket(local_endpoint, remote_endpoint, buffer,
+                                  pktSize);
     }
 }
 

@@ -55,9 +55,10 @@ class SessionTest : public ::testing::Test {
     }
     class TestConnection : public Connection {
       public:
-        virtual void SendPacket(const boost::asio::ip::address &dstAddr,
-                            const boost::asio::mutable_buffer &pkt,
-                            int pktSize) {
+        virtual void SendPacket(
+            const boost::asio::ip::udp::endpoint &local_endpoint,
+            const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const boost::asio::mutable_buffer &pkt, int pktSize) {
             ControlPacket *packet =
                 ParseControlPacket(boost::asio::buffer_cast<const uint8_t *>(
                                        pkt), pktSize);

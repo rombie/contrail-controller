@@ -145,8 +145,9 @@ ResultCode Server::SessionManager::RemoveSessionReference(
     return kResultCode_Ok;
 }
 
-ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
-        const SessionConfig &config, Connection *communicator,
+ResultCode Server::SessionManager::ConfigureSession(const SessionConfig &config,
+        const SessionKey &key, const boost::asio::ip::address &local_host,
+        Connection *communicator,
         Discriminator *assignedDiscriminator) {
     Session *session = SessionByKey(key);
     if (session) {
@@ -162,7 +163,7 @@ ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
     }
 
     *assignedDiscriminator = GenerateUniqueDiscriminator();
-    session = new Session(*assignedDiscriminator, remoteHost, evm_, config,
+    session = new Session(*assignedDiscriminator, key, evm_, config,
                           communicator);
 
     by_discriminator_[*assignedDiscriminator] = session;

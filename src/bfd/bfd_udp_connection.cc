@@ -92,18 +92,22 @@ void UDPConnectionManager::SendPacket(boost::asio::ip::address remoteHost,
     int pktSize = EncodeControlPacket(packet,
                                       boost::asio::buffer_cast<uint8_t *>(send),
                                       kMinimalPacketLength);
-    if (pktSize != kMinimalPacketLength)
+    if (pktSize != kMinimalPacketLength) {
         LOG(ERROR, "Unable to encode packet");
-    else
-        SendPacket(remoteHost, send, pktSize);
+        return;
+    }
+    boost::asio::ip::udp::endpoint remote_endpoint(remoteHost,
+                                                   udpSend_->remotePort());
+    SendPacket(boost::asio::ip::udp::endpoint(), remote_endpoint, send,
+               pktSize);
 }
 
-void UDPConnectionManager::SendPacket(const boost::asio::ip::address &dstAddr,
-                                      const boost::asio::mutable_buffer &send,
-                                      int pktSize) {
+void UDPConnectionManager::SendPacket(
+        const boost::asio::ip::udp::endpoint &local_endpoint,
+        const boost::asio::ip::udp::endpoint &remote_endpoint,
+        const boost::asio::mutable_buffer &send, int pktSize) {
     LOG(DEBUG, __func__);
-    boost::asio::ip::udp::endpoint dstEndpoint(dstAddr, udpSend_->remotePort());
-    udpSend_->StartSend(dstEndpoint, pktSize, send);
+    udpSend_->StartSend(remote_ndpoint, pktSize, send);
 }
 
 UDPConnectionManager::~UDPConnectionManager() {

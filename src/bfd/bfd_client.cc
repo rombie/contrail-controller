@@ -46,8 +46,8 @@ bool Client::Up(const boost::asio::ip::address& ip) const {
 
 // Add/Update BFD connection to a remote address.
 ResultCode Client::AddConnection(const SessionConfig &config,
-    const boost::asio::ip::address& remoteHost, const SessionIndex index,
-    bool multi_hop) {
+    const boost::asio::ip::address& remoteHost,
+    const boost::asio::ip::address& localHost, const SessionIndex index) {
     SessoonKey key = SessionKey(remoteHost, index);
     if (bfd_sessions_.find(make_pair(key)) !=
             bfd_sessions_.end()) {

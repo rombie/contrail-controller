@@ -29,17 +29,18 @@ public:
     Communicator() { }
     virtual ~Communicator() { }
 
-    virtual void SendPacket(const boost::asio::ip::address &dstAddr,
-                            const boost::asio::mutable_buffer &buffer,
-                            int pktSize) {
+    virtual void SendPacket(
+            const boost::asio::ip::udp::endpoint &local_endpoint,
+            const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const boost::asio::mutable_buffer &buffer, int pktSize) {
         // Find other end-point from the links map.
         Links::const_iterator it = links_.find(dstAddr);
         if (it != links_.end()) {
             boost::system::error_code error;
-            it->second.first->HandleReceive(buffer,
-                boost::asio::ip::udp::endpoint(dstAddr, 1234),
-                boost::asio::ip::udp::endpoint(it->second.second, 1234),
-                pktSize, error);
+            it->second.first->HandleReceive(buffer, local_endpoint,
+                remote_endpoint, pktSize, error);
+                // boost::asio::ip::udp::endpoint(dstAddr, 1234),
+                // boost::asio::ip::udp::endpoint(it->second.second, 1234),
         }
         delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
     }

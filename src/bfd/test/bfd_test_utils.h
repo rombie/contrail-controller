@@ -90,10 +90,12 @@ class TestCommunicator : public Connection {
                      const boost::asio::ip::address &hostAddr)
       : manager_(manager), hostAddr_(hostAddr) {}
 
-    virtual void SendPacket(const boost::asio::ip::address &dstAddr,
-                            const boost::asio::mutable_buffer &packet,
-                            int pktSize) {
-        manager_->sendPacket(hostAddr_, dstAddr, packet, pktSize);
+    virtual void SendPacket(
+        const boost::asio::ip::udp::endpoint &local_endpoint,
+        const boost::asio::ip::udp::endpoint &remote_endpoint,
+        const boost::asio::mutable_buffer &packet, int pktSize) {
+        manager_->sendPacket(hostAddr_, remote_endpoint.address(), packet,
+                             pktSize);
     }
 
     virtual ~TestCommunicator() { }

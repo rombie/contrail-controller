@@ -37,9 +37,10 @@ public:
     Communicator() { }
     virtual ~Communicator() { }
 
-    virtual void SendPacket(const boost::asio::ip::address &dstAddr,
-                            const boost::asio::mutable_buffer &send,
-                            int pktSize) {
+    virtual void SendPacket(
+            const boost::asio::ip::udp::endpoint &local_endpoint,
+            const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const boost::asio::mutable_buffer &send, int pktSize) {
     }
     virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
                                    const bool &up) {
