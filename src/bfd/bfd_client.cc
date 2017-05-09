@@ -26,9 +26,9 @@ Client::Client(Connection *cm, ClientId id) : id_(id), cm_(cm) {
 Client::~Client() {
     for (Sessions::iterator it = bfd_sessions_.begin(), next;
          it != bfd_sessions_.end(); it = next) {
-        boost::asio::ip::address remoteHost = *it;
+        boost::asio::ip::address remote_address = *it;
         next = ++it;
-        DeleteConnection(remoteHost);
+        DeleteConnection(remote_address);
     }
 }
 
@@ -46,21 +46,22 @@ bool Client::Up(const boost::asio::ip::address& ip) const {
 
 // Add/Update BFD connection to a remote address.
 ResultCode Client::AddConnection(const SessionConfig &config,
-    const boost::asio::ip::address& remoteHost,
-    const boost::asio::ip::address& localHost, const SessionIndex index) {
-    SessoonKey key = SessionKey(remoteHost, index);
-    if (bfd_sessions_.find(make_pair(key)) !=
-            bfd_sessions_.end()) {
+    const boost::asio::ip::address& remote_address,
+    const boost::asio::ip::address& local_address,
+    const SessionIndex index, bool multi_hop) {
+    SessoonKey key = SessionKey(local_address, remote_address, index,
+        multi_hop ? kMultiHop : kSingleHop);
+    if (bfd_sessions_.find(key) != bfd_sessions_.end()) {
         // TODO(bfd) implement configuration update
         return kResultCode_Error;
     }
 
     Discriminator discriminator;
-    ResultCode result =
-      cm_->GetServer()->ConfigureSession(remoteHost, config, &discriminator);
+    ResultCode result = cm_->GetServer()->ConfigureSession(key, config,
+                                                           &discriminator);
     bfd_sessions_.insert(key);
 
-    Session *session = GetSession(remoteHost);
+    Session *session = GetSession(remote_address);
     if (!session)
       return kResultCode_Error;
     session->RegisterChangeCallback(id_, bind(&Client::Notify, this, _1,
@@ -74,8 +75,8 @@ void Client::Notify(const BFD::BFDState &new_state, Session *session) {
 }
 
 ResultCode Client::DeleteConnection(
-    const boost::asio::ip::address& remoteHost, const SessionIndex index) {
-    SessoonKey key = SessionKey(remoteHost, index);
+    const boost::asio::ip::address& remote_address, const SessionIndex index) {
+    SessoonKey key = SessionKey(remote_address, index);
     if (bfd_sessions_.find(key) == bfd_sessions_.end()) {
         return kResultCode_UnknownSession;
     }

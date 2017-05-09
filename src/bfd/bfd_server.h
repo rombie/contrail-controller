@@ -35,7 +35,7 @@ class Server {
     // If a BFD session with specified [remoteHost] already exists, its
     // configuration is updated with [config], otherwise it gets created.
     // ! TODO implement configuration update
-    ResultCode ConfigureSession(const boost::asio::ip::address &remoteHost,
+    ResultCode ConfigureSession(const SessionKey &key,
                                 const SessionConfig &config,
                                 Discriminator *assignedDiscriminator);
 
@@ -52,13 +52,10 @@ class Server {
         explicit SessionManager(EventManager *evm) : evm_(evm) {}
         ~SessionManager();
 
-        // see: Server::ConfigureSession
-        ResultCode ConfigureSession(const boost::asio::ip::address
-                                    &remoteHost,
+        ResultCode ConfigureSession(const SessionKey &key,
                                     const SessionConfig &config,
                                     Connection *communicator,
-                                    Discriminator
-                                    *assignedDiscriminator);
+                                    Discriminator *assignedDiscriminator);
 
         // see: Server:RemoveSessionReference
         ResultCode RemoveSessionReference(const SessionKey &key);

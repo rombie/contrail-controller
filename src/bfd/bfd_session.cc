@@ -32,8 +32,8 @@ Session::Session(Discriminator localDiscriminator,
         sm_(CreateStateMachine(evm)),
         pollSequence_(false),
         communicator_(communicator),
-        local_endpoint_(GetRandomLocalEndPoint()),
-        remote_endpoint_(key.remote_host),
+        local_endpoint_(key.local_address, GetRandomLocalPort()),
+        remote_endpoint_(key.remote_address, key.remote_port),
         stopped_(false) {
     ScheduleSendTimer();
     ScheduleRecvDeadlineTimer();
@@ -41,11 +41,9 @@ Session::Session(Discriminator localDiscriminator,
         boost::bind(&Session::CallStateChangeCallbacks, this, _1)));
 }
 
-boost::asio::ip::udp::endpoint Session::GetRandomLocalEndPoint() const {
+uint16_t Session::GetRandomLocalPort() const {
     boost::random::uniform_int_distribution<> dist(kSendPortMin, kSendPortMax);
-    boost::asio::ip::udp::endpoint local_endpoint;
-    local_endpoint.port(dist(randomGen));
-    return local_endpoint;
+    return dist(randomGen);
 }
 
 Session::~Session() {
@@ -191,9 +189,7 @@ void Session::SendPacket(const ControlPacket *packet) {
     if (pktSize != kMinimalPacketLength) {
         LOG(ERROR, "Unable to encode packet");
     } else {
-        boost::asio::ip::udp::endpoint local_endpoint();
-        boost::asio::ip::udp::endpoint remote_endpoint(key_.address());
-        communicator_->SendPacket(local_endpoint, remote_endpoint, buffer,
+        communicator_->SendPacket(local_endpoint_, remote_endpoint_, buffer,
                                   pktSize);
     }
 }

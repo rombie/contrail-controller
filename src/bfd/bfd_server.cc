@@ -30,13 +30,11 @@ Session* Server::GetSession(const ControlPacket *packet) {
     }
 
     // Use ifindex for single hop and vrfindex for multihop sessions.
-    if (packet->bfd_port == kMultiHop) {
-        return session_manager_.SessionByKey(SessionKey(packet->sender_host,
-                                                        packet->vrf_index));
-    }
-
-    return session_manager_.SessionByKey(SessionKey(packet->sender_host,
-                                                    packet->if_index));
+    SessionIndex index = packet->local_endpoint.port() == kMultiHop ?
+                            packet->vrf_index : packet->if_index;
+    return session_manager_.SessionByKey(SessionKey(packet->local_host,
+                                                    packet->sender_host,
+                                                    index, packet->port);
 }
 
 Session *Server::SessionByKey(const boost::asio::ip::address &address,
@@ -66,8 +64,8 @@ ResultCode Server::ProcessControlPacket(
         return kResultCode_InvalidPacket;
     }
 
-    packet->sender_host = remote_endpoint.address();
-    packaet->bfd_port = local_endpoint.port();
+    packet->local_endpoint = local_endpoint;
+    packet->remote_endpoint = remote_endpoint;
     packet->if_index = 0;
     packet->vrf_index = 0;
     return ProcessControlPacket(packet.get());
@@ -97,12 +95,11 @@ ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
     return kResultCode_Ok;
 }
 
-ResultCode Server::ConfigureSession(const boost::asio::ip::address &remoteHost,
+ResultCode Server::ConfigureSession(const SessionKey &key,
                                     const SessionConfig &config,
                                     Discriminator *assignedDiscriminator) {
     tbb::mutex::scoped_lock lock(mutex_);
-    return session_manager_.ConfigureSession(remoteHost, config,
-                                             communicator_,
+    return session_manager_.ConfigureSession(key, config, communicator_,
                                              assignedDiscriminator);
 }
 
@@ -145,9 +142,8 @@ ResultCode Server::SessionManager::RemoveSessionReference(
     return kResultCode_Ok;
 }
 
-ResultCode Server::SessionManager::ConfigureSession(const SessionConfig &config,
-        const SessionKey &key, const boost::asio::ip::address &local_host,
-        Connection *communicator,
+ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
+        const SessionConfig &config, Connection *communicator,
         Discriminator *assignedDiscriminator) {
     Session *session = SessionByKey(key);
     if (session) {
@@ -167,7 +163,7 @@ ResultCode Server::SessionManager::ConfigureSession(const SessionConfig &config,
                           communicator);
 
     by_discriminator_[*assignedDiscriminator] = session;
-    by_key_[remoteHost] = session;
+    by_key_[key] = session;
     refcounts_[session] = 1;
 
     LOG(INFO, __func__ << ": New session configured: " << remoteHost << "/"

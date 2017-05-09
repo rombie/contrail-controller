@@ -59,12 +59,20 @@ boost::optional<BFDState> BFDStateFromString(const char *);
 typedef uint32_t SessionIndex; // IFIndex or VrfIndex
 struct SessionKey {
 public:
-    SessionKey(const boost::asio::ip::address &remote_host,
-            SessionIndex index) : remote_host(remote_host), index(index) {
+    SessionKey(const boost::asio::ip::address &local_address,
+            const boost::asio::ip::address &remote_address,
+            SessionIndex index, uint16_t remote_port) :
+            local_address(local_address), remote_address(remote_address),
+            index(index), remote_port(remote_port) {
     }
 
-    SessionKey(const boost::asio::ip::address &remote_host) :
-        remote_host(remote_host), index(0) {
+    SessionKey(const boost::asio::ip::address &remote_address) :
+        remote_address(remote_address), index(0) {
+    }
+
+    SessionKey(const boost::asio::ip::address &local_address,
+               const boost::asio::ip::address &remote_address) :
+        local_address(local_address), remote_address(remote_address), index(0) {
     }
 
     const std::string to_string() const {
@@ -73,8 +81,10 @@ public:
         return os.str();
     }
 
-    boost::asio::ip::address remote_host;
-    SessionIndex index;
+    boost::asio::ip::address local_address;
+    boost::asio::ip::address remote_address;
+    SessionIndex index; // InterfaceIndex or VrfIndex
+    uint16_t remote_port;
 };
 
 typedef std::pair<boost::asio::ip::address, SessionIndex> SessionKey;
