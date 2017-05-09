@@ -25,10 +25,6 @@ class UDPConnectionManager : public Connection {
     ~UDPConnectionManager();
     void RegisterCallback(RecvCallback callback);
 
-    virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
-                               boost::asio::ip::udp::endpoint remote_endpoint,
-                               std::size_t bytes_transferred,
-                               const boost::system::error_code& error);
     virtual void SendPacket(const boost::asio::ip::address &dstAddr,
                             const boost::asio::mutable_buffer &send,
                             int pktSize);

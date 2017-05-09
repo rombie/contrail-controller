@@ -67,13 +67,6 @@ class SessionTest : public ::testing::Test {
                       packet->detection_time_multiplier);
             savedPacket = *packet;
         }
-        virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
-                               boost::asio::ip::udp::endpoint remote_endpoint,
-                               std::size_t bytes_transferred,
-                               const boost::system::error_code& error) {
-            Connection::HandleReceive(recv_buffer, remote_endpoint,
-                                      bytes_transferred, error);
-        }
         virtual void NotifyStateChange(
                 const boost::asio::ip::address& remoteHost, const bool &up) {
         }

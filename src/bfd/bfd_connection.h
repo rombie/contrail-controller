@@ -19,10 +19,10 @@ class Connection {
                             const boost::asio::mutable_buffer &packet,
                             int pktSize) = 0;
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
-                               boost::asio::ip::udp::endpoint local_endpoint,
-                               boost::asio::ip::udp::endpoint remote_endpoint,
-                               std::size_t bytes_transferred,
-                               const boost::system::error_code& error) {
+                    const boost::asio::ip::udp::endpoint &local_endpoint,
+                    const boost::asio::ip::udp::endpoint &remote_endpoint,
+                    std::size_t bytes_transferred,
+                    const boost::system::error_code& error) {
         GetServer()->ProcessControlPacket(local_endpoint, remote_endpoint,
                                           recv_buffer, bytes_transferred,
                                           error);

@@ -28,8 +28,15 @@ Session* Server::GetSession(const ControlPacket *packet) {
         return session_manager_.SessionByDiscriminator(
                 packet->receiver_discriminator);
     }
-    return session_manager_.SessionByKey(packet->sender_host,
-                                         packet->if_index);
+
+    // Use ifindex for single hop and vrfindex for multihop sessions.
+    if (packet->bfd_port == kMultiHop) {
+        return session_manager_.SessionByKey(SessionKey(packet->sender_host,
+                                                        packet->vrf_index));
+    }
+
+    return session_manager_.SessionByKey(SessionKey(packet->sender_host,
+                                                    packet->if_index));
 }
 
 Session *Server::SessionByKey(const boost::asio::ip::address &address,

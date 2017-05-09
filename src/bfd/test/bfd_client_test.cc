@@ -37,6 +37,7 @@ public:
         if (it != links_.end()) {
             boost::system::error_code error;
             it->second.first->HandleReceive(buffer,
+                boost::asio::ip::udp::endpoint(dstAddr, 1234),
                 boost::asio::ip::udp::endpoint(it->second.second, 1234),
                 pktSize, error);
         }

@@ -36,8 +36,8 @@ void UDPConnectionManager::UDPRecvServer::HandleReceive(
     if (callback_)
         callback_.get()(remote_endpoint, recv_buffer, bytes_transferred, error);
     else
-        parent_->HandleReceive(recv_buffer, remote_endpoint, bytes_transferred,
-                               error);
+        parent_->HandleReceive(recv_buffer, GetLocalEndpoint(&error),
+                               remote_endpoint, bytes_transferred, error);
 }
 
 UDPConnectionManager::UDPCommunicator::UDPCommunicator(EventManager *evm,
@@ -115,16 +115,6 @@ UDPConnectionManager::~UDPConnectionManager() {
 
 void UDPConnectionManager::NotifyStateChange(
             const boost::asio::ip::address& remoteHost, const bool &up) {
-}
-
-void UDPConnectionManager::HandleReceive(
-        const boost::asio::const_buffer &recv_buffer,
-        boost::asio::ip::udp::endpoint remote_endpoint,
-        std::size_t bytes_transferred, const boost::system::error_code& error) {
-    boost::system::error_code error;
-    GetServer()->ProcessControlPacket(udpRecv_->GetLocalEndpoint(&error),
-                                      remote_endpoint, recv_buffer,
-                                      bytes_transferred, error);
 }
 
 }  // namespace BFD
