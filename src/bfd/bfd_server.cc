@@ -28,12 +28,14 @@ Session* Server::GetSession(const ControlPacket *packet) {
         return session_manager_.SessionByDiscriminator(
                 packet->receiver_discriminator);
     }
-    return session_manager_.SessionByAddress(packet->sender_host);
+    return session_manager_.SessionByKey(packet->sender_host,
+                                         packet->if_index);
 }
 
-Session *Server::SessionByAddress(const boost::asio::ip::address &address) {
+Session *Server::SessionByKey(const boost::asio::ip::address &address,
+        const SessionIndex index) {
     tbb::mutex::scoped_lock lock(mutex_);
-    return session_manager_.SessionByAddress(address);
+    return session_manager_.SessionByKey(SessionKey(address, index));
 }
 
 ResultCode Server::ProcessControlPacket(
@@ -97,11 +99,9 @@ ResultCode Server::ConfigureSession(const boost::asio::ip::address &remoteHost,
                                              assignedDiscriminator);
 }
 
-ResultCode Server::RemoveSessionReference(const boost::asio::ip::address
-                                          &remoteHost) {
+ResultCode Server::RemoveSessionReference(const SessoonKey &key) {
     tbb::mutex::scoped_lock lock(mutex_);
-
-    return session_manager_.RemoveSessionReference(remoteHost);
+    return session_manager_.RemoveSessionReference(key);
 }
 
 Session* Server::SessionManager::SessionByDiscriminator(
@@ -113,45 +113,41 @@ Session* Server::SessionManager::SessionByDiscriminator(
     return it->second;
 }
 
-Session* Server::SessionManager::SessionByAddress(
-    const boost::asio::ip::address &address) {
-    AddressSessionMap::const_iterator it = by_address_.find(address);
-    if (it == by_address_.end())
+Session* Server::SessionManager::SessionByKey(const SessionKey &key) {
+    KeySessionMap::const_iterator it = by_key_.find(key);
+    if (it == by_key_.end())
         return NULL;
     else
         return it->second;
 }
 
 ResultCode Server::SessionManager::RemoveSessionReference(
-    const boost::asio::ip::address &remoteHost) {
-
-    Session *session = SessionByAddress(remoteHost);
+        const SessionKey &key) {
+    Session *session = SessionByKey(key);
     if (session == NULL) {
-        LOG(DEBUG, __PRETTY_FUNCTION__ << " No such session: " << remoteHost);
+        LOG(DEBUG, __PRETTY_FUNCTION__ << " No such session: " << key);
         return kResultCode_UnknownSession;
     }
 
     if (!--refcounts_[session]) {
         by_discriminator_.erase(session->local_discriminator());
-        by_address_.erase(session->remote_host());
+        by_key_.erase(key);
         delete session;
     }
 
     return kResultCode_Ok;
 }
 
-ResultCode Server::SessionManager::ConfigureSession(
-                const boost::asio::ip::address &remoteHost,
-                const SessionConfig &config,
-                Connection *communicator,
-                Discriminator *assignedDiscriminator) {
-    Session *session = SessionByAddress(remoteHost);
+ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
+        const SessionConfig &config, Connection *communicator,
+        Discriminator *assignedDiscriminator) {
+    Session *session = SessionByKey(key);
     if (session) {
         session->UpdateConfig(config);
         refcounts_[session]++;
 
         LOG(INFO, __func__ << ": Reference count incremented: "
-                  << session->remote_host() << "/"
+                  << session->key() << "/"
                   << session->local_discriminator() << ","
                   << refcounts_[session] << " refs");
 
@@ -163,7 +159,7 @@ ResultCode Server::SessionManager::ConfigureSession(
                           communicator);
 
     by_discriminator_[*assignedDiscriminator] = session;
-    by_address_[remoteHost] = session;
+    by_key_[remoteHost] = session;
     refcounts_[session] = 1;
 
     LOG(INFO, __func__ << ": New session configured: " << remoteHost << "/"

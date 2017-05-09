@@ -16,11 +16,16 @@ RESTClientSession::RESTClientSession(Server* server, ClientId client_id) :
     client_id_(client_id), server_(server), changed_(true) {
 }
 
-Session* RESTClientSession::GetSession(const boost::asio::ip::address& ip) {
-    if (bfd_sessions_.find(ip) == bfd_sessions_.end())
-        return NULL;
+Session* RESTClientSession::GetSession(const boost::asio::ip::address& ip,
+        const SessionIndex index) const {
+    return GetSession(SessionKey(ip, index));
+}
 
-    return server_->SessionByAddress(ip);
+Session* RESTClientSession::GetSession(const boost::asio::ip::address& ip,
+        const SessionKey &key) const {
+    if (bfd_sessions_.find(key) == bfd_sessions_.end())
+        return NULL;
+    return server_->SessionByAddress(key);
 }
 
 void RESTClientSession::Notify() {
@@ -96,12 +101,14 @@ ResultCode RESTClientSession::AddBFDConnection(
 }
 
 ResultCode RESTClientSession::DeleteBFDConnection(
-                    const boost::asio::ip::address& remoteHost) {
-    if (bfd_sessions_.find(remoteHost) == bfd_sessions_.end()) {
+                    const boost::asio::ip::address& remoteHost,
+                    const SessionIndex index) {
+    SessionKey key(remoteHost, index);
+    if (bfd_sessions_.find(key) == bfd_sessions_.end()) {
         return kResultCode_UnknownSession;
     }
 
-    ResultCode result = server_->RemoveSessionReference(remoteHost);
+    ResultCode result = server_->RemoveSessionReference(key);
     bfd_sessions_.erase(remoteHost);
 
     return result;
@@ -110,7 +117,7 @@ ResultCode RESTClientSession::DeleteBFDConnection(
 RESTClientSession::~RESTClientSession() {
     for (Sessions::iterator it = bfd_sessions_.begin();
          it != bfd_sessions_.end(); ++it) {
-      Session *session = server_->SessionByAddress(*it);
+      Session *session = server_->SessionByKey(*it);
       session->UnregisterChangeCallback(client_id_);
       server_->RemoveSessionReference(*it);
     }

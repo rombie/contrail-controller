@@ -62,8 +62,8 @@ TEST_F(ServerTest, Test2) {
     communicationManager.registerServer(addr2,
         boost::bind(&processPacketAndVerifyResult, c2, _1));
 
-    Session *s1 = server1.SessionByAddress(addr2);
-    Session *s2 = server2.SessionByAddress(addr1);
+    Session *s1 = server1.SessionByKey(SessionKey(addr2));
+    Session *s2 = server2.SessionByKey(SessionKey(addr1));
 
     ASSERT_NE(s1, static_cast<Session *>(NULL));
     ASSERT_NE(s2, static_cast<Session *>(NULL));
@@ -150,7 +150,7 @@ TEST_F(ServerTest, InitTimeout) {
     Discriminator disc1;
     server1.ConfigureSession(addr2, config1, &disc1);
 
-    Session *s1 = server1.SessionByAddress(addr2);
+    Session *s1 = server1.SessionByKey(SessionKey(addr2));
     ASSERT_NE(s1, static_cast<Session *>(NULL));
 
     EventManagerThread t(&em);
@@ -200,8 +200,8 @@ TEST_F(ServerTest, RefCount) {
     communicationManager.registerServer(addr2,
         boost::bind(&processPacketAndVerifyResult, c2, _1));
 
-    Session *s1 = server1.SessionByAddress(addr2);
-    Session *s2 = server2.SessionByAddress(addr1);
+    Session *s1 = server1.SessionByKey(SessinKey(addr2));
+    Session *s2 = server2.SessionByKey(SessinKey(addr1));
 
     ASSERT_NE(static_cast<Session *>(NULL), s1);
     ASSERT_NE(static_cast<Session *>(NULL), s2);
@@ -216,8 +216,8 @@ TEST_F(ServerTest, RefCount) {
     TASK_UTIL_EXPECT_EQ(kUp, s1->local_state());
     TASK_UTIL_EXPECT_EQ(kUp, s2->local_state());
 
-    server1.RemoveSessionReference(addr2);
-    s1 = server1.SessionByAddress(addr2);
+    server1.RemoveSessionReference(SessionKey(addr2));
+    s1 = server1.SessionByAKey(SessionKey(addr2));
     ASSERT_NE(static_cast<Session *>(NULL), s1);
 
     boost::this_thread::sleep(boost::posix_time::seconds(5));
@@ -225,8 +225,8 @@ TEST_F(ServerTest, RefCount) {
     TASK_UTIL_EXPECT_EQ(kUp, s1->local_state());
     TASK_UTIL_EXPECT_EQ(kUp, s2->local_state());
 
-    server1.RemoveSessionReference(addr2);
-    s1 = server1.SessionByAddress(addr2);
+    server1.RemoveSessionReference(SessionKey(addr2));
+    s1 = server1.SessionByKey(SessionKey(addr2));
     ASSERT_EQ(s1, static_cast<Session *>(NULL));
 
     boost::this_thread::sleep(boost::posix_time::seconds(5));

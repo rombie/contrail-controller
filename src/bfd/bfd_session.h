@@ -60,7 +60,7 @@ class Session {
     void UpdateConfig(const SessionConfig& config);
 
     std::string               toString() const;
-    boost::asio::ip::address  remote_host() const;
+    const SessionKey &        key() const;
     BFDState                  local_state() const;
     SessionConfig             config() const;
     BFDRemoteSessionState     remote_state() const;
@@ -92,7 +92,7 @@ class Session {
 
     mutable tbb::mutex       mutex_;
     Discriminator            localDiscriminator_;
-    boost::asio::ip::address remoteHost_;
+    SessionKey               key_;
     Timer                    *sendTimer_;
     Timer                    *recvTimer_;
     SessionConfig            currentConfig_;

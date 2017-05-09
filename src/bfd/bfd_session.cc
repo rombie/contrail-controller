@@ -215,9 +215,9 @@ TimeInterval Session::tx_interval() {
     return boost::posix_time::microseconds(dist(randomGen));
 }
 
-boost::asio::ip::address Session::remote_host() const {
+const SessionKey &Session::key() const {
     tbb::mutex::scoped_lock lock(mutex_);
-    return remoteHost_;
+    return key_;
 }
 
 void Session::Stop() {

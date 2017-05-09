@@ -41,9 +41,9 @@ class Server {
 
     // Instances of BFD::Session are removed after last IP address
     // reference is gone.
-    ResultCode RemoveSessionReference(const boost::asio::ip::address
-                                      &remoteHost);
-    Session *SessionByAddress(const boost::asio::ip::address &address);
+    ResultCode RemoveSessionReference(const SessionKey &key);
+    Session *SessionByKey(const boost::asio::ip::address &address,
+                          const SessionIndex index = 0);
     Connection *communicator() const { return communicator_; }
 
  private:
@@ -61,23 +61,22 @@ class Server {
                                     *assignedDiscriminator);
 
         // see: Server:RemoveSessionReference
-        ResultCode RemoveSessionReference(const boost::asio::ip::address
-                                          &remoteHost);
+        ResultCode RemoveSessionReference(const SessionKey &key);
 
         Session *SessionByDiscriminator(Discriminator discriminator);
-        Session *SessionByAddress(const boost::asio::ip::address &address);
+        Session *SessionByKey(const boost::asio::ip::address &address,
+                              SessionIndex index = 0);
 
      private:
-        typedef std::map<Discriminator, Session*> DiscriminatorSessionMap;
-        typedef std::map<boost::asio::ip::address, Session*>
-                AddressSessionMap;
-        typedef std::map<Session*, unsigned int> RefcountMap;
+        typedef std::map<Discriminator, Session *> DiscriminatorSessionMap;
+        typedef std::map<SessionKey, Session *> KeySessionMap;
+        typedef std::map<Session *, unsigned int> RefcountMap;
 
         Discriminator GenerateUniqueDiscriminator();
 
         EventManager *evm_;
         DiscriminatorSessionMap by_discriminator_;
-        AddressSessionMap by_address_;
+        KeySessionMap by_key_;
         RefcountMap refcounts_;
     };
 

@@ -56,6 +56,28 @@ enum Diagnostic {
 
 std::ostream &operator<<(std::ostream &, enum BFDState);
 boost::optional<BFDState> BFDStateFromString(const char *);
+typedef uint32_t SessionIndex; // IFIndex or VrfIndex
+struct SessionKey {
+public:
+    SessionKey(const boost::asio::ip::address &remote_host,
+            SessionIndex index) : remote_host(remote_host), index(index) {
+    }
+
+    SessionKey(const boost::asio::ip::address &remote_host) :
+        remote_host(remote_host), index(0) {
+    }
+
+    const std::string to_string() const {
+        std::ostringstream os;
+        os << remote_host << " " << index;
+        return os.str();
+    }
+
+    boost::asio::ip::address remote_host;
+    SessionIndex index;
+};
+
+typedef std::pair<boost::asio::ip::address, SessionIndex> SessionKey;
 
 extern const int kMinimalPacketLength;
 extern const TimeInterval kIdleTxInterval;
