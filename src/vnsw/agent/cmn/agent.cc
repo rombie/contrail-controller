@@ -15,8 +15,6 @@
 #include <vnc_cfg_types.h>
 #include <agent_types.h>
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <base/sandesh/task_types.h>
 
 #include <init/agent_param.h>
@@ -996,11 +994,11 @@ void Agent::SetXmppDscp(uint8_t val) {
     for (uint8_t count = 0; count < MAX_XMPP_SERVERS; count++) {
         XmppClient *client = xmpp_client_[count];
         if (client) {
-            client->SetDscpValue(val);
+            client->SetDscpValue(val, XmppInit::kControlNodeJID);
         }
         client = dns_xmpp_client_[count];
         if (client) {
-            client->SetDscpValue(val);
+            client->SetDscpValue(val, XmppInit::kDnsNodeJID);
         }
     }
 }

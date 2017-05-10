@@ -17,10 +17,11 @@ from vnc_common import VncCommon
 
 class VncService(VncCommon):
 
-    def __init__(self):
+    def __init__(self, ingress_mgr):
         self._k8s_event_type = 'Service'
         super(VncService,self).__init__(self._k8s_event_type)
         self._name = type(self).__name__
+        self._ingress_mgr = ingress_mgr
         self._vnc_lib = vnc_kube_config.vnc_lib()
         self._label_cache = vnc_kube_config.label_cache()
         self._args = vnc_kube_config.args()
@@ -318,14 +319,35 @@ class VncService(VncCommon):
                 # Allocate floating-ip from public-pool, if none exists.
                 # if "loadBalancerIp" if specified in Service definition,
                 # allocate the specific ip.
-                allocated_fip = self._allocate_floating_ip(service_id, loadBalancerIp)
-
-            if allocated_fip:
-                if external_ip != allocated_fip:
-                    # If Service's EXTERNAL-IP is not same as allocated floating-ip,
-                    # update kube-api server with allocated fip as the EXTERNAL-IP
+                if loadBalancerIp:
+                    allocated_fip = self._allocate_floating_ip(service_id, loadBalancerIp)
+                    self._update_service_external_ip(service_namespace, service_name, allocated_fip)
+                elif external_ip:
+                    allocated_fip = self._allocate_floating_ip(service_id, external_ip)
+                else:
+                    allocated_fip = self._allocate_floating_ip(service_id)
                     self._update_service_external_ip(service_namespace, service_name, allocated_fip)
 
+                return
+
+            if allocated_fip:
+                if loadBalancerIp and loadBalancerIp != allocated_fip:
+                    self._deallocate_floating_ip(service_id)
+                    self._allocate_floating_ip(service_id, loadBalancerIp)
+                    self._update_service_external_ip(service_namespace, service_name, loadBalancerIp)
+                    return
+
+                if external_ip and external_ip != allocated_fip:
+                    # If Service's EXTERNAL-IP is not same as allocated floating-ip,
+                    # update kube-api server with allocated fip as the EXTERNAL-IP
+                    self._deallocate_floating_ip(service_id)
+                    self._allocate_floating_ip(service_id, external_ip)
+                    self._update_service_external_ip(service_namespace, service_name, external_ip)
+                    return
+
+                if external_ip is None:
+                    self._update_service_external_ip(service_namespace, service_name, allocated_fip)
+                    return
             return
 
         if service_type in ["ClusterIP"]:
@@ -363,8 +385,10 @@ class VncService(VncCommon):
     def vnc_service_add(self, service_id, service_name,
                         service_namespace, service_ip, selectors, ports,
                         service_type, externalIp, loadBalancerIp):
+        ingress_update = False
         lb = LoadbalancerKM.get(service_id)
         if not lb:
+            ingress_update = True
             self._check_service_uuid_change(service_id, service_name,
                                             service_namespace, ports)
 
@@ -381,6 +405,10 @@ class VncService(VncCommon):
 
         self._update_service_public_ip(service_id, service_name,
                         service_namespace, service_type, externalIp, loadBalancerIp)
+
+        if ingress_update:
+            self._ingress_mgr.update_ingress_backend(
+                service_namespace, service_name, 'ADD')
 
 
     def _vnc_delete_pool(self, pool_id):
@@ -440,6 +468,8 @@ class VncService(VncCommon):
         if service_name == self._kubernetes_service_name:
             self._delete_link_local_service(service_name, service_namespace,
                 ports)
+        self._ingress_mgr.update_ingress_backend(
+            service_namespace, service_name, 'DELETE')
 
     def _create_service_event(self, event_type, service_id, lb):
         event = {}

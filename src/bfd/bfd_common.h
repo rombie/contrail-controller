@@ -6,6 +6,7 @@
 
 #include <ostream>
 #include <string>
+#include <boost/asio.hpp>
 #include <boost/optional.hpp>
 #include <boost/date_time.hpp>
 #include <boost/random/taus88.hpp>
@@ -77,7 +78,7 @@ public:
 
     const std::string to_string() const {
         std::ostringstream os;
-        os << remote_host << " " << index;
+        os << remote_address << " " << index;
         return os.str();
     }
 
@@ -86,8 +87,6 @@ public:
     SessionIndex index; // InterfaceIndex or VrfIndex
     uint16_t remote_port;
 };
-
-typedef std::pair<boost::asio::ip::address, SessionIndex> SessionKey;
 
 extern const int kMinimalPacketLength;
 extern const TimeInterval kIdleTxInterval;

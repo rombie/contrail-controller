@@ -79,7 +79,8 @@ public:
     static const int kMaxEndOfRibSendTimeUsecs = 60000000;  // 60 Seconds
     static const int kEndOfRibSendRetryTimeMsecs = 2000;    // 2 Seconds
     static const int kRouteTargetEndOfRibTimeSecs = 30;     // Seconds
-    static const size_t kBufferSize = 32768;
+    static const size_t kMinBufferCapacity = 4096;
+    static const size_t kMaxBufferCapacity = 32768;
 
     typedef std::set<Address::Family> AddressFamilyList;
     typedef AuthenticationData::KeyType KeyType;
@@ -113,7 +114,8 @@ public:
 
     BgpSession *CreateSession();
 
-    virtual void SetAdminState(bool down);
+    virtual void SetAdminState(bool down,
+                    int subcode = BgpProto::Notification::AdminShutdown);
 
     // Messages
 
@@ -172,7 +174,7 @@ public:
     uint16_t hold_time() const { return hold_time_; }
     as_t local_as() const { return local_as_; }
     as_t peer_as() const { return peer_as_; }
-    size_t buffer_len() const { return buffer_len_; }
+    size_t buffer_size() const { return buffer_.size(); }
 
     // The BGP Identifier in host byte order.
     virtual uint32_t local_bgp_identifier() const;
@@ -316,7 +318,7 @@ public:
                                 KeyType key_type);
     void ClearListenSocketAuthKey();
     void SetSessionSocketAuthKey(TcpSession *session);
-    virtual bool AttemptGRHelperMode(int code, int subcode) const;
+    bool AttemptGRHelperMode(int code, int subcode) const;
     void Register(BgpTable *table, const RibExportPolicy &policy);
     void Register(BgpTable *table);
     bool EndOfRibSendTimerExpired(Address::Family family);
@@ -354,6 +356,7 @@ private:
     typedef std::map<Address::Family, const uint8_t *> FamilyToCapabilityMap;
     typedef std::vector<BgpPeerFamilyAttributes *> FamilyAttributesList;
 
+    size_t GetBufferCapacity() const;
     bool FlushUpdateUnlocked();
     void KeepaliveTimerErrorHandler(std::string error_name,
                                     std::string error_message);
@@ -440,8 +443,8 @@ private:
     // and the io thread should need to lock it once every few seconds at
     // most.  Hence we choose a spin_mutex.
     tbb::spin_mutex spin_mutex_;
-    uint8_t buffer_[kBufferSize];
-    size_t buffer_len_;
+    size_t buffer_capacity_;
+    std::vector<uint8_t> buffer_;
     BgpSession *session_;
     Timer *keepalive_timer_;
     Timer *eor_receive_timer_[Address::NUM_FAMILIES];
@@ -453,6 +456,7 @@ private:
     bool resolve_paths_;
     bool as_override_;
     string private_as_action_;
+    uint32_t cluster_id_;
 
     tbb::atomic<int> membership_req_pending_;
     bool defer_close_;

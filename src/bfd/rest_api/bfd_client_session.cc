@@ -16,7 +16,7 @@ RESTClientSession::RESTClientSession(Server* server, ClientId client_id) :
     client_id_(client_id), server_(server), changed_(true) {
 }
 
-Session* RESTClientSession::GetSession(const boost::asio::ip::address& ip,
+Session* RESTClientSession::GetSession(const boost::asio::ip::address &ip,
         const SessionIndex index) const {
     return GetSession(SessionKey(ip, index));
 }

@@ -222,12 +222,13 @@ RibExportPolicy BgpPeer::BuildRibExportPolicy(Address::Family family) const {
     if (!family_attributes ||
         family_attributes->gateway_address.is_unspecified()) {
         policy = RibExportPolicy(peer_type_, RibExportPolicy::BGP, peer_as_,
-            as_override_, peer_close_->IsCloseLongLivedGraceful(), -1, 0);
+            as_override_, peer_close_->IsCloseLongLivedGraceful(),
+            -1, cluster_id_);
     } else {
         IpAddress nexthop = family_attributes->gateway_address;
         policy = RibExportPolicy(peer_type_, RibExportPolicy::BGP, peer_as_,
             as_override_, peer_close_->IsCloseLongLivedGraceful(), nexthop,
-            -1, 0);
+            -1, cluster_id_);
     }
 
     if (private_as_action_ == "remove") {
@@ -398,7 +399,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           trigger_(boost::bind(&BgpPeer::ResumeClose, this),
                    TaskScheduler::GetInstance()->GetTaskId("bgp::StateMachine"),
                    GetTaskInstance()),
-          buffer_len_(0),
+          buffer_capacity_(GetBufferCapacity()),
           session_(NULL),
           keepalive_timer_(TimerManager::CreateTimer(*server->ioservice(),
                      "BGP keepalive timer",
@@ -410,6 +411,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           passive_(config->passive()),
           resolve_paths_(config->router_type() == "bgpaas-client"),
           as_override_(config->as_override()),
+          cluster_id_(config->cluster_id()),
           defer_close_(false),
           graceful_close_(true),
           vpn_tables_registered_(false),
@@ -429,6 +431,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           total_flap_count_(0),
           last_flap_(0),
           inuse_authkey_type_(AuthenticationData::NIL) {
+    buffer_.reserve(buffer_capacity_);
     close_manager_.reset(
         BgpObjectFactory::Create<PeerCloseManager>(peer_close_.get()));
     ostringstream oss1;
@@ -480,7 +483,8 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     total_path_count_ = 0;
     primary_path_count_ = 0;
 
-    if (resolve_paths_) {
+    // Check rtinstance_ to accommodate unit tests.
+    if (resolve_paths_ && rtinstance_) {
         rtinstance_->GetTable(Address::INET)->LocatePathResolver();
         rtinstance_->GetTable(Address::INET6)->LocatePathResolver();
     }
@@ -495,6 +499,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     peer_info.set_passive(passive_);
     peer_info.set_as_override(as_override_);
     peer_info.set_router_type(router_type_);
+    peer_info.set_cluster_id(Ip4Address(cluster_id_).to_string());
     peer_info.set_peer_type(
         PeerType() == BgpProto::IBGP ? "internal" : "external");
     peer_info.set_local_asn(local_as_);
@@ -535,6 +540,26 @@ BgpPeer::~BgpPeer() {
 void BgpPeer::Initialize() {
     if (!admin_down_)
         state_machine_->Initialize();
+}
+
+size_t BgpPeer::GetBufferCapacity() const {
+    // For testing only - configure through environment variable.
+    char *buffer_capacity_str = getenv("BGP_PEER_BUFFER_SIZE");
+    if (buffer_capacity_str) {
+        size_t env_buffer_capacity = strtoul(buffer_capacity_str, NULL, 0);
+        if (env_buffer_capacity < kMinBufferCapacity)
+            env_buffer_capacity = kMinBufferCapacity;
+        if (env_buffer_capacity > kMaxBufferCapacity)
+            env_buffer_capacity = kMaxBufferCapacity;
+        return env_buffer_capacity;
+    }
+
+    // Return internal default based on peer router-type.
+    if (router_type_ == "bgpaas-client") {
+        return kMinBufferCapacity;
+    } else {
+        return kMaxBufferCapacity;
+    }
 }
 
 void BgpPeer::NotifyEstablished(bool established) {
@@ -726,6 +751,12 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
         clear_session = true;
     }
 
+    if (cluster_id_ != config->cluster_id()) {
+        cluster_id_ = config->cluster_id();
+        peer_info.set_cluster_id(Ip4Address(cluster_id_).to_string());
+        clear_session = true;
+    }
+
     if (router_type_ != config->router_type()) {
         router_type_ = config->router_type();
         peer_info.set_router_type(router_type_);
@@ -912,7 +943,6 @@ string BgpPeer::gateway_address_string(Address::Family family) const {
 // Reset all stored capabilities information and cancel outstanding timers.
 //
 void BgpPeer::CustomClose() {
-    negotiated_families_.clear();
     ResetCapabilities();
     keepalive_timer_->Cancel();
 
@@ -1013,11 +1043,11 @@ BgpSession *BgpPeer::CreateSession() {
     return bgp_session;
 }
 
-void BgpPeer::SetAdminState(bool down) {
+void BgpPeer::SetAdminState(bool down, int subcode) {
     if (admin_down_ == down)
         return;
     admin_down_ = down;
-    state_machine_->SetAdminState(down);
+    state_machine_->SetAdminState(down, subcode);
     if (admin_down_) {
         BGP_LOG_PEER(Config, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
                      BGP_PEER_DIR_NA, "Session cleared due to admin down");
@@ -1230,36 +1260,35 @@ static bool SkipUpdateSend() {
 //
 // Accumulate the message in the update buffer.
 // Flush the existing buffer if the message can't fit.
-// Note that FlushUpdateUnlocked resets buffer_len_ to 0.
+// Note that FlushUpdateUnlocked clears the buffer.
 //
 bool BgpPeer::SendUpdate(const uint8_t *msg, size_t msgsize,
     const string *msg_str) {
     tbb::spin_mutex::scoped_lock lock(spin_mutex_);
     bool send_ready = true;
-    if (buffer_len_ + msgsize > kBufferSize) {
+    if (buffer_.size() + msgsize > buffer_capacity_) {
         send_ready = FlushUpdateUnlocked();
-        assert(buffer_len_ == 0);
+        assert(buffer_.empty());
     }
-    copy(msg, msg + msgsize, buffer_ + buffer_len_);
-    buffer_len_ += msgsize;
+    buffer_.insert(buffer_.end(), msg, msg + msgsize);
     inc_tx_update();
     return send_ready;
 }
 
 bool BgpPeer::FlushUpdateUnlocked() {
     // Bail if the update buffer is empty.
-    if (buffer_len_ == 0)
+    if (buffer_.empty())
         return true;
 
     // Bail if there's no session for the peer anymore.
     if (!session_) {
-        buffer_len_ = 0;
+        buffer_.clear();
         return true;
     }
 
     if (!SkipUpdateSend()) {
-        send_ready_ = session_->Send(buffer_, buffer_len_, NULL);
-        buffer_len_ = 0;
+        send_ready_ = session_->Send(buffer_.data(), buffer_.size(), NULL);
+        buffer_.clear();
         if (send_ready_) {
             StartKeepaliveTimerUnlocked();
         } else {
@@ -1287,6 +1316,9 @@ bool BgpPeer::notification() const {
 
 // Check if GR Helper mode sould be attempted.
 bool BgpPeer::AttemptGRHelperMode(int code, int subcode) const {
+    if (!code)
+        return true;
+
     if (code == BgpProto::Notification::Cease &&
             (subcode == BgpProto::Notification::HardReset ||
              subcode == BgpProto::Notification::PeerDeconfigured)) {
@@ -1438,6 +1470,12 @@ uint32_t BgpPeer::GetPathFlags(Address::Family family,
     if (peer_type_ == BgpProto::IBGP &&
         attr->originator_id().to_ulong() == ntohl(local_bgp_id_)) {
         flags |= BgpPath::OriginatorIdLooped;
+    }
+
+    // Check for ClusterList loop in case we are an RR.
+    if (cluster_id_ && attr->cluster_list() &&
+        attr->cluster_list()->cluster_list().ClusterListLoop(cluster_id_)) {
+        flags |= BgpPath::ClusterListLooped;
     }
 
     if (!attr->as_path())
@@ -2021,6 +2059,7 @@ void BgpPeer::FillNeighborInfo(const BgpSandeshContext *bsc,
     bnr->set_local_address(server_->ToString());
     bnr->set_local_id(Ip4Address(ntohl(local_bgp_id_)).to_string());
     bnr->set_local_asn(local_as());
+    bnr->set_cluster_id(Ip4Address(cluster_id_).to_string());
     bnr->set_negotiated_hold_time(state_machine_->hold_time());
     bnr->set_primary_path_count(GetPrimaryPathCount());
     bnr->set_task_instance(GetTaskInstance());

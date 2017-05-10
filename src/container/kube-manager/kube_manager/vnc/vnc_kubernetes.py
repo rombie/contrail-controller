@@ -25,8 +25,11 @@ import label_cache
 from reaction_map import REACTION_MAP
 from vnc_kubernetes_config import VncKubernetesConfig as vnc_kube_config
 from vnc_common import VncCommon
+import flow_aging_manager
 
 class VncKubernetes(VncCommon):
+
+    _vnc_kubernetes = None
 
     def __init__(self, args=None, logger=None, q=None, kube=None):
         self._name = type(self).__name__
@@ -38,6 +41,19 @@ class VncKubernetes(VncCommon):
 
         # init vnc connection
         self.vnc_lib = self._vnc_connect()
+
+        # HACK ALERT.
+        # Till we have an alternate means to get config objects,  we will
+        # direcly connect to cassandra. Such a persistant connection is
+        # discouraged, but is the only option we have for now.
+        #
+        # Disable flow timeout on this connection, so the flow persists.
+        #
+        if self.args.nested_mode is '1':
+            for cassandra_server in self.args.cassandra_server_list:
+                cassandra_port = cassandra_server.split(':')[-1]
+                flow_aging_manager.create_flow_aging_timeout_entry(self.vnc_lib,
+                    "tcp", cassandra_port, 1800)
 
         # init access to db
         self._db = db.KubeNetworkManagerDB(self.args, self.logger)
@@ -76,23 +92,25 @@ class VncKubernetes(VncCommon):
         self.namespace_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_namespace.VncNamespace',
             self.network_policy_mgr)
+        self.ingress_mgr = importutils.import_object(
+            'kube_manager.vnc.vnc_ingress.VncIngress')
         self.service_mgr = importutils.import_object(
-            'kube_manager.vnc.vnc_service.VncService')
+            'kube_manager.vnc.vnc_service.VncService', self.ingress_mgr)
         self.pod_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_pod.VncPod', self.service_mgr,
             self.network_policy_mgr)
         self.endpoints_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_endpoints.VncEndpoints')
-        self.ingress_mgr = importutils.import_object(
-            'kube_manager.vnc.vnc_ingress.VncIngress')
+
+        VncKubernetes._vnc_kubernetes = self
 
     def _vnc_connect(self):
         # Retry till API server connection is up
         connected = False
         while not connected:
             try:
-                vnc_lib = VncApi(self.args.admin_user,
-                    self.args.admin_password, self.args.admin_tenant,
+                vnc_lib = VncApi(self.args.auth_user,
+                    self.args.auth_password, self.args.auth_tenant,
                     self.args.vnc_endpoint_ip, self.args.vnc_endpoint_port,
                     auth_token_url=self.args.auth_token_url)
                 connected = True
@@ -355,3 +373,22 @@ class VncKubernetes(VncCommon):
                 cgitb_hook(file=string_buf, format="text")
                 err_msg = string_buf.getvalue()
                 self.logger.error("%s - %s" %(self._name, err_msg))
+
+    @classmethod
+    def get_instance(cls):
+        return VncKubernetes._vnc_kubernetes
+
+    @classmethod
+    def destroy_instance(cls):
+        inst = cls.get_instance()
+        if inst is None:
+            return
+        inst.rabbit.close()
+        for obj_cls in DBBaseKM.get_obj_type_map().values():
+            obj_cls.reset()
+        DBBase.clear()
+        inst._db = None
+        VncKubernetes._vnc_kubernetes = None
+
+
+

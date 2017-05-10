@@ -1316,6 +1316,7 @@ class DBInterface(object):
 
         extra_dict['fq_name'] = net_obj.get_fq_name()
         net_q_dict['tenant_id'] = net_obj.parent_uuid.replace('-', '')
+        net_q_dict['project_id'] = net_obj.parent_uuid.replace('-', '')
         net_q_dict['admin_state_up'] = id_perms.enable
         if net_obj.is_shared:
             net_q_dict['shared'] = True
@@ -2044,9 +2045,9 @@ class DBInterface(object):
                 if port_sg_refs:
                     if 'security_groups' in port_q and not port_q['security_groups']:
                         # reset all SG on the port
-                        port_obj.set_security_groups_list([])
+                        port_obj.set_security_group_list([])
                     elif len(port_sg_refs) == 1 and port_sg_refs[0]['to'] == SG_NO_RULE_FQ_NAME:
-                        port_obj.set_security_groups_list([])
+                        port_obj.set_security_group_list([])
                     else:
                         self._raise_contrail_exception('PortSecurityPortHasSecurityGroup', port_id=port_obj.uuid)
 
@@ -3835,7 +3836,18 @@ class DBInterface(object):
 
         # always request for v4 and v6 ip object and handle the failure
         # create the object
-        port_id = self._resource_create('virtual_machine_interface', port_obj)
+        try:
+            port_id = self._resource_create('virtual_machine_interface', port_obj)
+        except BadRequest as e:
+            msg = "Allowed address pairs are not allowed when port "\
+                  "security is disabled"
+            if msg == str(e):
+                self._raise_contrail_exception(
+                   'AddressPairAndPortSecurityRequired')
+            else:
+                self._raise_contrail_exception(
+                   'BadRequest', resource='port', msg=str(e))
+
         self._vnc_lib.chown(port_id, tenant_id)
         # add support, nova boot --nic subnet-id=subnet_uuid
         subnet_id = port_q.get('subnet_id')
@@ -3931,7 +3943,18 @@ class DBInterface(object):
         port_obj = self._port_neutron_to_vnc(port_q, None, UPDATE)
         net_id = port_obj.get_virtual_network_refs()[0]['uuid']
         net_obj = self._network_read(net_id)
-        self._virtual_machine_interface_update(port_obj)
+        try:
+            self._virtual_machine_interface_update(port_obj)
+        except BadRequest as e:
+            msg = "Allowed address pairs are not allowed when port "\
+                  "security is disabled"
+            if msg == str(e):
+                self._raise_contrail_exception(
+                   'AddressPairAndPortSecurityRequired')
+            else:
+                self._raise_contrail_exception(
+                   'BadRequest', resource='port', msg=str(e))
+
         port_obj = self._virtual_machine_interface_read(port_id=port_id)
         ret_port_q = self._port_vnc_to_neutron(port_obj)
 
@@ -3962,20 +3985,24 @@ class DBInterface(object):
         iip_back_refs = getattr(port_obj, 'instance_ip_back_refs', None)
         if iip_back_refs:
             for iip_back_ref in iip_back_refs:
-                # if name contains IP address then this is shared ip
-                iip_obj = self._vnc_lib.instance_ip_read(
-                    id=iip_back_ref['uuid'])
+                try:
+                    iip_obj = self._vnc_lib.instance_ip_read(
+                        id=iip_back_ref['uuid'])
 
-                # in case of shared ip only delete the link to the VMI
-                iip_obj.del_virtual_machine_interface(port_obj)
-                if not iip_obj.get_virtual_machine_interface_refs():
-                    try:
-                        self._instance_ip_delete(
-                            instance_ip_id=iip_back_ref['uuid'])
-                    except RefsExistError:
+                    # in case of shared ip only delete the link to the VMI
+                    iip_obj.del_virtual_machine_interface(port_obj)
+                    if not iip_obj.get_virtual_machine_interface_refs():
+                        try:
+                            self._instance_ip_delete(
+                                instance_ip_id=iip_back_ref['uuid'])
+                        except RefsExistError:
+                            self._instance_ip_update(iip_obj)
+                    else:
                         self._instance_ip_update(iip_obj)
-                else:
-                    self._instance_ip_update(iip_obj)
+                except NoIdError:
+                    # instance ip could be deleted by svc monitor if it is
+                    # a shared ip. Ignore this error
+                    continue
 
         # disassociate any floating IP used by instance
         fip_back_refs = getattr(port_obj, 'floating_ip_back_refs', None)
@@ -4001,10 +4028,10 @@ class DBInterface(object):
         try:
             if instance_id:
                 self._vnc_lib.virtual_machine_delete(id=instance_id)
-        except RefsExistError:
+        except (NoIdError, RefsExistError):
             pass
 
-    #end port_delete
+    # end port_delete
 
     def _port_fixed_ips_is_present(self, check, against):
         # filters = {'fixed_ips': {'ip_address': ['20.0.0.5', '20.0.0.6']}}
@@ -4034,14 +4061,6 @@ class DBInterface(object):
         port_objs = []
         if filters.get('device_id'):
             back_ref_ids = filters.get('device_id')
-            if filters.get('network_id'):
-                back_ref_ids += filters.get('network_id')
-            # Get all VM port
-            port_objs_filtered_by_device_id =\
-                self._virtual_machine_interface_list(
-                    obj_uuids=filters.get('id'),
-                    back_ref_id=back_ref_ids)
-
             port_objs_filtered_by_device_id = []
             founded_device_ids = set()
             for vmi_obj in self._virtual_machine_interface_list(
@@ -4049,7 +4068,18 @@ class DBInterface(object):
                     back_ref_id=back_ref_ids):
                 for device_ref in vmi_obj.get_virtual_machine_refs() or [] +\
                         vmi_obj.get_logical_router_back_refs() or []:
-                    if device_ref['uuid'] in filters.get('device_id'):
+                    # check if the device-id matches and if the network-id
+                    # filter is set
+                    if device_ref['uuid'] in filters.get('device_id') and \
+                            filters.get('network_id'):
+                        for vn_ref in vmi_obj.get_virtual_network_refs() or []:
+                            # add only the vmi_obj that has also the same
+                            # network-id
+                            if vn_ref['uuid'] in filters.get('network_id'):
+                                port_objs_filtered_by_device_id.append(vmi_obj)
+                                founded_device_ids.add(device_ref['uuid'])
+                    # without network-id filters
+                    elif device_ref['uuid'] in filters.get('device_id'):
                         port_objs_filtered_by_device_id.append(vmi_obj)
                         founded_device_ids.add(device_ref['uuid'])
 
@@ -4081,11 +4111,14 @@ class DBInterface(object):
                                   if p.parent_uuid in project_ids])
             else:
                 port_objs.extend(port_objs_filtered_by_device_id)
+        elif filters.get('network_id'):
+            port_objs = self._virtual_machine_interface_list(
+                obj_uuids=filters.get('id'),
+                back_ref_id=filters.get('network_id'))
         else:
             port_objs = self._virtual_machine_interface_list(
                 obj_uuids=filters.get('id'),
-                parent_id=project_ids,
-                back_ref_id=filters.get('network_id'))
+                parent_id=project_ids)
 
         neutron_ports = self._port_list(port_objs)
 

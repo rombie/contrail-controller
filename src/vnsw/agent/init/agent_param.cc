@@ -26,8 +26,6 @@
 #include <base/logging.h>
 #include <base/misc_utils.h>
 #include <base/options_util.h>
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <sandesh/sandesh_trace.h>
 
 #include <cmn/agent_cmn.h>
@@ -1251,7 +1249,7 @@ AgentParam::AgentParam(bool enable_flow_options,
         services_queue_limit_(1024),
         bgpaas_max_shared_sessions_(4),
         sandesh_config_(),
-        restart_backup_enable_(true),
+        restart_backup_enable_(false),
         restart_backup_idle_timeout_(CFG_BACKUP_IDLE_TIMEOUT),
         restart_backup_dir_(CFG_BACKUP_DIR),
         restart_backup_count_(CFG_BACKUP_COUNT),
@@ -1345,7 +1343,7 @@ AgentParam::AgentParam(bool enable_flow_options,
           "XMPP Server ssl private key")
         ("DEFAULT.xmpp_ca_cert",
           opt::value<string>()->default_value(
-          "/etc/contrail/ssl/certs/ca.pem"),
+          "/etc/contrail/ssl/certs/ca-cert.pem"),
           "XMPP CA ssl certificate")
         ("DEFAULT.xmpp_dns_auth_enable", opt::bool_switch(&xmpp_dns_auth_enable_),
          "Enable Xmpp over TLS for DNS")
@@ -1395,7 +1393,8 @@ AgentParam::AgentParam(bool enable_flow_options,
 
     opt::options_description restart("Restart options");
     restart.add_options()
-        ("RESTART.backup_enable", opt::bool_switch(&restart_backup_enable_)->default_value(true),
+        ("RESTART.backup_enable",
+         opt::bool_switch(&restart_backup_enable_)->default_value(false),
          "Enable backup of config and resources into a file")
         ("RESTART.backup_idle_timeout", opt::value<uint64_t>()->default_value(CFG_BACKUP_IDLE_TIMEOUT),
          "Generate backup if no change detected in configured time (in msec)")

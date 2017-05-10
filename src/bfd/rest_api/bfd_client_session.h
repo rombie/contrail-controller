@@ -37,7 +37,7 @@ class RESTClientSession {
                                    const SessionIndex index = 0);
 
  private:
-    typedef std::set<Sessioney> Sessions;
+    typedef std::set<SessionKey> Sessions;
     typedef std::set<boost::intrusive_ptr<HttpSession> > HttpSessionSet;
 
     void OnHttpSessionEvent(HttpSession* session, enum TcpSession::Event event);
