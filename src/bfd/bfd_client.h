@@ -16,6 +16,10 @@ class Client {
 public:
     Client(Connection *cm, ClientId client_id = 0);
     virtual ~Client();
+    ResultCode AddConnection(const SessionConfig &config,
+        const boost::asio::ip::address& remote_address,
+        const boost::asio::ip::address& local_address,
+        const SessionIndex index, bool multi_hop) {
     ResultCode AddConnection(const boost::asio::ip::address &remoteHost,
                              const SessionConfig &config, uint32_t index = 0,
                              bool multi_hop = false);
