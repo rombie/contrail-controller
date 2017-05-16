@@ -1183,6 +1183,11 @@ void AgentParam::AddOptions
     options_.add(opt);
 }
 
+void AgentParam::ConfigAddOptions
+(const boost::program_options::options_description &opt) {
+    config_file_options_.add(opt);
+}
+
 void AgentParam::ParseArguments(int argc, char *argv[]) {
     boost::program_options::store(opt::parse_command_line(argc, argv, options_),
                                   var_map_);
@@ -1261,6 +1266,7 @@ AgentParam::AgentParam(bool enable_flow_options,
         tbb_schedule_delay_(0),
         tbb_keepawake_timeout_(Agent::kDefaultTbbKeepawakeTimeout),
         task_monitor_timeout_msec_(Agent::kDefaultTaskMonitorTimeout),
+        qos_priority_tagging_(true),
         default_nic_queue_(Agent::kInvalidQueueId),
         llgr_params_() {
 
@@ -1600,6 +1606,15 @@ AgentParam::AgentParam(bool enable_flow_options,
         ;
     options_.add(mac_learn);
     config_file_options_.add(mac_learn);
+
+    opt::options_description qos("Quality of Service options");
+    qos.add_options()
+        ("QOS.priority_tagging",
+         opt::bool_switch(&qos_priority_tagging_)->default_value(true),
+         "Enable Priority tagging")
+        ;
+    options_.add(qos);
+    config_file_options_.add(qos);
 }
 
 AgentParam::~AgentParam() {

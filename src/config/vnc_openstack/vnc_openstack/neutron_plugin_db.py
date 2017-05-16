@@ -945,7 +945,6 @@ class DBInterface(object):
             si_vnc = ServiceInstance(name=si_q['name'],
                          parent_obj=project_obj,
                          service_instance_properties=si_prop)
-
         return si_vnc
     #end _svc_instance_neutron_to_vnc
 
@@ -962,9 +961,8 @@ class DBInterface(object):
             vn_obj = self._vnc_lib.virtual_network_read(fq_name_str=vn_fq_name)
             si_q_dict['external_net'] = str(vn_obj.uuid) + ' ' + vn_obj.name
             si_q_dict['internal_net'] = ''
-
         return si_q_dict
-    #end _route_table_vnc_to_neutron
+    #end _svc_instance_vnc_to_neutron
 
     def _route_table_neutron_to_vnc(self, rt_q, oper):
         if oper == CREATE:
@@ -1023,7 +1021,6 @@ class DBInterface(object):
             for route in rt_q_dict['routes']['route']:
                 if route['next_hop_type']:
                     route['next_hop'] = route['next_hop_type']
-
         return rt_q_dict
     # end _route_table_vnc_to_neutron
 
@@ -1040,6 +1037,7 @@ class DBInterface(object):
             sg_q_dict['name'] = sg_obj.get_fq_name()[-1]
         else:
             sg_q_dict['name'] = sg_obj.display_name
+
         sg_q_dict['description'] = sg_obj.get_id_perms().get_description()
 
         # get security group rules
@@ -1065,6 +1063,9 @@ class DBInterface(object):
                                    id_perms=id_perms)
         else:
             sg_vnc = self._vnc_lib.security_group_read(id=sg_q['id'])
+
+        if oper == UPDATE and sg_vnc.name == 'default':
+            self._raise_contrail_exception("SecurityGroupCannotUpdateDefault")
 
         if 'name' in sg_q and sg_q['name']:
             sg_vnc.display_name = sg_q['name']
@@ -1297,6 +1298,11 @@ class DBInterface(object):
             if 'port_security_enabled' in network_q:
                 net_obj.set_port_security_enabled(network_q['port_security_enabled'])
 
+        if 'description' in network_q:
+            id_perms = net_obj.get_id_perms()
+            id_perms.set_description(network_q['description'])
+            net_obj.set_id_perms(id_perms)
+
         return net_obj
     #end _network_neutron_to_vnc
 
@@ -1368,6 +1374,9 @@ class DBInterface(object):
         if self._contrail_extensions_enabled:
             net_q_dict.update(extra_dict)
         net_q_dict['port_security_enabled'] = net_obj.get_port_security_enabled()
+
+        if net_obj.get_id_perms().get_description() is not None:
+            net_q_dict['description'] = net_obj.get_id_perms().get_description()
 
         return net_q_dict
     #end _network_vnc_to_neutron
@@ -1625,6 +1634,11 @@ class DBInterface(object):
         if 'name' in router_q and router_q['name']:
             rtr_obj.display_name = router_q['name']
 
+        if 'description' in router_q:
+            id_perms = rtr_obj.get_id_perms()
+            id_perms.set_description(router_q['description'])
+            rtr_obj.set_id_perms(id_perms)
+
         return rtr_obj
     #end _router_neutron_to_vnc
 
@@ -1660,6 +1674,10 @@ class DBInterface(object):
 
         if self._contrail_extensions_enabled:
             rtr_q_dict.update(extra_dict)
+
+        if rtr_obj.get_id_perms().get_description() is not None:
+            rtr_q_dict['description'] = rtr_obj.get_id_perms().get_description()
+
         return rtr_q_dict
     #end _router_vnc_to_neutron
 
@@ -2056,6 +2074,11 @@ class DBInterface(object):
             id_perms.enable = port_q['admin_state_up']
             port_obj.set_id_perms(id_perms)
 
+        if 'description' in port_q:
+            id_perms = port_obj.get_id_perms()
+            id_perms.set_description(port_q['description'])
+            port_obj.set_id_perms(id_perms)
+
         if ('extra_dhcp_opts' in port_q):
             dhcp_options = []
             if port_q['extra_dhcp_opts']:
@@ -2365,6 +2388,10 @@ class DBInterface(object):
         if self._contrail_extensions_enabled:
             port_q_dict.update(extra_dict)
         port_q_dict['port_security_enabled'] = port_obj.get_port_security_enabled()
+
+        if port_obj.get_id_perms().get_description() is not None:
+            port_q_dict['description'] = port_obj.get_id_perms().get_description()
+
         return port_q_dict
     #end _port_vnc_to_neutron
 
@@ -3481,6 +3508,10 @@ class DBInterface(object):
         router_obj = self._logical_router_read(router_id)
         if port_id:
             port = self.port_read(port_id)
+            if port['tenant_id'] != context['tenant_id'].replace('-', ''):
+                self._raise_contrail_exception('RouterInterfaceNotFound',
+                                               router_id=router_id,
+                                               port_id=port_id)
             if (port['device_owner'] == constants.DEVICE_OWNER_ROUTER_INTF and
                     port['device_id']):
                 self._raise_contrail_exception('PortInUse',
@@ -3501,6 +3532,11 @@ class DBInterface(object):
 
         elif subnet_id:
             subnet = self.subnet_read(subnet_id)
+            if subnet['tenant_id'] != context['tenant_id'].replace('-', ''):
+                self._raise_contrail_exception(
+                     'RouterInterfaceNotFoundForSubnet',
+                     router_id=router_id,
+                     subnet_id=subnet_id)
             if not subnet['gateway_ip']:
                 self._raise_contrail_exception(
                     'BadRequest', resource='router',
