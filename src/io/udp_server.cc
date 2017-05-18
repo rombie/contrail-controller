@@ -147,7 +147,6 @@ bool UdpServer::Initialize(udp::endpoint local_endpoint) {
         socket_.close(ec);
         return false;
     }
-    local_endpoint_ = local_endpoint;
     SetName(local_endpoint);
     state_ = OK;
     return true;

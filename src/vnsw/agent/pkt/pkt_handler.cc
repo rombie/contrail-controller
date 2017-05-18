@@ -9,6 +9,7 @@
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
 
+#include "bfd/bfd_common.h"
 #include "cmn/agent_cmn.h"
 #include "net/address_util.h"
 #include "oper/ecmp_load_balance.h"
@@ -213,7 +214,8 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
 
     // Look for BFD packets if corresponding service is enabled
     if (intf->bfd_enabled() && (pkt_type == PktType::UDP)) {
-        if (pkt_info->dport == BFD_SERVER_PORT) {
+        if (pkt_info->dport == BFD::kSingleHop ||
+                pkt_info->dport == BFD::kMultiHop) {
             return BFD;
         }
     }

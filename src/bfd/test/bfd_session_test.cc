@@ -21,11 +21,10 @@ const boost::asio::ip::address addr = boost::asio::ip::address::from_string("1.1
 class SessionMock : public Session {
 public:
     SessionMock(Discriminator localDiscriminator,
-            boost::asio::ip::address remoteHost,
-            EventManager *evm,
-            const SessionConfig &config,
-            Connection *communicator) :
-            Session(localDiscriminator, remoteHost, evm, config, communicator) {
+                boost::asio::ip::address remoteHost, EventManager *evm,
+                const SessionConfig &config, Connection *communicator) :
+            Session(localDiscriminator, SessionKey(remoteHost), evm, config,
+                    communicator) {
     }
 
     bool TriggerRecvTimerExpired() { return RecvTimerExpired(); }
@@ -58,6 +57,7 @@ class SessionTest : public ::testing::Test {
         virtual void SendPacket(
             const boost::asio::ip::udp::endpoint &local_endpoint,
             const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const SessionIndex &session_index,
             const boost::asio::mutable_buffer &pkt, int pktSize) {
             ControlPacket *packet =
                 ParseControlPacket(boost::asio::buffer_cast<const uint8_t *>(
@@ -68,8 +68,7 @@ class SessionTest : public ::testing::Test {
                       packet->detection_time_multiplier);
             savedPacket = *packet;
         }
-        virtual void NotifyStateChange(
-                const boost::asio::ip::address& remoteHost, const bool &up) {
+        virtual void NotifyStateChange(const SessionKey &key, const bool &up) {
         }
         virtual Server *GetServer() const { return server_; }
         virtual void SetServer(Server *server) { server_ = server; }

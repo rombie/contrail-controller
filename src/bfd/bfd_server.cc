@@ -19,8 +19,77 @@ namespace BFD {
 Server::Server(EventManager *evm, Connection *communicator) :
         evm_(evm),
         communicator_(communicator),
-        session_manager_(evm) {
+        session_manager_(evm),
+        event_queue_(new WorkQueue<Event *>(
+                     TaskScheduler::GetInstance()->GetTaskId("BFD"), 0,
+                     boost::bind(&Server::EventCallback, this, _1))) {
     communicator->SetServer(this);
+}
+
+void Server::AddConnection(const SessionKey &key, const SessionConfig &config,
+                           ChangeCb cb) {
+    EnqueueEvent(new Event(ADD_CONNECTION, key, config, cb));
+}
+
+void Server::AddConnection(Event *event) {
+    Discriminator discriminator;
+    ConfigureSession(event->key, event->config, &discriminator);
+    sessions_.insert(event->key);
+    Session *session = SessionByKey(event->key);
+    if (session) {
+        session->RegisterChangeCallback(event->key.client_id, event->cb);
+        event->cb(session->key(), session->local_state());
+    }
+}
+
+void Server::DeleteConnection(const SessionKey &key) {
+    EnqueueEvent(new Event(DELETE_CONNECTION, key));
+}
+
+void Server::DeleteConnection(Event *event) {
+    sessions_.erase(event->key);
+    RemoveSessionReference(event->key);
+}
+
+void Server::DeleteClientConnections(const ClientId client_id) {
+    SessionKey key;
+    key.client_id = client_id;
+    EnqueueEvent(new Event(DELETE_CLIENT_CONNECTIONS, key));
+}
+
+void Server::DeleteClientConnections(Event *event) {
+    for (Sessions::iterator it = sessions_.begin(), next;
+         it != sessions_.end(); it = next) {
+        SessionKey key = *it;
+        next = ++it;
+        if (!event->key.client_id || event->key.client_id == key.client_id) {
+            sessions_.erase(key);
+            RemoveSessionReference(key);
+        }
+    }
+}
+
+void Server::EnqueueEvent(Event *event) {
+    event_queue_->Enqueue(event);
+}
+
+bool Server::EventCallback(Event *event) {
+    switch (event->type) {
+    case ADD_CONNECTION:
+        AddConnection(event);
+        break;
+    case DELETE_CONNECTION:
+        DeleteConnection(event);
+        break;
+    case DELETE_CLIENT_CONNECTIONS:
+        DeleteClientConnections(event->key.client_id);
+        break;
+    case PROCESS_PACKET:
+        ProcessControlPacket(event->packet);
+        break;
+    }
+    delete event;
+    return true;
 }
 
 Session* Server::GetSession(const ControlPacket *packet) {
@@ -29,26 +98,50 @@ Session* Server::GetSession(const ControlPacket *packet) {
                 packet->receiver_discriminator);
     }
 
+    SessionIndex session_index;
+    if (packet->local_endpoint.port() == kSingleHop) {
+        session_index.if_index = packet->session_index.if_index;
+    } else {
+        session_index.vrf_index = packet->session_index.vrf_index;
+    }
+
     // Use ifindex for single hop and vrfindex for multihop sessions.
-    SessionIndex index = packet->local_endpoint.port() == kMultiHop ?
-                            packet->vrf_index : packet->if_index;
-    return session_manager_.SessionByKey(SessionKey(packet->local_host,
-                                                    packet->sender_host,
-                                                    index, packet->port);
+    Session *session = session_manager_.SessionByKey(
+        SessionKey(packet->remote_endpoint.address(), session_index,
+                   packet->local_endpoint.port(),
+                   packet->local_endpoint.address()));
+
+    // Try with 0.0.0.0 local address
+    if (!session) {
+        session = session_manager_.SessionByKey(
+            SessionKey(packet->remote_endpoint.address(), session_index,
+                       packet->local_endpoint.port()));
+    }
+    return session;
 }
 
 Session *Server::SessionByKey(const boost::asio::ip::address &address,
-        const SessionIndex index) {
+        const SessionIndex &index) {
     tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.SessionByKey(SessionKey(address, index));
+}
+
+Session *Server::SessionByKey(const SessionKey &key) const {
+    tbb::mutex::scoped_lock lock(mutex_);
+    return session_manager_.SessionByKey(key);
+}
+
+Session *Server::SessionByKey(const SessionKey &key) {
+    tbb::mutex::scoped_lock lock(mutex_);
+    return session_manager_.SessionByKey(key);
 }
 
 ResultCode Server::ProcessControlPacket(
         boost::asio::ip::udp::endpoint local_endpoint,
         boost::asio::ip::udp::endpoint remote_endpoint,
+        const SessionIndex &session_index,
         const boost::asio::const_buffer &recv_buffer,
         std::size_t bytes_transferred, const boost::system::error_code& error) {
-    tbb::mutex::scoped_lock lock(mutex_);
     LOG(DEBUG, __func__);
 
     if (bytes_transferred != (std::size_t) kMinimalPacketLength) {
@@ -66,9 +159,9 @@ ResultCode Server::ProcessControlPacket(
 
     packet->local_endpoint = local_endpoint;
     packet->remote_endpoint = remote_endpoint;
-    packet->if_index = 0;
-    packet->vrf_index = 0;
-    return ProcessControlPacket(packet.get());
+    packet->session_index = session_index;
+    EnqueueEvent(new Event(PROCESS_PACKET, packet.get()));
+    return kResultCode_Ok;
 }
 
 ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
@@ -81,8 +174,9 @@ ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
     Session *session = NULL;
     session = GetSession(packet);
     if (session == NULL) {
-        LOG(ERROR, "Unknown session: " << packet->sender_host << "/"
-                   << packet->receiver_discriminator);
+        LOG(ERROR, "Unknown session: " <<
+            packet->remote_endpoint.address().to_string() << "/" <<
+            packet->receiver_discriminator);
         return kResultCode_UnknownSession;
     }
     LOG(DEBUG, "Found session: " << session->toString());
@@ -103,12 +197,12 @@ ResultCode Server::ConfigureSession(const SessionKey &key,
                                              assignedDiscriminator);
 }
 
-ResultCode Server::RemoveSessionReference(const SessoonKey &key) {
+ResultCode Server::RemoveSessionReference(const SessionKey &key) {
     tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.RemoveSessionReference(key);
 }
 
-Session* Server::SessionManager::SessionByDiscriminator(
+Session *Server::SessionManager::SessionByDiscriminator(
     Discriminator discriminator) {
     DiscriminatorSessionMap::const_iterator it =
             by_discriminator_.find(discriminator);
@@ -117,19 +211,22 @@ Session* Server::SessionManager::SessionByDiscriminator(
     return it->second;
 }
 
-Session* Server::SessionManager::SessionByKey(const SessionKey &key) {
+Session *Server::SessionManager::SessionByKey(const SessionKey &key) {
     KeySessionMap::const_iterator it = by_key_.find(key);
-    if (it == by_key_.end())
-        return NULL;
-    else
-        return it->second;
+    return it != by_key_.end() ? it->second : NULL;
+}
+
+Session *Server::SessionManager::SessionByKey(const SessionKey &key) const {
+    KeySessionMap::const_iterator it = by_key_.find(key);
+    return it != by_key_.end() ? it->second : NULL;
 }
 
 ResultCode Server::SessionManager::RemoveSessionReference(
         const SessionKey &key) {
     Session *session = SessionByKey(key);
     if (session == NULL) {
-        LOG(DEBUG, __PRETTY_FUNCTION__ << " No such session: " << key);
+        LOG(DEBUG,
+            __PRETTY_FUNCTION__ << " No such session: " << key.to_string());
         return kResultCode_UnknownSession;
     }
 
@@ -151,7 +248,7 @@ ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
         refcounts_[session]++;
 
         LOG(INFO, __func__ << ": Reference count incremented: "
-                  << session->key() << "/"
+                  << session->key().to_string() << "/"
                   << session->local_discriminator() << ","
                   << refcounts_[session] << " refs");
 
@@ -166,7 +263,7 @@ ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
     by_key_[key] = session;
     refcounts_[session] = 1;
 
-    LOG(INFO, __func__ << ": New session configured: " << remoteHost << "/"
+    LOG(INFO, __func__ << ": New session configured: " << key.to_string() << "/"
               << *assignedDiscriminator);
 
     return kResultCode_Ok;

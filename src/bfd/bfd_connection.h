@@ -18,18 +18,19 @@ public:
     virtual void SendPacket(
             const boost::asio::ip::udp::endpoint &local_endpoint,
             const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const SessionIndex &session_index,
             const boost::asio::mutable_buffer &packet, int pktSize) = 0;
     virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
                     const boost::asio::ip::udp::endpoint &local_endpoint,
                     const boost::asio::ip::udp::endpoint &remote_endpoint,
+                    const SessionIndex &session_index,
                     std::size_t bytes_transferred,
                     const boost::system::error_code& error) {
         GetServer()->ProcessControlPacket(local_endpoint, remote_endpoint,
-                                          recv_buffer, bytes_transferred,
-                                          error);
+                                          session_index, recv_buffer,
+                                          bytes_transferred, error);
     }
-    virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
-                                   const bool &up) = 0;
+    virtual void NotifyStateChange(const SessionKey &key, const bool &up) = 0;
     virtual Server *GetServer() const = 0;
     virtual void SetServer(Server *server) = 0;
 private:

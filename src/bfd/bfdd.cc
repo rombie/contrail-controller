@@ -40,10 +40,10 @@ public:
     virtual void SendPacket(
             const boost::asio::ip::udp::endpoint &local_endpoint,
             const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const SessionIndex &session_index,
             const boost::asio::mutable_buffer &send, int pktSize) {
     }
-    virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
-                                   const bool &up) {
+    virtual void NotifyStateChange(const SessionKey &key, const bool &up) {
     }
     virtual Server *GetServer() const { return server_; }
     virtual void SetServer(Server *server) { server_ = server; }

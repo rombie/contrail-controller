@@ -22,12 +22,6 @@ class Connection;
 class SessionConfig;
 class ControlPacket;
 
-struct SessionConfig {
-    TimeInterval desiredMinTxInterval;  // delay
-    TimeInterval requiredMinRxInterval; // timeout
-    int detectionTimeMultiplier;        // max-retries ?
-};
-
 struct BFDRemoteSessionState {
     BFDRemoteSessionState() : discriminator(0),
         minRxInterval(boost::posix_time::seconds(0)),
@@ -44,18 +38,15 @@ struct BFDRemoteSessionState {
 
 class Session {
  public:
-    Session(Discriminator localDiscriminator,
-            boost::asio::ip::address remoteHost,
-            EventManager *evm,
-            const SessionConfig &config,
+    Session(Discriminator localDiscriminator, const SessionKey &key,
+            EventManager *evm, const SessionConfig &config,
             Connection *communicator);
     virtual ~Session();
 
     void Stop();
     ResultCode ProcessControlPacket(const ControlPacket *packet);
     void InitPollSequence();
-    void RegisterChangeCallback(ClientId client_id,
-                                StateMachine::ChangeCb cb);
+    void RegisterChangeCallback(ClientId client_id, ChangeCb cb);
     void UnregisterChangeCallback(ClientId client_id);
     void UpdateConfig(const SessionConfig& config);
 
@@ -79,16 +70,17 @@ class Session {
     bool RecvTimerExpired();
 
  private:
-    typedef std::map<ClientId, StateMachine::ChangeCb> Callbacks;
+    typedef std::map<ClientId, ChangeCb> Callbacks;
 
     bool SendTimerExpired();
     void ScheduleSendTimer();
     void ScheduleRecvDeadlineTimer();
     void PreparePacket(const SessionConfig &config, ControlPacket *packet);
     void SendPacket(const ControlPacket *packet);
-    void CallStateChangeCallbacks(const BFD::BFDState &new_state);
+    void CallStateChangeCallbacks(const SessionKey &key,
+                                  const BFD::BFDState &new_state);
     boost::asio::ip::udp::endpoint GetRandomLocalEndPoint() const;
-
+    uint16_t GetRandomLocalPort() const;
     BFDState local_state_non_locking() const;
 
     mutable tbb::mutex       mutex_;

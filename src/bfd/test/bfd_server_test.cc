@@ -41,7 +41,7 @@ TEST_F(ServerTest, Test2) {
     config1.requiredMinRxInterval = boost::posix_time::milliseconds(500);
     config1.detectionTimeMultiplier = 5;
     Discriminator disc1;
-    server1.ConfigureSession(addr2, config1, &disc1);
+    server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
     boost::function<ResultCode(const ControlPacket *)> c1 =
         boost::bind(&Server::ProcessControlPacket, &server1, _1);
@@ -56,7 +56,7 @@ TEST_F(ServerTest, Test2) {
     config2.requiredMinRxInterval = boost::posix_time::milliseconds(800);
     config2.detectionTimeMultiplier = 2;
     Discriminator disc2;
-    server2.ConfigureSession(addr1, config2, &disc2);
+    server2.ConfigureSession(SessionKey(addr1), config2, &disc2);
     boost::function<ResultCode(const ControlPacket *)> c2 =
         boost::bind(&Server::ProcessControlPacket, &server2, _1);
     communicationManager.registerServer(addr2,
@@ -148,7 +148,7 @@ TEST_F(ServerTest, InitTimeout) {
         boost::posix_time::milliseconds(500);
     config1.detectionTimeMultiplier = 5;
     Discriminator disc1;
-    server1.ConfigureSession(addr2, config1, &disc1);
+    server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
     Session *s1 = server1.SessionByKey(SessionKey(addr2));
     ASSERT_NE(s1, static_cast<Session *>(NULL));
@@ -179,7 +179,7 @@ TEST_F(ServerTest, RefCount) {
         boost::posix_time::milliseconds(500);
     config1.detectionTimeMultiplier = 5;
     Discriminator disc1;
-    server1.ConfigureSession(addr2, config1, &disc1);
+    server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
     boost::function<ResultCode(const ControlPacket *)> c1 =
         boost::bind(&Server::ProcessControlPacket, &server1, _1);
@@ -194,14 +194,14 @@ TEST_F(ServerTest, RefCount) {
     config2.requiredMinRxInterval = boost::posix_time::milliseconds(800);
     config2.detectionTimeMultiplier = 2;
     Discriminator disc2;
-    server2.ConfigureSession(addr1, config2, &disc2);
+    server2.ConfigureSession(SessionKey(addr1), config2, &disc2);
     boost::function<ResultCode(const ControlPacket *)> c2 =
         boost::bind(&Server::ProcessControlPacket, &server2, _1);
     communicationManager.registerServer(addr2,
         boost::bind(&processPacketAndVerifyResult, c2, _1));
 
-    Session *s1 = server1.SessionByKey(SessinKey(addr2));
-    Session *s2 = server2.SessionByKey(SessinKey(addr1));
+    Session *s1 = server1.SessionByKey(SessionKey(addr2));
+    Session *s2 = server2.SessionByKey(SessionKey(addr1));
 
     ASSERT_NE(static_cast<Session *>(NULL), s1);
     ASSERT_NE(static_cast<Session *>(NULL), s2);
@@ -211,13 +211,13 @@ TEST_F(ServerTest, RefCount) {
     TASK_UTIL_EXPECT_EQ(kUp, s1->local_state());
     TASK_UTIL_EXPECT_EQ(kUp, s2->local_state());
 
-    server1.ConfigureSession(addr2, config1, &disc1);
+    server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
     TASK_UTIL_EXPECT_EQ(kUp, s1->local_state());
     TASK_UTIL_EXPECT_EQ(kUp, s2->local_state());
 
     server1.RemoveSessionReference(SessionKey(addr2));
-    s1 = server1.SessionByAKey(SessionKey(addr2));
+    s1 = server1.SessionByKey(SessionKey(addr2));
     ASSERT_NE(static_cast<Session *>(NULL), s1);
 
     boost::this_thread::sleep(boost::posix_time::seconds(5));

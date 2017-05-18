@@ -16,16 +16,13 @@ RESTClientSession::RESTClientSession(Server* server, ClientId client_id) :
     client_id_(client_id), server_(server), changed_(true) {
 }
 
-Session* RESTClientSession::GetSession(const boost::asio::ip::address &ip,
-        const SessionIndex index) const {
+Session *RESTClientSession::GetSession(const boost::asio::ip::address &ip,
+        const SessionIndex &index) const {
     return GetSession(SessionKey(ip, index));
 }
 
-Session* RESTClientSession::GetSession(const boost::asio::ip::address& ip,
-        const SessionKey &key) const {
-    if (bfd_sessions_.find(key) == bfd_sessions_.end())
-        return NULL;
-    return server_->SessionByAddress(key);
+Session *RESTClientSession::GetSession(const SessionKey &key) const {
+    return server_->SessionByKey(key);
 }
 
 void RESTClientSession::Notify() {
@@ -43,7 +40,7 @@ void RESTClientSession::Notify() {
     for (Sessions::iterator it = bfd_sessions_.begin();
          it != bfd_sessions_.end(); ++it) {
         Session *session = GetSession(*it);
-        map.states[session->remote_host()] = session->local_state();
+        map.states[session->key().remote_address] = session->local_state();
     }
 
     std::string json;
@@ -77,40 +74,27 @@ void RESTClientSession::AddMonitoringHttpSession(HttpSession* session) {
         Notify();
 }
 
-ResultCode RESTClientSession::AddBFDConnection(
-                                const boost::asio::ip::address& remoteHost,
-                                const SessionConfig& config) {
-    if (bfd_sessions_.find(remoteHost) != bfd_sessions_.end()) {
-        // TODO(bfd) implement REST configuration update
-        return kResultCode_Error;
-    }
-
+ResultCode RESTClientSession::AddBFDConnection(const SessionKey &key,
+                                               const SessionConfig &config) {
+    Session *session = GetSession(key);
+    if (session)
+        return kResultCode_Ok;
     Discriminator discriminator;
-    ResultCode result =
-      server_->ConfigureSession(remoteHost, config, &discriminator);
-    bfd_sessions_.insert(remoteHost);
-
-    Session *session = GetSession(remoteHost);
-    if (NULL == session)
+    ResultCode result = server_->ConfigureSession(key, config, &discriminator);
+    session = GetSession(key);
+    if (!session)
       return kResultCode_Error;
     session->RegisterChangeCallback(client_id_,
-      boost::bind(&RESTClientSession::Notify, this));
+        boost::bind(&RESTClientSession::Notify, this));
     Notify();
-
     return result;
 }
 
-ResultCode RESTClientSession::DeleteBFDConnection(
-                    const boost::asio::ip::address& remoteHost,
-                    const SessionIndex index) {
-    SessionKey key(remoteHost, index);
-    if (bfd_sessions_.find(key) == bfd_sessions_.end()) {
+ResultCode RESTClientSession::DeleteBFDConnection(const SessionKey &key) {
+    Session *session = GetSession(key);
+    if (!session)
         return kResultCode_UnknownSession;
-    }
-
     ResultCode result = server_->RemoveSessionReference(key);
-    bfd_sessions_.erase(remoteHost);
-
     return result;
 }
 

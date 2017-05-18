@@ -35,7 +35,7 @@ TEST_F(BFDExternalTest, Test1) {
     Discriminator disc1;
     server.ConfigureSession(addr, config1, &disc1);
     cm.RegisterCallback(boost::bind(&Server::ProcessControlPacket, &server, _1,
-                                    _2, _3, _4));
+                                    _2, _3, _4, _5, _6));
 
     EventManagerThread emt(&evm);
     for (;;) {

@@ -18,18 +18,18 @@
 namespace BFD {
 
 Session::Session(Discriminator localDiscriminator,
-        const Sessioney &key,
+        const SessionKey &key,
         EventManager *evm,
         const SessionConfig &config, Connection *communicator) :
         localDiscriminator_(localDiscriminator),
         key_(key),
         sendTimer_(TimerManager::CreateTimer(*evm->io_service(),
-                                             "BFD TX timer")),
+            "BFD TX", TaskScheduler::GetInstance()->GetTaskId("BFD"), 0)),
         recvTimer_(TimerManager::CreateTimer(*evm->io_service(),
-                                             "BFD RX timeout")),
+            "BFD RX", TaskScheduler::GetInstance()->GetTaskId("BFD"), 0)),
         currentConfig_(config),
         nextConfig_(config),
-        sm_(CreateStateMachine(evm)),
+        sm_(CreateStateMachine(evm, this)),
         pollSequence_(false),
         communicator_(communicator),
         local_endpoint_(key.local_address, GetRandomLocalPort()),
@@ -37,8 +37,8 @@ Session::Session(Discriminator localDiscriminator,
         stopped_(false) {
     ScheduleSendTimer();
     ScheduleRecvDeadlineTimer();
-    sm_->SetCallback(boost::optional<StateMachine::ChangeCb>(
-        boost::bind(&Session::CallStateChangeCallbacks, this, _1)));
+    sm_->SetCallback(boost::optional<ChangeCb>(
+        boost::bind(&Session::CallStateChangeCallbacks, this, _1, _2)));
 }
 
 uint16_t Session::GetRandomLocalPort() const {
@@ -72,10 +72,8 @@ bool Session::RecvTimerExpired() {
 }
 
 std::string Session::toString() const {
-    tbb::mutex::scoped_lock lock(mutex_);
-
     std::ostringstream out;
-    out << "SessoonKey: " << key_ << "\n";
+    out << "SessoonKey: " << key_.to_string() << "\n";
     out << "LocalDiscriminator: 0x" << std::hex << localDiscriminator_ << "\n";
     out << "RemoteDiscriminator: 0x" << std::hex << remoteSession_.discriminator
         << "\n";
@@ -189,8 +187,8 @@ void Session::SendPacket(const ControlPacket *packet) {
     if (pktSize != kMinimalPacketLength) {
         LOG(ERROR, "Unable to encode packet");
     } else {
-        communicator_->SendPacket(local_endpoint_, remote_endpoint_, buffer,
-                                  pktSize);
+        communicator_->SendPacket(local_endpoint_, remote_endpoint_,
+                                  key_.index, buffer, pktSize);
     }
 }
 
@@ -235,7 +233,7 @@ void Session::Stop() {
         TimerManager::DeleteTimer(sendTimer_);
         TimerManager::DeleteTimer(recvTimer_);
         stopped_ = true;
-        sm_->SetCallback(boost::optional<StateMachine::ChangeCb>());
+        sm_->SetCallback(boost::optional<ChangeCb>());
     }
 }
 
@@ -254,15 +252,15 @@ Discriminator Session::local_discriminator() const {
     return localDiscriminator_;
 }
 
-void Session::CallStateChangeCallbacks(const BFD::BFDState &new_state) {
+void Session::CallStateChangeCallbacks(
+    const SessionKey &key, const BFD::BFDState &new_state) {
     for (Callbacks::const_iterator it = callbacks_.begin();
          it != callbacks_.end(); ++it) {
-        it->second(new_state);
+        it->second(key, new_state);
     }
 }
 
-void Session::RegisterChangeCallback(ClientId client_id,
-                                     StateMachine::ChangeCb cb) {
+void Session::RegisterChangeCallback(ClientId client_id, ChangeCb cb) {
     tbb::mutex::scoped_lock lock(mutex_);
     callbacks_[client_id] = cb;
 }

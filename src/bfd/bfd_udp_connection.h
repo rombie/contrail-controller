@@ -27,18 +27,16 @@ class UDPConnectionManager : public Connection {
 
     virtual void SendPacket(
         const boost::asio::ip::udp::endpoint &local_endpoint,
-        const boost::asio::ip::udp::endpoint &remote_endpoint
+        const boost::asio::ip::udp::endpoint &remote_endpoint,
+        const SessionIndex &session_index,
         const boost::asio::mutable_buffer &send, int pktSize);
     void SendPacket(boost::asio::ip::address remoteHost,
                     const ControlPacket *packet);
     virtual Server *GetServer() const;
     virtual void SetServer(Server *server);
-    virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
-                                   const bool &up);
+    virtual void NotifyStateChange(const SessionKey &key, const bool &up);
 
  private:
-    static const int kSendPortMin = 49152;
-    static const int kSendPortMax = 65535;
 
     class UDPRecvServer : public UdpServer {
      public:
@@ -48,7 +46,7 @@ class UDPConnectionManager : public Connection {
         void HandleReceive(const boost::asio::const_buffer &recv_buffer,
                 boost::asio::ip::udp::endpoint remote_endpoint,
                 std::size_t bytes_transferred,
-                const boost::system::error_code& error);
+                const boost::system::error_code &error);
 
      private:
         UDPConnectionManager *parent_;

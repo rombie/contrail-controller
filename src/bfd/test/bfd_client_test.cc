@@ -23,39 +23,39 @@ using std::size_t;
 
 class Communicator : public Connection {
 public:
-    typedef map<boost::asio::ip::address,
-            pair<Connection *, boost::asio::ip::address> > Links;
+    struct LinksKey {
+        LinksKey(const boost::asio::ip::address &remote_address,
+                 const SessionIndex &session_index = SessionIndex()) :
+                remote_address(remote_address), session_index(session_index) {
+        }
+        bool operator<(const LinksKey &other) const {
+            BOOL_KEY_COMPARE(remote_address, other.remote_address);
+            BOOL_KEY_COMPARE(session_index, other.session_index);
+            return false;
+        }
+        boost::asio::ip::address remote_address;
+        SessionIndex             session_index;
+    };
 
+    typedef map<LinksKey, Connection *> Links;
     Communicator() { }
     virtual ~Communicator() { }
-
     virtual void SendPacket(
             const boost::asio::ip::udp::endpoint &local_endpoint,
             const boost::asio::ip::udp::endpoint &remote_endpoint,
+            const SessionIndex &session_index,
             const boost::asio::mutable_buffer &buffer, int pktSize) {
         // Find other end-point from the links map.
-        Links::const_iterator it = links_.find(dstAddr);
+        Links::const_iterator it = links_.find(
+            LinksKey(remote_endpoint.address(), session_index));
         if (it != links_.end()) {
             boost::system::error_code error;
-            it->second.first->HandleReceive(buffer, local_endpoint,
-                remote_endpoint, pktSize, error);
-                // boost::asio::ip::udp::endpoint(dstAddr, 1234),
-                // boost::asio::ip::udp::endpoint(it->second.second, 1234),
+            it->second->HandleReceive(buffer, remote_endpoint,
+                local_endpoint, session_index, pktSize, error);
         }
         delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
     }
-#if 0
-    virtual void HandleReceive(const boost::asio::const_buffer &recv_buffer,
-                               boost::asio::ip::udp::endpoint remote_endpoint,
-                               size_t bytes_transferred,
-                               const boost::system::error_code& error) {
-        Connection::HandleReceive(recv_buffer, remote_endpoint,
-                                  bytes_transferred, error);
-    }
-#endif
-    virtual void NotifyStateChange(const boost::asio::ip::address &remoteHost,
-                                   const bool &up) {
-    }
+    virtual void NotifyStateChange(const SessionKey &key, const bool &up) { }
     virtual Server *GetServer() const { return server_; }
     virtual void SetServer(Server *server) { server_ = server; }
     Links *links() { return &links_; }
@@ -94,32 +94,166 @@ class ClientTest : public ::testing::Test {
     Client client_test_;
 };
 
-
-TEST_F(ClientTest, Basic) {
+TEST_F(ClientTest, BasicSingleHop1) {
     boost::asio::ip::address client_address =
         boost::asio::ip::address::from_string("10.10.10.1");
     boost::asio::ip::address client_test_address =
-        boost::asio::ip::address::from_string("192.168.0.1");
-
+        boost::asio::ip::address::from_string("10.10.10.2");
+    SessionKey client_key = SessionKey(client_address, SessionIndex(),
+                                       kSingleHop, client_test_address);
+    SessionKey client_test_key = SessionKey(client_test_address,
+                                            SessionIndex(), kSingleHop,
+                                            client_address);
     // Connect two bfd links
-    cm_.links()->insert(make_pair(client_address,
-                        make_pair(&cm_test_, client_test_address)));
-    cm_test_.links()->insert(make_pair(client_test_address,
-                             make_pair(&cm_, client_address)));
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, SessionIndex()), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address, SessionIndex()),
+                  &cm_));
     SessionConfig sc;
     sc.desiredMinTxInterval = boost::posix_time::milliseconds(30);
     sc.requiredMinRxInterval = boost::posix_time::milliseconds(50);
     sc.detectionTimeMultiplier = 3;
-    EXPECT_EQ(kResultCode_Ok, client_.AddConnection(client_address, sc));
+    client_.AddConnection(client_key, sc);
 
     SessionConfig sc_t;
     sc_t.desiredMinTxInterval = boost::posix_time::milliseconds(30);
     sc_t.requiredMinRxInterval = boost::posix_time::milliseconds(50);
     sc_t.detectionTimeMultiplier = 3;
-    EXPECT_EQ(kResultCode_Ok, client_test_.AddConnection(client_test_address,
-                                                         sc_t));
-    TASK_UTIL_EXPECT_TRUE(client_.Up(client_address));
-    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_address));
+    client_test_.AddConnection(client_test_key, sc_t);
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key));
+}
+
+// Multiple sessions with same IPs (but with different ifindex)
+TEST_F(ClientTest, BasicSingleHop2) {
+    boost::asio::ip::address client_address =
+        boost::asio::ip::address::from_string("10.10.10.1");
+    boost::asio::ip::address client_test_address =
+        boost::asio::ip::address::from_string("10.10.10.2");
+    SessionKey client_key = SessionKey(client_address, SessionIndex(),
+                                       kSingleHop, client_test_address);
+    SessionKey client_test_key = SessionKey(client_test_address,
+                                            SessionIndex(), kSingleHop,
+                                            client_address);
+    // Connect two bfd links
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, client_key.index), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address,
+                                         client_test_key.index), &cm_));
+    SessionConfig sc;
+    sc.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc.detectionTimeMultiplier = 3;
+
+    client_.AddConnection(client_key, sc);
+    client_test_.AddConnection(client_test_key, sc);
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key));
+
+    SessionKey client_key2 = SessionKey(client_address, SessionIndex(1),
+                                       kSingleHop, client_test_address);
+    SessionKey client_test_key2 = SessionKey(client_test_address,
+                                            SessionIndex(1), kSingleHop,
+                                            client_address);
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, client_key2.index), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address,
+                                         client_test_key2.index), &cm_));
+
+    client_.AddConnection(client_key2, sc);
+    client_test_.AddConnection(client_test_key2, sc);
+    EXPECT_NE(static_cast<Session *>(NULL), client_.GetSession(client_key));
+    EXPECT_NE(client_.GetSession(client_key), client_.GetSession(client_key2));
+    EXPECT_NE(static_cast<Session *>(NULL),
+              client_test_.GetSession(client_test_key));
+    EXPECT_NE(client_.GetSession(client_test_key),
+              client_test_.GetSession(client_test_key2));
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key2));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key2));
+}
+
+TEST_F(ClientTest, BasicMultiHop1) {
+    boost::asio::ip::address client_address =
+        boost::asio::ip::address::from_string("10.10.10.1");
+    boost::asio::ip::address client_test_address =
+        boost::asio::ip::address::from_string("20.10.10.2");
+    SessionKey client_key = SessionKey(client_address, SessionIndex(),
+                                       kMultiHop, client_test_address);
+    SessionKey client_test_key = SessionKey(client_test_address,
+                                            SessionIndex(), kMultiHop,
+                                            client_address);
+    // Connect two bfd links
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, SessionIndex()), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address, SessionIndex()),
+                  &cm_));
+    SessionConfig sc;
+    sc.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc.detectionTimeMultiplier = 3;
+    client_.AddConnection(client_key, sc);
+
+    SessionConfig sc_t;
+    sc_t.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc_t.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc_t.detectionTimeMultiplier = 3;
+    client_test_.AddConnection(client_test_key, sc_t);
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key));
+}
+
+// Multihop sessions with same IPs (but with different vrf index)
+TEST_F(ClientTest, BasicMultipleHop2) {
+    boost::asio::ip::address client_address =
+        boost::asio::ip::address::from_string("10.10.10.1");
+    boost::asio::ip::address client_test_address =
+        boost::asio::ip::address::from_string("20.10.10.2");
+    SessionKey client_key = SessionKey(client_address, SessionIndex(),
+                                       kMultiHop, client_test_address);
+    SessionKey client_test_key = SessionKey(client_test_address,
+                                            SessionIndex(), kMultiHop,
+                                            client_address);
+    // Connect two bfd links
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, client_key.index), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address,
+                                         client_test_key.index), &cm_));
+    SessionConfig sc;
+    sc.desiredMinTxInterval = boost::posix_time::milliseconds(30);
+    sc.requiredMinRxInterval = boost::posix_time::milliseconds(50);
+    sc.detectionTimeMultiplier = 3;
+
+    client_.AddConnection(client_key, sc);
+    client_test_.AddConnection(client_test_key, sc);
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key));
+
+    SessionKey client_key2 = SessionKey(client_address, SessionIndex(0, 2),
+                                       kMultiHop, client_test_address);
+    SessionKey client_test_key2 = SessionKey(client_test_address,
+                                            SessionIndex(0, 2), kMultiHop,
+                                            client_address);
+    cm_.links()->insert(make_pair(
+        Communicator::LinksKey(client_address, client_key2.index), &cm_test_));
+    cm_test_.links()->insert(
+        make_pair(Communicator::LinksKey(client_test_address,
+                                         client_test_key2.index), &cm_));
+
+    client_.AddConnection(client_key2, sc);
+    client_test_.AddConnection(client_test_key2, sc);
+    EXPECT_NE(static_cast<Session *>(NULL), client_.GetSession(client_key));
+    EXPECT_NE(client_.GetSession(client_key), client_.GetSession(client_key2));
+    EXPECT_NE(static_cast<Session *>(NULL),
+              client_test_.GetSession(client_test_key));
+    EXPECT_NE(client_.GetSession(client_test_key),
+              client_test_.GetSession(client_test_key2));
+    TASK_UTIL_EXPECT_TRUE(client_.Up(client_key2));
+    TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key2));
 }
 
 int main(int argc, char **argv) {

@@ -32,12 +32,16 @@ void UDPConnectionManager::UDPRecvServer::HandleReceive(
         const boost::asio::const_buffer &recv_buffer,
         boost::asio::ip::udp::endpoint remote_endpoint,
         std::size_t bytes_transferred,
-        const boost::system::error_code& error) {
-    if (callback_)
+        const boost::system::error_code &error) {
+    if (callback_) {
         callback_.get()(remote_endpoint, recv_buffer, bytes_transferred, error);
-    else
-        parent_->HandleReceive(recv_buffer, GetLocalEndpoint(&error),
-                               remote_endpoint, bytes_transferred, error);
+        return;
+    }
+
+    boost::system::error_code err;
+    parent_->HandleReceive(recv_buffer, GetLocalEndpoint(&err),
+                           remote_endpoint, SessionIndex(), bytes_transferred,
+                           error);
 }
 
 UDPConnectionManager::UDPCommunicator::UDPCommunicator(EventManager *evm,
@@ -98,16 +102,17 @@ void UDPConnectionManager::SendPacket(boost::asio::ip::address remoteHost,
     }
     boost::asio::ip::udp::endpoint remote_endpoint(remoteHost,
                                                    udpSend_->remotePort());
-    SendPacket(boost::asio::ip::udp::endpoint(), remote_endpoint, send,
+    SendPacket(boost::asio::ip::udp::endpoint(), remote_endpoint, 0, send,
                pktSize);
 }
 
 void UDPConnectionManager::SendPacket(
         const boost::asio::ip::udp::endpoint &local_endpoint,
         const boost::asio::ip::udp::endpoint &remote_endpoint,
-        const boost::asio::mutable_buffer &send, int pktSize) {
+        const SessionIndex &index, const boost::asio::mutable_buffer &send,
+        int pktSize) {
     LOG(DEBUG, __func__);
-    udpSend_->StartSend(remote_ndpoint, pktSize, send);
+    udpSend_->StartSend(remote_endpoint, pktSize, send);
 }
 
 UDPConnectionManager::~UDPConnectionManager() {
@@ -117,8 +122,8 @@ UDPConnectionManager::~UDPConnectionManager() {
     UdpServerManager::DeleteServer(udpSend_);
 }
 
-void UDPConnectionManager::NotifyStateChange(
-            const boost::asio::ip::address& remoteHost, const bool &up) {
+void UDPConnectionManager::NotifyStateChange(const SessionKey &key,
+                                             const bool &up) {
 }
 
 }  // namespace BFD

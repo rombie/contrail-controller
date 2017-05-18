@@ -156,7 +156,7 @@ void RESTServer::CreateBFDConnection(ClientId client_id,
         config.detectionTimeMultiplier =
             bfd_session_data.detection_time_multiplier;
         ResultCode result = client_session->AddBFDConnection(
-            bfd_session_data.address, config);
+            SessionKey(bfd_session_data.address), config);
         if (kResultCode_Ok != result) {
             REST::SendErrorResponse(session, "Unable to create session", 500);
         } else {
@@ -192,7 +192,7 @@ void RESTServer::GetBFDConnection(ClientId client_id,
     session_state.bfd_remote_state = remote_state.state;
     session_state.remote_min_rx_interval = remote_state.minRxInterval;
     REST::JsonConfig& session_data = session_state.session_config;
-    session_data.address = bfd_session->remote_host();
+    session_data.address = bfd_session->key().remote_address;
     session_data.desired_min_tx_interval = config.desiredMinTxInterval;
     session_data.required_min_rx_interval = config.requiredMinRxInterval;
     session_data.detection_time_multiplier = config.detectionTimeMultiplier;
@@ -210,7 +210,7 @@ void RESTServer::DeleteBFDConnection(ClientId client_id,
         REST::SendErrorResponse(session, "Unknown client session", 404);
         return;
     }
-    ResultCode result = client_session->DeleteBFDConnection(ip);
+    ResultCode result = client_session->DeleteBFDConnection(SessionKey(ip));
     if (result != kResultCode_Ok) {
         REST::SendErrorResponse(session, "Unable to delete session");
     } else {

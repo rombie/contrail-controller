@@ -57,15 +57,16 @@ class TestCommunicatorManager {
     }
 
     void sendPacket(const boost::asio::ip::address &srcAddr,
-                    const boost::asio::ip::address &dstAddr,
+                    const boost::asio::ip::udp::endpoint &remote_endpoint,
                     const boost::asio::mutable_buffer &packet, int pktSize) {
-        Servers::const_iterator it = servers.find(dstAddr);
+        Servers::const_iterator it = servers.find(remote_endpoint.address());
         if (it == servers.end())
             return;
 
         ControlPacket *recvPacket = ParseControlPacket(
             boost::asio::buffer_cast<const uint8_t *>(packet), pktSize);
-        recvPacket->sender_host = srcAddr;
+        recvPacket->remote_endpoint.address(srcAddr);
+        recvPacket->local_endpoint.port(remote_endpoint.port());
         recvPacket->length = kMinimalPacketLength;
         io_service->post(boost::bind(&processPacketAndFree, it->second,
                                      recvPacket));
@@ -93,14 +94,13 @@ class TestCommunicator : public Connection {
     virtual void SendPacket(
         const boost::asio::ip::udp::endpoint &local_endpoint,
         const boost::asio::ip::udp::endpoint &remote_endpoint,
+        const SessionIndex &session_index,
         const boost::asio::mutable_buffer &packet, int pktSize) {
-        manager_->sendPacket(hostAddr_, remote_endpoint.address(), packet,
-                             pktSize);
+        manager_->sendPacket(hostAddr_, remote_endpoint, packet, pktSize);
     }
 
     virtual ~TestCommunicator() { }
-    virtual void NotifyStateChange(const boost::asio::ip::address& remoteHost,
-                                   const bool &up) {
+    virtual void NotifyStateChange(const SessionKey &key, const bool &up) {
     }
     virtual Server *GetServer() const { return server_; }
     virtual void SetServer(Server *server) { server_ = server; }

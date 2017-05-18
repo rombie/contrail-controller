@@ -70,7 +70,7 @@ TEST_F(BFDTest, UDPConnection) {
     packet.desired_min_tx_interval = boost::posix_time::milliseconds(100);
     packet.required_min_rx_interval = boost::posix_time::milliseconds(200);
     packet.required_min_echo_rx_interval = boost::posix_time::milliseconds(0);
-    packet.sender_host = addr;
+    packet.remote_endpoint.address(addr);
 
     UDPConnectionManager::RecvCallback cb =
         boost::bind(&BFDTest::ComparePacket, this, _1, _2, _3, _4, &packet);

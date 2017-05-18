@@ -16,26 +16,17 @@ class Client {
 public:
     Client(Connection *cm, ClientId client_id = 0);
     virtual ~Client();
-    ResultCode AddConnection(const SessionConfig &config,
-        const boost::asio::ip::address& remote_address,
-        const boost::asio::ip::address& local_address,
-        const SessionIndex index, bool multi_hop) {
-    ResultCode AddConnection(const boost::asio::ip::address &remoteHost,
-                             const SessionConfig &config, uint32_t index = 0,
-                             bool multi_hop = false);
-    ResultCode DeleteConnection(const boost::asio::ip::address &remoteHost,
-                                uint32_t index = 0);
-    bool Up(const boost::asio::ip::address& ip, uint32_t index = 0) const;
+    void AddConnection(const SessionKey &key, const SessionConfig &config);
+    void DeleteConnection(const SessionKey &key);
+    void DeleteClientConnections();
+    bool Up(const SessionKey &key) const;
+    Session *GetSession(const SessionKey &key) const;
 
 private:
-    void Notify(const BFD::BFDState &new_state, Session *session);
-    Session *GetSession(const boost::asio::ip::address& ip,
-                        const SessionIndex index = 0) const;
+    void Notify(const SessionKey &key, const BFD::BFDState &new_state);
 
     ClientId id_;
     Connection *cm_;
-    typedef std::set<SessionKey> Sessions;
-    Sessions bfd_sessions_;
 };
 
 }  // namespace BFD
