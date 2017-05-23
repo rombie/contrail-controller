@@ -7,7 +7,6 @@
 #include "bfd/bfd_common.h"
 #include "bfd/bfd_connection.h"
 
-#include <tbb/mutex.h>
 #include <boost/asio.hpp>
 #include <boost/random.hpp>
 #include <string>
@@ -52,7 +51,6 @@ Session::~Session() {
 
 bool Session::SendTimerExpired() {
     LOG(DEBUG, __func__);
-    tbb::mutex::scoped_lock lock(mutex_);
 
     ControlPacket packet;
     PreparePacket(nextConfig_, &packet);
@@ -65,7 +63,6 @@ bool Session::SendTimerExpired() {
 
 bool Session::RecvTimerExpired() {
     LOG(DEBUG, __func__);
-    tbb::mutex::scoped_lock lock(mutex_);
     sm_->ProcessTimeout();
 
     return false;
@@ -108,7 +105,6 @@ BFDState Session::local_state_non_locking() const {
 }
 
 BFDState Session::local_state() const {
-    tbb::mutex::scoped_lock lock(mutex_);
 
     return local_state_non_locking();
 }
@@ -118,8 +114,6 @@ BFDState Session::local_state() const {
 //  setting the Poll (P) bit on those scheduled periodic transmissions;
 //  additional packets MUST NOT be sent.
 void Session::InitPollSequence() {
-    tbb::mutex::scoped_lock lock(mutex_);
-
     pollSequence_ = true;
     if (local_state_non_locking() != kUp &&
         local_state_non_locking() != kAdminDown) {
@@ -142,8 +136,6 @@ void Session::PreparePacket(const SessionConfig &config,
 }
 
 ResultCode Session::ProcessControlPacket(const ControlPacket *packet) {
-    tbb::mutex::scoped_lock lock(mutex_);
-
     remoteSession_.discriminator = packet->sender_discriminator;
     if (remoteSession_.minRxInterval != packet->required_min_rx_interval) {
         // TODO(bfd) schedule timer based on previous packet
@@ -222,13 +214,10 @@ TimeInterval Session::tx_interval() {
 }
 
 const SessionKey &Session::key() const {
-    tbb::mutex::scoped_lock lock(mutex_);
     return key_;
 }
 
 void Session::Stop() {
-    tbb::mutex::scoped_lock lock(mutex_);
-
     if (stopped_ == false) {
         TimerManager::DeleteTimer(sendTimer_);
         TimerManager::DeleteTimer(recvTimer_);
@@ -238,17 +227,14 @@ void Session::Stop() {
 }
 
 SessionConfig Session::config() const {
-    tbb::mutex::scoped_lock lock(mutex_);
     return nextConfig_;
 }
 
 BFDRemoteSessionState Session::remote_state() const {
-    tbb::mutex::scoped_lock lock(mutex_);
     return remoteSession_;
 }
 
 Discriminator Session::local_discriminator() const {
-    tbb::mutex::scoped_lock lock(mutex_);
     return localDiscriminator_;
 }
 
@@ -261,12 +247,10 @@ void Session::CallStateChangeCallbacks(
 }
 
 void Session::RegisterChangeCallback(ClientId client_id, ChangeCb cb) {
-    tbb::mutex::scoped_lock lock(mutex_);
     callbacks_[client_id] = cb;
 }
 
 void Session::UnregisterChangeCallback(ClientId client_id) {
-    tbb::mutex::scoped_lock lock(mutex_);
     callbacks_.erase(client_id);
 }
 
@@ -276,7 +260,6 @@ void Session::UpdateConfig(const SessionConfig& config) {
 }
 
 int Session::reference_count() {
-    tbb::mutex::scoped_lock lock(mutex_);
     return callbacks_.size();
 }
 

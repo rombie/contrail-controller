@@ -17,14 +17,15 @@ env.Append(CPPPATH = [env['TOP'],
                      ])
 env.Append(LIBPATH = ['#/' + Dir('..').path,
                       '../../base', 
+                      '../../base/test', 
                       '../../io',
                       '.'
                      ])
 
 env.Prepend(LIBS = ['bfd_udp', 'bfd', 'gunit', 'io', 'sandesh', 'sandeshvns',
-                    'process_info', 'base', 'http', 'io', 'ssl', 'crypto',
-                    'http_parser', 'curl', 'pugixml', 'boost_program_options',
-                    'boost_thread'])
+                    'process_info', 'task_test', 'base', 'http', 'io', 'ssl',
+                    'crypto', 'http_parser', 'curl', 'pugixml',
+                    'boost_program_options', 'boost_thread'])
 
 if sys.platform != 'darwin':
     env.Append(LIBS=['rt'])

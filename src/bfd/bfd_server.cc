@@ -2,6 +2,7 @@
  * Copyright (c) 2014 CodiLime, Inc. All rights reserved.
  */
 
+#include "base/task_annotations.h"
 #include "bfd/bfd_server.h"
 #include "bfd/bfd_session.h"
 #include "bfd/bfd_connection.h"
@@ -26,12 +27,16 @@ Server::Server(EventManager *evm, Connection *communicator) :
     communicator->SetServer(this);
 }
 
+Server::~Server() {
+}
+
 void Server::AddConnection(const SessionKey &key, const SessionConfig &config,
                            ChangeCb cb) {
     EnqueueEvent(new Event(ADD_CONNECTION, key, config, cb));
 }
 
 void Server::AddConnection(Event *event) {
+    CHECK_CONCURRENCY("BFD");
     Discriminator discriminator;
     ConfigureSession(event->key, event->config, &discriminator);
     sessions_.insert(event->key);
@@ -47,6 +52,7 @@ void Server::DeleteConnection(const SessionKey &key) {
 }
 
 void Server::DeleteConnection(Event *event) {
+    CHECK_CONCURRENCY("BFD");
     sessions_.erase(event->key);
     RemoveSessionReference(event->key);
 }
@@ -58,6 +64,7 @@ void Server::DeleteClientConnections(const ClientId client_id) {
 }
 
 void Server::DeleteClientConnections(Event *event) {
+    CHECK_CONCURRENCY("BFD");
     for (Sessions::iterator it = sessions_.begin(), next;
          it != sessions_.end(); it = next) {
         SessionKey key = *it;
@@ -82,10 +89,10 @@ bool Server::EventCallback(Event *event) {
         DeleteConnection(event);
         break;
     case DELETE_CLIENT_CONNECTIONS:
-        DeleteClientConnections(event->key.client_id);
+        DeleteClientConnections(event);
         break;
     case PROCESS_PACKET:
-        ProcessControlPacket(event->packet);
+        ProcessControlPacket(event);
         break;
     }
     delete event;
@@ -93,6 +100,7 @@ bool Server::EventCallback(Event *event) {
 }
 
 Session* Server::GetSession(const ControlPacket *packet) {
+    CHECK_CONCURRENCY("BFD");
     if (packet->receiver_discriminator) {
         return session_manager_.SessionByDiscriminator(
                 packet->receiver_discriminator);
@@ -122,49 +130,49 @@ Session* Server::GetSession(const ControlPacket *packet) {
 
 Session *Server::SessionByKey(const boost::asio::ip::address &address,
         const SessionIndex &index) {
-    tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.SessionByKey(SessionKey(address, index));
 }
 
 Session *Server::SessionByKey(const SessionKey &key) const {
-    tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.SessionByKey(key);
 }
 
 Session *Server::SessionByKey(const SessionKey &key) {
-    tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.SessionByKey(key);
 }
 
-ResultCode Server::ProcessControlPacket(
-        boost::asio::ip::udp::endpoint local_endpoint,
-        boost::asio::ip::udp::endpoint remote_endpoint,
+void Server::ProcessControlPacket(
+        const boost::asio::ip::udp::endpoint &local_endpoint,
+        const boost::asio::ip::udp::endpoint &remote_endpoint,
         const SessionIndex &session_index,
         const boost::asio::const_buffer &recv_buffer,
         std::size_t bytes_transferred, const boost::system::error_code& error) {
-    LOG(DEBUG, __func__);
+    EnqueueEvent(new Event(PROCESS_PACKET, local_endpoint, remote_endpoint,
+                           session_index, recv_buffer, bytes_transferred));
+}
 
-    if (bytes_transferred != (std::size_t) kMinimalPacketLength) {
-        LOG(ERROR, __func__ <<  "Wrong packet size: " << bytes_transferred);
-        return kResultCode_InvalidPacket;
+void Server::ProcessControlPacket(Event *event) {
+    if (event->bytes_transferred != (std::size_t) kMinimalPacketLength) {
+        LOG(ERROR, __func__ <<  "Wrong packet size: " <<
+            event->bytes_transferred);
+        return;
     }
 
     boost::scoped_ptr<ControlPacket> packet(ParseControlPacket(
-        boost::asio::buffer_cast<const uint8_t *>(recv_buffer),
-        bytes_transferred));
+        boost::asio::buffer_cast<const uint8_t *>(event->recv_buffer),
+        event->bytes_transferred));
     if (packet == NULL) {
         LOG(ERROR, __func__ <<  "Unable to parse packet");
-        return kResultCode_InvalidPacket;
+        return;
     }
-
-    packet->local_endpoint = local_endpoint;
-    packet->remote_endpoint = remote_endpoint;
-    packet->session_index = session_index;
-    EnqueueEvent(new Event(PROCESS_PACKET, packet.get()));
-    return kResultCode_Ok;
+    packet->local_endpoint = event->local_endpoint;
+    packet->remote_endpoint = event->remote_endpoint;
+    packet->session_index = event->session_index;
+    ProcessControlPacketActual(packet.get());
+    delete[] boost::asio::buffer_cast<const uint8_t *>(event->recv_buffer);
 }
 
-ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
+ResultCode Server::ProcessControlPacketActual(const ControlPacket *packet) {
     ResultCode result;
     result = packet->Verify();
     if (result != kResultCode_Ok) {
@@ -192,13 +200,11 @@ ResultCode Server::ProcessControlPacket(const ControlPacket *packet) {
 ResultCode Server::ConfigureSession(const SessionKey &key,
                                     const SessionConfig &config,
                                     Discriminator *assignedDiscriminator) {
-    tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.ConfigureSession(key, config, communicator_,
                                              assignedDiscriminator);
 }
 
 ResultCode Server::RemoveSessionReference(const SessionKey &key) {
-    tbb::mutex::scoped_lock lock(mutex_);
     return session_manager_.RemoveSessionReference(key);
 }
 

@@ -53,7 +53,6 @@ public:
             it->second->HandleReceive(buffer, remote_endpoint,
                 local_endpoint, session_index, pktSize, error);
         }
-        delete[] boost::asio::buffer_cast<const uint8_t *>(buffer);
     }
     virtual void NotifyStateChange(const SessionKey &key, const bool &up) { }
     virtual Server *GetServer() const { return server_; }
@@ -78,6 +77,13 @@ class ClientTest : public ::testing::Test {
     }
 
     virtual void TearDown() {
+        server_.DeleteClientConnections();
+        server_test_.DeleteClientConnections();
+        TASK_UTIL_EXPECT_TRUE(server_.event_queue()->IsQueueEmpty());
+        TASK_UTIL_EXPECT_TRUE(server_test_.event_queue()->IsQueueEmpty());
+        task_util::WaitForIdle();
+        server_.event_queue()->Shutdown();
+        server_test_.event_queue()->Shutdown();
         evm_.Shutdown();
         thread_->Join();
     }
@@ -153,10 +159,10 @@ TEST_F(ClientTest, BasicSingleHop2) {
     TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key));
 
     SessionKey client_key2 = SessionKey(client_address, SessionIndex(1),
-                                       kSingleHop, client_test_address);
+                                        kSingleHop, client_test_address);
     SessionKey client_test_key2 = SessionKey(client_test_address,
-                                            SessionIndex(1), kSingleHop,
-                                            client_address);
+                                             SessionIndex(1), kSingleHop,
+                                             client_address);
     cm_.links()->insert(make_pair(
         Communicator::LinksKey(client_address, client_key2.index), &cm_test_));
     cm_test_.links()->insert(
@@ -165,12 +171,21 @@ TEST_F(ClientTest, BasicSingleHop2) {
 
     client_.AddConnection(client_key2, sc);
     client_test_.AddConnection(client_test_key2, sc);
-    EXPECT_NE(static_cast<Session *>(NULL), client_.GetSession(client_key));
-    EXPECT_NE(client_.GetSession(client_key), client_.GetSession(client_key2));
-    EXPECT_NE(static_cast<Session *>(NULL),
+
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
+                        client_.GetSession(client_key));
+    TASK_UTIL_EXPECT_NE(client_.GetSession(client_key),
+                        client_.GetSession(client_key2));
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
               client_test_.GetSession(client_test_key));
-    EXPECT_NE(client_.GetSession(client_test_key),
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
               client_test_.GetSession(client_test_key2));
+
+    TASK_UTIL_EXPECT_NE(client_.GetSession(client_key),
+              client_.GetSession(client_key2));
+    TASK_UTIL_EXPECT_NE(client_test_.GetSession(client_test_key),
+              client_test_.GetSession(client_test_key2));
+
     TASK_UTIL_EXPECT_TRUE(client_.Up(client_key2));
     TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key2));
 }
@@ -246,11 +261,19 @@ TEST_F(ClientTest, BasicMultipleHop2) {
 
     client_.AddConnection(client_key2, sc);
     client_test_.AddConnection(client_test_key2, sc);
-    EXPECT_NE(static_cast<Session *>(NULL), client_.GetSession(client_key));
-    EXPECT_NE(client_.GetSession(client_key), client_.GetSession(client_key2));
-    EXPECT_NE(static_cast<Session *>(NULL),
+
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
+                        client_.GetSession(client_key));
+    TASK_UTIL_EXPECT_NE(client_.GetSession(client_key),
+                        client_.GetSession(client_key2));
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
               client_test_.GetSession(client_test_key));
-    EXPECT_NE(client_.GetSession(client_test_key),
+    TASK_UTIL_EXPECT_NE(static_cast<Session *>(NULL),
+              client_test_.GetSession(client_test_key2));
+
+    TASK_UTIL_EXPECT_NE(client_.GetSession(client_key),
+              client_.GetSession(client_key2));
+    TASK_UTIL_EXPECT_NE(client_test_.GetSession(client_test_key),
               client_test_.GetSession(client_test_key2));
     TASK_UTIL_EXPECT_TRUE(client_.Up(client_key2));
     TASK_UTIL_EXPECT_TRUE(client_test_.Up(client_test_key2));

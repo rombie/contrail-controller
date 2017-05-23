@@ -14,7 +14,6 @@
 #include <boost/asio/ip/address.hpp>
 
 #include "base/timer.h"
-#include "tbb/mutex.h"
 #include "io/event_manager.h"
 
 namespace BFD {
@@ -83,7 +82,6 @@ class Session {
     uint16_t GetRandomLocalPort() const;
     BFDState local_state_non_locking() const;
 
-    mutable tbb::mutex       mutex_;
     Discriminator            localDiscriminator_;
     SessionKey               key_;
     Timer                    *sendTimer_;

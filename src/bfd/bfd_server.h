@@ -8,8 +8,6 @@
 #include "base/queue_task.h"
 #include "bfd/bfd_common.h"
 
-#include <tbb/mutex.h>
-
 #include <map>
 #include <set>
 #include <boost/asio.hpp>
@@ -26,12 +24,14 @@ class SessionConfig;
 
 // This class manages sessions with other BFD peers.
 class Server {
+ class Event;
  public:
     Server(EventManager *evm, Connection *communicator);
-    ResultCode ProcessControlPacket(const ControlPacket *packet);
-    ResultCode ProcessControlPacket(
-        boost::asio::ip::udp::endpoint local_endpoint,
-        boost::asio::ip::udp::endpoint remote_endpoint,
+    virtual ~Server();
+    ResultCode ProcessControlPacketActual(const ControlPacket *packet);
+    void ProcessControlPacket(
+        const boost::asio::ip::udp::endpoint &local_endpoint,
+        const boost::asio::ip::udp::endpoint &remote_endpoint,
         const SessionIndex &session_index,
         const boost::asio::const_buffer &recv_buffer,
         std::size_t bytes_transferred, const boost::system::error_code& error);
@@ -54,7 +54,8 @@ class Server {
     void AddConnection(const SessionKey &key, const SessionConfig &config,
                        ChangeCb cb);
     void DeleteConnection(const SessionKey &key);
-    void DeleteClientConnections(const ClientId client_id);
+    void DeleteClientConnections(const ClientId client_id = 0);
+    WorkQueue<Event *> *event_queue() { return event_queue_.get(); }
 
  private:
     class SessionManager : boost::noncopyable {
@@ -104,26 +105,36 @@ class Server {
         Event(EventType type, const SessionKey &key) :
                 type(type), key(key) {
         }
-        Event(EventType type, const ControlPacket *packet) :
-                type(type), packet(packet) {
+        Event(EventType type, boost::asio::ip::udp::endpoint local_endpoint,
+              boost::asio::ip::udp::endpoint remote_endpoint,
+              const SessionIndex &session_index,
+              const boost::asio::const_buffer &recv_buffer,
+              std::size_t bytes_transferred) :
+                type(type), local_endpoint(local_endpoint),
+                remote_endpoint(remote_endpoint), session_index(session_index),
+                recv_buffer(recv_buffer), bytes_transferred(bytes_transferred) {
         }
 
         EventType type;
         SessionKey key;
         SessionConfig config;
         ChangeCb cb;
-        const ControlPacket *packet;
+        boost::asio::ip::udp::endpoint local_endpoint;
+        boost::asio::ip::udp::endpoint remote_endpoint;
+        const SessionIndex session_index;
+        const boost::asio::const_buffer recv_buffer;
+        std::size_t bytes_transferred;
     };
 
     void AddConnection(Event *event);
     void DeleteConnection(Event *event);
     void DeleteClientConnections(Event *event);
+    void ProcessControlPacket(Event *event);
     void EnqueueEvent(Event *event);
     bool EventCallback(Event *event);
 
     Session *GetSession(const ControlPacket *packet);
 
-    mutable tbb::mutex mutex_;
     EventManager *evm_;
     Connection *communicator_;
     SessionManager session_manager_;

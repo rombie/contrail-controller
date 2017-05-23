@@ -43,8 +43,8 @@ TEST_F(ServerTest, Test2) {
     Discriminator disc1;
     server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
-    boost::function<ResultCode(const ControlPacket *)> c1 =
-        boost::bind(&Server::ProcessControlPacket, &server1, _1);
+    boost::function<ResultCode(const ControlPacket *packet)> c1 =
+        boost::bind(&Server::ProcessControlPacketActual, &server1, _1);
     communicationManager.registerServer(addr1,
         boost::bind(&processPacketAndVerifyResult, c1, _1));
 
@@ -58,7 +58,7 @@ TEST_F(ServerTest, Test2) {
     Discriminator disc2;
     server2.ConfigureSession(SessionKey(addr1), config2, &disc2);
     boost::function<ResultCode(const ControlPacket *)> c2 =
-        boost::bind(&Server::ProcessControlPacket, &server2, _1);
+        boost::bind(&Server::ProcessControlPacketActual, &server2, _1);
     communicationManager.registerServer(addr2,
         boost::bind(&processPacketAndVerifyResult, c2, _1));
 
@@ -182,7 +182,7 @@ TEST_F(ServerTest, RefCount) {
     server1.ConfigureSession(SessionKey(addr2), config1, &disc1);
 
     boost::function<ResultCode(const ControlPacket *)> c1 =
-        boost::bind(&Server::ProcessControlPacket, &server1, _1);
+        boost::bind(&Server::ProcessControlPacketActual, &server1, _1);
     communicationManager.registerServer(addr1,
         boost::bind(&processPacketAndVerifyResult, c1, _1));
 
@@ -196,7 +196,7 @@ TEST_F(ServerTest, RefCount) {
     Discriminator disc2;
     server2.ConfigureSession(SessionKey(addr1), config2, &disc2);
     boost::function<ResultCode(const ControlPacket *)> c2 =
-        boost::bind(&Server::ProcessControlPacket, &server2, _1);
+        boost::bind(&Server::ProcessControlPacketActual, &server2, _1);
     communicationManager.registerServer(addr2,
         boost::bind(&processPacketAndVerifyResult, c2, _1));
 

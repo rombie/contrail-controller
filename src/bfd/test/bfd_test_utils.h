@@ -50,10 +50,17 @@ class TestCommunicatorManager {
     explicit TestCommunicatorManager(boost::asio::io_service *io_service)
             : io_service(io_service) {}
 
-    static void processPacketAndFree(const callback &cb,
+    
+    static void processPacketAndFreeActual(const callback &cb,
                                      const ControlPacket *controlPacket) {
         cb(controlPacket);
         delete controlPacket;
+    }
+    static void processPacketAndFree(const callback &cb,
+                                     const ControlPacket *controlPacket) {
+        task_util::TaskFire(boost::bind(
+                    &TestCommunicatorManager::processPacketAndFreeActual,
+                    cb, controlPacket), "BFD");
     }
 
     void sendPacket(const boost::asio::ip::address &srcAddr,
