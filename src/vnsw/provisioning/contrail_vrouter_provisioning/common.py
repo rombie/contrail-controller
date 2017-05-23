@@ -443,13 +443,6 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                 self.setup_coremask_node(dpdk_args)
                 self.setup_vm_coremask_node(False, dpdk_args)
 
-                if self._args.vrouter_module_params:
-                    vrouter_module_params_args = dict(
-                            u.split("=") for u in
-                            self._args.vrouter_module_params.split(","))
-                    self.dpdk_increase_vrouter_limit(
-                            vrouter_module_params_args)
-
                 if self.pdist == 'Ubuntu':
                     # Fix /dev/vhost-net permissions. It is required for
                     # multiqueue operation
@@ -724,6 +717,12 @@ SUBCHANNELS=1,2,3
                     'default_hw_queue': 'true',
                     'logical_queue': logical_queue}
 
+            for section, key_vals in configs.items():
+                for key, val in key_vals.items():
+                    self.set_config(
+                            agent_conf,
+                            section, key, val)
+
         if priority_id_list is not None:
             # Clean existing config
             ltemp_dir = tempfile.mkdtemp()
@@ -738,11 +737,11 @@ SUBCHANNELS=1,2,3
                     'scheduling': priority_scheduling[i],
                     'bandwidth': priority_bandwidth[i]}
 
-        for section, key_vals in configs.items():
-            for key, val in key_vals.items():
-                self.set_config(
-                        '/etc/contrail/contrail-vrouter-agent.conf',
-                        section, key, val)
+            for section, key_vals in configs.items():
+                for key, val in key_vals.items():
+                    self.set_config(
+                            agent_conf,
+                            section, key, val)
 
         if (qos_queue_id_list or priority_id_list):
             # Set qos_enabled in agent_param
@@ -759,11 +758,98 @@ SUBCHANNELS=1,2,3
                 physical_interfaces_str = physical_interface
             local("cd /opt/contrail/utils; python qosmap.py --interface_list %s " % physical_interfaces_str)
 
+    def disable_nova_compute(self):
+        # Check if nova-compute is allready running
+        # Stop if running on TSN node
+        if local("sudo service nova-compute status | grep running").succeeded:
+            # Stop the service
+            local("sudo service nova-compute stop")
+            if self.pdist in DEBIAN:
+                local('sudo echo "manual" >> /etc/init/nova-compute.override')
+            else:
+                local('sudo chkconfig nova-compute off')
+        # Remove TSN node from nova manage service list
+        # Mostly require when converting an exiting compute to TSN
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        session = ssh.connect(self._args.keystone_ip, \
+                              self._args.keystone_admin_user, \
+                              self._args.keystone_admin_password)
+        cmd = "nova-manage service disable --host=%s --service=nova-compute" \
+                %(compute_hostname)
+        stdin, stdout, stderr = session.exec_command(cmd)
+
+    def add_tsn_vnc_config(self):
+        tsn_ip = self._args.self_ip
+        self.tsn_hostname = socket.gethostname()
+        prov_args = "--host_name %s --host_ip %s --api_server_ip %s --oper add "\
+                    "--admin_user %s --admin_password %s --admin_tenant_name %s "\
+                    "--openstack_ip %s --router_type tor-service-node"\
+                    %(self.tsn_hostname, tsn_ip, self._args.cfgm_ip,
+                      self._args.keystone_admin_user,
+                      self._args.keystone_admin_password,
+                      self._args.keystone_admin_tenant_name, self._args.keystone_ip)
+        if apiserver_ssl_enabled():
+           prov_args += " --api_server_use_ssl True"
+        local("python /opt/contrail/utils/provision_vrouter.py %s" %(prov_args))
+
+    def start_tsn_service():
+        nova_conf_file = '/etc/contrail/contrail-vrouter-agent.conf'
+        sudo("openstack-config --set %s DEFAULT agent_mode tsn" % nova_conf_file)
+
+    def setup_tsn_node():
+        self.disable_nova_compute()
+        self.add_tsn_vnc_config()
+        self.start_tsn_service()
+
+    def increase_vrouter_limit(self):
+        """Increase the maximum number of mpls label
+        and nexthop on tsn node"""
+
+        if self._args.vrouter_module_params:
+            vrouter_module_params = self._args.vrouter_module_params.rstrip(',')
+            vrouter_module_params_args = dict(
+                        u.split("=") for u in
+                        vrouter_module_params.split(","))
+            if self._args.dpdk:
+                self.dpdk_increase_vrouter_limit(
+                        vrouter_module_params_args)
+            else:
+                cmd = "options vrouter"
+                if 'mpls_labels' in vrouter_module_params_args.keys():
+                    cmd += " vr_mpls_labels=%s" % vrouter_module_params_args['mpls_labels']
+                if 'nexthops' in vrouter_module_params_args.keys():
+                    cmd += " vr_nexthops=%s" % vrouter_module_params_args['nexthops']
+                if 'vrfs' in vrouter_module_params_args.keys():
+                    cmd += " vr_vrfs=%s" % vrouter_module_params_args['vrfs']
+                if 'macs' in vrouter_module_params_args.keys():
+                    cmd += " vr_bridge_entries=%s" % vrouter_module_params_args['macs']
+                if 'flow_entries' in vrouter_module_params_args.keys():
+                    cmd += " vr_flow_entries=%s" % vrouter_module_params_args['flow_entries']
+                if 'oflow_entries' in vrouter_module_params_args.keys():
+                    cmd += " vr_oflow_entries=%s" % vrouter_module_params_args['oflow_entries']
+                if 'mac_oentries' in vrouter_module_params_args.keys():
+                    cmd += " vr_bridge_oentries=%s" % vrouter_module_params_args['mac_oentries']
+                if 'flow_hold_limit' in vrouter_module_params_args.keys():
+                    cmd += " vr_flow_hold_limit=%s" % vrouter_module_params_args['flow_hold_limit']
+                if 'max_interface_entries' in vrouter_module_params_args.keys():
+                    cmd += " vr_interfaces=%s" % vrouter_module_params_args['max_interface_entries']
+                if 'vrouter_dbg' in vrouter_module_params_args.keys():
+                    cmd += " vrouter_dbg=%s" % vrouter_module_params_args['vrouter_dbg']
+                if 'vr_memory_alloc_checks' in vrouter_module_params_args.keys():
+                    cmd += " vr_memory_alloc_checks=%s" % vrouter_module_params_args['vr_memory_alloc_checks']
+                local("echo %s > %s" %(cmd, '/etc/modprobe.d/vrouter.conf'), warn_only=True)
+
     def setup(self):
         self.disable_selinux()
         self.disable_iptables()
         self.setup_coredump()
         self.fixup_config_files()
-        self.run_services()
-        if self._args.register:
-            self.add_vnc_config()
+        self.increase_vrouter_limit()
+        if self._args.tsn_mode:
+            self.setup_tsn_node()
+            self.run_services()
+        else:
+            self.run_services()
+            if self._args.register:
+                self.add_vnc_config()

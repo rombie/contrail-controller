@@ -11,12 +11,19 @@ import platform
 import ConfigParser
 import socket
 import requests
-from requests.packages.urllib3.exceptions import SubjectAltNameWarning
+try:
+    from requests.packages.urllib3.exceptions import SubjectAltNameWarning
+    warnings.filterwarnings('ignore', category=SubjectAltNameWarning)
+except:
+    try:
+        from urllib3.exceptions import SubjectAltNameWarning
+        warnings.filterwarnings('ignore', category=SubjectAltNameWarning)
+    except:
+        pass
 import warnings
 warnings.filterwarnings('ignore', ".*SNIMissingWarning.*")
 warnings.filterwarnings('ignore', ".*InsecurePlatformWarning.*")
 warnings.filterwarnings('ignore', ".*SubjectAltNameWarning.*")
-warnings.filterwarnings('ignore', category=SubjectAltNameWarning)
 from StringIO import StringIO
 from lxml import etree
 from sandesh_common.vns.constants import ServiceHttpPortMap, \
@@ -252,7 +259,7 @@ class IntrospectUtil(object):
 #end class IntrospectUtil
 
 def service_installed(svc, initd_svc):
-    si_init = init
+    si_init = init_sys_used
     if initd_svc:
         si_init = 'sysv'
     if distribution == 'redhat':
@@ -269,7 +276,7 @@ def service_installed(svc, initd_svc):
 # end service_installed
 
 def service_bootstatus(svc, initd_svc):
-    sb_init = init
+    sb_init = init_sys_used
     if initd_svc:
         sb_init = 'sysv'
     if distribution == 'redhat':
@@ -315,11 +322,11 @@ def service_status(svc, check_return_code):
         return 'inactive'
 # end service_status
 
-def check_svc(svc, initd_svc=False):
+def check_svc(svc, initd_svc=False, check_return_code=False):
     psvc = svc + ':'
     if service_installed(svc, initd_svc):
         bootstatus = service_bootstatus(svc, initd_svc)
-        status = service_status(svc, initd_svc)
+        status = service_status(svc, check_return_code)
     else:
         bootstatus = ' (disabled on boot)'
         status='inactive'
@@ -554,8 +561,10 @@ def contrail_service_status(nodetype, options):
             check_status(svc_name, options)
     elif nodetype == 'database':
         print "== Contrail Database =="
-        initd_svc = init_sys_used == 'sysv' or init_sys_used == 'upstart'
-        check_svc('contrail-database', initd_svc=initd_svc)
+        initd_svc = init_sys_used != 'systemd'
+        check_return_code = True
+        check_svc('contrail-database', initd_svc=initd_svc,
+            check_return_code=check_return_code)
         print ""
         for svc_name in CONTRAIL_SERVICES[nodetype][init_sys_used]:
             check_status(svc_name, options)
