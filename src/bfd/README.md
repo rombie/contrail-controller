@@ -1,26 +1,35 @@
 <h1>TODO</h1>
 
+1. Add introspect
+2. Add logs, debugs, traces, uves and counters
+3. Support compute-node/contrail-voruter-agent restart (or upgrade)
+4. Integrate with contrail-vrouter-agent
+5. Add integration tests (with mock-agent ?)
+
+<h1>TODO-Future</h1>
+
+1. Authentication
+2. echo mode
+3. Demand Mode
+4. Offload periodic bfd packet send to vrouter kernel module
+
+<h1>DONE</h1>
+
 1. Add contrail-bfd scons target
-2. Add command line options with default /etc/contrail/contrail-bfd.conf
-3. Add to packaging
-4. Add to provisioning
-5. Add rest-url to push bfd state change notifications
-6. Integrate with contrail-vrouter-agent
-7. Add introspect
-8. Add logs, debugs, traces, uves and counters
+2. Add schema changes to add bfd as new health-checker option
+3. Add more unit tests (Work in progress)
 
-9. Add schema changes to add bfd as new health-checker option
-10. Add bfd configuration parameters (on a per session/vmi basis ?)
+<h1>N/A</h1>
 
-11. Support contrail-voruter-agent restart
-12. Support contrail-bfd restart
-13. Support compute node restart
+1. Add to packaging
+2. Add to provisioning
+3. Add command line options with default /etc/contrail/contrail-bfd.conf
+4. Add rest-url to push bfd state change notifications
+5. Support contrail-bfd restart
+6. Support contrail-bfd upgrade
+7. Add bfd configuration parameters (on a per session/vmi basis ?)
 
-14. Support contrail-vrouter-agent upgrade
-15. Support contrail-bfd upgrade
+<h1>Qs</h1>
 
-16. Add more unit tests
-17. Add integration tests (with agent ?)
-
-18. scaling impact on cpu with large number of bfd sessions (~100 ?)
-19. scaling Phase 2 Investigate bfd data operations to vrouter kernel module
+1. scaling impact on cpu with large number of bfd sessions (~100 ?)
+2. Always stick to passive mode (Makes it easier to choose the right interface)
