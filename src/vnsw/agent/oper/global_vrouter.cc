@@ -581,6 +581,10 @@ void GlobalVrouter::GlobalVrouterConfig(IFMapNode *node) {
             ecmp_load_balance_ = ecmp_load_balance;
             resync_vn = true;
         }
+        agent()->oper_db()->global_vrouter()->bgpaas_port_range_.push_back(
+                    cfg->bgpaas_parameters().port_start);
+        agent()->oper_db()->global_vrouter()->bgpaas_port_range_.push_back(
+                    cfg->bgpaas_parameters().port_end);
     } else {
         DeleteLinkLocalServiceConfig();
         TunnelType::DeletePriorityList();
@@ -594,6 +598,7 @@ void GlobalVrouter::GlobalVrouterConfig(IFMapNode *node) {
         agent()->set_vxlan_network_identifier_mode
             (cfg_vxlan_network_identifier_mode);
         resync_vn = true;
+        agent()->oper_db()->global_vrouter()->bgpaas_port_range_.clear();
     }
 
     //Rebakes
