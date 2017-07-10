@@ -91,7 +91,7 @@ class TaskTrigger;
 //
 class PathResolver {
 public:
-    explicit PathResolver(BgpTable *table);
+    PathResolver(BgpTable *table, bool resolution_only = false);
     ~PathResolver();
 
     void StartPathResolution(int part_id, const BgpPath *path, BgpRoute *route,
@@ -107,6 +107,8 @@ public:
     Address::Family family() const;
     DBTableBase::ListenerId listener_id() const { return listener_id_; }
     BgpConditionListener *get_condition_listener(Address::Family family);
+    const BgpPath *FindResolvedPath(const BgpRoute *route, const BgpPath *path);
+    bool resolution_only() const { return resolution_only_; }
 
     bool IsDeleted() const;
     void ManagedDelete();
@@ -114,6 +116,8 @@ public:
     void RetryDelete();
 
     void FillShowInfo(ShowPathResolver *spr, bool summary) const;
+    bool RoutePrefixMatch(Address::Family family, const BgpRoute *route,
+                          const IpAddress &address);
 
 private:
     friend class PathResolverPartition;
@@ -158,6 +162,7 @@ private:
 
     BgpTable *table_;
     DBTableBase::ListenerId listener_id_;
+    bool resolution_only_;
     mutable tbb::mutex mutex_;
     ResolverNexthopMap nexthop_map_;
     ResolverNexthopList nexthop_reg_unreg_list_;
@@ -321,6 +326,9 @@ public:
     BgpRoute *route() const { return route_; }
     const ResolverNexthop *rnexthop() const { return rnexthop_; }
     void clear_path() { path_ = NULL; }
+    const BgpPath *FindResolvedPath() const {
+        return resolved_path_count() ?  *(resolved_path_list_.begin()) : NULL;
+    }
     size_t resolved_path_count() const { return resolved_path_list_.size(); }
 
 private:
@@ -402,20 +410,28 @@ public:
 
     IpAddress address() const { return address_; }
     BgpTable *table() const { return table_; }
-    const BgpRoute *route() const { return route_; }
-    BgpRoute *route() { return route_; }
+    void insert(BgpRoute *route);
+    void erase(BgpRoute *route);
+    const BgpRoute *route() const;
+    BgpRoute *route();
     bool empty() const;
     bool registered() const { return registered_; }
     void set_registered() { registered_ = true; }
 
 private:
+    struct ResolverRouteCompare {
+        bool operator()(const BgpRoute *l, const BgpRoute *r) const;
+    };
+
     typedef std::set<ResolverPath *> ResolverPathList;
+    typedef std::set<BgpRoute *, ResolverRouteCompare> ResolverRouteSet;
 
     PathResolver *resolver_;
     IpAddress address_;
     BgpTable *table_;
     bool registered_;
-    BgpRoute *route_;
+    ResolverRouteSet routes_;
+    mutable tbb::mutex routes_mutex_;
     std::vector<ResolverPathList> rpath_lists_;
     LifetimeRef<ResolverNexthop> table_delete_ref_;
 

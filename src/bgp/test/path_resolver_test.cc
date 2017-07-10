@@ -853,13 +853,28 @@ TYPED_TEST(PathResolverTest, SinglePrefix1) {
         this->BuildHostAddress(bgp_peer1->ToString()));
 
     this->AddXmppPath(xmpp_peer1, "blue",
-        this->BuildPrefix(bgp_peer1->ToString(), 32),
+        this->BuildPrefix(bgp_peer1->ToString(), 24),
         this->BuildNextHopAddress("172.16.1.1"), 10000);
     this->VerifyPathAttributes("blue", this->BuildPrefix(1), bgp_peer1,
         this->BuildNextHopAddress("172.16.1.1"), 10000);
 
+    // Add more specific match and verify that nexthop resolves to the newer
+    // more specific route.
+    this->AddXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 28),
+        this->BuildNextHopAddress("172.16.1.1"), 20000);
+    this->VerifyPathAttributes("blue", this->BuildPrefix(1), bgp_peer1,
+        this->BuildNextHopAddress("172.16.1.1"), 20000);
+
+    // Delete more specific route and verify that nexthop resolves older
+    // less specific route.
     this->DeleteXmppPath(xmpp_peer1, "blue",
-        this->BuildPrefix(bgp_peer1->ToString(), 32));
+        this->BuildPrefix(bgp_peer1->ToString(), 28));
+    this->VerifyPathAttributes("blue", this->BuildPrefix(1), bgp_peer1,
+        this->BuildNextHopAddress("172.16.1.1"), 10000);
+
+    this->DeleteXmppPath(xmpp_peer1, "blue",
+        this->BuildPrefix(bgp_peer1->ToString(), 24));
     this->VerifyPathNoExists("blue", this->BuildPrefix(1), bgp_peer1,
         this->BuildNextHopAddress("172.16.1.1"));
 
