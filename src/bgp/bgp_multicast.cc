@@ -565,6 +565,16 @@ void McastSGEntry::UpdateRoutes(uint8_t level) {
     }
 }
 
+void McastSGEntry::IsGlobalTreeRootRoute(ErmVpnRoutes *route) const {
+    // Find the first node with a valid route.
+    ForwarderSet *forwarders = forwarder_sets_[level];
+    for (ForwarderSet::iterator it = forwarders->begin();
+        it != forwarders->end(); ++it) {
+        if ((*it)->global_tree_route())
+            return route == (*it)->global_tree_route();
+    }
+}
+
 //
 // Implement tree builder election.
 //

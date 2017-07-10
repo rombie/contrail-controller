@@ -110,6 +110,7 @@ public:
     Ip4Address router_id() const { return router_id_; }
 
     bool empty() { return tree_links_.empty(); }
+    const ErmVpnRoute *global_tree_route() const { return global_tree_route_; }
 
 private:
     friend class BgpMulticastTest;
@@ -233,6 +234,7 @@ public:
     void clear_on_work_queue() { on_work_queue_ = false; }
 
     bool empty() const;
+    void IsGlobalTreeRootRoute(ErmVpnRoutes *route) const;
 
 private:
     friend class BgpMulticastTest;
