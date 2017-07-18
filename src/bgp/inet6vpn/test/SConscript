@@ -124,7 +124,6 @@ else:
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_l3vpn])
     lib_rtarget = Dir('../../rtarget').path + '/librtarget.a'
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_rtarget])
-env.Append(LIBS = ['rt', 'boost_chrono'])
 
 inet6vpn_prefix_test = env.UnitTest('inet6vpn_prefix_test',
                                     ['inet6vpn_prefix_test.cc'])

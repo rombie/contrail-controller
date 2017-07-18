@@ -95,7 +95,6 @@ env.Prepend(LIBS = [
                     'cassandra',
                     'gendb',
                     ])
-env.Append(LIBS = ['rt', 'boost_chrono'])
 
 if sys.platform != 'darwin':
     env.Append(LIBS=['rt', 'extended_community'])

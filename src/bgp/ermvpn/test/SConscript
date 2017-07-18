@@ -124,7 +124,6 @@ else:
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6])
     lib_inet6vpn = Dir('../../inet6vpn').path + '/libbgp_inet6vpn.a'
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6vpn])
-env.Append(LIBS = ['rt', 'boost_chrono'])
 
 ermvpn_prefix_test = env.UnitTest('ermvpn_prefix_test',
                                   ['ermvpn_prefix_test.cc'])

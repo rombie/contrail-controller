@@ -1189,9 +1189,7 @@ void XmppStateMachine::StartConnectTimer(int seconds) {
     // Add up to +/- kJitter percentage to reduce connection collisions.
     int ms = ((seconds)? seconds * 1000 : 50);
     ms = (ms * (100 - kJitter)) / 100;
-#ifndef VALGRIND
     ms += (ms * (rand() % (kJitter * 2))) / 100;
-#endif
     connect_timer_->Start(ms,
         boost::bind(&XmppStateMachine::ConnectTimerExpired, this),
         boost::bind(&XmppStateMachine::TimerErrorHandler, this, _1, _2));
@@ -1463,17 +1461,14 @@ void XmppStateMachine::ProcessMessage(XmppSession *session,
                         ProcessEvent(xmsm::EvTlsProceed(session, msg));
                         break;
                     default:
-                        delete msg;
                         break;
                 }
+
             } else if (stream_msg->strmtype ==
                     XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER ||
                 stream_msg->strmtype ==
-                    XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER_RESP) {
+                    XmppStanza::XmppStreamMessage::INIT_STREAM_HEADER_RESP)
                 ProcessStreamHeaderMessage(session, msg);
-            } else {
-                delete msg;
-            }
             break;
         case XmppStanza::WHITESPACE_MESSAGE_STANZA:
             ProcessEvent(xmsm::EvXmppKeepalive(session, msg));
@@ -1493,6 +1488,7 @@ void XmppStateMachine::ProcessMessage(XmppSession *session,
             delete msg;
             break;
     }
+
 }
 
 void XmppStateMachine::Clear() {

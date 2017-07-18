@@ -8,9 +8,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
-#ifdef VALGRIND
-#include <valgrind/memcheck.h>
-#endif
 
 #include "io/event_manager.h"
 #include "io/io_log.h"
@@ -44,10 +41,6 @@ public:
     virtual bool Run() {
         if (session_->IsEstablished()) {
             session_->ssl_last_read_len_ = BufferSize(buffer_);
-#ifdef VALGRIND
-            VALGRIND_MAKE_MEM_DEFINED(buffer_cast<const uint8_t *>(buffer_),
-                                      buffer_size(buffer_));
-#endif
             read_fn_(buffer_);
             if (session_->IsReaderDeferred()) {
                 // Update socket read block count.
