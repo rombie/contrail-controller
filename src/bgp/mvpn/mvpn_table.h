@@ -15,20 +15,20 @@ class BgpServer;
 class BgpRoute;
 class McastTreeManager;
 
-class MVpnTable : public BgpTable {
+class MvpnTable : public BgpTable {
 public:
     static const int kPartitionCount = 1;
 
     struct RequestKey : BgpTable::RequestKey {
-        RequestKey(const MVpnPrefix &prefix, const IPeer *ipeer)
+        RequestKey(const MvpnPrefix &prefix, const IPeer *ipeer)
             : prefix(prefix), peer(ipeer) {
         }
-        MVpnPrefix prefix;
+        MvpnPrefix prefix;
         const IPeer *peer;
         virtual const IPeer *GetPeer() const { return peer; }
     };
 
-    MVpnTable(DB *db, const std::string &name);
+    MvpnTable(DB *db, const std::string &name);
 
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
     virtual std::auto_ptr<DBEntry> AllocEntryStr(const std::string &key) const;
@@ -49,7 +49,7 @@ public:
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
-    size_t HashFunction(const MVpnPrefix &prefix) const;
+    size_t HashFunction(const MvpnPrefix &prefix) const;
 
     void CreateTreeManager();
     void DestroyTreeManager();
@@ -64,7 +64,7 @@ private:
                                 const DBRequestKey *prefix);
     McastTreeManager *tree_manager_;
 
-    DISALLOW_COPY_AND_ASSIGN(MVpnTable);
+    DISALLOW_COPY_AND_ASSIGN(MvpnTable);
 };
 
 #endif  // SRC_BGP_MVPN_MVPN_TABLE_H_
