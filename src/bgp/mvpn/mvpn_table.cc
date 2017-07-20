@@ -4,6 +4,19 @@
 
 #include "bgp/mvpn/mvpn_table.h"
 
+size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
+    if ((prefix.type() == MvpnPrefix::IntraASPMSIAutoDiscoveryRoute) ||
+           (prefix.type() == MvpnPrefix::LeafAutoDiscoveryRoute)) {
+        uint32_t data = prefix.originator().to_ulong();
+        return boost::hash_value(data);
+    }
+    if (prefix.type() == MvpnPrefix::InterASPMSIAutoDiscoveryRoute) {
+        uint32_t data = prefix.asn();
+        return boost::hash_value(data);
+    }
+    return boost::hash_value(prefix.group().to_ulong());
+}
+
 MvpnTable::MvpnTable(DB *db, const string &name) :
     BgpTable(db, name), resolver_(new PathResolver(this, true)) {
 }
@@ -60,3 +73,4 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *src_table,
     BgpRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr community) {
     ProcessResolvedRoutes(src_table, source_rt, src_path, community);
 }
+
