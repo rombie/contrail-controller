@@ -50,7 +50,7 @@ VrfRouteImport VrfRouteImport::FromString(const string &str,
     }
 
     string first(str.substr(0, pos));
-    if (first != "rt_import") {
+    if (first != "rt-import") {
         if (errorp != NULL) {
             *errorp = make_error_code(boost::system::errc::invalid_argument);
         }
