@@ -332,6 +332,8 @@ private:
     void RemoveSGID();
     void RemoveTag();
     void RemoveSiteOfOrigin();
+    void RemoveSourceAS();
+    void RemoveVrfRouteImport();
     void RemoveOriginVn();
     void RemoveTunnelEncapsulation();
     void RemoveLoadBalance();
