@@ -56,6 +56,8 @@ public:
     McastTreeManager *GetTreeManager();
     const McastTreeManager *GetTreeManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
+    bool RouteNotify(BgpServer *server, DBTablePartBase *root,
+                     DBEntryBase *entry);
 
 private:
     friend class BgpMulticastTest;
