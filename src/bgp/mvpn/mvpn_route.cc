@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
 #include "bgp/mvpn/mvpn_route.h"
@@ -352,141 +352,264 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
 
     switch (prefix.type_) {
     case IntraASPMSIAutoDiscoveryRoute: {
-    // Look for RD.
-    size_t pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
-        if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+        // Look for RD.
+        size_t pos2 = str.find(',', pos1 + 1);
+        if (pos2 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code rd_err;
-    prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
-    if (rd_err != 0) {
-        if (errorp != NULL) {
-            *errorp = rd_err;
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        boost::system::error_code rd_err;
+        prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+        if (rd_err != 0) {
+            if (errorp != NULL) {
+                *errorp = rd_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    // rest is originator
-    temp_str = str.substr(pos2 + 1, string::npos);
-    boost::system::error_code originator_err;
-    prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
-    if (originator_err != 0) {
-        if (errorp != NULL) {
-            *errorp = originator_err;
+        // rest is originator
+        temp_str = str.substr(pos2 + 1, string::npos);
+        boost::system::error_code originator_err;
+        prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
+        if (originator_err != 0) {
+            if (errorp != NULL) {
+                *errorp = originator_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
         break;
     }
     case InterASPMSIAutoDiscoveryRoute: {
-    // Look for RD.
-    size_t pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
-        if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+        // Look for RD.
+        size_t pos2 = str.find(',', pos1 + 1);
+        if (pos2 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code rd_err;
-    prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
-    if (rd_err != 0) {
-        if (errorp != NULL) {
-            *errorp = rd_err;
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        boost::system::error_code rd_err;
+        prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+        if (rd_err != 0) {
+            if (errorp != NULL) {
+                *errorp = rd_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    // rest is asn
-    temp_str = str.substr(pos2 + 1, string::npos);
-    if (!stringToInteger(temp_str, prefix.asn_)) {
-        return null_prefix;
-    }
+        // rest is asn
+        temp_str = str.substr(pos2 + 1, string::npos);
+        if (!stringToInteger(temp_str, prefix.asn_)) {
+            return null_prefix;
+        }
         break;
     }
     case SPMSIAutoDiscoveryRoute: {
-    // Look for RD.
-    size_t pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
-        if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+        // Look for RD.
+        size_t pos2 = str.find(',', pos1 + 1);
+        if (pos2 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code rd_err;
-    prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
-    if (rd_err != 0) {
-        if (errorp != NULL) {
-            *errorp = rd_err;
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        boost::system::error_code rd_err;
+        prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+        if (rd_err != 0) {
+            if (errorp != NULL) {
+                *errorp = rd_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    // Look for source.
-    size_t pos3 = str.find(',', pos2 + 1);
-    if (pos3 == string::npos) {
-        if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+        // Look for source.
+        size_t pos3 = str.find(',', pos2 + 1);
+        if (pos3 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    temp_str = str.substr(pos2 + 1, pos3 - pos2 - 1);
-    boost::system::error_code source_err;
-    prefix.source_ = Ip4Address::from_string(temp_str, source_err);
-    if (source_err != 0) {
-        if (errorp != NULL) {
-            *errorp = source_err;
+        temp_str = str.substr(pos2 + 1, pos3 - pos2 - 1);
+        boost::system::error_code source_err;
+        prefix.source_ = Ip4Address::from_string(temp_str, source_err);
+        if (source_err != 0) {
+            if (errorp != NULL) {
+                *errorp = source_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
 
-    // Look for group.
-    size_t pos4 = str.find(',', pos3 + 1);
-    if (pos4 == string::npos) {
-        if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+        // Look for group.
+        size_t pos4 = str.find(',', pos3 + 1);
+        if (pos4 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
-    temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
-    boost::system::error_code group_err;
-    prefix.group_ = Ip4Address::from_string(temp_str, group_err);
-    if (group_err != 0) {
-        if (errorp != NULL) {
-            *errorp = group_err;
+	temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
+	boost::system::error_code group_err;
+        prefix.group_ = Ip4Address::from_string(temp_str, group_err);
+        if (group_err != 0) {
+            if (errorp != NULL) {
+                *errorp = group_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
 
-    // rest is originator
-    temp_str = str.substr(pos4 + 1, string::npos);
-    boost::system::error_code originator_err;
-    prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
-    if (originator_err != 0) {
-        if (errorp != NULL) {
-            *errorp = originator_err;
+        // rest is originator
+        temp_str = str.substr(pos4 + 1, string::npos);
+        boost::system::error_code originator_err;
+        prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
+        if (originator_err != 0) {
+            if (errorp != NULL) {
+                *errorp = originator_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
-    }
         break;
     }
     case LeafADRoute: {
-    // Look for route key
-    size_t pos2 = str.find('-', pos1 + 1);
-    temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    copy(temp_str.begin(), temp_str.begin() + pos2, prefix.rt_key_.begin());
-    // rest is originator
-    temp_str = str.substr(pos2 + 1, string::npos);
-    boost::system::error_code originator_err;
-    prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
-    if (originator_err != 0) {
-        if (errorp != NULL) {
-            *errorp = originator_err;
+        // Look for route key
+        size_t pos2 = str.find('-', pos1 + 1);
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        copy(temp_str.begin(), temp_str.begin() + pos2, prefix.rt_key_.begin());
+        // rest is originator
+        temp_str = str.substr(pos2 + 1, string::npos);
+        boost::system::error_code originator_err;
+        prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
+        if (originator_err != 0) {
+            if (errorp != NULL) {
+                *errorp = originator_err;
+            }
+            return null_prefix;
         }
-        return null_prefix;
+        break;
     }
+    case SourceActiveAutoDiscoveryRoute: {
+        // Look for RD.
+        size_t pos2 = str.find(',', pos1 + 1);
+        if (pos2 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        boost::system::error_code rd_err;
+        prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+        if (rd_err != 0) {
+            if (errorp != NULL) {
+                *errorp = rd_err;
+            }
+            return null_prefix;
+        }
+        // Look for source.
+        size_t pos3 = str.find(',', pos2 + 1);
+        if (pos3 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+        temp_str = str.substr(pos2 + 1, pos3 - pos2 - 1);
+        boost::system::error_code source_err;
+        prefix.source_ = Ip4Address::from_string(temp_str, source_err);
+        if (source_err != 0) {
+            if (errorp != NULL) {
+                *errorp = source_err;
+            }
+            return null_prefix;
+        }
+
+        // Look for group.
+        size_t pos4 = str.find(',', pos3 + 1);
+        if (pos4 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+	temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
+	boost::system::error_code group_err;
+        prefix.group_ = Ip4Address::from_string(temp_str, group_err);
+        if (group_err != 0) {
+            if (errorp != NULL) {
+                *errorp = group_err;
+            }
+            return null_prefix;
+        }
+        break;
+    }
+    case SharedTreeJoinRoute:
+    case SourceTreeJoinRoute: {
+        // Look for RD.
+        size_t pos2 = str.find(',', pos1 + 1);
+        if (pos2 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
+        boost::system::error_code rd_err;
+        prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+        if (rd_err != 0) {
+            if (errorp != NULL) {
+                *errorp = rd_err;
+            }
+            return null_prefix;
+        }
+	// Look for asn
+        size_t pos3 = str.find(',', pos2 + 1);
+        if (pos3 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+        temp_str = str.substr(pos2 + 1, string::npos);
+        if (!stringToInteger(temp_str, prefix.asn_)) {
+            return null_prefix;
+        }
+        // Look for source.
+        size_t pos4 = str.find(',', pos3 + 1);
+        if (pos4 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+        temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
+        boost::system::error_code source_err;
+        prefix.source_ = Ip4Address::from_string(temp_str, source_err);
+        if (source_err != 0) {
+            if (errorp != NULL) {
+                *errorp = source_err;
+            }
+            return null_prefix;
+        }
+
+        // Look for group.
+        size_t pos5 = str.find(',', pos4 + 1);
+        if (pos5 == string::npos) {
+            if (errorp != NULL) {
+                *errorp = make_error_code(boost::system::errc::invalid_argument);
+            }
+            return null_prefix;
+        }
+	temp_str = str.substr(pos4 + 1, pos5 - pos4 - 1);
+	boost::system::error_code group_err;
+        prefix.group_ = Ip4Address::from_string(temp_str, group_err);
+        if (group_err != 0) {
+            if (errorp != NULL) {
+                *errorp = group_err;
+            }
+            return null_prefix;
+        }
         break;
     }
     }
