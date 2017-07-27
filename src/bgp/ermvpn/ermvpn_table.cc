@@ -202,6 +202,13 @@ const McastTreeManager *ErmVpnTable::GetTreeManager() const {
     return tree_manager_;
 }
 
+bool ErmVpnTable::IsGlobalTreeRootRoute(ErmVpnRoute *rt) const {
+    if (!tree_manager_)
+        return false;
+    return tree_manager_->GetPartition(rt->get_table_partition()->index())->
+        IsGlobalTreeRootRoute(rt);
+}
+
 void ErmVpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     BgpTable::set_routing_instance(rtinstance);
     CreateTreeManager();

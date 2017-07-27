@@ -19,7 +19,7 @@
 #include "net/bgp_af.h"
 #include "net/rd.h"
 
-class MvpnPrefix {
+class MVpnPrefix {
 public:
     enum RouteType {
         Unspecified = 0,
@@ -32,34 +32,34 @@ public:
         SourceTreeJoinRoute = 7,
     };
 
-    MvpnPrefix();
-    MvpnPrefix(uint8_t type, const MvpnPrefix &prefix);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    MVpnPrefix();
+    MVpnPrefix(uint8_t type, const MVpnPrefix &prefix);
+    MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const Ip4Address &originator);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const uint16_t &asn);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const Ip4Address &group, const Ip4Address &source);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const Ip4Address &originator,
                  const Ip4Address &group, const Ip4Address &source);
 
     static int FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
-                               MvpnPrefix *prefix);
+                               MVpnPrefix *prefix);
     static int FromProtoPrefix(BgpServer *server,
                                const BgpProtoPrefix &proto_prefix,
-                               const BgpAttr *attr, MvpnPrefix *prefix,
+                               const BgpAttr *attr, MVpnPrefix *prefix,
                                BgpAttrPtr *new_attr, uint32_t *label,
                                uint32_t *l3_label);
-    static MvpnPrefix FromString(const std::string &str,
+    static MVpnPrefix FromString(const std::string &str,
                                    boost::system::error_code *errorp = NULL);
 
     std::string ToString() const;
     std::string ToXmppIdString() const;
     static bool IsValidForBgp(uint8_t type);
     static bool IsValid(uint8_t type);
-    bool operator==(const MvpnPrefix &rhs) const;
-    int CompareTo(const MvpnPrefix &rhs) const;
+    bool operator==(const MVpnPrefix &rhs) const;
+    int CompareTo(const MVpnPrefix &rhs) const;
 
     uint8_t type() const { return type_; }
     const RouteDistinguisher &route_distinguisher() const { return rd_; }
@@ -83,15 +83,15 @@ private:
     std::vector<uint8_t> rt_key_;
 };
 
-class MvpnRoute : public BgpRoute {
+class MVpnRoute : public BgpRoute {
 public:
-    explicit MvpnRoute(const MvpnPrefix &prefix);
+    explicit MVpnRoute(const MVpnPrefix &prefix);
     virtual int CompareTo(const Route &rhs) const;
     virtual std::string ToString() const;
     virtual std::string ToXmppIdString() const;
     virtual bool IsValid() const;
 
-    const MvpnPrefix &GetPrefix() const { return prefix_; }
+    const MVpnPrefix &GetPrefix() const { return prefix_; }
 
     virtual KeyPtr GetDBRequestKey() const;
     virtual void SetKey(const DBRequestKey *reqkey);
@@ -103,7 +103,7 @@ public:
                                       IpAddress nexthop) const;
 
     virtual bool IsLess(const DBEntry &genrhs) const {
-        const MvpnRoute &rhs = static_cast<const MvpnRoute &>(genrhs);
+        const MVpnRoute &rhs = static_cast<const MVpnRoute &>(genrhs);
         int cmp = CompareTo(rhs);
         return (cmp < 0);
     }
@@ -113,10 +113,10 @@ public:
     virtual u_int8_t XmppSafi() const { return BgpAf::Mcast; }
 
 private:
-    MvpnPrefix prefix_;
+    MVpnPrefix prefix_;
     mutable std::string xmpp_id_str_;
 
-    DISALLOW_COPY_AND_ASSIGN(MvpnRoute);
+    DISALLOW_COPY_AND_ASSIGN(MVpnRoute);
 };
 
 #endif  // SRC_BGP_MVPN_ERMVPN_ROUTE_H_

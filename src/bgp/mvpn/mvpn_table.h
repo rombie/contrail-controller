@@ -11,27 +11,29 @@
 #include "bgp/bgp_table.h"
 #include "bgp/mvpn/mvpn_route.h"
 
-class BgpServer;
+class BgpPath
 class BgpRoute;
-class McastTreeManager;
+class BgpServer;
+class MVpnManager;
 
-class MvpnTable : public BgpTable {
+class MVpnTable : public BgpTable {
 public:
     static const int kPartitionCount = 1;
 
     struct RequestKey : BgpTable::RequestKey {
-        RequestKey(const MvpnPrefix &prefix, const IPeer *ipeer)
+        RequestKey(const MVpnPrefix &prefix, const IPeer *ipeer)
             : prefix(prefix), peer(ipeer) {
         }
-        MvpnPrefix prefix;
+        MVpnPrefix prefix;
         const IPeer *peer;
         virtual const IPeer *GetPeer() const { return peer; }
     };
 
-    MvpnTable(DB *db, const std::string &name);
+    MVpnTable(DB *db, const std::string &name);
 
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
     virtual std::auto_ptr<DBEntry> AllocEntryStr(const std::string &key) const;
+    void ResolvePath(BgpRoute *rt, BgpPath *path);
 
     virtual Address::Family family() const { return Address::MVPN; }
     bool IsMaster() const;
@@ -49,12 +51,12 @@ public:
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
-    size_t HashFunction(const MvpnPrefix &prefix) const;
+    size_t HashFunction(const MVpnPrefix &prefix) const;
 
-    void CreateTreeManager();
-    void DestroyTreeManager();
-    McastTreeManager *GetTreeManager();
-    const McastTreeManager *GetTreeManager() const;
+    void CreateMVpnManager();
+    void DestroyMVpnManager();
+    MVpnManager *GetMVpnManager();
+    const MVpnManager *GetMVpnManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     bool RouteNotify(BgpServer *server, DBTablePartBase *root,
                      DBEntryBase *entry);
@@ -64,9 +66,9 @@ private:
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
-    McastTreeManager *tree_manager_;
+    MVpnManager *mvpn_manager_;
 
-    DISALLOW_COPY_AND_ASSIGN(MvpnTable);
+    DISALLOW_COPY_AND_ASSIGN(MVpnTable);
 };
 
 #endif  // SRC_BGP_MVPN_MVPN_TABLE_H_

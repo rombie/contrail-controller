@@ -127,32 +127,15 @@ Address::Family PathResolver::family() const {
 // the BgpPath changes nexthop.
 //
 void PathResolver::StartPathResolution(int part_id, const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table) {
+    BgpRoute *route, BgpTable *nh_table, const IpAddress *addrp) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
         "bgp::Config", "bgp::ConfigHelper");
 
     if (!nh_table)
         nh_table = table_;
     assert(nh_table->family() == Address::INET ||
-        nh_table->family() == Address::INET6);
-    partitions_[part_id]->StartPathResolution(path, route, nh_table);
-}
-
-//
-// Request PathResolver to update resolution for the given BgpPath.
-// This API needs to be called explicitly when a BgpPath needing resolution
-// gets updated with new attributes. Note that nexthop change could require
-// the caller to call StartPathResolution instead.
-//
-void PathResolver::UpdatePathResolution(int part_id, const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table) {
-    CHECK_CONCURRENCY("db::DBTable");
-
-    if (!nh_table)
-        nh_table = table_;
-    assert(nh_table->family() == Address::INET ||
-        nh_table->family() == Address::INET6);
-    partitions_[part_id]->UpdatePathResolution(path, route, nh_table);
+           nh_table->family() == Address::INET6);
+    partitions_[part_id]->StartPathResolution(path, route, nh_table, addrp);
 }
 
 //
@@ -658,14 +641,14 @@ PathResolverPartition::~PathResolverPartition() {
 // ResolverPath constructor.
 //
 void PathResolverPartition::StartPathResolution(const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table) {
+    BgpRoute *route, BgpTable *nh_table, const IpAddress *addrp) {
     if (!path->IsResolutionFeasible())
         return;
     if (table()->IsDeleted() || nh_table->IsDeleted())
         return;
 
     Address::Family family = table()->family();
-    IpAddress address = path->GetAttr()->nexthop();
+    const IpAddress address = addrp ? *addrp : path->GetAttr()->nexthop();
     if (table() == nh_table &&
             resolver_->RoutePrefixMatch(family, route, address)) {
         return;
@@ -676,28 +659,6 @@ void PathResolverPartition::StartPathResolution(const BgpPath *path,
     assert(!FindResolverPath(path));
     ResolverPath *rpath = CreateResolverPath(path, route, rnexthop);
     TriggerPathResolution(rpath);
-}
-
-//
-// Update resolution for the given BgpPath.
-// A change in the ResolverNexthop is handled by triggering deletion of the
-// old ResolverPath and creating a new one.
-//
-void PathResolverPartition::UpdatePathResolution(const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table) {
-    ResolverPath *rpath = FindResolverPath(path);
-    if (!rpath) {
-        StartPathResolution(path, route, nh_table);
-        return;
-    }
-    const ResolverNexthop *rnexthop = rpath->rnexthop();
-    if (rnexthop->address() != path->GetAttr()->nexthop() ||
-        rnexthop->table() != nh_table) {
-        StopPathResolution(path);
-        StartPathResolution(path, route, nh_table);
-    } else {
-        TriggerPathResolution(rpath);
-    }
 }
 
 //

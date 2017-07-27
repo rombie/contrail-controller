@@ -95,9 +95,7 @@ public:
     ~PathResolver();
 
     void StartPathResolution(int part_id, const BgpPath *path, BgpRoute *route,
-        BgpTable *nh_table = NULL);
-    void UpdatePathResolution(int part_id, const BgpPath *path, BgpRoute *route,
-        BgpTable *nh_table = NULL);
+        BgpTable *nh_table = NULL, const IpAddress *addrp = NULL);
     void StopPathResolution(int part_id, const BgpPath *path);
 
     ResolverRouteState *FindResolverRouteState(BgpRoute *route);
@@ -202,9 +200,7 @@ public:
     ~PathResolverPartition();
 
     void StartPathResolution(const BgpPath *path, BgpRoute *route,
-        BgpTable *nh_table);
-    void UpdatePathResolution(const BgpPath *path, BgpRoute *route,
-        BgpTable *nh_table);
+        BgpTable *nh_table, const IpAddress *addrp);
     void StopPathResolution(const BgpPath *path);
 
     void TriggerPathResolution(ResolverPath *rpath);

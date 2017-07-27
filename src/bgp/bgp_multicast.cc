@@ -735,6 +735,11 @@ McastSGEntry *McastManagerPartition::FindSGEntry(
     return (it != sg_list_.end() ? *it : NULL);
 }
 
+bool McastManagerPartition::IsGlobalTreeRootRoute(ErmVpnRoute *route) const {
+    McastSGEntry *sg = FindSGEntry(route->source(), route->group());
+    return sg ? sg->IsGlobalTreeRootRoute(route) : false;
+}
+
 //
 // Find or create the McastSGEntry for the given group and source.
 //
