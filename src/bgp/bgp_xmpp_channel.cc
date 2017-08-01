@@ -1106,7 +1106,7 @@ bool BgpXmppChannel::ProcessMvpnItem(string vrf_name,
         DBRequest *request_entry = new DBRequest();
         request_entry->Swap(&req);
         string table_name =
-            RoutingInstance::GetTableName(vrf_name, Address::ERMVPN);
+            RoutingInstance::GetTableName(vrf_name, Address::MVPN);
         defer_q_.insert(make_pair(
             make_pair(vrf_name, table_name), request_entry));
         return true;
