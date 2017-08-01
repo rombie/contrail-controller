@@ -5,15 +5,15 @@
 #ifndef SRC_BGP_BGP_MMvPN_H_
 #define SRC_BGP_BGP_MMvPN_H_
 
-class MVpnManagerPartition;
+class MvpnManagerPartition;
 
 class BgpPath;
-class MVpnRoute;
-class MVpnState;
+class MvpnRoute;
+class MvpnState;
 
-struct MVpnNeighbor {
+struct MvpnNeighbor {
 public:
-    MVpnNeighbor(const IpAddress &address, uint32_t asn, uint32_t vn_id,
+    MvpnNeighbor(const IpAddress &address, uint32_t asn, uint32_t vn_id,
                  bool external) :
             address(address), asn(asn), vn_id(vn_id), external(external) {
         std::ostringstream os;
@@ -31,38 +31,86 @@ private:
     std::string name;
 };
 
-struct MVpnDBState : DBState {
-    explicit MVpnDBState(MVpnState *state) : state(state) {
+struct MvpnDBState : DBState {
+    explicit MvpnDBState(MvpnState *state) : state(state) {
         if (state)
             state->refcount_++;
     }
 
-    MVpnState *state;
-    MVpnRoute *route;
+    MvpnState *state;
+    MvpnRoute *route;
     BgpPath *path;
 
-    DISALLOW_COPY_AND_ASSIGN(MVpnDBState);
+    DISALLOW_COPY_AND_ASSIGN(MvpnDBState);
 };
 
-class MVpnState {
+class MvpnManagerPartition {
 public:
-    typedef std::set<MVpnRoute *> RoutesSet;
+    MvpnManagerpartition(MvpnManagerpartition *manager, size_t part_id);
+    virtual ~MvpnManagerPartition();
+
+private:
+    MvpnManager *manager_;
+    size_t part_id_;
+
+    DISALLOW_COPY_AND_ASSIGN(MvpnManagerPartition);
+};
+
+class MvpnManager {
+public:
+    typedef std::vector<MvpnManagerPartition *> PartitionList;
+    typedef PartitionList::const_iterator const_iterator;
+    typedef std::map<IpAddress, MvpnNeighbor> NeighborsMap;
+
+    explicit MvpnManager(MvpnTable *table);
+    virtual ~MvpnManager();
+
+    bool findNeighbor(const IpAddress &address, MvpnNeighbor &nbr) const;
+
+private:
+    void Initialize();
+    void AllocPartitions();
+    void UpdateNeighbor(MvpnRoute *route);
+
+    MvpnTable *table_;
+    int listener_id_;
+    PathResolver *resolver_;
+    PartitionList partitions_;
+
+    NeighborsMap neighbors_;
+    mutable tbb:mutex neighbors_mutex_;
+
+    boost::scoped_ptr<DeleteActor> deleter_;
+    LifetimeRef<MvpnManager> table_delete_ref_;
+
+    DISALLOW_COPY_AND_ASSIGN(MvpnManager);
+};
+
+class MvpnState {
+public:
+    typedef std::set<MvpnRoute *> RoutesSet;
     struct SG {
         IpAddress source;
         IpAddress group;
     };
 
-    MVpnState(const SG &sg) :
+    MvpnState(const SG &sg) :
             sg_(sg), global_ermvpn_tree_rt_(NULL), refcount_(0) { }
     const SG &sg() const { return sg_; }
     const RoutesSet &cjoin_routes() const { return cjoin_routes_received_; }
+    const ErmVpnRoute *global_ermvpn_tree_rt() const {
+        return global_ermvpn_tree_rt_;
+    }
     const RoutesSet &leaf_ad_routes() const {
         return leaf_ad_routes_originated_;
     }
+    void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
+        global_ermvpn_tree_rt = global_ermvpn_tree_rt_;
+    }
 
 private:
-    friend class MVpnDBState;
-    friend class MVpnManagerPartition;
+    friend class MvpnDBState;
+    friend class MvpnProjectManagerPartition;
 
     SG sg_;
     ErmVpnRoute *global_ermvpn_tree_rt_;
@@ -77,52 +125,45 @@ private:
     
     int refcount_;
 
-    DISALLOW_COPY_AND_ASSIGN(MVpnState);
+    DISALLOW_COPY_AND_ASSIGN(MvpnState);
 };
 
-class MVpnManagerPartition {
+class MvpnProjectManagerPartition {
 public:
-    typedef std::map<MVpnState::SG, MVpnState *> StateMap;
+    typedef std::map<MvpnState::SG, MvpnState *> StateMap;
 
-    MVpnManagerpartition(MVpnManagerpartition *manager, size_t part_id);
-    virtual ~MVpnManagerPartition();
+    MvpnProjectManagerpartition(MvpnProjectManagerpartition *manager,
+                              size_t part_id);
+    virtual ~MvpnProjectManagerPartition();
 
 private:
-    MVpnManager *manager_;
+    MvpnProjectManager *manager_;
     size_t part_id_;
     StateMap states_;;
 
-    DISALLOW_COPY_AND_ASSIGN(MVpnManagerPartition);
+    DISALLOW_COPY_AND_ASSIGN(MvpnProjectManagerPartition);
 };
 
-class MVpnManager {
+class MvpnProjectManager {
 public:
-    typedef std::vector<MVpnManagerPartition *> PartitionList;
+    typedef std::vector<MvpnProjectManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
-    typedef std::map<IpAddress, MVpnNeighbor> NeighborsMap;
 
-    explicit MVpnManager(MVpnTable *table);
-    virtual ~MVpnManager();
-
-    bool findNeighbor(const IpAddress &address, MVpnNeighbor &nbr) const;
+    explicit MvpnProjectManager(MvpnTable *table);
+    virtual ~MvpnProjectManager();
 
 private:
     void Initialize();
     void AllocPartitions();
-    void UpdateNeighbor(MVpnRoute *route);
 
-    MVpnTable *table_;
+    MvpnTable *table_;
     int listener_id_;
-    PathResolver *resolver_;
     PartitionList partitions_;
 
-    NeighborsMap neighbors_;
-    mutable tbb:mutex neighbors_mutex_;
-
     boost::scoped_ptr<DeleteActor> deleter_;
-    LifetimeRef<MVpnManager> table_delete_ref_;
+    LifetimeRef<MvpnProjectManager> table_delete_ref_;
 
-    DISALLOW_COPY_AND_ASSIGN(MVpnManager);
+    DISALLOW_COPY_AND_ASSIGN(MvpnProjectManager);
 };
 
 #endif  // SRC_BGP_BGP_MvPN_H_

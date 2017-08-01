@@ -15,11 +15,11 @@ using std::copy;
 using std::string;
 using std::vector;
 
-MVpnPrefix::MVpnPrefix() : type_(MVpnPrefix::Unspecified) {
+MvpnPrefix::MvpnPrefix() : type_(MvpnPrefix::Unspecified) {
 }
 
 // Create LeafADRoute(Type4) prefix from SPMSIAutoDiscoveryRoute(Type3)
-MVpnPrefix::MVpnPrefix(uint8_t type, const MVpnPrefix &prefix) {
+MvpnPrefix::MvpnPrefix(uint8_t type, const MvpnPrefix &prefix) {
     if (type == LeafADRoute) {
         if (prefix.type() == SPMSIAutoDiscoveryRoute) {
             size_t rd_size = RouteDistinguisher::kSize;
@@ -49,30 +49,35 @@ MVpnPrefix::MVpnPrefix(uint8_t type, const MVpnPrefix &prefix) {
     }
 }
 
-MVpnPrefix::MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const uint16_t &asn)
     : type_(type), rd_(rd), asn_(asn) {
 }
 
-MVpnPrefix::MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &originator)
     : type_(type), rd_(rd), originator_(originator) {
 }
 
-MVpnPrefix::MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &group, const Ip4Address &source)
     : type_(type), rd_(rd), group_(group), source_(source) {
 }
 
-MVpnPrefix::MVpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    const uint16_t &asn, const Ip4Address &group, const Ip4Address &source)
+    : type_(type), rd_(rd), asn_(asn), group_(group), source_(source) {
+}
+
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &originator,
     const Ip4Address &group, const Ip4Address &source)
     : type_(type), rd_(rd), originator_(originator),
       group_(group), source_(source) {
 }
 
-int MVpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
-    MVpnPrefix *prefix) {
+int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
+    MvpnPrefix *prefix) {
     size_t rd_size = RouteDistinguisher::kSize;
 
     prefix->type_ = proto_prefix.type;
@@ -174,15 +179,15 @@ int MVpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
     return 0;
 }
 
-int MVpnPrefix::FromProtoPrefix(BgpServer *server,
+int MvpnPrefix::FromProtoPrefix(BgpServer *server,
                                   const BgpProtoPrefix &proto_prefix,
-                                  const BgpAttr *attr, MVpnPrefix *prefix,
+                                  const BgpAttr *attr, MvpnPrefix *prefix,
                                   BgpAttrPtr *new_attr, uint32_t *label,
                                   uint32_t *l3_label) {
     return FromProtoPrefix(proto_prefix, prefix);
 }
 
-void MVpnPrefix::BuildProtoPrefix(BgpProtoPrefix *proto_prefix) const {
+void MvpnPrefix::BuildProtoPrefix(BgpProtoPrefix *proto_prefix) const {
     assert(IsValidForBgp(type_));
 
     size_t rd_size = RouteDistinguisher::kSize;
@@ -319,9 +324,9 @@ void MVpnPrefix::BuildProtoPrefix(BgpProtoPrefix *proto_prefix) const {
     }
 }
 
-MVpnPrefix MVpnPrefix::FromString(const string &str,
+MvpnPrefix MvpnPrefix::FromString(const string &str,
     boost::system::error_code *errorp) {
-    MVpnPrefix prefix, null_prefix;
+    MvpnPrefix prefix, null_prefix;
     string temp_str;
 
     // Look for Type.
@@ -341,8 +346,8 @@ MVpnPrefix MVpnPrefix::FromString(const string &str,
         return null_prefix;
     }
 
-    if (prefix.type_ < MVpnPrefix::IntraASPMSIAutoDiscoveryRoute ||
-        prefix.type_ > MVpnPrefix::SourceTreeJoinRoute) {
+    if (prefix.type_ < MvpnPrefix::IntraASPMSIAutoDiscoveryRoute ||
+        prefix.type_ > MvpnPrefix::SourceTreeJoinRoute) {
         if (errorp != NULL) {
             *errorp = make_error_code(boost::system::errc::invalid_argument);
         }
@@ -617,7 +622,7 @@ MVpnPrefix MVpnPrefix::FromString(const string &str,
     return prefix;
 }
 
-string MVpnPrefix::ToString() const {
+string MvpnPrefix::ToString() const {
     string repr = integerToString(type_);
     switch (type_) {
         case IntraASPMSIAutoDiscoveryRoute:
@@ -656,7 +661,7 @@ string MVpnPrefix::ToString() const {
     return repr;
 }
 
-int MVpnPrefix::CompareTo(const MVpnPrefix &rhs) const {
+int MvpnPrefix::CompareTo(const MvpnPrefix &rhs) const {
     KEY_COMPARE(type_, rhs.type_);
 
     switch (type_) {
@@ -696,7 +701,7 @@ int MVpnPrefix::CompareTo(const MVpnPrefix &rhs) const {
     return 0;
 }
 
-string MVpnPrefix::ToXmppIdString() const {
+string MvpnPrefix::ToXmppIdString() const {
     //assert(type_ == 0);
     string repr = rd_.ToString();
     repr += ":" + group_.to_string();
@@ -704,15 +709,15 @@ string MVpnPrefix::ToXmppIdString() const {
     return repr;
 }
 
-bool MVpnPrefix::IsValidForBgp(uint8_t type) {
+bool MvpnPrefix::IsValidForBgp(uint8_t type) {
     return true;//(type == LocalTreeRoute || type == GlobalTreeRoute);
 }
 
-bool MVpnPrefix::IsValid(uint8_t type) {
+bool MvpnPrefix::IsValid(uint8_t type) {
     return true;//(type == NativeRoute || IsValidForBgp(type));
 }
 
-bool MVpnPrefix::operator==(const MVpnPrefix &rhs) const {
+bool MvpnPrefix::operator==(const MvpnPrefix &rhs) const {
     return (
         type_ == rhs.type_ &&
         rd_ == rhs.rd_ &&
@@ -721,11 +726,11 @@ bool MVpnPrefix::operator==(const MVpnPrefix &rhs) const {
         source_ == rhs.source_);
 }
 
-MVpnRoute::MVpnRoute(const MVpnPrefix &prefix) : prefix_(prefix) {
+MvpnRoute::MvpnRoute(const MvpnPrefix &prefix) : prefix_(prefix) {
 }
 
-int MVpnRoute::CompareTo(const Route &rhs) const {
-    const MVpnRoute &other = static_cast<const MVpnRoute &>(rhs);
+int MvpnRoute::CompareTo(const Route &rhs) const {
+    const MvpnRoute &other = static_cast<const MvpnRoute &>(rhs);
     return prefix_.CompareTo(other.prefix_);
     KEY_COMPARE(prefix_.type(), other.prefix_.type());
     KEY_COMPARE(
@@ -737,43 +742,43 @@ int MVpnRoute::CompareTo(const Route &rhs) const {
     return 0;
 }
 
-string MVpnRoute::ToString() const {
+string MvpnRoute::ToString() const {
     return prefix_.ToString();
 }
 
-string MVpnRoute::ToXmppIdString() const {
+string MvpnRoute::ToXmppIdString() const {
     if (xmpp_id_str_.empty())
         xmpp_id_str_ = prefix_.ToXmppIdString();
     return xmpp_id_str_;
 }
 
-bool MVpnRoute::IsValid() const {
+bool MvpnRoute::IsValid() const {
     if (!BgpRoute::IsValid())
         return false;
 
     return true;
 }
 
-void MVpnRoute::SetKey(const DBRequestKey *reqkey) {
-    const MVpnTable::RequestKey *key =
-        static_cast<const MVpnTable::RequestKey *>(reqkey);
+void MvpnRoute::SetKey(const DBRequestKey *reqkey) {
+    const MvpnTable::RequestKey *key =
+        static_cast<const MvpnTable::RequestKey *>(reqkey);
     prefix_ = key->prefix;
 }
 
-void MVpnRoute::BuildProtoPrefix(BgpProtoPrefix *prefix,
+void MvpnRoute::BuildProtoPrefix(BgpProtoPrefix *prefix,
     const BgpAttr *attr, uint32_t label, uint32_t l3_label) const {
     prefix_.BuildProtoPrefix(prefix);
 }
 
-void MVpnRoute::BuildBgpProtoNextHop(
+void MvpnRoute::BuildBgpProtoNextHop(
     vector<uint8_t> &nh, IpAddress nexthop) const {
     nh.resize(4);
     const Ip4Address::bytes_type &addr_bytes = nexthop.to_v4().to_bytes();
     copy(addr_bytes.begin(), addr_bytes.end(), nh.begin());
 }
 
-DBEntryBase::KeyPtr MVpnRoute::GetDBRequestKey() const {
-    MVpnTable::RequestKey *key;
-    key = new MVpnTable::RequestKey(GetPrefix(), NULL);
+DBEntryBase::KeyPtr MvpnRoute::GetDBRequestKey() const {
+    MvpnTable::RequestKey *key;
+    key = new MvpnTable::RequestKey(GetPrefix(), NULL);
     return KeyPtr(key);
 }
