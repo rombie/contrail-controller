@@ -121,6 +121,7 @@ bool InterfaceUveTable::UveInterfaceEntry::FrameInterfaceMsg(const string &name,
     s_intf->set_is_health_check_active(intf_->is_hc_active());
     s_intf->set_tx_vlan(intf_->tx_vlan_id());
     s_intf->set_rx_vlan(intf_->rx_vlan_id());
+    s_intf->set_vhostuser_mode(intf_->vhostuser_mode());
     const Interface *parent = intf_->parent();
     if (parent) {
         const VmInterface *p_vmi = dynamic_cast<const VmInterface*>(parent);
@@ -161,7 +162,7 @@ bool InterfaceUveTable::UveInterfaceEntry::FrameInterfaceMsg(const string &name,
     VmInterface::HealthCheckInstanceSet::const_iterator hc_it =
         hc_list.begin();
     while (hc_it != hc_list.end()) {
-        HealthCheckInstance *inst = (*hc_it);
+        HealthCheckInstanceBase *inst = (*hc_it);
         VmHealthCheckInstance uve_inst;
         uve_inst.set_name(inst->service()->name());
         uve_inst.set_uuid(to_string(inst->service()->uuid()));

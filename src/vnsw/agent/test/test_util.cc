@@ -580,7 +580,8 @@ bool PortSubscribe(const std::string &ifname,
                             vmi_uuid, vm_uuid, vm_name, vn_uuid, project_uuid,
                             ip4_addr, ip6_addr, mac_addr,
                             VmInterface::kInvalidVlanId,
-                            VmInterface::kInvalidVlanId);
+                            VmInterface::kInvalidVlanId,
+                            VmInterface::vHostUserClient);
     return PortSubscribe(&entry);
 }
 
@@ -603,7 +604,7 @@ void IntfSyncMsg(PortInfo *input, int id) {
 
 void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
                 int vm_id, int vn_id, const string &mac, uint16_t vlan,
-                const string ip6addr, int project_id) {
+                const string ip6addr, uint8_t vhostuser_mode, int project_id) {
     boost::system::error_code ec;
     Ip4Address ip = Ip4Address::from_string(ipaddr, ec);
     char vm_name[MAX_TESTNAME_LEN];
@@ -616,7 +617,7 @@ void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
     VmiSubscribeEntry entry(PortSubscribeEntry::VMPORT, name, 0,
                             MakeUuid(intf_id), MakeUuid(vm_id), vm_name,
                             MakeUuid(vn_id), MakeUuid(project_id), ip, ip6,
-                            mac, vlan, vlan);
+                            mac, vlan, vlan, vhostuser_mode);
     string json;
     Agent *agent = Agent::GetInstance();
     agent->port_ipc_handler()->MakeVmiUuidJson(&entry, json, false);
@@ -629,7 +630,8 @@ void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
                 int vm_id, int vn_id, const string &mac,
                 const string ip6addr) {
     IntfCfgAdd(intf_id, name, ipaddr, vm_id, vn_id, mac,
-               VmInterface::kInvalidVlanId, ip6addr);
+               VmInterface::kInvalidVlanId, ip6addr,
+               VmInterface::vHostUserClient);
 }
 
 void IntfCfgAdd(PortInfo *input, int id) {
@@ -869,6 +871,11 @@ InetInterface *InetInterfaceGet(const char *ifname) {
 
 Interface *VmPortGet(int id) {
     VmInterfaceKey key(AgentKey::ADD_DEL_CHANGE, MakeUuid(id), "");
+    return static_cast<Interface *>(Agent::GetInstance()->interface_table()->Find(&key, false));
+}
+
+Interface *VhostGet(const char *ifname) {
+    VmInterfaceKey key(AgentKey::ADD_DEL_CHANGE, nil_uuid(), ifname);
     return static_cast<Interface *>(Agent::GetInstance()->interface_table()->Find(&key, false));
 }
 
@@ -2755,6 +2762,20 @@ void DelEncapList() {
 
 void DelEncapList(Agent *agent) {
     DelNode(agent, "global-vrouter-config", "vrouter-config");
+}
+
+void AddBgpaasPortRange(const int port_start, const int port_end) {
+    std::stringstream str;
+    str << "<bgp-as-service-global-config>" << endl;
+    str << "    <port-start>" << port_start << "</port-start>";
+    str << "    <port-end>" << port_end << "</port-end>";
+    str << "</bgp-as-service-global-config>";
+
+    AddNode("global-system-config", "system-config", 1, str.str().c_str());
+}
+
+void DelBgpaasPortRange() {
+    DelNode("global-system-config", "system-config");
 }
 
 void DelHealthCheckService(const char *name) {
@@ -4767,13 +4788,13 @@ void AddAap(std::string intf_name, int intf_id,
 }
 
 void AddAap(std::string intf_name, int intf_id, Ip4Address ip,
-            const std::string &mac) {
+            const std::string &mac, uint32_t plen) {
     std::ostringstream buf;
     buf << "<virtual-machine-interface-allowed-address-pairs>";
     buf << "<allowed-address-pair>";
     buf << "<ip>";
     buf << "<ip-prefix>" << ip.to_string() <<"</ip-prefix>";
-    buf << "<ip-prefix-len>"<< 32 << "</ip-prefix-len>";
+    buf << "<ip-prefix-len>"<< plen << "</ip-prefix-len>";
     buf << "</ip>";
     buf << "<mac>" << mac << "</mac>";
     buf << "<flag>" << "act-stby" << "</flag>";

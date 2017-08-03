@@ -174,7 +174,8 @@ class GlobalSystemConfigServer(Resource, GlobalSystemConfig):
                     return (False, (400, "Virtual network %s is configured "
                             "with a route target with this ASN and route "
                             "target value in the same range as used by "
-                            "automatically allocated route targets" % vn['name']))
+                            "automatically allocated route targets" %
+                            vn['fq_name'][-1]))
         return (True, '')
     # end _check_asn
 
@@ -314,7 +315,8 @@ class FloatingIpServer(Resource, FloatingIp):
                     'AddrMgmt: free FIP %s for vn=%s tenant=%s, on undo'
                         % (fip_addr, vn_fq_name, tenant_name),
                            level=SandeshLevel.SYS_DEBUG)
-                cls.addr_mgmt.ip_free_req(fip_addr, vn_fq_name)
+                cls.addr_mgmt.ip_free_req(fip_addr, vn_fq_name,
+                                          alloc_id=obj_dict['uuid'])
                 return True, ""
             # end undo
             get_context().push_undo(undo)
@@ -339,11 +341,11 @@ class FloatingIpServer(Resource, FloatingIp):
         db_conn.config_log('AddrMgmt: free FIP %s for vn=%s'
                            % (fip_addr, vn_fq_name),
                            level=SandeshLevel.SYS_DEBUG)
-        cls.addr_mgmt.ip_free_req(fip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_req(fip_addr, vn_fq_name,
+                                  alloc_id=obj_dict['uuid'])
 
         return True, ""
     # end post_dbe_delete
-
 
     @classmethod
     def dbe_create_notification(cls, db_conn, obj_id):
@@ -365,7 +367,8 @@ class FloatingIpServer(Resource, FloatingIp):
 
         fip_addr = obj_dict['floating_ip_address']
         vn_fq_name = obj_dict['fq_name'][:-2]
-        cls.addr_mgmt.ip_free_notify(fip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_notify(fip_addr, vn_fq_name,
+                                     alloc_id=obj_dict['uuid'])
     # end dbe_delete_notification
 
 # end class FloatingIpServer
@@ -387,7 +390,8 @@ class AliasIpServer(Resource, AliasIp):
                     'AddrMgmt: free FIP %s for vn=%s tenant=%s, on undo'
                         % (fip_addr, vn_fq_name, tenant_name),
                            level=SandeshLevel.SYS_DEBUG)
-                cls.addr_mgmt.ip_free_req(aip_addr, vn_fq_name)
+                cls.addr_mgmt.ip_free_req(aip_addr, vn_fq_name,
+                                          alloc_id=obj_dict['uuid'])
                 return True, ""
             # end undo
             get_context().push_undo(undo)
@@ -410,7 +414,8 @@ class AliasIpServer(Resource, AliasIp):
         db_conn.config_log('AddrMgmt: free AIP %s for vn=%s'
                            % (aip_addr, vn_fq_name),
                            level=SandeshLevel.SYS_DEBUG)
-        cls.addr_mgmt.ip_free_req(aip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_req(aip_addr, vn_fq_name,
+                                  alloc_id=obj_dict['uuid'])
 
         return True, ""
     # end post_dbe_delete
@@ -430,7 +435,8 @@ class AliasIpServer(Resource, AliasIp):
     def dbe_delete_notification(cls, obj_id, obj_dict):
         aip_addr = obj_dict['alias_ip_address']
         vn_fq_name = obj_dict['fq_name'][:-2]
-        cls.addr_mgmt.ip_free_notify(aip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_notify(aip_addr, vn_fq_name,
+                                     alloc_id=obj_dict['uuid'])
     # end dbe_delete_notification
 
 # end class AliasIpServer
@@ -527,7 +533,8 @@ class InstanceIpServer(Resource, InstanceIp):
                 db_conn.config_log('AddrMgmt: free IP %s, vn=%s tenant=%s on post fail'
                                    % (ip_addr, vn_fq_name, tenant_name),
                                    level=SandeshLevel.SYS_DEBUG)
-                cls.addr_mgmt.ip_free_req(ip_addr, vn_fq_name)
+                cls.addr_mgmt.ip_free_req(ip_addr, vn_fq_name,
+                                          alloc_id=obj_dict['uuid'])
                 return True, ""
             # end undo
             get_context().push_undo(undo)
@@ -602,7 +609,8 @@ class InstanceIpServer(Resource, InstanceIp):
         db_conn.config_log('AddrMgmt: free IP %s, vn=%s'
                            % (ip_addr, vn_fq_name),
                            level=SandeshLevel.SYS_DEBUG)
-        cls.addr_mgmt.ip_free_req(ip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_req(ip_addr, vn_fq_name,
+                                  alloc_id=obj_dict['uuid'])
 
         return True, ""
     # end post_dbe_delete
@@ -624,7 +632,8 @@ class InstanceIpServer(Resource, InstanceIp):
         except KeyError:
             return
         vn_fq_name = obj_dict['virtual_network_refs'][0]['to']
-        cls.addr_mgmt.ip_free_notify(ip_addr, vn_fq_name)
+        cls.addr_mgmt.ip_free_notify(ip_addr, vn_fq_name,
+                                     alloc_id=obj_dict['uuid'])
     # end dbe_delete_notification
 
 # end class InstanceIpServer
@@ -978,6 +987,39 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
         return True, ""
 
     @classmethod
+    def _check_service_health_check_type(cls, obj_dict, db_dict, db_conn):
+        service_health_check_refs = \
+                obj_dict.get('service_health_check_refs', None)
+        if not service_health_check_refs:
+            return (True, '')
+
+        if obj_dict and obj_dict.get('port_tuple_refs', None):
+            return (True, '')
+
+        if db_dict and db_dict.get('port_tuple_refs', None):
+            return (True, '')
+
+        for shc in service_health_check_refs or []:
+            if 'uuid' in shc:
+                shc_uuid = shc['uuid']
+            else:
+                shc_fq_name = shc['to']
+                shc_uuid = db_conn.fq_name_to_uuid('service_health_check', shc_fq_name)
+            ok, result = cls.dbe_read(db_conn, 'service_health_check', shc_uuid,
+                                      obj_fields=['service_health_check_properties'])
+            if not ok:
+                return (ok, result)
+
+            shc_type = result['service_health_check_properties']['health_check_type']
+            if shc_type != 'link-local':
+                msg = "Virtual machine interface(%s) of non service vm can only refer "\
+                      "link-local type service health check"\
+                      % obj_dict['uuid']
+                return (False, (400, msg))
+
+        return (True, '')
+
+    @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
         vn_dict = obj_dict['virtual_network_refs'][0]
         vn_uuid = vn_dict.get('uuid')
@@ -1092,6 +1134,10 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
         if not ok:
             return ok, result
 
+        (ok, result) = cls._check_service_health_check_type(obj_dict, None, db_conn)
+        if not ok:
+            return ok, result
+
         return True, ""
     # end pre_dbe_create
 
@@ -1192,6 +1238,11 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
 
         (ok,result) = cls._check_port_security_and_address_pairs(obj_dict,
                                                                  read_result)
+        if not ok:
+            return ok, result
+
+        (ok, result) = cls._check_service_health_check_type(
+                                      obj_dict, read_result, db_conn)
         if not ok:
             return ok, result
 
@@ -3027,7 +3078,7 @@ class ProjectServer(Resource, Project):
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
         if 'vxlan_routing' in obj_dict:
             # VxLAN routing can be enabled or disabled
-            # only when the project does not have any 
+            # only when the project does not have any
             # Logical routers already attached.
             ok, result = cls.dbe_read(db_conn, 'project', id)
 
@@ -3391,7 +3442,7 @@ class BgpvpnServer(Resource, Bgpvpn):
             return ok, (500, 'Error in dbe_list: %s' % pformat(result))
         bgpvpns = result
 
-        vpn_types = set(bgpvpn['bgpvpn_type'] for bgpvpn in bgpvpns)
+        vpn_types = set(bgpvpn.get('bgpvpn_type', 'l3') for bgpvpn in bgpvpns)
         if len(vpn_types) > 1:
             msg = ("Cannot associates different bgpvpn types '%s' on a "
                    "virtual network with a forwarding mode different to"
@@ -3424,7 +3475,7 @@ class BgpvpnServer(Resource, Bgpvpn):
         bgpvpns = result
 
         bgpvpn_not_supported = [bgpvpn for bgpvpn in bgpvpns
-                                if bgpvpn['bgpvpn_type'] != 'l3']
+                                if bgpvpn.get('bgpvpn_type', 'l3') != 'l3']
 
         if not bgpvpn_not_supported:
             return True, ''
@@ -3433,7 +3484,7 @@ class BgpvpnServer(Resource, Bgpvpn):
         for bgpvpn in bgpvpn_not_supported:
             msg += ("- bgpvpn %s(%s) type is %s\n" %
                     (bgpvpn.get('display_name', bgpvpn['fq_name'][-1]),
-                     bgpvpn['uuid'], bgpvpn['bgpvpn_type']))
+                     bgpvpn['uuid'], bgpvpn.get('bgpvpn_type', 'l3')))
         return False, (400, msg)
 
     @classmethod

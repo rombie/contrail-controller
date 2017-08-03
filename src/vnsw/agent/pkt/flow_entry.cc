@@ -284,11 +284,16 @@ void FlowData::Reset() {
     rpf_nh.reset(NULL);
     rpf_plen = Address::kMaxV4PrefixLen;
     rpf_vrf = VrfEntry::kInvalidIndex;
+    disable_validation = false;
     vm_cfg_name = "";
     bgp_as_a_service_port = 0;
     acl_assigned_vrf_index_ = VrfEntry::kInvalidIndex;
     qos_config_idx = AgentQosConfigTable::kInvalidIndex;
     ttl = 0;
+    src_policy_vrf = VrfEntry::kInvalidIndex;
+    src_policy_plen = 0;
+    dst_policy_vrf = VrfEntry::kInvalidIndex;
+    dst_policy_plen = 0;
 }
 
 static std::vector<std::string> MakeList(const VnListType &ilist) {
@@ -609,6 +614,7 @@ void FlowEntry::InitFwdFlow(const PktFlowInfo *info, const PktInfo *pkt,
     } else {
         reset_flags(FlowEntry::IngressDir);
     }
+    data_.disable_validation = info->disable_validation;
     if (ctrl->rt_ != NULL) {
         RpfInit(ctrl->rt_);
     }
@@ -685,6 +691,7 @@ void FlowEntry::InitRevFlow(const PktFlowInfo *info, const PktInfo *pkt,
             reset_flags(FlowEntry::IngressDir);
         }
     }
+    data_.disable_validation = info->disable_validation;
     if (ctrl->rt_ != NULL) {
         RpfInit(ctrl->rt_);
     }
@@ -957,6 +964,14 @@ static void SetRpfFieldsInternal(FlowEntry *flow, const AgentRoute *rt) {
         return;
     }
 
+    if (!flow->l3_flow()) {
+        flow->data().rpf_vrf = rt->vrf()->vrf_id();
+        /* For L2 flows we don't use rpf_plen. Prefix len is taken after
+         * doing LPMFind on IP. */
+        flow->data().rpf_plen = 0;
+        return;
+    }
+
     // Route is not INET. Dont track any route
     flow->data().rpf_vrf = VrfEntry::kInvalidIndex;
     flow->data().rpf_plen = 0;
@@ -996,6 +1011,8 @@ void FlowEntry::RpfInit(const AgentRoute *rt) {
     // RPF enabled?
     bool rpf_enable = true;
     if (data_.vn_entry && data_.vn_entry->enable_rpf() == false)
+        rpf_enable = false;
+    if (data_.disable_validation)
         rpf_enable = false;
 
     // The src_ip_nh can change below only for l2 flows
@@ -1137,6 +1154,10 @@ void FlowEntry::RpfUpdate() {
         data_.enable_rpf = data_.vn_entry->enable_rpf();
     }
 
+    if (data_.disable_validation) {
+        data_.enable_rpf = false;
+    }
+
     if (data_.enable_rpf == false) {
         data_.rpf_nh = NULL;
         return;
@@ -1170,6 +1191,34 @@ std::string FlowEntry::DropReasonStr(uint16_t reason) {
 // src-vn and sg-id are used for policy lookup
 // plen is used to track the routes to use by flow_mgmt module
 void FlowEntry::GetSourceRouteInfo(const AgentRoute *rt) {
+
+    if (data_.intf_entry.get()) {
+        //Policy lookup needs to happen in Policy VRF
+        if (data_.intf_entry->vrf() &&
+            data_.intf_entry->vrf()->forwarding_vrf()) {
+
+            data_.src_policy_plen = 0;
+            data_.src_policy_vrf = VrfEntry::kInvalidIndex;
+            VrfEntry *forwarding_vrf = data_.intf_entry->vrf()->forwarding_vrf();
+
+            const InetUnicastRouteEntry *inet_rt =
+                dynamic_cast<const InetUnicastRouteEntry *>(rt);
+            if (inet_rt &&  inet_rt->vrf() == forwarding_vrf) {
+                AgentRoute *new_rt = GetUcRoute(data_.intf_entry->vrf(), 
+                                                inet_rt->addr());
+                if (new_rt) {
+                    rt = new_rt;
+                    inet_rt = dynamic_cast<const InetUnicastRouteEntry *>(new_rt);
+                    data_.src_policy_plen = inet_rt->plen();
+                    data_.src_policy_vrf = inet_rt->vrf()->vrf_id();
+                } else {
+                    data_.src_policy_plen = 0;
+                    data_.src_policy_vrf  = data_.intf_entry->vrf()->vrf_id();
+                }
+            }
+        }
+    }
+
     const AgentPath *path = NULL;
     if (rt) {
         path = rt->GetActivePath();
@@ -1194,6 +1243,38 @@ void FlowEntry::GetSourceRouteInfo(const AgentRoute *rt) {
 // plen is used to track the routes to use by flow_mgmt module
 void FlowEntry::GetDestRouteInfo(const AgentRoute *rt) {
     const AgentPath *path = NULL;
+    if (rt) {
+        path = rt->GetActivePath();
+    }
+
+    if (data_.intf_entry.get()) {
+        //Policy lookup needs to happen in Policy VRF
+        if (data_.intf_entry->vrf() &&
+            data_.intf_entry->vrf()->forwarding_vrf()) {
+
+            data_.dst_policy_plen = 0;
+            data_.dst_policy_vrf = VrfEntry::kInvalidIndex;
+            VrfEntry *forwarding_vrf = data_.intf_entry->vrf()->forwarding_vrf();
+
+            const InetUnicastRouteEntry *inet_rt =
+                dynamic_cast<const InetUnicastRouteEntry *>(rt);
+            if (inet_rt && inet_rt->vrf() == forwarding_vrf) {
+                AgentRoute *new_rt = 
+                    GetUcRoute(data_.intf_entry->vrf(), inet_rt->addr());
+                if (new_rt) {
+                    rt = new_rt;
+                    inet_rt = dynamic_cast<const InetUnicastRouteEntry *>(rt);
+                    data_.dst_policy_plen = inet_rt->plen();
+                    data_.dst_policy_vrf = inet_rt->vrf()->vrf_id();
+                } else {
+                    data_.dst_policy_plen = 0;
+                    data_.dst_policy_vrf  = data_.intf_entry->vrf()->vrf_id();
+                    path = NULL;
+                }
+            }
+        }
+    }
+
     if (rt) {
         path = rt->GetActivePath();
     }
@@ -1264,6 +1345,10 @@ void FlowEntry::ResetPolicy() {
 
 // Rebuild all the policy rules to be applied
 void FlowEntry::GetPolicyInfo(const VnEntry *vn, const FlowEntry *rflow) {
+    if (vn == NULL) {
+        return;
+    }
+
     // Reset old values first
     ResetPolicy();
 

@@ -948,7 +948,8 @@ void AgentXmppChannel::AddEvpnRoute(const std::string &vrf_name,
     }
 
     SecurityGroupList sg_list = item->entry.security_group_list.security_group;
-    VmInterfaceKey intf_key(AgentKey::ADD_DEL_CHANGE, intf_nh->GetIfUuid(), "");
+    VmInterfaceKey intf_key(AgentKey::ADD_DEL_CHANGE, intf_nh->GetIfUuid(),
+                            intf_nh->GetInterface()->name());
     LocalVmRoute *local_vm_route = NULL;
     VnListType vn_list;
     vn_list.insert(item->entry.virtual_network);
@@ -1680,7 +1681,7 @@ bool AgentXmppChannel::ControllerSendSubscribe(AgentXmppChannel *peer,
     pugi->AddAttribute("node", vrf->GetName());
     pugi->AddChildNode("options", "" );
     stringstream vrf_id;
-    vrf_id << vrf->RDInstanceId();
+    vrf_id << vrf->rd();
     pugi->AddChildNode("instance-id", vrf_id.str());
 
     datalen_ = XmppProto::EncodeMessage(impl.get(), data_, sizeof(data_));

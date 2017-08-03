@@ -137,6 +137,22 @@ void PktHandler::CalculatePort(PktInfo *pkt) {
     }
 }
 
+bool PktHandler::IsBFDHealthCheckPacket(const PktInfo *pkt_info,
+                                        const Interface *interface) {
+    if (interface->type() == Interface::VM_INTERFACE &&
+        pkt_info->ip_proto == IPPROTO_UDP &&
+        (pkt_info->dport == BFD_SINGLEHOP_CONTROL_PORT ||
+         pkt_info->dport == BFD_MULTIHOP_CONTROL_PORT ||
+         pkt_info->dport == BFD_ECHO_PORT)) {
+        const VmInterface *vm_intf = static_cast<const VmInterface *>(interface);
+        if (vm_intf->IsHealthCheckEnabled()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Process the packet received from tap interface
 PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
                                                   PktInfo *pkt_info,
@@ -219,6 +235,10 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
     // send time exceeded ICMP messages to diag module
     if (IsDiagPacket(pkt_info)) {
         return DIAG;
+    }
+
+    if (IsBFDHealthCheckPacket(pkt_info, intf)) {
+        return BFD;
     }
 
     if (pkt_type == PktType::ICMP && IsGwPacket(intf, pkt_info->ip_daddr)) {
