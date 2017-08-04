@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
-#ifndef SRC_BGP_MvPN_MvPN_TABLE_H_
-#define SRC_BGP_MvPN_MvPN_TABLE_H_
+#ifndef SRC_BGP_MVPN_MVPN_TABLE_H_
+#define SRC_BGP_MVPN_MVPN_TABLE_H_
 
 #include <string>
 
@@ -11,10 +11,11 @@
 #include "bgp/bgp_table.h"
 #include "bgp/mvpn/mvpn_route.h"
 
-class BgpPath
+class BgpPath;
 class BgpRoute;
 class BgpServer;
 class MvpnManager;
+class MvpnProjectManager;
 
 class MvpnTable : public BgpTable {
 public:
@@ -33,9 +34,11 @@ public:
 
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
     virtual std::auto_ptr<DBEntry> AllocEntryStr(const std::string &key) const;
-    void ResolvePath(BgpRoute *rt, BgpPath *path);
 
-    virtual Address::Family family() const { return Address::MvPN; }
+    void CreateManager();
+    void DestroyManager();
+
+    virtual Address::Family family() const { return Address::MVPN; }
     bool IsMaster() const;
     virtual bool IsVpnTable() const { return IsMaster(); }
 
@@ -52,23 +55,29 @@ public:
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
     size_t HashFunction(const MvpnPrefix &prefix) const;
+    void ResolvePath(BgpRoute *rt, BgpPath *path);
+    const MvpnManager *manager() const { return manager_; }
+    MvpnManager *manager() { return manager_; }
+    MvpnProjectManager *project_manager() { return project_manager_; }
+    const MvpnProjectManager *project_manager() const {
+        return project_manager_;
+    }
 
-    void CreateMvpnManager();
-    void DestroyMvpnManager();
-    MvpnManager *GetMvpnManager();
-    const MvpnManager *GetMvpnManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
-    bool RouteNotify(BgpServer *server, DBTablePartBase *root,
-                     DBEntryBase *entry);
+    bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
+    MvpnRoute *CreateType1Route() { return NULL; }
+    MvpnRoute *CreateType2Route() { return NULL; }
+    MvpnRoute *CreateLeafADRoute(const MvpnRoute *spmsi) { return NULL; }
 
 private:
     friend class BgpMulticastTest;
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
-    MvpnManager *mvpn_manager_;
+    MvpnManager *manager_;
+    MvpnProjectManager *project_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnTable);
 };
 
-#endif  // SRC_BGP_MvPN_MvPN_TABLE_H_
+#endif  // SRC_BGP_MVPN_MVPN_TABLE_H_

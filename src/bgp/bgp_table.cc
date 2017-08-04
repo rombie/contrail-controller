@@ -401,8 +401,8 @@ bool BgpTable::DeletePath(DBTablePartBase *root, BgpRoute *rt, BgpPath *path) {
 void BgpTable::ResolvePath(BgpRoute *rt, BgpPath *path) {
     Address::Family family = path->GetAttr()->nexthop_family();
     BgpTable *table = rtinstance_->GetTable(family);
-    path_resolver_->StartPathResolution(get_table_partition()->index(), path,
-                                        rt, table);
+    path_resolver_->StartPathResolution(rt->get_table_partition()->index(),
+        path, rt, table);
 }
 
 bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,

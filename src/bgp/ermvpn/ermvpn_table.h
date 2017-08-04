@@ -50,12 +50,14 @@ public:
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
     size_t HashFunction(const ErmVpnPrefix &prefix) const;
+    bool IsGlobalTreeRootRoute(ErmVpnRoute *rt) const;
 
     void CreateTreeManager();
     void DestroyTreeManager();
     McastTreeManager *GetTreeManager();
     const McastTreeManager *GetTreeManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
+    const McastTreeManager *tree_manager() const { return tree_manager_; }
 
 private:
     friend class BgpMulticastTest;

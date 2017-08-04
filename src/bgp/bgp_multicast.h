@@ -234,7 +234,7 @@ public:
     void clear_on_work_queue() { on_work_queue_ = false; }
 
     bool empty() const;
-    void IsGlobalTreeRootRoute(ErmVpnRoutes *route) const;
+    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
 
 private:
     friend class BgpMulticastTest;
@@ -307,6 +307,7 @@ public:
     ~McastManagerPartition();
 
     McastSGEntry *FindSGEntry(Ip4Address group, Ip4Address source);
+    const McastSGEntry *FindSGEntry(Ip4Address group, Ip4Address source) const;
     McastSGEntry *LocateSGEntry(Ip4Address group, Ip4Address source);
     void EnqueueSGEntry(McastSGEntry *sg_entry);
 
@@ -315,6 +316,7 @@ public:
     BgpServer *server();
     const BgpServer *server() const;
     McastTreeManager *tree_manager() const { return tree_manager_; }
+    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
 
     bool empty() const { return sg_list_.empty(); }
     size_t size() const { return sg_list_.size(); }
@@ -394,6 +396,7 @@ public:
     virtual void Terminate();
 
     McastManagerPartition *GetPartition(int part_id);
+    const McastManagerPartition *GetPartition(int part_id) const;
 
     virtual UpdateInfo *GetUpdateInfo(ErmVpnRoute *route);
     DBTablePartBase *GetTablePartition(size_t part_id);
@@ -408,6 +411,7 @@ public:
     LifetimeActor *deleter();
     const LifetimeActor *deleter() const;
     bool deleted() const;
+    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
 
 private:
     friend class BgpMulticastTest;

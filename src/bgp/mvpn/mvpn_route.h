@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
-#ifndef SRC_BGP_MvPN_MvPN_ROUTE_H_
-#define SRC_BGP_MvPN_MvPN_ROUTE_H_
+#ifndef SRC_BGP_MVPN_MVPN_ROUTE_H_
+#define SRC_BGP_MVPN_MVPN_ROUTE_H_
 
 #include <boost/system/error_code.hpp>
 
@@ -23,17 +23,18 @@ class MvpnPrefix {
 public:
     enum RouteType {
         Unspecified = 0,
-        IntraASPMSIAutoDiscoveryRoute = 1,
-        InterASPMSIAutoDiscoveryRoute = 2,
-        SPMSIAutoDiscoveryRoute = 3,
+        IntraASPMSIADRoute = 1,
+        InterASPMSIADRoute = 2,
+        SPMSIADRoute = 3,
         LeafADRoute = 4,
-        SourceActiveAutoDiscoveryRoute = 5,
+        SourceActiveADRoute = 5,
         SharedTreeJoinRoute = 6,
         SourceTreeJoinRoute = 7,
     };
 
     MvpnPrefix();
-    MvpnPrefix(uint8_t type, const MvpnPrefix &prefix);
+    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd, const uint16_t &asn,
+               const Ip4Address &group, const Ip4Address &source);
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const Ip4Address &originator);
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
@@ -43,8 +44,6 @@ public:
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                  const Ip4Address &originator,
                  const Ip4Address &group, const Ip4Address &source);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd, const uint16_t &asn,
-               const Ip4Address &group, const Ip4Address &source);
 
     static int FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
                                MvpnPrefix *prefix);
@@ -55,6 +54,7 @@ public:
                                uint32_t *l3_label);
     static MvpnPrefix FromString(const std::string &str,
                                    boost::system::error_code *errorp = NULL);
+    void SetRtKeyFromSPMSIADRoute(const MvpnPrefix prefix);
 
     std::string ToString() const;
     std::string ToXmppIdString() const;
@@ -68,6 +68,9 @@ public:
     Ip4Address group() const { return group_; }
     Ip4Address source() const { return source_; }
     Ip4Address originator() const { return originator_; }
+    IpAddress group2() const { return IpAddress(group_); }
+    IpAddress source2() const { return IpAddress(source_); }
+    IpAddress originator2() const { return IpAddress(originator_); }
     uint16_t asn() const { return asn_; }
     void set_route_distinguisher(const RouteDistinguisher &rd) { rd_ = rd; }
     uint8_t ip_prefix_length() const { return ip_prefixlen_; }
@@ -111,7 +114,7 @@ public:
     }
 
     virtual u_int16_t Afi() const { return BgpAf::IPv4; }
-    virtual u_int8_t Safi() const { return BgpAf::Mvpn; }
+    virtual u_int8_t Safi() const { return BgpAf::MVpn; }
     virtual u_int8_t XmppSafi() const { return BgpAf::Mcast; }
 
 private:
@@ -121,4 +124,4 @@ private:
     DISALLOW_COPY_AND_ASSIGN(MvpnRoute);
 };
 
-#endif  // SRC_BGP_MvPN_ERMvPN_ROUTE_H_
+#endif  // SRC_BGP_MVPN_ERMVPN_ROUTE_H_

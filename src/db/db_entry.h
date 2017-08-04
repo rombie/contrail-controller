@@ -69,6 +69,7 @@ public:
     DBTablePartBase *get_table_partition() const;
     void set_table_partition(DBTablePartBase *tpart);
     DBTableBase *get_table() const;
+    void Notify();
 
 private:
     enum DbEntryFlags {
