@@ -47,7 +47,7 @@ const MvpnManagerPartition *MvpnManagerPartition::GetProjectManagerPartition()
 }
 
 MvpnManagerPartition *MvpnManagerPartition::GetProjectManagerPartition() {
-    MvpnManager *project_manager = GetProjectManager();
+    MvpnProjectManager *project_manager = GetProjectManager();
     return project_manager ? project_manager->GetPartition(part_id_) : NULL;
 }
 
@@ -55,7 +55,7 @@ const MvpnManager *MvpnManager::GetProjectManager() const {
     return GetProjectManager();
 }
 
-MvpnManager *MvpnManager::GetProjectManager() {
+MvpnProjectManager *MvpnManager::GetProjectManager() {
     RoutingInstance *instance =  table_->routing_instance()->manager()->
         GetRoutingInstance(GetProjectMasterName());
     if (!instance)
@@ -63,7 +63,7 @@ MvpnManager *MvpnManager::GetProjectManager() {
     MvpnTable *table = instance->GetTable(Address::MvPN);
     if (!table)
         return NULL;
-    return table->mvpn_manager();
+    return table->mvpn_project_manager();
 }
 
 void MvpnManager::Initialize() {
@@ -74,9 +74,6 @@ void MvpnManager::Initialize() {
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
     }
-
-    if (IsProjectMaster())
-        return;
 
     // Originate Type1 Internal Auto-Discovery Route.
     BgpServer *server = table_->routing_instance()->server();
@@ -97,20 +94,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     if (IsMaster())
         return;
 
-    ErmVpnRoute *ermvpn_route = dynamic_cast<ErmVpnRoute *>(db_entry);
-    if (ermvpn_route) {
-        ErmVpnTable *ermvpn_table =
-            dynamic_cast<ErmVpnTable *>(tpart->parent());
-        assert(ermvpn_table);
-
-        // Notify all T-4 Leaf AD routes already originated for this S,G.
-        if (ermvpn_table->IsGlobalTreeRootRoute(route)) {
-            MvpnManagerPartition *partition = partitions_[tpart->index()];
-            partition->NotifyLeafAdRoutes(route);
-        }
-        return;
-    }
-
     MvpnRoute *route = dynamic_cast<MvpnRoute *>(db_entry);
     if (!route)
         return;
@@ -125,23 +108,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
         MvpnManagerPartition *partition = partitions_[tpart->index()];
         partition->ProcessSPMSIRoute();
         return;
-    }
-}
-
-void MvpnManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
-    SG sg = SG(ermvpn_rt->source(), ermvpn_rt->group());
-    MvpnState *mvpn_state = GetState(sg);
-    assert(mvpn_state);
-
-    if (!ermvpn_rt->IsValid()) {
-        mvpn_state->set_global_ermvpn_tree_rt(NULL);
-    } else {
-        mvpn_state->set_global_ermvpn_tree_rt(ermvpn_rt);
-    }
-
-    // Notify all originated t-4 routes for PMSI re-computation.
-    BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
-        leaf_ad_route->Notify();
     }
 }
 
@@ -161,42 +127,11 @@ void MvpnManager::GetPartition(int part_id) {
     return partitions_[part_id];
 }
 
-// Constructor for MvpnManagerPartition.
 MvpnManagerPartition::MvpnManagerPartition(MvpnManager *manager, size_t part_id)
     : manager_(manager), part_id_(part_id) {
 }
 
-// Destructor for MvpnManagerPartition.
 MvpnManagerPartition::~MvpnManagerPartition() {
-}
-
-MvpnState *MvpnManagerPartition::CreateState(const SG &sg) {
-    MvpnState *state = new MvpnState();
-    assert(routes_state_.insert(make_pair(sg, state)).second);
-    return state;
-}
-
-MvpnState *MvpnManagerPartition::LocateState(const SG &sg) {
-    MvpnState *mvpn_state = GetState(sg);
-    return mvpn_state ?: CreateState(sg);
-}
-
-const MvpnState *MvpnManagerPartition::GetState(const SG &sg) const {
-    RoutesStateMap::const_iterator iter = routes_state_.find(sg);
-    retirn iter != routes_state_.end() ?  *iter : NULL;
-}
-
-MvpnState *MvpnManagerPartition::GetState(const SG &sg) {
-    RoutesStateMap::iterator iter = routes_state_.find(sg);
-    retirn iter != routes_state_.end() ?  *iter : NULL;
-}
-
-MvpnState *MvpnManagerPartition::DeleteState(MvpnState *mvpn_state) {
-    assert(mvpn_state->refcount);
-    if (--mvpn_state->refcount)
-        return;
-    states_.erase(mvpn_state->sg());
-    delete mvpn_state;
 }
 
 bool MvpnManager::findNeighbor(const IpAddress &address, MvpnNeighbor &nbr)
