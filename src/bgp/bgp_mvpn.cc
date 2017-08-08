@@ -203,6 +203,12 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
         }
         return;
     }
+
+    if (route->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
+        MvpnManagerPartition *partition = partitions_[tpart->index()];
+        partition->ProcessLeafADRoute(route);
+        return;
+    }
 }
 
 void MvpnManager::AllocPartitions() {
@@ -482,6 +488,17 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     return dest_route;
 }
 
+void MvpnManagerPartition::ProcessLeafADRoute(MvpnRoute *join_rt) {
+    if (Master())
+        return;
+    BgpPath *src_path = join_rt->BestPath();
+    if (!dynamic_cast<BgpSecondaryPath>(src_path))
+        return;
+
+    // LeafAD route has been imported into a table. Retrieve PMSI information
+    // from the path attribute and update the ingress sender (agent).
+}
+
 void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     BgpPath *src_path = join_rt->BestPath();
 
@@ -489,7 +506,7 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     if (dynamic_cast<BgpSecondaryPath>(src_path)) {
         if (Master())
             return;
-        // Generate S-PMSI route towards the receivers.
+        // Originate S-PMSI route towards the receivers.
         return;
     }
 
@@ -557,9 +574,6 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
 BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
-    if (!manager_->IsMaster())
-        return NULL;
-
     MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().source2(),
                                      src_rt->GetPrefix().group2());
     MvpnProjectManagerPartition *project_manager_partition =
