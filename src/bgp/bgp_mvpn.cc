@@ -194,8 +194,13 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
+        BgpPath *src_path = route->BestPath();
+        if (!src_path)
+            return;
         MvpnManagerPartition *partition = partitions_[tpart->index()];
-        partition->ProcessSourceTreeJoinRoute(route);
+        if (partition->ProcessSourceTreeJoinRoute(route)) {
+            route->Notify();
+        }
         return;
     }
 }
@@ -410,51 +415,23 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
 BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
-    return ReplicatePath(server, src_table, src_rt, src_path, community, NULL,
-                         NULL);
-}
-
-void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
-    // In case of bgp.mvpn.0 table, if src_rt is type-7 <C-S,G> route and it is
-    // now resolvable (or otherwise), replicate or delete C-S,G route to
-    // advertise/withdraw from the ingress root PE node.
-    const BgpPath *path = manager_->table()->manager()->resolver()->
-        FindResolvedPath(join_rt, src_path);
-    if (!path)
-        return NULL;
-
-    const BgpAttr *attr = path->GetAttr();
-    if (!attr)
-        return NULL;
-
-    // Find if resolved path points to an active Mvpn neighbor.
-    MvpnNeighbor neighbor;
-    if (!manager_->findNeighbor(attr->nexthop(), &neighbor))
-        return NULL;
-
-    ExtCommunityPtr ext_community = attr->ext_community();
-    if (!ext_community)
-        return NULL;
-
-    bool rt_import_found = false;
-
-    // Use rt-import from the resolved path as export route-target.
-    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
-                  ext_community->communities()) {
-        // TODO(Ananth) Replace route target with rt-import.
-        if (ExtCommunity::is_vrf_route_import(value)) {
-            ExtCommunity::ExtCommunityList export_target;
-            export_target.push_back(value);
-            ext_community = server->extcomm_db()->ReplaceRTargetAndLocate(
-                ext_community.get(), export_target);
-            rt_import_found = true;
-            break;
-        }
+    // If src_path is not marked for resolution requested, replicate it right
+    // away.
+    if (!src_path->NeedsResolution()) {
+        return ReplicatePath(server, src_table, src_rt, src_path, community,
+                             NULL, NULL);
     }
 
-    // Do not replicate if there is no vrf rt import community attached to the
-    // resolved route.
-    if (!rt_import_found)
+    // If source is resolved, only then replicate the path, not otherwise.
+    const BgpAttr *attr = src_path->GetAttr();
+    if (!attr)
+        return NULL;
+    if (attr->source_rd().IsZero())
+        return NULL;
+
+    // Find if the resolved path points to an active Mvpn neighbor.
+    MvpnNeighbor neighbor;
+    if (!manager_->findNeighbor(attr->nexthop(), &neighbor))
         return NULL;
 
     // Replicate path using rd of the resolved path as part of the prefix
@@ -475,9 +452,7 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
         dest_route->ClearDelete();
     }
 
-    BgpAttrPtr new_attr =
-        server->attr_db()->ReplaceExtCommunityAndLocate(src_path->GetAttr(),
-                                                        ext_community);
+    BgpAttrPtr new_attr = BgpAttrPtr(src_path->GetAttr());
 
     // Check whether peer already has a path.
     BgpPath *dest_path = dest_route->FindSecondaryPath(src_rt,
@@ -505,6 +480,75 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     dest_route->Notify();
 
     return dest_route;
+}
+
+void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
+    BgpPath *src_path = join_rt->BestPath();
+
+    assert(src_path);
+    if (dynamic_cast<BgpSecondaryPath>(src_path)) {
+        if (Master())
+            return;
+        // Generate S-PMSI route towards the receivers.
+        return;
+    }
+
+    const BgpAttr *src_path_attr = !src_path->GetAttr();
+    bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
+
+    // Reset source rd first to mark the route as unresolved.
+    src_path->set_source_rd(RouteDistinguisher());
+
+    // In case of bgp.mvpn.0 table, if src_rt is type-7 <C-S,G> route and it is
+    // now resolvable (or otherwise), replicate/delete C-S,G route to advertise/
+    // withdraw from the ingress root PE node.
+    const BgpPath *path = manager_->table()->manager()->resolver()->
+        FindResolvedPath(join_rt, src_path);
+    if (!path)
+        return resolved;
+
+    const BgpAttr *attr = path->GetAttr();
+    if (!attr)
+        return resolved;
+
+    ExtCommunityPtr ext_community = attr->ext_community();
+    if (!ext_community)
+        return resolved;
+
+    // Find if the resolved path points to an active Mvpn neighbor.
+    MvpnNeighbor neighbor;
+    if (!manager_->findNeighbor(attr->nexthop(), &neighbor))
+        return resolved;
+
+    bool rt_import_found = false;
+
+    // Use rt-import from the resolved path as export route-target.
+    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
+                  ext_community->communities()) {
+        // TODO(Ananth) Replace route target with rt-import.
+        if (ExtCommunity::is_vrf_route_import(value)) {
+            ExtCommunity::ExtCommunityList export_target;
+            export_target.push_back(value);
+            ext_community = server->extcomm_db()->ReplaceRTargetAndLocate(
+                ext_community.get(), export_target);
+            rt_import_found = true;
+            break;
+        }
+    }
+
+    // Do not replicate if there is no vrf rt import community attached to the
+    // resolved route.
+    if (!rt_import_found)
+        return resolved;
+
+    // Update extended communty of the route with route-target equal to the
+    // vrf import route target found above.
+    src_path_attr->set_ext_community(ext_community);
+    RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
+    src_path->set_source_rd(rd);
+
+    // TODO(Ananth) Return false if there is no change, true otherwise.
+    return true;
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
