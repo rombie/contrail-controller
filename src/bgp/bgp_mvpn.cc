@@ -405,43 +405,21 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
         leaf_ad_rt->Notify();
 }
 
-void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
-}
 
 // At the moment, we only do resolution for C-<S,G> Type-7 routes.
 BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
+    return ReplicatePath(server, src_table, src_rt, src_path, community, NULL,
+                         NULL);
+}
 
-    // Check if the path is associted with a target which is the internal
-    // uniquely identifying target of 'this' table. If so, it means that we
-    // are the potential sender and receivers are targetting to join source
-    // from 'this' table itself.
-    const BgpAttr *src_attr = src_path->GetAttr();
-    if (src_attr && src_attr->ext_community()) {
-        ExtCommunity::ExtCommunityValue import_route_target =
-            manager_->table()->routing_instance()->GetVrfImportRouteTarget();
-        const ExtCommunity *ext_community = src_attr->ext_community();
-        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                      ext_community->communities()) {
-            if (ExtCommunity::is_route_target(comm)) {
-                if (import_route_target == comm) {
-                    // Found a target that matches import route target. We are
-                    // the sender. Hence, directly replicate the path into the
-                    // this table. Necessary S-PMSI routes shall be originated
-                    // as a response via the route listner function.
-                    return ReplicatePath(server, src_table, src_rt, src_path,
-                                         community, NULL, NULL);
-                }
-            }
-        }
-    }
-
+void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     // In case of bgp.mvpn.0 table, if src_rt is type-7 <C-S,G> route and it is
     // now resolvable (or otherwise), replicate or delete C-S,G route to
     // advertise/withdraw from the ingress root PE node.
-    const BgpPath *path = src_table->manager()->resolver()->FindResolvedPath(
-            src_rt, src_path);
+    const BgpPath *path = manager_->table()->manager()->resolver()->
+        FindResolvedPath(join_rt, src_path);
     if (!path)
         return NULL;
 
