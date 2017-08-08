@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
 #ifndef SRC_BGP_EXTENDED_COMMUNITY_SOURCE_AS_H_

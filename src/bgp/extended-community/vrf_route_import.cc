@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
 #include "bgp/extended-community/vrf_route_import.h"
@@ -70,21 +70,19 @@ VrfRouteImport VrfRouteImport::FromString(const string &str,
     boost::system::error_code ec;
     string second(rest.substr(0, pos));
     Ip4Address addr = Ip4Address::from_string(second, ec);
-    int offset;
     char *endptr;
     if (ec.value() != 0) {
-        // Not an IP address. 
+        // Not an IP address.
         if (errorp != NULL) {
             *errorp = make_error_code(boost::system::errc::invalid_argument);
         }
         return VrfRouteImport::null_rt_import;
-    } else {
-        data[0] = BgpExtendedCommunityType::IPv4Address;
-        data[1] = BgpExtendedCommunitySubType::VrfRouteImport;
-        uint32_t l_addr = addr.to_ulong();
-        put_value(&data[2], 4, l_addr);
-        offset = 6;
     }
+    data[0] = BgpExtendedCommunityType::IPv4Address;
+    data[1] = BgpExtendedCommunitySubType::VrfRouteImport;
+    uint32_t l_addr = addr.to_ulong();
+    put_value(&data[2], 4, l_addr);
+    int offset = 6;
 
     string third(rest.substr(pos+1));
     uint64_t value = strtol(third.c_str(), &endptr, 10);

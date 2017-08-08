@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+ * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
 #include "bgp/extended-community/source_as.h"
@@ -29,10 +29,12 @@ string SourceAs::ToString() const {
         uint16_t asn = get_value(data + 2, 2);
         uint32_t num = get_value(data + 4, 4);
         snprintf(temp, sizeof(temp), "source-as:%u:%u", asn, num);
+        return string(temp);
     } else if (data[0] == BgpExtendedCommunityType::FourOctetAS) {
         uint32_t asn = get_value(data + 2, 4);
-        uint16_t num = get_value(data + 4, 2);
+        uint16_t num = get_value(data + 6, 2);
         snprintf(temp, sizeof(temp), "source-as:%u:%u", asn, num);
+        return string(temp);
     }
     return "";
 }
@@ -73,7 +75,7 @@ SourceAs SourceAs::FromString(const string &str,
     string second(rest.substr(0, pos));
     int offset;
     char *endptr;
-    // Try ASN
+    // Get ASN: We only support TwoOctetAS for now
     int64_t asn = strtol(second.c_str(), &endptr, 10);
     if (asn == 0 || asn >= 65535 || *endptr != '\0') {
         if (errorp != NULL) {
@@ -96,8 +98,8 @@ SourceAs SourceAs::FromString(const string &str,
         return SourceAs::null_sas;
     }
 
-    // Check assigned number.
-    if (value != 0) {
+    // Check assigned number for type 0.
+    if (value > 0xFFFFFFFF) {
         if (errorp != NULL) {
             *errorp = make_error_code(boost::system::errc::invalid_argument);
         }
