@@ -421,18 +421,18 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SPMSIADRoute) {
-        partition->ProcessSPMSIRoute(route);
+        partition->ProcessType3SPMSIRoute(route);
         return;
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
-        if (partition->ProcessSourceTreeJoinRoute(route))
+        if (partition->ProcessType7SourceTreeJoinRoute(route))
             route->Notify();
         return;
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
-        partition->ProcessLeafADRoute(route);
+        partition->ProcessType4LeafADRoute(route);
         return;
     }
 }
@@ -514,7 +514,7 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     table->path_resolver()->StartPathResolution(rt, path, table, &address);
 }
 
-bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
+bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     const BgpPath *src_path = join_rt->BestPath();
 
     if (!src_path)
@@ -600,7 +600,7 @@ bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     return true;
 }
 
-void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
+void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     if (manager_->IsMaster())
         return;
 
@@ -655,7 +655,7 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
         leaf_ad_rt->Notify();
 }
 
-void MvpnManagerPartition::ProcessLeafADRoute(MvpnRoute *leaf_ad) {
+void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     if (IsMaster())
         return;
     const BgpPath *src_path = leaf_ad->BestPath();

@@ -119,13 +119,15 @@ public:
 private:
     friend class MvpnManager;
 
-    bool ProcessSourceTreeJoinRoute(MvpnRoute *join_rt);
-    void ProcessSPMSIRoute(MvpnRoute *spmsi_rt);
-    void ProcessLeafADRoute(MvpnRoute *leaf_ad);
-    bool IsMaster();
-    bool IsMaster() const;
     MvpnTable *table();
     const MvpnTable *table() const;
+    bool IsMaster();
+    bool IsMaster() const;
+
+    bool ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt);
+    void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);
+    void ProcessType4LeafADRoute(MvpnRoute *leaf_ad);
+
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *source_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
