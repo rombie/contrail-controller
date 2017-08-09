@@ -456,6 +456,23 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     }
 }
 
+void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
+    SG sg = SG(ermvpn_rt->GetPrefix().source(), ermvpn_rt->GetPrefix().group());
+    MvpnState *mvpn_state = GetState(sg);
+    assert(mvpn_state);
+
+    if (!ermvpn_rt->IsValid()) {
+        mvpn_state->set_global_ermvpn_tree_rt(NULL);
+    } else {
+        mvpn_state->set_global_ermvpn_tree_rt(ermvpn_rt);
+    }
+
+    // Notify all originated t-4 routes for PMSI re-computation.
+    BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
+        leaf_ad_route->Notify();
+    }
+}
+
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     tbb::mutex::scoped_lock(neighbors_mutex_);
 
@@ -901,21 +918,4 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
     dest_route->Notify();
 
     return dest_route;
-}
-
-void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
-    SG sg = SG(ermvpn_rt->GetPrefix().source(), ermvpn_rt->GetPrefix().group());
-    MvpnState *mvpn_state = GetState(sg);
-    assert(mvpn_state);
-
-    if (!ermvpn_rt->IsValid()) {
-        mvpn_state->set_global_ermvpn_tree_rt(NULL);
-    } else {
-        mvpn_state->set_global_ermvpn_tree_rt(ermvpn_rt);
-    }
-
-    // Notify all originated t-4 routes for PMSI re-computation.
-    BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
-        leaf_ad_route->Notify();
-    }
 }
