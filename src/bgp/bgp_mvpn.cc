@@ -414,11 +414,8 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
-        const BgpPath *src_path = route->BestPath();
-        if (src_path) {
-            if (partition->ProcessSourceTreeJoinRoute(route))
+        if (partition->ProcessSourceTreeJoinRoute(route))
                 route->Notify();
-        }
         return;
     }
 
@@ -503,7 +500,9 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
 bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     const BgpPath *src_path = join_rt->BestPath();
 
-    assert(src_path);
+    if (!src_path)
+        return false;
+
     if (dynamic_cast<const BgpSecondaryPath *>(src_path)) {
         if (IsMaster())
             return false;
