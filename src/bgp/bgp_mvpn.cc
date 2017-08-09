@@ -405,6 +405,7 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
         }
 
         if (!leaf_ad_rt) {
+            // Use route target <pe-router-id>:0
             leaf_ad_rt = manager_->table()->CreateLeafADRoute(spmsi_rt);
             assert(mvpn_state->leaf_ad_routes_originated_.insert(
                     leaf_ad_rt).second);
@@ -574,6 +575,20 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
 BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
+
+    // Do not replicate if there is no matching type-3 S-PMSI route.
+    if (!Master() && src_table->Master()) {
+        MvpnRoute *spmsi_rt = manager_->table()->FindSPMSIRoute(src_rt);
+        if (!spmsi_rt)
+            return NULL;
+
+        // If the path already has PMSI attribute, then go ahead and replicate
+        // This typically happens in the sender VRF, with routes coming over
+        // bgp.
+        return ReplicatePath(server, src_table, src_rt, src_path, community,
+                             new_attr, &replicated);
+    }
+
     MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().source2(),
                                      src_rt->GetPrefix().group2());
     MvpnProjectManagerPartition *project_manager_partition =
@@ -601,6 +616,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
         src_path->GetAttr(), pmsi_spec);
     bool replicated;
+
     BgpRoute *replicated_path = ReplicatePath(server, src_table, src_rt,
         src_path, community, new_attr, &replicated);
 
