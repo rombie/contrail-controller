@@ -344,6 +344,11 @@ MvpnProjectManager *MvpnManager::GetProjectManager() {
         static_cast<const MvpnManager *>(this)->GetProjectManager());
 }
 
+bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
+    uint32_t *label, Ip4Address *address) const {
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
@@ -913,9 +918,4 @@ void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
     BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
         leaf_ad_route->Notify();
     }
-}
-
-bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
-    uint32_t *label, Ip4Address *address) const {
-    return true;
 }
