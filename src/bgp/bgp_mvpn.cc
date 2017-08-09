@@ -415,7 +415,7 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
         if (partition->ProcessSourceTreeJoinRoute(route))
-                route->Notify();
+            route->Notify();
         return;
     }
 
