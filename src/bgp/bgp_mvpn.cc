@@ -579,10 +579,12 @@ bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
         ReplaceSourceRdAndLocate(src_path->GetAttr(), rd);
     new_attr = table()->server()->attr_db()->
         ReplaceExtCommunityAndLocate(new_attr.get(), ext_community);
-    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
     const_cast<BgpAttr *>(src_path_attr)->set_source_rd(rd);
 
-    // TODO(Ananth) Return false if there is no change, true otherwise.
+    // Ignore if there is no chage in the computed path attributes.
+    if (new_attr.get() == src_path_attr)
+        return false;
+    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
     return true;
 }
 
