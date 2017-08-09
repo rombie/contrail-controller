@@ -25,6 +25,7 @@ class BgpTable;
 class ErmVpnRoute;
 class MvpnManager;
 class MvpnManagerPartition;
+class MvpnPrefix;
 class MvpnProjectManager;
 class MvpnProjectManagerPartition;
 class MvpnRoute;
