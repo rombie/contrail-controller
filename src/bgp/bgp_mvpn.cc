@@ -726,46 +726,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnPrefix mprefix(MvpnPrefix::SourceTreeJoinRoute, rd, neighbor.asn,
         src_rt->GetPrefix().group(), src_rt->GetPrefix().source());
     MvpnRoute rt_key(mprefix);
-
-    // Find or create the route.
-    DBTablePartition *rtp = static_cast<DBTablePartition *>(
-        manager_->table()->GetTablePartition(&rt_key));
-    BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
-    if (dest_route == NULL) {
-        dest_route = new MvpnRoute(mprefix);
-        rtp->Add(dest_route);
-    } else {
-        dest_route->ClearDelete();
-    }
-
-    BgpAttrPtr new_attr = BgpAttrPtr(src_path->GetAttr());
-
-    // Check whether peer already has a path.
-    BgpPath *dest_path = dest_route->FindSecondaryPath(src_rt,
-            src_path->GetSource(), src_path->GetPeer(),
-            src_path->GetPathId());
-    if (dest_path != NULL) {
-        if (new_attr != dest_path->GetOriginalAttr() ||
-            src_path->GetFlags() != dest_path->GetFlags()) {
-            bool success = dest_route->RemoveSecondaryPath(src_rt,
-                src_path->GetSource(), src_path->GetPeer(),
-                src_path->GetPathId());
-            assert(success);
-        } else {
-            return dest_route;
-        }
-    }
-
-    // Create replicated path and insert it on the route.
-    BgpSecondaryPath *replicated_path =
-        new BgpSecondaryPath(src_path->GetPeer(), src_path->GetPathId(),
-                             src_path->GetSource(), new_attr,
-                             src_path->GetFlags(), src_path->GetLabel());
-    replicated_path->SetReplicateInfo(src_table, src_rt);
-    dest_route->InsertPath(replicated_path);
-    dest_route->Notify();
-
-    return dest_route;
+    return ReplicatePathCommon(server, rt_key, src_table, src_rt, src_path,
+                               community);
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
@@ -851,25 +813,30 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
 
 BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community,
-    BgpAttrPtr new_attr, bool *replicated) {
-    if (replicated)
-        *replicated = false;
-    assert(src_table->family() == Address::MVPN);
+    ExtCommunityPtr community, BgpAttrPtr new_attr, bool *replicated) {
+
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
+    assert(mvpn_rt);
+    MvpnRoute rt_key(mvpn_rt->GetPrefix());
+    return ReplicatePathCommon(server, rt_key, src_table, src_rt, src_path,
+                               community, new_attr, replicated);
+}
+
+BgpRoute *MvpnManagerPartition::ReplicatePathCommon(BgpServer *server,
+        const MvpnPrefix &rt_key, MvpnTable *src_table, MvpnRoute *src_rt,
+        const BgpPath *src_path, ExtCommunityPtr community, BgpAttrPtr new_attr,
+        bool *replicated) {
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
     assert(mvpn_rt);
     MvpnPrefix mvpn_prefix(mvpn_rt->GetPrefix());
     BgpAttrDB *attr_db = server->attr_db();
+    assert(src_table->family() == Address::MVPN);
+
+    if (replicated)
+        *replicated = false;
 
     if (!new_attr)
         new_attr = BgpAttrPtr(src_path->GetAttr());
-
-    if (manager_->IsMaster()) {
-        if (mvpn_prefix.route_distinguisher().IsZero()) {
-            mvpn_prefix.set_route_distinguisher(new_attr->source_rd());
-        }
-    }
-    MvpnRoute rt_key(mvpn_prefix);
 
     // Find or create the route.
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
