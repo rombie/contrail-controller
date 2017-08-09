@@ -422,6 +422,7 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
 BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
+
     // If src_path is not marked for resolution requested, replicate it right
     // away.
     if (!src_path->NeedsResolution()) {
@@ -429,10 +430,11 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
                              NULL, NULL);
     }
 
-    // If source is resolved, only then replicate the path, not otherwise.
     const BgpAttr *attr = src_path->GetAttr();
     if (!attr)
         return NULL;
+
+    // If source is resolved, only then replicate the path, not otherwise.
     if (attr->source_rd().IsZero())
         return NULL;
 
@@ -543,7 +545,6 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
     // Use rt-import from the resolved path as export route-target.
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
                   ext_community->communities()) {
-        // TODO(Ananth) Replace route target with rt-import.
         if (ExtCommunity::is_vrf_route_import(value)) {
             ExtCommunity::ExtCommunityList export_target;
             export_target.push_back(value);
@@ -575,9 +576,30 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
 BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
+    const BgpAttr *attr = src_path->GetAttr();
+
+    // Do not replicate into non-master tables if the [only] route-target of the
+    // route does not match the auto-created vrf-import route target of 'this'.
+    if (!attr || !attr->ext_community())
+        return NULL;
 
     // Do not replicate if there is no matching type-3 S-PMSI route.
     if (!IsMaster()) {
+        bool found = false;
+        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
+                attr->ext_community()->communities()) {
+            if (ExtCommunity::is_route_target(value)) {
+                if (value == table()->GetAutoVrfImportRouteTarget()) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found)
+            return NULL;
+
+        // Make sure that there is an associated Type3 S-PMSI route.
         MvpnRoute *spmsi_rt = manager_->table()->FindSPMSIRoute(src_rt);
         if (!spmsi_rt)
             return NULL;
