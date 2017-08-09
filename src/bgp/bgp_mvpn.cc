@@ -464,7 +464,7 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
 
     MvpnNeighbor old_neighbor;
     RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
-    IpAddress address = route->GetPrefix().originator2();
+    IpAddress address = route->GetPrefix().originatorIpAddress();
     bool found = findNeighbor(address, &old_neighbor);
     MvpnNeighbor neighbor(address, route->GetPrefix().asn(), rd.GetVrfId(),
         route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
@@ -494,9 +494,9 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
     assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
 
-    IpAddress address = mvpn_rt->GetPrefix().source2();
-    BgpTable *table = address.is_v4() ?  rtinstance->GetTable(Address::INET) :
-                                         rtinstance->GetTable(Address::INET6);
+    IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
+    BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
+                                        rtinstance->GetTable(Address::INET6);
     table->path_resolver()->StartPathResolution(
         rt->get_table_partition()->index(), path, rt, table, &address);
 }
@@ -589,8 +589,8 @@ void MvpnManagerPartition::ProcessSPMSIRoute(MvpnRoute *spmsi_rt) {
     if (manager_->IsMaster())
         return;
 
-    MvpnState::SG sg = MvpnState::SG(spmsi_rt->GetPrefix().source2(),
-                                     spmsi_rt->GetPrefix().group2());
+    MvpnState::SG sg = MvpnState::SG(spmsi_rt->GetPrefix().sourceIpAddress(),
+                                     spmsi_rt->GetPrefix().groupIpAddress());
     MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     MvpnState *mvpn_state = project_manager_partition->GetState(sg);
@@ -793,8 +793,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
         }
     }
 
-    MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().source2(),
-                                     src_rt->GetPrefix().group2());
+    MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().sourceIpAddress(),
+                                     src_rt->GetPrefix().groupIpAddress());
     MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     MvpnState *mvpn_state = project_manager_partition->GetState(sg);
