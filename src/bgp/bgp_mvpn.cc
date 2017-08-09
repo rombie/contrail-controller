@@ -19,6 +19,188 @@ using std::make_pair;
 using std::ostringstream;
 using std::string;
 
+MvpnState::MvpnState(const SG &sg) :
+        sg_(sg), global_ermvpn_tree_rt_(NULL), refcount_(0) {
+}
+
+MvpnState::~MvpnState() {
+    assert(!global_ermvpn_tree_rt_);
+    assert(leaf_ad_routes_originated_.empty());
+    assert(cjoin_routes_received_.empty());
+}
+
+class MvpnProjectManager::DeleteActor : public LifetimeActor {
+public:
+    explicit DeleteActor(MvpnProjectManager *manager)
+        : LifetimeActor(manager->table_->routing_instance()->server()->
+                lifetime_manager()), manager_(manager) {
+    }
+    virtual ~DeleteActor() {
+    }
+
+    virtual bool MayDelete() const {
+        return true;
+    }
+
+    virtual void Shutdown() {
+    }
+
+    virtual void Destroy() {
+    }
+
+private:
+    MvpnProjectManager *manager_;
+};
+
+MvpnProjectManager::MvpnProjectManager(MvpnTable *table)
+        : table_(table),
+          listener_id_(DBTable::kInvalidId),
+          table_delete_ref_(this, table->deleter()) {
+    deleter_.reset(new DeleteActor(this));
+    Initialize();
+}
+
+MvpnProjectManager::~MvpnProjectManager() {
+    Terminate();
+}
+
+void MvpnProjectManager::Initialize() {
+    assert(!table_->IsMaster());
+    AllocPartitions();
+
+    listener_id_ = table_->Register(
+        boost::bind(&MvpnProjectManager::RouteListener, this, _1, _2),
+        "MvpnProjectManager");
+}
+
+void MvpnProjectManager::Terminate() {
+    table_->Unregister(listener_id_);
+    FreePartitions();
+}
+
+void MvpnProjectManager::AllocPartitions() {
+    for (int part_id = 0; part_id < table_->PartitionCount(); part_id++)
+        partitions_.push_back(new MvpnProjectManagerPartition(this, part_id));
+}
+
+void MvpnProjectManager::FreePartitions() {
+    for (size_t part_id = 0; part_id < partitions_.size(); part_id++) {
+        delete partitions_[part_id];
+    }
+    partitions_.clear();
+}
+
+MvpnProjectManagerPartition *MvpnProjectManager::GetPartition(int part_id) {
+    return partitions_[part_id];
+}
+
+const MvpnProjectManagerPartition *MvpnProjectManager::GetPartition(
+        int part_id) const {
+    return partitions_[part_id];
+}
+
+void MvpnProjectManager::ManagedDelete() {
+    deleter_->Delete();
+}
+
+MvpnProjectManagerPartition::MvpnProjectManagerPartition(
+        MvpnProjectManager *manager, int part_id)
+    : manager_(manager), part_id_(part_id) {
+}
+
+MvpnProjectManagerPartition::~MvpnProjectManagerPartition() {
+}
+
+MvpnState *MvpnProjectManagerPartition::CreateState(const SG &sg) {
+    MvpnState *state = new MvpnState(sg);
+    assert(states_.insert(make_pair(sg, state)).second);
+    return state;
+}
+
+MvpnState *MvpnProjectManagerPartition::LocateState(const SG &sg) {
+    MvpnState *mvpn_state = GetState(sg);
+    return mvpn_state ?: CreateState(sg);
+}
+
+const MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) const {
+    StateMap::const_iterator iter = states_.find(sg);
+    return iter != states_.end() ?  iter->second : NULL;
+}
+
+MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) {
+    StateMap::iterator iter = states_.find(sg);
+    return iter != states_.end() ?  iter->second : NULL;
+}
+
+void MvpnProjectManagerPartition::DeleteState(MvpnState *mvpn_state) {
+    assert(mvpn_state->refcount_);
+    if (--mvpn_state->refcount_)
+        return;
+    states_.erase(mvpn_state->sg());
+    delete mvpn_state;
+}
+
+MvpnNeighbor::MvpnNeighbor() : asn(0), vn_id(0), external(false) {
+}
+
+MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint32_t asn,
+        uint16_t vn_id, bool external) :
+    address(address), asn(asn), vn_id(vn_id), external(external) {
+    ostringstream os;
+    os << address << ":" << asn << ":" << vn_id << ":" << external;
+    name = os.str();
+}
+
+string MvpnNeighbor::ToString() const {
+    return name;
+}
+
+bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
+    return address == rhs.address && asn == rhs.asn &&
+           vn_id == rhs.vn_id && external == rhs.external;
+}
+
+MvpnState::SG::SG(const Ip4Address &source, const Ip4Address &group) :
+    source(IpAddress(source)), group(IpAddress(group)) {
+}
+
+MvpnState::SG::SG(const IpAddress &source, const IpAddress &group) :
+    source(source), group(group) {
+}
+
+bool MvpnState::SG::operator<(const SG &other)  const {
+    return (source < other.source) ?  true : (group < other.source);
+}
+
+const MvpnState::SG &MvpnState::sg() const {
+    return sg_;
+}
+
+const MvpnState::RoutesSet &MvpnState::cjoin_routes() const {
+    return cjoin_routes_received_;
+}
+
+ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() {
+    return global_ermvpn_tree_rt_;
+}
+
+const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
+    return global_ermvpn_tree_rt_;
+}
+
+const MvpnState::RoutesSet &MvpnState::leaf_ad_routes() const {
+    return leaf_ad_routes_originated_;
+}
+
+void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
+    global_ermvpn_tree_rt = global_ermvpn_tree_rt_;
+}
+
+MvpnDBState::MvpnDBState(MvpnState *state) : state(state) {
+    if (state)
+        state->refcount_++;
+}
+
 class MvpnManager::DeleteActor : public LifetimeActor {
 public:
     explicit DeleteActor(MvpnManager *manager)
@@ -214,6 +396,7 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     if (!route)
         return;
 
+    MvpnManagerPartition *partition = partitions_[tpart->index()];
     if (route->GetPrefix().type() == MvpnPrefix::IntraASPMSIADRoute ||
             route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute) {
         UpdateNeighbor(route);
@@ -221,7 +404,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SPMSIADRoute) {
-        MvpnManagerPartition *partition = partitions_[tpart->index()];
         partition->ProcessSPMSIRoute(route);
         return;
     }
@@ -229,7 +411,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
         const BgpPath *src_path = route->BestPath();
         if (src_path) {
-            MvpnManagerPartition *partition = partitions_[tpart->index()];
             if (partition->ProcessSourceTreeJoinRoute(route))
                 route->Notify();
         }
@@ -237,7 +418,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
-        MvpnManagerPartition *partition = partitions_[tpart->index()];
         partition->ProcessLeafADRoute(route);
         return;
     }
@@ -738,189 +918,4 @@ void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
 bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
     uint32_t *label, Ip4Address *address) const {
     return true;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-MvpnState::MvpnState(const SG &sg) :
-        sg_(sg), global_ermvpn_tree_rt_(NULL), refcount_(0) {
-}
-
-MvpnState::~MvpnState() {
-    assert(!global_ermvpn_tree_rt_);
-    assert(leaf_ad_routes_originated_.empty());
-    assert(cjoin_routes_received_.empty());
-}
-
-class MvpnProjectManager::DeleteActor : public LifetimeActor {
-public:
-    explicit DeleteActor(MvpnProjectManager *manager)
-        : LifetimeActor(manager->table_->routing_instance()->server()->
-                lifetime_manager()), manager_(manager) {
-    }
-    virtual ~DeleteActor() {
-    }
-
-    virtual bool MayDelete() const {
-        return true;
-    }
-
-    virtual void Shutdown() {
-    }
-
-    virtual void Destroy() {
-    }
-
-private:
-    MvpnProjectManager *manager_;
-};
-
-MvpnProjectManager::MvpnProjectManager(MvpnTable *table)
-        : table_(table),
-          listener_id_(DBTable::kInvalidId),
-          table_delete_ref_(this, table->deleter()) {
-    deleter_.reset(new DeleteActor(this));
-    Initialize();
-}
-
-MvpnProjectManager::~MvpnProjectManager() {
-    Terminate();
-}
-
-void MvpnProjectManager::Initialize() {
-    assert(!table_->IsMaster());
-    AllocPartitions();
-
-    listener_id_ = table_->Register(
-        boost::bind(&MvpnProjectManager::RouteListener, this, _1, _2),
-        "MvpnProjectManager");
-}
-
-void MvpnProjectManager::Terminate() {
-    table_->Unregister(listener_id_);
-    FreePartitions();
-}
-
-void MvpnProjectManager::AllocPartitions() {
-    for (int part_id = 0; part_id < table_->PartitionCount(); part_id++)
-        partitions_.push_back(new MvpnProjectManagerPartition(this, part_id));
-}
-
-void MvpnProjectManager::FreePartitions() {
-    for (size_t part_id = 0; part_id < partitions_.size(); part_id++) {
-        delete partitions_[part_id];
-    }
-    partitions_.clear();
-}
-
-MvpnProjectManagerPartition *MvpnProjectManager::GetPartition(int part_id) {
-    return partitions_[part_id];
-}
-
-const MvpnProjectManagerPartition *MvpnProjectManager::GetPartition(
-        int part_id) const {
-    return partitions_[part_id];
-}
-
-void MvpnProjectManager::ManagedDelete() {
-    deleter_->Delete();
-}
-
-MvpnProjectManagerPartition::MvpnProjectManagerPartition(
-        MvpnProjectManager *manager, int part_id)
-    : manager_(manager), part_id_(part_id) {
-}
-
-MvpnProjectManagerPartition::~MvpnProjectManagerPartition() {
-}
-
-MvpnState *MvpnProjectManagerPartition::CreateState(const SG &sg) {
-    MvpnState *state = new MvpnState(sg);
-    assert(states_.insert(make_pair(sg, state)).second);
-    return state;
-}
-
-MvpnState *MvpnProjectManagerPartition::LocateState(const SG &sg) {
-    MvpnState *mvpn_state = GetState(sg);
-    return mvpn_state ?: CreateState(sg);
-}
-
-const MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) const {
-    StateMap::const_iterator iter = states_.find(sg);
-    return iter != states_.end() ?  iter->second : NULL;
-}
-
-MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) {
-    StateMap::iterator iter = states_.find(sg);
-    return iter != states_.end() ?  iter->second : NULL;
-}
-
-void MvpnProjectManagerPartition::DeleteState(MvpnState *mvpn_state) {
-    assert(mvpn_state->refcount_);
-    if (--mvpn_state->refcount_)
-        return;
-    states_.erase(mvpn_state->sg());
-    delete mvpn_state;
-}
-
-MvpnNeighbor::MvpnNeighbor() : asn(0), vn_id(0), external(false) {
-}
-
-MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint32_t asn,
-        uint16_t vn_id, bool external) :
-    address(address), asn(asn), vn_id(vn_id), external(external) {
-    ostringstream os;
-    os << address << ":" << asn << ":" << vn_id << ":" << external;
-    name = os.str();
-}
-
-string MvpnNeighbor::ToString() const {
-    return name;
-}
-
-bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
-    return address == rhs.address && asn == rhs.asn &&
-           vn_id == rhs.vn_id && external == rhs.external;
-}
-
-MvpnState::SG::SG(const Ip4Address &source, const Ip4Address &group) :
-    source(IpAddress(source)), group(IpAddress(group)) {
-}
-
-MvpnState::SG::SG(const IpAddress &source, const IpAddress &group) :
-    source(source), group(group) {
-}
-
-bool MvpnState::SG::operator<(const SG &other)  const {
-    return (source < other.source) ?  true : (group < other.source);
-}
-
-const MvpnState::SG &MvpnState::sg() const {
-    return sg_;
-}
-
-const MvpnState::RoutesSet &MvpnState::cjoin_routes() const {
-    return cjoin_routes_received_;
-}
-
-ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() {
-    return global_ermvpn_tree_rt_;
-}
-
-const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
-    return global_ermvpn_tree_rt_;
-}
-
-const MvpnState::RoutesSet &MvpnState::leaf_ad_routes() const {
-    return leaf_ad_routes_originated_;
-}
-
-void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
-    global_ermvpn_tree_rt = global_ermvpn_tree_rt_;
-}
-
-MvpnDBState::MvpnDBState(MvpnState *state) : state(state) {
-    if (state)
-        state->refcount_++;
 }
