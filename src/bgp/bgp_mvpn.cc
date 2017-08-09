@@ -578,9 +578,6 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return true;
     }
 
-    if (!join_rt->IsValid())
-        return false;
-
     const BgpAttr *src_path_attr = src_path->GetAttr();
     bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
 
