@@ -323,11 +323,11 @@ const MvpnTable *MvpnManagerPartition::table() const {
 }
 
 bool MvpnManagerPartition::IsMaster() {
-    return manager_->table()->IsMaster();
+    return table()->IsMaster();
 }
 
 bool MvpnManagerPartition::IsMaster() const {
-    return manager_->table()->IsMaster();
+    return table()->IsMaster();
 }
 
 MvpnManagerPartition::MvpnManagerPartition(MvpnManager *manager, int part_id)
@@ -549,6 +549,8 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     const BgpPath *src_path = join_rt->BestPath();
 
+    MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
+        join_rt->GetState(table(), manager_->listener_id()));
     if (!src_path)
         return false;
 
@@ -564,6 +566,9 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         }
         return true;
     }
+
+    if (!join_rt->IsValid())
+        return false;
 
     const BgpAttr *src_path_attr = src_path->GetAttr();
     bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
@@ -616,7 +621,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     // Retrieve any state associcated with this S-PMSI route.
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
-        spmsi_rt->GetState(manager_->table(), manager_->listener_id()));
+        spmsi_rt->GetState(table(), manager_->listener_id()));
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
@@ -640,7 +645,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         if (!mvpn_dbstate) {
             mvpn_dbstate = new MvpnDBState(mvpn_state);
-            spmsi_rt->SetState(manager_->table(), manager_->listener_id(),
+            spmsi_rt->SetState(table(), manager_->listener_id(),
                                mvpn_dbstate);
         } else {
             leaf_ad_rt = mvpn_dbstate->route;
@@ -648,9 +653,9 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         if (!leaf_ad_rt) {
             // Use route target <pe-router-id>:0
-            leaf_ad_rt = manager_->table()->CreateType4LeafADRoute(spmsi_rt);
-            assert(mvpn_state->leaf_ad_routes_originated_.insert(
-                    leaf_ad_rt).second);
+            leaf_ad_rt = table()->CreateType4LeafADRoute(spmsi_rt);
+            assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
+                    second);
             mvpn_state->refcount_++;
         }
     }
@@ -697,7 +702,6 @@ BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
     return mvpn_manager_partition->ReplicatePath(server, src_rt->GetPrefix(),
             src_table, src_rt, src_path, community);
 }
-
 
 // At the moment, we only do resolution for C-<S,G> Type-7 routes.
 BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
@@ -833,7 +837,7 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
     // Find or create the route.
     MvpnRoute rt_key(prefix);
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
-        manager_->table()->GetTablePartition(&rt_key));
+        table()->GetTablePartition(&rt_key));
     BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
     if (dest_route == NULL) {
         dest_route = new MvpnRoute(mvpn_prefix);
