@@ -723,10 +723,9 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     // Replicate path using rd of the resolved path as part of the prefix
     // and append ASN and C-S,G also to the prefix.
     RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
-    MvpnPrefix mprefix(MvpnPrefix::SourceTreeJoinRoute, rd, neighbor.asn,
+    MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, rd, neighbor.asn,
         src_rt->GetPrefix().group(), src_rt->GetPrefix().source());
-    MvpnRoute rt_key(mprefix);
-    return ReplicatePathCommon(server, rt_key, src_table, src_rt, src_path,
+    return ReplicatePathCommon(server, prefix, src_table, src_rt, src_path,
                                community);
 }
 
@@ -817,13 +816,12 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
 
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
     assert(mvpn_rt);
-    MvpnRoute rt_key(mvpn_rt->GetPrefix());
-    return ReplicatePathCommon(server, rt_key, src_table, src_rt, src_path,
-                               community, new_attr, replicated);
+    return ReplicatePathCommon(server, mvpn_rt->GetPrefix(), src_table, src_rt,
+                               src_path, community, new_attr, replicated);
 }
 
 BgpRoute *MvpnManagerPartition::ReplicatePathCommon(BgpServer *server,
-        const MvpnPrefix &rt_key, MvpnTable *src_table, MvpnRoute *src_rt,
+        const MvpnPrefix &prefix, MvpnTable *src_table, MvpnRoute *src_rt,
         const BgpPath *src_path, ExtCommunityPtr community, BgpAttrPtr new_attr,
         bool *replicated) {
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
@@ -839,6 +837,7 @@ BgpRoute *MvpnManagerPartition::ReplicatePathCommon(BgpServer *server,
         new_attr = BgpAttrPtr(src_path->GetAttr());
 
     // Find or create the route.
+    MvpnRoute rt_key(prefix);
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
         manager_->table()->GetTablePartition(&rt_key));
     BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
