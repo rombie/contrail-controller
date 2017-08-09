@@ -547,20 +547,28 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
 }
 
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
-    const BgpPath *src_path = join_rt->BestPath();
-
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
         join_rt->GetState(table(), manager_->listener_id()));
-    if (!src_path)
+
+    if (!mvpn_dbstate && !join_rt->IsValid())
         return false;
 
+    if (!join_rt->IsValid()) {
+        if (mvpn_dbstate->spmsi_rt) {
+            // Delete any S-PMSI route originated earlier as there is no
+            // interested receivers for this route (S,G).
+            mvpn_dbstate->spmsi_rt = NULL;
+        }
+        return;
+    }
+
+    const BgpPath *src_path = join_rt->BestPath();
+    assert(!src_path);
     if (dynamic_cast<const BgpSecondaryPath *>(src_path)) {
         if (IsMaster())
             return false;
 
         if (!join_rt->IsValid()) {
-            // Delete any S-PMSI route originated earlier as there is no
-            // interested receivers for this route (S,G).
         } else {
             // Originate/Update S-PMSI route towards the receivers.
         }
