@@ -315,7 +315,6 @@ struct MvpnDBState : public DBState {
 
     MvpnState *state;
     MvpnRoute *route;
-    BgpPath *path;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnDBState);
 };

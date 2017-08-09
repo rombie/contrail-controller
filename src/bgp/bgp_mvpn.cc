@@ -650,14 +650,14 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
-        if (!mvpn_dbstate)
+        if (!mvpn_dbstate || !mvpn_dbstate->route)
             return;
+        BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
+        if (!path)
+            return;
+        mvpn_dbstate->route->DeletePath(path);
 
         // Delete any Type 4 LeafAD Route originated route.
-        if (!mvpn_dbstate->path)
-            return;
-        assert(mvpn_dbstate->route);
-        mvpn_dbstate->route->DeletePath(mvpn_dbstate->path);
         if (mvpn_state) {
             if (mvpn_state->leaf_ad_routes_originated_.erase(
                     mvpn_dbstate->route)) {
@@ -679,6 +679,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         if (!leaf_ad_rt) {
             // Use route target <pe-router-id>:0
             leaf_ad_rt = table()->CreateType4LeafADRoute(spmsi_rt);
+            mvpn_dbstate->route = leaf_ad_rt;
             assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
                     second);
             mvpn_state->refcount_++;
