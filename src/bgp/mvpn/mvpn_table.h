@@ -45,6 +45,10 @@ public:
     virtual size_t Hash(const DBEntry *entry) const;
     virtual size_t Hash(const DBRequestKey *key) const;
     virtual int PartitionCount() const { return kPartitionCount; }
+    MvpnRoute *FindSPMSIRoute(MvpnRoute *leaf_ad_rt) { return NULL; }
+    const ExtCommunity::ExtCommunityValue GetAutoVrfImportRouteTarget() const {
+        return ExtCommunity::ExtCommunityValue();
+    }
 
     virtual BgpRoute *RouteReplicate(BgpServer *server, BgpTable *src_table,
                                      BgpRoute *src_rt, const BgpPath *path,

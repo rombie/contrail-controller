@@ -194,7 +194,7 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
-        BgpPath *src_path = route->BestPath();
+        const BgpPath *src_path = route->BestPath();
         if (!src_path)
             return;
         MvpnManagerPartition *partition = partitions_[tpart->index()];
@@ -493,33 +493,41 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     return dest_route;
 }
 
-void MvpnManagerPartition::ProcessLeafADRoute(MvpnRoute *join_rt) {
+void MvpnManagerPartition::ProcessLeafADRoute(MvpnRoute *leaf_ad) {
     if (IsMaster())
         return;
-    BgpPath *src_path = join_rt->BestPath();
-    if (!dynamic_cast<BgpSecondaryPath>(src_path))
+    const BgpPath *src_path = leaf_ad->BestPath();
+    if (!dynamic_cast<const BgpSecondaryPath *>(src_path))
         return;
 
     // LeafAD route has been imported into a table. Retrieve PMSI information
     // from the path attribute and update the ingress sender (agent).
 }
 
-void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
-    BgpPath *src_path = join_rt->BestPath();
+bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
+    const BgpPath *src_path = join_rt->BestPath();
 
     assert(src_path);
-    if (dynamic_cast<BgpSecondaryPath>(src_path)) {
+    if (dynamic_cast<const BgpSecondaryPath *>(src_path)) {
         if (IsMaster())
-            return;
-        // Originate S-PMSI route towards the receivers.
-        return;
+            return false;
+
+        if (!join_rt->IsValid()) {
+            // Delete any S-PMSI route originated earlier as there is no
+            // interested receivers for this route (S,G).
+        } else {
+            // Originate/Update S-PMSI route towards the receivers.
+        }
+        return true;
     }
 
-    const BgpAttr *src_path_attr = !src_path->GetAttr();
+    const BgpAttr *src_path_attr = src_path->GetAttr();
     bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
 
     // Reset source rd first to mark the route as unresolved.
-    src_path->set_source_rd(RouteDistinguisher());
+    BgpAttrPtr new_attr = table()->server()->attr_db()->
+        ReplaceSourceRdAndLocate(src_path_attr, RouteDistinguisher());
+    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
 
     // In case of bgp.mvpn.0 table, if src_rt is type-7 <C-S,G> route and it is
     // now resolvable (or otherwise), replicate/delete C-S,G route to advertise/
@@ -550,6 +558,7 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
         if (ExtCommunity::is_vrf_route_import(value)) {
             ExtCommunity::ExtCommunityList export_target;
             export_target.push_back(value);
+            BgpServer *server = table()->server();
             ext_community = server->extcomm_db()->ReplaceRTargetAndLocate(
                 ext_community.get(), export_target);
             rt_import_found = true;
@@ -564,12 +573,33 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
 
     // Update extended communty of the route with route-target equal to the
     // vrf import route target found above.
-    src_path_attr->set_ext_community(ext_community);
+    const_cast<BgpAttr *>(src_path_attr)->set_ext_community(ext_community);
     RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
-    src_path->set_source_rd(rd);
+    new_attr = table()->server()->attr_db()->
+        ReplaceSourceRdAndLocate(src_path->GetAttr(), rd);
+    new_attr = table()->server()->attr_db()->
+        ReplaceExtCommunityAndLocate(new_attr.get(), ext_community);
+    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
+    const_cast<BgpAttr *>(src_path_attr)->set_source_rd(rd);
 
     // TODO(Ananth) Return false if there is no change, true otherwise.
     return true;
+}
+
+MvpnTable *MvpnManagerPartition::table() {
+    return manager_->table();
+}
+
+const MvpnTable *MvpnManagerPartition::table() const {
+    return manager_->table();
+}
+
+bool MvpnManagerPartition::IsMaster() {
+    return manager_->table()->IsMaster();
+}
+
+bool MvpnManagerPartition::IsMaster() const {
+    return manager_->table()->IsMaster();
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
@@ -602,13 +632,13 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
             return NULL;
 
         // Make sure that there is an associated Type3 S-PMSI route.
-        MvpnRoute *spmsi_rt = manager_->table()->FindSPMSIRoute(src_rt);
+        MvpnRoute *spmsi_rt = table()->FindSPMSIRoute(src_rt);
         if (!spmsi_rt)
             return NULL;
 
         if (src_table->IsMaster()) {
             return ReplicatePath(server, src_table, src_rt, src_path, community,
-                                 new_attr, &replicated);
+                                 attr, NULL);
         }
     }
 
