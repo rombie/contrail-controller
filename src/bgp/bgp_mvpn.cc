@@ -497,8 +497,7 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
     BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
                                         rtinstance->GetTable(Address::INET6);
-    table->path_resolver()->StartPathResolution(
-        rt->get_table_partition()->index(), path, rt, table, &address);
+    table->path_resolver()->StartPathResolution(path, rt, table, &address);
 }
 
 bool MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {

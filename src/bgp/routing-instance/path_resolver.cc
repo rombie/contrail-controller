@@ -126,8 +126,8 @@ Address::Family PathResolver::family() const {
 // This is typically when the BgpPath is added, but may also be needed when
 // the BgpPath changes nexthop.
 //
-void PathResolver::StartPathResolution(int part_id, const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table, const IpAddress *addrp) {
+void PathResolver::StartPathResolution(const BgpPath *path, BgpRoute *route,
+        BgpTable *nh_table, const IpAddress *addrp) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
         "bgp::Config", "bgp::ConfigHelper");
 
@@ -135,6 +135,7 @@ void PathResolver::StartPathResolution(int part_id, const BgpPath *path,
         nh_table = table_;
     assert(nh_table->family() == Address::INET ||
            nh_table->family() == Address::INET6);
+    int part_id = route->get_table_partition()->index();
     partitions_[part_id]->StartPathResolution(path, route, nh_table, addrp);
 }
 

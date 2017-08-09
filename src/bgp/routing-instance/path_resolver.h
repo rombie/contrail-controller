@@ -94,7 +94,7 @@ public:
     PathResolver(BgpTable *table, bool resolution_only = false);
     ~PathResolver();
 
-    void StartPathResolution(int part_id, const BgpPath *path, BgpRoute *route,
+    void StartPathResolution(const BgpPath *path, BgpRoute *route,
         BgpTable *nh_table = NULL, const IpAddress *addrp = NULL);
     void StopPathResolution(int part_id, const BgpPath *path);
 
