@@ -43,6 +43,7 @@ public:
     bool is_state_empty(DBTablePartBase *tpart);
     bool is_state_empty_unlocked(DBTablePartBase *tpart);
 
+    void Delete();
     void MarkDelete() { flags |= DeleteMarked; }
     void ClearDelete() { flags &= ~DeleteMarked; }
     bool IsDeleted() const { return (flags&DeleteMarked); }

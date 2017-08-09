@@ -120,3 +120,7 @@ const std::string DBEntryBase::last_change_at_str() const {
 void DBEntryBase::Notify() {
     tpart_->Notify(this);
 }
+
+void DBEntryBase::Delete() {
+    tpart_->Delete(this);
+}

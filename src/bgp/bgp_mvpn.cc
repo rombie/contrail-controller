@@ -443,7 +443,7 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
         if (partition->ProcessType7SourceTreeJoinRoute(route))
-            route->Notify();
+            route->front() ? route->Notify() : route->Delete();
         return;
     }
 
@@ -650,20 +650,19 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
-        if (!mvpn_dbstate || !mvpn_dbstate->route)
+        if (!mvpn_dbstate)
             return;
-        BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
-        if (!path)
-            return;
-        mvpn_dbstate->route->DeletePath(path);
-
-        // Delete any Type 4 LeafAD Route originated route.
-        if (mvpn_state) {
-            if (mvpn_state->leaf_ad_routes_originated_.erase(
-                    mvpn_dbstate->route)) {
-                project_manager_partition->DeleteState(mvpn_state);
-            }
+        assert(mvpn_dbstate->state == mvpn_state);
+        spmsi_rt->ClearState(table(), manager_->listener_id());
+        if (mvpn_dbstate->route) {
+            BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
+            if (path)
+                mvpn_dbstate->route->DeletePath(path);
         }
+
+        assert(mvpn_state->leaf_ad_routes_originated_.erase(
+                   mvpn_dbstate->route));
+        project_manager_partition->DeleteState(mvpn_state);
     } else {
         if (!mvpn_state)
             mvpn_state = project_manager_partition->CreateState(sg);
