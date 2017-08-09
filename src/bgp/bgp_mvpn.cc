@@ -491,10 +491,12 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
 
 void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
         BgpPath *path) {
-    MvpnRoute *mvpn_rt = static_cast<MvpnRoute *>(rt);
-    BgpTable *table = rtinstance->GetTable(Address::INET);
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
+    assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
 
-    IpAddress address = IpAddress(mvpn_rt->GetPrefix().source());
+    IpAddress address = mvpn_rt->GetPrefix().source2();
+    BgpTable *table = address.is_v4() ?  rtinstance->GetTable(Address::INET) :
+                                         rtinstance->GetTable(Address::INET6);
     table->path_resolver()->StartPathResolution(
         rt->get_table_partition()->index(), path, rt, table, &address);
 }
