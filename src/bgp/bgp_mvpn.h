@@ -124,6 +124,7 @@ private:
     const MvpnTable *table() const;
     bool IsMaster();
     bool IsMaster() const;
+    int listener_id() const;
 
     bool ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt);
     void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);

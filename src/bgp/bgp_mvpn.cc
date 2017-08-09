@@ -346,6 +346,10 @@ bool MvpnManagerPartition::IsMaster() const {
     return table()->IsMaster();
 }
 
+int MvpnManagerPartition::listener_id() const {
+    return manager_->listener_id();
+}
+
 MvpnManagerPartition::MvpnManagerPartition(MvpnManager *manager, int part_id)
     : manager_(manager), part_id_(part_id) {
 }
@@ -564,16 +568,22 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
 
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
-        join_rt->GetState(table(), manager_->listener_id()));
+        join_rt->GetState(table(), listener_id()));
 
     if (!mvpn_dbstate && !join_rt->IsValid())
         return false;
 
     if (!join_rt->IsValid()) {
-        if (mvpn_dbstate && mvpn_dbstate->route) {
+        if (mvpn_dbstate) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
-            mvpn_dbstate->route = NULL;
+            if (mvpn_dbstate->route) {
+                BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
+                if (path)
+                    mvpn_dbstate->route->DeletePath(path);
+                mvpn_dbstate->route = NULL;
+            }
+            join_rt->ClearState(table(), listener_id());
             return true;
         }
         return false;
@@ -588,7 +598,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         // Originate/Update S-PMSI route towards the receivers.
         if (!mvpn_dbstate) {
             mvpn_dbstate = new MvpnDBState();
-            join_rt->SetState(table(), manager_->listener_id(), mvpn_dbstate);
+            join_rt->SetState(table(), listener_id(), mvpn_dbstate);
         }
         if (!mvpn_dbstate->route)
             mvpn_dbstate->route = table()->CreateType3SPMSIRoute(join_rt);
@@ -635,7 +645,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 }
 
 void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
-    if (manager_->IsMaster())
+    if (IsMaster())
         return;
 
     MvpnState::SG sg = MvpnState::SG(spmsi_rt->GetPrefix().sourceIpAddress(),
@@ -646,18 +656,19 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     // Retrieve any state associcated with this S-PMSI route.
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
-        spmsi_rt->GetState(table(), manager_->listener_id()));
+        spmsi_rt->GetState(table(), listener_id()));
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
         if (!mvpn_dbstate)
             return;
         assert(mvpn_dbstate->state == mvpn_state);
-        spmsi_rt->ClearState(table(), manager_->listener_id());
+        spmsi_rt->ClearState(table(), listener_id());
         if (mvpn_dbstate->route) {
             BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
             if (path)
                 mvpn_dbstate->route->DeletePath(path);
+            mvpn_dbstate->route = NULL;
         }
 
         assert(mvpn_state->leaf_ad_routes_originated_.erase(
@@ -669,8 +680,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         if (!mvpn_dbstate) {
             mvpn_dbstate = new MvpnDBState(mvpn_state);
-            spmsi_rt->SetState(table(), manager_->listener_id(),
-                               mvpn_dbstate);
+            spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
         } else {
             leaf_ad_rt = mvpn_dbstate->route;
         }
