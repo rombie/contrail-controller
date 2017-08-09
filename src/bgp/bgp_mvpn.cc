@@ -706,9 +706,10 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
 
     // If src_path is not marked for resolution requested, replicate it right
     // away.
-    if (!src_path->NeedsResolution())
+    if (!src_path->NeedsResolution()) {
         return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                 src_path, community);
+    }
 
     const BgpAttr *attr = src_path->GetAttr();
     if (!attr)
