@@ -160,6 +160,18 @@ bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
            vn_id == rhs.vn_id && external == rhs.external;
 }
 
+bool MvpnManager::findNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
+        const {
+    tbb::mutex::scoped_lock(neighbors_mutex_);
+
+    NeighborsMap::const_iterator iter = neighbors_.find(address);
+    if (iter != neighbors_.end()) {
+        *nbr = iter->second;
+        return true;
+    }
+    return false;
+}
+
 MvpnState::SG::SG(const Ip4Address &source, const Ip4Address &group) :
     source(IpAddress(source)), group(IpAddress(group)) {
 }
@@ -442,18 +454,6 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
         MvpnProjectManagerPartition *partition = partitions_[tpart->index()];
         partition->NotifyLeafAdRoutes(ermvpn_route);
     }
-}
-
-bool MvpnManager::findNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
-        const {
-    tbb::mutex::scoped_lock(neighbors_mutex_);
-
-    NeighborsMap::const_iterator iter = neighbors_.find(address);
-    if (iter != neighbors_.end()) {
-        *nbr = iter->second;
-        return true;
-    }
-    return false;
 }
 
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
