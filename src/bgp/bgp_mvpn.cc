@@ -718,11 +718,11 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     if (!manager_->findNeighbor(attr->nexthop(), &neighbor))
         return NULL;
 
-    // Replicate path using rd of the resolved path as part of the prefix
-    // and append ASN and C-S,G also to the prefix.
-    RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
-    MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, rd, neighbor.asn,
-        src_rt->GetPrefix().group(), src_rt->GetPrefix().source());
+    // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
+    // if the Type-7 prefix.
+    MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, attr->source_rd(),
+                      neighbor.asn, src_rt->GetPrefix().group(),
+                      src_rt->GetPrefix().source());
     return ReplicatePathCommon(server, prefix, src_table, src_rt, src_path,
                                community);
 }
