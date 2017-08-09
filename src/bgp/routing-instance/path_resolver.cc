@@ -126,7 +126,7 @@ Address::Family PathResolver::family() const {
 // This is typically when the BgpPath is added, but may also be needed when
 // the BgpPath changes nexthop.
 //
-void PathResolver::StartPathResolution(const BgpPath *path, BgpRoute *route,
+void PathResolver::StartPathResolution(BgpRoute *route, const BgpPath *path,
         BgpTable *nh_table, const IpAddress *addrp) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
         "bgp::Config", "bgp::ConfigHelper");
@@ -136,7 +136,7 @@ void PathResolver::StartPathResolution(const BgpPath *path, BgpRoute *route,
     assert(nh_table->family() == Address::INET ||
            nh_table->family() == Address::INET6);
     int part_id = route->get_table_partition()->index();
-    partitions_[part_id]->StartPathResolution(path, route, nh_table, addrp);
+    partitions_[part_id]->StartPathResolution(route, path, nh_table, addrp);
 }
 
 //
@@ -641,8 +641,8 @@ PathResolverPartition::~PathResolverPartition() {
 // Note that the ResolverPath gets linked to the ResolverNexthop via the
 // ResolverPath constructor.
 //
-void PathResolverPartition::StartPathResolution(const BgpPath *path,
-    BgpRoute *route, BgpTable *nh_table, const IpAddress *addrp) {
+void PathResolverPartition::StartPathResolution(BgpRoute *route,
+        const BgpPath *path, BgpTable *nh_table, const IpAddress *addrp) {
     if (!path->IsResolutionFeasible())
         return;
     if (table()->IsDeleted() || nh_table->IsDeleted())
