@@ -554,7 +554,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return false;
 
     if (!join_rt->IsValid()) {
-        if (mvpn_dbstate->spmsi_rt) {
+        if (mvpn_dbstate && mvpn_dbstate->spmsi_rt) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
             mvpn_dbstate->spmsi_rt = NULL;
@@ -568,10 +568,13 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         if (IsMaster())
             return false;
 
-        if (!join_rt->IsValid()) {
-        } else {
-            // Originate/Update S-PMSI route towards the receivers.
+        // Originate/Update S-PMSI route towards the receivers.
+        if (!mvpn_dbstate) {
+            mvpn_dbstate = new MvpnDBState();
+            join_rt->SetState(table(), manager_->listener_id(), mvpn_dbstate);
         }
+        if (!mvpn_dbstate->spmsi_rt)
+            mvpn_dbstate->spmsi_rt = CreateType3SPMSIRoute();
         return true;
     }
 
