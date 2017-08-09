@@ -490,7 +490,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
 }
 
 void MvpnManagerPartition::ProcessLeafADRoute(MvpnRoute *join_rt) {
-    if (Master())
+    if (IsMaster())
         return;
     BgpPath *src_path = join_rt->BestPath();
     if (!dynamic_cast<BgpSecondaryPath>(src_path))
@@ -505,7 +505,7 @@ void MvpnManagerPartition::ProcessSourceTreeJoinRoute(MvpnRoute *join_rt) {
 
     assert(src_path);
     if (dynamic_cast<BgpSecondaryPath>(src_path)) {
-        if (Master())
+        if (IsMaster())
             return;
         // Originate S-PMSI route towards the receivers.
         return;
@@ -577,16 +577,15 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     ExtCommunityPtr community) {
 
     // Do not replicate if there is no matching type-3 S-PMSI route.
-    if (!Master() && src_table->Master()) {
+    if (!IsMaster()) {
         MvpnRoute *spmsi_rt = manager_->table()->FindSPMSIRoute(src_rt);
         if (!spmsi_rt)
             return NULL;
 
-        // If the path already has PMSI attribute, then go ahead and replicate
-        // This typically happens in the sender VRF, with routes coming over
-        // bgp.
-        return ReplicatePath(server, src_table, src_rt, src_path, community,
-                             new_attr, &replicated);
+        if (src_table->IsMaster()) {
+            return ReplicatePath(server, src_table, src_rt, src_path, community,
+                                 new_attr, &replicated);
+        }
     }
 
     MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().source2(),
