@@ -308,6 +308,7 @@ BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
     MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
     MvpnTable *src_table = dynamic_cast<MvpnTable *>(table);
 
+#if 0
     // Phase 1 support for only senders outside the cluster and receivers inside
     // the cluster. Hence don't replicate to a VRF from other VRF tables.
     if (!IsMaster()) {
@@ -315,6 +316,7 @@ BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
         if (!src_mvpn_table->IsMaster())
             return NULL;
     }
+#endif
 
     MvpnManagerPartition *mvpn_manager_partition =
         GetPartition(src_rt->get_table_partition()->index());
