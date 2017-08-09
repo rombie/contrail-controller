@@ -694,8 +694,8 @@ BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
             src_table, src_rt, src_path, community);
     }
 
-    return mvpn_manager_partition->ReplicatePath(server, src_table, src_rt,
-            src_path, community, NULL, NULL);
+    return mvpn_manager_partition->ReplicatePath(server, src_rt->GetPrefix(),
+            src_table, src_rt, src_path, community);
 }
 
 
@@ -707,7 +707,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     // If src_path is not marked for resolution requested, replicate it right
     // away.
     if (!src_path->NeedsResolution())
-        return ReplicatePath(server, src_table, src_rt, src_path, community);
+        return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
+                src_path, community);
 
     const BgpAttr *attr = src_path->GetAttr();
     if (!attr)
@@ -727,8 +728,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, attr->source_rd(),
                       neighbor.asn, src_rt->GetPrefix().group(),
                       src_rt->GetPrefix().source());
-    return ReplicatePathCommon(server, prefix, src_table, src_rt, src_path,
-                               community);
+    return ReplicatePath(server, prefix, src_table, src_rt, src_path,
+                         community);
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
@@ -766,8 +767,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
             return NULL;
 
         if (src_table->IsMaster()) {
-            return ReplicatePath(server, src_table, src_rt, src_path, community,
-                                 attr, NULL);
+            return ReplicatePath(server, src_rt->GetPrefix(), src_table,
+                                 src_rt, src_path, community, attr);
         }
     }
 
@@ -799,8 +800,8 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
         src_path->GetAttr(), pmsi_spec);
     bool replicated;
 
-    BgpRoute *replicated_path = ReplicatePath(server, src_table, src_rt,
-        src_path, community, new_attr, &replicated);
+    BgpRoute *replicated_path = ReplicatePath(server, src_rt->GetPrefix(),
+            src_table, src_rt, src_path, community, new_attr, &replicated);
 
     if (replicated) {
         // Notify GlobalErmVpnTreeRoute forest node so that its input tunnel
@@ -813,16 +814,6 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
 }
 
 BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
-    MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community, BgpAttrPtr new_attr, bool *replicated) {
-
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
-    assert(mvpn_rt);
-    return ReplicatePathCommon(server, mvpn_rt->GetPrefix(), src_table, src_rt,
-                               src_path, community, new_attr, replicated);
-}
-
-BgpRoute *MvpnManagerPartition::ReplicatePathCommon(BgpServer *server,
         const MvpnPrefix &prefix, MvpnTable *src_table, MvpnRoute *src_rt,
         const BgpPath *src_path, ExtCommunityPtr community, BgpAttrPtr new_attr,
         bool *replicated) {

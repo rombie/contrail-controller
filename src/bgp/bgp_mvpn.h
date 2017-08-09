@@ -134,10 +134,7 @@ private:
         ExtCommunityPtr comm);
     BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
         MvpnRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr comm);
-    BgpRoute *ReplicatePath(BgpServer *server, MvpnTable *src_table,
-        MvpnRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr comm,
-        BgpAttrPtr new_attr = NULL, bool *replicated = NULL);
-    BgpRoute *ReplicatePathCommon(BgpServer *server,
+    BgpRoute *ReplicatePath(BgpServer *server,
         const MvpnPrefix &rt_key, MvpnTable *src_table, MvpnRoute *src_rt,
         const BgpPath *src_path, ExtCommunityPtr community,
         BgpAttrPtr new_attr = NULL, bool *replicated = NULL);
