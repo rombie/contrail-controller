@@ -308,7 +308,10 @@ private:
 // is refcounted is also never deleted until there is no MvpnDBState that refers
 // to it.
 struct MvpnDBState : public DBState {
+    MvpnDBState();
+    MvpnDBState(MvpnState *state, MvpnRoute *route);
     explicit MvpnDBState(MvpnState *state);
+    explicit MvpnDBState(MvpnRoute *route);
 
     MvpnState *state;
     MvpnRoute *route;

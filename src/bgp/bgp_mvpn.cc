@@ -208,7 +208,23 @@ void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
     global_ermvpn_tree_rt = global_ermvpn_tree_rt_;
 }
 
-MvpnDBState::MvpnDBState(MvpnState *state) : state(state) {
+MvpnDBState::MvpnDBState() : state(NULL), route(NULL) {
+    if (state)
+        state->refcount_++;
+}
+
+MvpnDBState::MvpnDBState(MvpnState *state) : state(state) , route(NULL) {
+    if (state)
+        state->refcount_++;
+}
+
+MvpnDBState::MvpnDBState(MvpnRoute *route) : state(NULL) , route(route) {
+    if (state)
+        state->refcount_++;
+}
+
+MvpnDBState::MvpnDBState(MvpnState *state, MvpnRoute *route) :
+        state(state) , route(route) {
     if (state)
         state->refcount_++;
 }
@@ -554,12 +570,13 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return false;
 
     if (!join_rt->IsValid()) {
-        if (mvpn_dbstate && mvpn_dbstate->spmsi_rt) {
+        if (mvpn_dbstate && mvpn_dbstate->route) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
-            mvpn_dbstate->spmsi_rt = NULL;
+            mvpn_dbstate->route = NULL;
+            return true;
         }
-        return;
+        return false;
     }
 
     const BgpPath *src_path = join_rt->BestPath();
@@ -573,8 +590,8 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
             mvpn_dbstate = new MvpnDBState();
             join_rt->SetState(table(), manager_->listener_id(), mvpn_dbstate);
         }
-        if (!mvpn_dbstate->spmsi_rt)
-            mvpn_dbstate->spmsi_rt = CreateType3SPMSIRoute();
+        if (!mvpn_dbstate->route)
+            mvpn_dbstate->route = table()->CreateType3SPMSIRoute(join_rt);
         return true;
     }
 

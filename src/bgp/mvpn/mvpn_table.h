@@ -71,6 +71,7 @@ public:
     bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
     MvpnRoute *CreateType1ADRoute() { return NULL; }
     MvpnRoute *CreateType2ADRoute() { return NULL; }
+    MvpnRoute *CreateType3SPMSIRoute(MvpnRoute *join) { return NULL; }
     MvpnRoute *CreateType4LeafADRoute(const MvpnRoute *spmsi) { return NULL; }
 
 private:
