@@ -414,10 +414,10 @@ void MvpnManager::Initialize() {
         "MvpnManager");
 
     // Originate Type1 Intra AS Auto-Discovery Route.
-    table_->CreateType1ADRoute();
+    table_->LocateType1ADRoute();
 
     // Originate Type2 Inter AS Auto-Discovery Route.
-    table_->CreateType2ADRoute();
+    table_->LocateType2ADRoute();
 }
 
 // MvpnTable route listener callback function.
@@ -601,7 +601,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
             join_rt->SetState(table(), listener_id(), mvpn_dbstate);
         }
         if (!mvpn_dbstate->route)
-            mvpn_dbstate->route = table()->CreateType3SPMSIRoute(join_rt);
+            mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
         return true;
     }
 
@@ -687,7 +687,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         if (!leaf_ad_rt) {
             // Use route target <pe-router-id>:0
-            leaf_ad_rt = table()->CreateType4LeafADRoute(spmsi_rt);
+            leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
             mvpn_dbstate->route = leaf_ad_rt;
             assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
                     second);

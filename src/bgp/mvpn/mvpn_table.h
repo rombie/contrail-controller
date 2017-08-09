@@ -69,10 +69,10 @@ public:
 
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
-    MvpnRoute *CreateType1ADRoute() { return NULL; }
-    MvpnRoute *CreateType2ADRoute() { return NULL; }
-    MvpnRoute *CreateType3SPMSIRoute(MvpnRoute *join) { return NULL; }
-    MvpnRoute *CreateType4LeafADRoute(const MvpnRoute *spmsi) { return NULL; }
+    MvpnRoute *LocateType1ADRoute() { return NULL; }
+    MvpnRoute *LocateType2ADRoute() { return NULL; }
+    MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
+    MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
 
 private:
     friend class BgpMulticastTest;
