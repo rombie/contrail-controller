@@ -124,8 +124,13 @@ void MvpnTable::CreateManager() {
         return;
     assert(!manager_);
     manager_ = BgpObjectFactory::Create<MvpnManager>(this);
+}
 
-    // TODO(Ananth) Only the project manager table needs this.
+void MvpnTable::CreateProjectManager() {
+    // Don't create the McastTreeManager for the VPN table.
+    if (IsMaster())
+        return;
+    assert(!project_manager_);
     project_manager_ = BgpObjectFactory::Create<MvpnProjectManager>(this);
 }
 
@@ -136,9 +141,19 @@ void MvpnTable::DestroyManager() {
     manager_ = NULL;
 }
 
+void MvpnTable::DestroyProjectManager() {
+    assert(project_manager_);
+    project_manager_->Terminate();
+    delete project_manager_;
+    project_manager_ = NULL;
+}
+
 void MvpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     BgpTable::set_routing_instance(rtinstance);
     CreateManager();
+
+    // TODO(Ananth) Only the project manager table needs this.
+    CreateProjectManager();
 }
 
 bool MvpnTable::IsMaster() const {

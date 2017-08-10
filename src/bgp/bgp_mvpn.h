@@ -391,6 +391,7 @@ public:
     MvpnProjectManagerPartition *GetPartition(int part_id);
     const MvpnProjectManagerPartition *GetPartition(int part_id) const;
     void ManagedDelete();
+    void Terminate();
 
 private:
     class DeleteActor;
@@ -398,7 +399,6 @@ private:
     void Initialize();
     void AllocPartitions();
     void FreePartitions();
-    void Terminate();
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
 
     MvpnTable *table_;

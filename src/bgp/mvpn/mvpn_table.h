@@ -37,6 +37,8 @@ public:
 
     void CreateManager();
     void DestroyManager();
+    void CreateProjectManager();
+    void DestroyProjectManager();
 
     virtual Address::Family family() const { return Address::MVPN; }
     bool IsMaster() const;

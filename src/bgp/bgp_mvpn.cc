@@ -46,6 +46,7 @@ public:
     }
 
     virtual void Destroy() {
+        manager_->table_->DestroyProjectManager();
     }
 
 private:
@@ -61,7 +62,6 @@ MvpnProjectManager::MvpnProjectManager(MvpnTable *table)
 }
 
 MvpnProjectManager::~MvpnProjectManager() {
-    Terminate();
 }
 
 void MvpnProjectManager::Initialize() {
@@ -246,6 +246,7 @@ public:
     }
 
     virtual void Destroy() {
+        manager_->table_->DestroyManager();
     }
 
 private:
@@ -262,7 +263,6 @@ MvpnManager::MvpnManager(MvpnTable *table)
 }
 
 MvpnManager::~MvpnManager() {
-    Terminate();
 }
 
 bool MvpnManager::IsMaster() const {
