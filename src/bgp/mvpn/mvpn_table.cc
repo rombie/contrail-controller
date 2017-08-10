@@ -6,6 +6,7 @@
 
 #include "bgp/ipeer.h"
 #include "bgp/bgp_factory.h"
+#include "bgp/bgp_multicast.h"
 #include "bgp/bgp_mvpn.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
@@ -87,33 +88,28 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server,
 
 bool MvpnTable::Export(RibOut *ribout, Route *route,
     const RibPeerSet &peerset, UpdateInfoSList &uinfo_slist) {
-    if (ribout->IsEncodingBgp()) {
-        BgpRoute *bgp_route = static_cast<BgpRoute *> (route);
-        UpdateInfo *uinfo = GetUpdateInfo(ribout, bgp_route, peerset);
-        if (!uinfo)
-            return false;
-        uinfo_slist->push_front(*uinfo);
-        return true;
-    }
+
+    // in phase 1 source is outside so no need to send anything
+    // to agent
+    if (!ribout->IsEncodingBgp())
+        return false;
 
     MvpnRoute *mvpn_route = dynamic_cast<MvpnRoute *>(route);
+    uint8_t rt_type = mvpn_route->GetPrefix().type();
 
-    if (!manager_ || manager_->deleter()->IsDeleted())
+    if (ribout->peer_type() == BgpProto::EBGP &&
+                rt_type == MvpnPrefix::IntraASPMSIADRoute) {
         return false;
-
-    const IPeer *peer = mvpn_route->BestPath()->GetPeer();
-    if (!peer || !ribout->IsRegistered(const_cast<IPeer *>(peer)))
+    }
+    if (ribout->peer_type() == BgpProto::IBGP &&
+                rt_type == MvpnPrefix::InterASPMSIADRoute) {
         return false;
+    }
+    BgpRoute *bgp_route = static_cast<BgpRoute *> (route);
 
-    size_t peerbit = ribout->GetPeerIndex(const_cast<IPeer *>(peer));
-    if (!peerset.test(peerbit))
-        return false;
-
-    UpdateInfo *uinfo = NULL; //tree_manager_->GetUpdateInfo(mvpn_route);
+    UpdateInfo *uinfo = GetUpdateInfo(ribout, bgp_route, peerset);
     if (!uinfo)
         return false;
-
-    uinfo->target.set(peerbit);
     uinfo_slist->push_front(*uinfo);
     return true;
 }

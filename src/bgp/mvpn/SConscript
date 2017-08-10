@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
+# Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
 #
 
 # -*- mode: python; -*-
@@ -9,8 +9,9 @@ Import('BuildEnv')
 env = BuildEnv.Clone()
 env.Append(CPPPATH = env['TOP'])
 
-libbgp_mvpn = env.Library('bgp_mvpn', ['mvpn_route.cc', 'mvpn_table.cc'])
+libbgp_mvpn = env.Library('bgp_mvpn',
+                            ['mvpn_route.cc', 'mvpn_table.cc'])
 
 mvpn_unit_tests = env.SConscript('test/SConscript', exports='BuildEnv',
-                                 duplicate = 0)
+                                   duplicate = 0)
 Return('mvpn_unit_tests')

@@ -33,17 +33,17 @@ public:
     };
 
     MvpnPrefix();
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd, const uint16_t &asn,
+    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+               const Ip4Address &originator);
+    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+               const uint32_t asn);
+    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                const Ip4Address &group, const Ip4Address &source);
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-                 const Ip4Address &originator);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-                 const uint16_t &asn);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-                 const Ip4Address &group, const Ip4Address &source);
-    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-                 const Ip4Address &originator,
-                 const Ip4Address &group, const Ip4Address &source);
+               const Ip4Address &originator,
+               const Ip4Address &group, const Ip4Address &source);
+    MvpnPrefix(uint8_t type, const RouteDistinguisher &rd, const uint32_t asn,
+               const Ip4Address &group, const Ip4Address &source);
 
     static int FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
                                MvpnPrefix *prefix);
@@ -58,7 +58,6 @@ public:
 
     std::string ToString() const;
     std::string ToXmppIdString() const;
-    static bool IsValidForBgp(uint8_t type);
     static bool IsValid(uint8_t type);
     bool operator==(const MvpnPrefix &rhs) const;
     int CompareTo(const MvpnPrefix &rhs) const;
@@ -71,7 +70,7 @@ public:
     IpAddress groupIpAddress() const { return IpAddress(group_); }
     IpAddress sourceIpAddress() const { return IpAddress(source_); }
     IpAddress originatorIpAddress() const { return IpAddress(originator_); }
-    uint16_t asn() const { return asn_; }
+    uint32_t asn() const { return asn_; }
     void set_route_distinguisher(const RouteDistinguisher &rd) { rd_ = rd; }
     uint8_t ip_prefix_length() const { return ip_prefixlen_; }
 
@@ -84,7 +83,7 @@ private:
     Ip4Address group_;
     Ip4Address source_;
     uint8_t ip_prefixlen_;
-    uint16_t asn_;
+    uint32_t asn_;
     std::vector<uint8_t> rt_key_;
 };
 

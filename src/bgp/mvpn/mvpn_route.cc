@@ -19,23 +19,24 @@ MvpnPrefix::MvpnPrefix() : type_(MvpnPrefix::Unspecified) {
 }
 
 MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-    const uint16_t &asn, const Ip4Address &group, const Ip4Address &source)
-    : type_(type), rd_(rd), group_(group), source_(source), asn_(asn) {
-}
-
-MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
-    const uint16_t &asn)
+    const uint32_t asn)
     : type_(type), rd_(rd), asn_(asn) {
+
+    assert(type == InterASPMSIADRoute);
 }
 
 MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &originator)
     : type_(type), rd_(rd), originator_(originator) {
+
+    assert(type == IntraASPMSIADRoute);
 }
 
 MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &group, const Ip4Address &source)
     : type_(type), rd_(rd), group_(group), source_(source) {
+
+    assert(type == SourceActiveADRoute);
 }
 
 MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
@@ -43,15 +44,28 @@ MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
     const Ip4Address &group, const Ip4Address &source)
     : type_(type), rd_(rd), originator_(originator),
       group_(group), source_(source) {
+
+    assert(type == SPMSIADRoute);
+}
+
+MvpnPrefix::MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
+    const uint32_t asn, const Ip4Address &group, const Ip4Address &source)
+    : type_(type), rd_(rd), group_(group), source_(source), asn_(asn) {
+
+    assert((type == SharedTreeJoinRoute) || (type == SourceTreeJoinRoute));
 }
 
 int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
     MvpnPrefix *prefix) {
     size_t rd_size = RouteDistinguisher::kSize;
+    size_t nlri_size = proto_prefix.prefix.size();
 
     prefix->type_ = proto_prefix.type;
     switch (prefix->type_) {
     case IntraASPMSIADRoute: {
+        size_t expected_nlri_size = rd_size + Address::kMaxV4Bytes;
+        if (nlri_size != expected_nlri_size)
+            return -1;
         size_t rd_offset = 0;
         prefix->rd_ = RouteDistinguisher(&proto_prefix.prefix[rd_offset]);
         size_t originator_offset = rd_offset + rd_size;
@@ -60,16 +74,19 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         break;
     }
     case InterASPMSIADRoute: {
+        uint32_t asn;
+        size_t asn_size = sizeof(asn);
+        size_t expected_nlri_size = rd_size + asn_size;
+        if (nlri_size != expected_nlri_size)
+            return -1;
         size_t rd_offset = 0;
         prefix->rd_ = RouteDistinguisher(&proto_prefix.prefix[rd_offset]);
         size_t asn_offset = rd_offset + rd_size;
-        uint32_t asn = get_value(&proto_prefix.prefix[asn_offset],
-                sizeof(uint32_t));
-        prefix->asn_ = asn & 0xffff;
+        asn = get_value(&proto_prefix.prefix[asn_offset], sizeof(uint32_t));
+        prefix->asn_ = asn;
         break;
     }
     case SPMSIADRoute: {
-        size_t nlri_size = proto_prefix.prefix.size();
         size_t expected_nlri_size = rd_size + 2 *
             (Address::kMaxV4Bytes + 1) + Address::kMaxV4Bytes;
         if (nlri_size != expected_nlri_size)
@@ -93,8 +110,9 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         break;
     }
     case LeafADRoute: {
+        if (nlri_size <= Address::kMaxV4Bytes)
+            return -1;
         size_t key_offset = 0;
-        size_t nlri_size = proto_prefix.prefix.size();
         size_t originator_offset = nlri_size - Address::kMaxV4Bytes;
         copy(proto_prefix.prefix.begin(), proto_prefix.prefix.begin() +
                 originator_offset, prefix->rt_key_.begin() + key_offset);
@@ -103,6 +121,9 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         break;
     }
     case SourceActiveADRoute: {
+        size_t expected_nlri_size = rd_size + 2 * (Address::kMaxV4Bytes + 1);
+        if (nlri_size != expected_nlri_size)
+            return -1;
         size_t rd_offset = 0;
         prefix->rd_ = RouteDistinguisher(&proto_prefix.prefix[rd_offset]);
         size_t source_offset = rd_offset + rd_size + 1;
@@ -120,13 +141,17 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
     }
     case SourceTreeJoinRoute:
     case SharedTreeJoinRoute: {
+        uint32_t asn;
+        size_t asn_size = sizeof(asn);
+        size_t expected_nlri_size = rd_size + 2 *
+            (Address::kMaxV4Bytes + 1) + asn_size;
+        if (nlri_size != expected_nlri_size)
+            return -1;
         size_t rd_offset = 0;
         prefix->rd_ = RouteDistinguisher(&proto_prefix.prefix[rd_offset]);
         size_t asn_offset = rd_offset + rd_size;
-        uint32_t asn;
-        size_t asn_size = sizeof(asn);
-               asn = get_value(&proto_prefix.prefix[asn_offset], asn_size);
-        prefix->asn_ = asn & 0xffff;
+        asn = get_value(&proto_prefix.prefix[asn_offset], asn_size);
+        prefix->asn_ = asn;
         size_t source_offset = asn_offset + asn_size;
         if (proto_prefix.prefix[source_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
@@ -157,8 +182,6 @@ int MvpnPrefix::FromProtoPrefix(BgpServer *server,
 }
 
 void MvpnPrefix::BuildProtoPrefix(BgpProtoPrefix *proto_prefix) const {
-    assert(IsValidForBgp(type_));
-
     size_t rd_size = RouteDistinguisher::kSize;
 
     proto_prefix->type = type_;
@@ -424,8 +447,8 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
             }
             return null_prefix;
         }
-	temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
-	boost::system::error_code group_err;
+        temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
+        boost::system::error_code group_err;
         prefix.group_ = Ip4Address::from_string(temp_str, group_err);
         if (group_err != 0) {
             if (errorp != NULL) {
@@ -507,8 +530,8 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
             }
             return null_prefix;
         }
-	temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
-	boost::system::error_code group_err;
+        temp_str = str.substr(pos3 + 1, pos4 - pos3 - 1);
+        boost::system::error_code group_err;
         prefix.group_ = Ip4Address::from_string(temp_str, group_err);
         if (group_err != 0) {
             if (errorp != NULL) {
@@ -537,7 +560,7 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
             }
             return null_prefix;
         }
-	// Look for asn
+        // Look for asn
         size_t pos3 = str.find(',', pos2 + 1);
         if (pos3 == string::npos) {
             if (errorp != NULL) {
@@ -575,8 +598,8 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
             }
             return null_prefix;
         }
-	temp_str = str.substr(pos4 + 1, pos5 - pos4 - 1);
-	boost::system::error_code group_err;
+        temp_str = str.substr(pos4 + 1, pos5 - pos4 - 1);
+        boost::system::error_code group_err;
         prefix.group_ = Ip4Address::from_string(temp_str, group_err);
         if (group_err != 0) {
             if (errorp != NULL) {
@@ -674,45 +697,40 @@ int MvpnPrefix::CompareTo(const MvpnPrefix &rhs) const {
 void MvpnPrefix::SetRtKeyFromSPMSIADRoute(const MvpnPrefix prefix) {
     if (prefix.type() == SPMSIADRoute) {
         size_t rd_size = RouteDistinguisher::kSize;
-	size_t key_size = 0;
+        size_t key_size = 0;
         copy(prefix.route_distinguisher().GetData(),
                 prefix.route_distinguisher().GetData() + rd_size,
                 rt_key_.begin());
-	key_size = rd_size;
-	rt_key_[key_size] = Address::kMaxV4PrefixLen;
-	key_size += 1;
+        key_size = rd_size;
+        rt_key_[key_size] = Address::kMaxV4PrefixLen;
+        key_size += 1;
         const Ip4Address::bytes_type &source_bytes =
-		prefix.source().to_bytes();
+                prefix.source().to_bytes();
         copy(source_bytes.begin(), source_bytes.begin() +
-		    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
-	key_size += Address::kMaxV4PrefixLen;
-	rt_key_[key_size] = Address::kMaxV4PrefixLen;
+                    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
+        key_size += Address::kMaxV4PrefixLen;
+        rt_key_[key_size] = Address::kMaxV4PrefixLen;
         const Ip4Address::bytes_type &group_bytes =
-		prefix.group().to_bytes();
+                prefix.group().to_bytes();
         copy(group_bytes.begin(), group_bytes.begin() +
-		    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
-	key_size += Address::kMaxV4PrefixLen;
+                    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
+        key_size += Address::kMaxV4PrefixLen;
         const Ip4Address::bytes_type &originator_bytes =
-		prefix.originator().to_bytes();
+                prefix.originator().to_bytes();
         copy(originator_bytes.begin(), originator_bytes.begin() +
-		    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
+                    Address::kMaxV4Bytes, rt_key_.begin() + key_size);
     }
 }
 
 string MvpnPrefix::ToXmppIdString() const {
-    //assert(type_ == 0);
     string repr = rd_.ToString();
     repr += ":" + group_.to_string();
     repr += "," + source_.to_string();
     return repr;
 }
 
-bool MvpnPrefix::IsValidForBgp(uint8_t type) {
-    return true;//(type == LocalTreeRoute || type == GlobalTreeRoute);
-}
-
 bool MvpnPrefix::IsValid(uint8_t type) {
-    return true;//(type == NativeRoute || IsValidForBgp(type));
+    return (type > Unspecified) && (type <= SourceTreeJoinRoute);
 }
 
 bool MvpnPrefix::operator==(const MvpnPrefix &rhs) const {
