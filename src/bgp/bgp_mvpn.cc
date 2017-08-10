@@ -593,9 +593,9 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return false;
     }
 
-    const BgpPath *src_path = join_rt->BestPath();
-    assert(!src_path);
-    if (dynamic_cast<const BgpSecondaryPath *>(src_path)) {
+    const BgpPath *path = join_rt->BestPath();
+    assert(!path);
+    if (dynamic_cast<const BgpSecondaryPath *>(path)) {
         if (IsMaster())
             return false;
 
@@ -609,21 +609,19 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return true;
     }
 
-    const BgpAttr *src_path_attr = src_path->GetAttr();
+    const BgpAttr *src_path_attr = path->GetAttr();
     bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
 
     // Reset source rd first to mark the route as unresolved.
     BgpAttrPtr new_attr = table()->server()->attr_db()->
         ReplaceSourceRdAndLocate(src_path_attr, RouteDistinguisher());
-    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
+    const_cast<BgpPath *>(path)->SetAttr(new_attr);
 
     // Find if the resolved path points to an active Mvpn neighbor.
     MvpnNeighbor neighbor;
     ExtCommunity::ExtCommunityValue rt_import;
-    if (!manager_->FindResolvedNeighbor(join_rt, src_path, &neighbor,
-                                        &rt_import)) {
+    if (!manager_->FindResolvedNeighbor(join_rt, path, &neighbor, &rt_import))
         return resolved;
-    }
 
     ExtCommunity::ExtCommunityList export_target;
     export_target.push_back(rt_import);
@@ -636,7 +634,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     const_cast<BgpAttr *>(src_path_attr)->set_ext_community(ext_community);
     RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
     new_attr = table()->server()->attr_db()->
-        ReplaceSourceRdAndLocate(src_path->GetAttr(), rd);
+        ReplaceSourceRdAndLocate(path->GetAttr(), rd);
     new_attr = table()->server()->attr_db()->
         ReplaceExtCommunityAndLocate(new_attr.get(), ext_community);
     const_cast<BgpAttr *>(src_path_attr)->set_source_rd(rd);
@@ -644,7 +642,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // Ignore if there is no chage in the computed path attributes.
     if (new_attr.get() == src_path_attr)
         return false;
-    const_cast<BgpPath *>(src_path)->SetAttr(new_attr);
+    const_cast<BgpPath *>(path)->SetAttr(new_attr);
     return true;
 }
 
