@@ -12,6 +12,7 @@
 #include "bgp/bgp_update.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/origin-vn/origin_vn.h"
+#include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
 
 using std::auto_ptr;
