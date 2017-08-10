@@ -22,27 +22,20 @@ using std::make_pair;
 using std::string;
 using std::vector;
 
-//
-// Return true if the prefix for the BgpRoute is the same as given IpAddress.
-//
+// Return true if prefix matches the address.
 bool PathResolver::RoutePrefixMatch(Address::Family family,
                                     const BgpRoute *route,
                                     const IpAddress &address) {
     if (family == Address::INET) {
         const InetRoute *inet_route = static_cast<const InetRoute *>(route);
-        uint32_t mask = ~((1 << (32 - inet_route->GetPrefix().prefixlen()))-1);
-        if ((address.to_v4().to_ulong() & mask) ==
-                inet_route->GetPrefix().addr().to_ulong()) {
-            return true;
-        }
-    } else if (family == Address::INET6) {
-        const Inet6Route *inet6_route = static_cast<const Inet6Route *>(route);
-        if (inet6_route->GetPrefix().addr() == address.to_v6() &&
-            inet6_route->GetPrefix().prefixlen() == Address::kMaxV6PrefixLen) {
-            return true;
-        }
+        Ip4Prefix prefix(address.to_v4(), Address::kMaxV4PrefixLen);
+        return prefix.IsMoreSpecific(inet_route->GetPrefix());
     }
-    return false;
+
+    const Inet6Route *inet6_route = dynamic_cast<const Inet6Route *>(route);
+    assert(inet6_route);
+    Inet6Prefix prefix(address.to_v6(), Address::kMaxV6PrefixLen);
+    return prefix.IsMoreSpecific(inet6_route->GetPrefix());
 }
 
 class PathResolver::DeleteActor : public LifetimeActor {
