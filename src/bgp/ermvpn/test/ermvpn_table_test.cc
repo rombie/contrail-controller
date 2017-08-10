@@ -21,8 +21,8 @@ public:
     }
     ~McastTreeManagerMock() { }
 
-    virtual void Initialize() { }
-    virtual void Terminate() { }
+    // virtual void Initialize() { }
+    // virtual void Terminate() { }
 
     virtual UpdateInfo *GetUpdateInfo(ErmVpnRoute *route) { return NULL; }
 
