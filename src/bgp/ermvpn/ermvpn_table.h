@@ -14,6 +14,7 @@
 class BgpServer;
 class BgpRoute;
 class McastTreeManager;
+class MvpnProjectManager;
 
 class ErmVpnTable : public BgpTable {
 public:
@@ -58,6 +59,12 @@ public:
     const McastTreeManager *GetTreeManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     const McastTreeManager *tree_manager() const { return tree_manager_; }
+    void CreateMvpnProjectManager();
+    void DestroyMvpnProjectManager();
+    MvpnProjectManager *mvpn_project_manager() { return mvpn_project_manager_; }
+    const MvpnProjectManager *mvpn_project_manager() const {
+        return mvpn_project_manager_;
+    }
 
 private:
     friend class BgpMulticastTest;
@@ -65,6 +72,7 @@ private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     McastTreeManager *tree_manager_;
+    MvpnProjectManager *mvpn_project_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(ErmVpnTable);
 };

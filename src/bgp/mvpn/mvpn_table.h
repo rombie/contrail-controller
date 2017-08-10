@@ -37,8 +37,6 @@ public:
 
     void CreateManager();
     void DestroyManager();
-    void CreateProjectManager();
-    void DestroyProjectManager();
 
     virtual Address::Family family() const { return Address::MVPN; }
     bool IsMaster() const;
@@ -65,10 +63,6 @@ public:
     PathResolver *CreatePathResolver();
     const MvpnManager *manager() const { return manager_; }
     MvpnManager *manager() { return manager_; }
-    MvpnProjectManager *project_manager() { return project_manager_; }
-    const MvpnProjectManager *project_manager() const {
-        return project_manager_;
-    }
 
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
@@ -83,7 +77,6 @@ private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     MvpnManager *manager_;
-    MvpnProjectManager *project_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnTable);
 };

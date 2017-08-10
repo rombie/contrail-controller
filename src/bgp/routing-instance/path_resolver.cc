@@ -185,6 +185,10 @@ PathResolverPartition *PathResolver::GetPartition(int part_id) {
     return partitions_[part_id];
 }
 
+PathResolverPartition *PathResolver::GetPartition(int part_id) const {
+    return partitions_[part_id];
+}
+
 //
 // Find ResolverRouteState for the given BgpRoute.
 //

@@ -46,14 +46,14 @@ public:
     }
 
     virtual void Destroy() {
-        manager_->table_->DestroyProjectManager();
+        manager_->table_->DestroyMvpnProjectManager();
     }
 
 private:
     MvpnProjectManager *manager_;
 };
 
-MvpnProjectManager::MvpnProjectManager(MvpnTable *table)
+MvpnProjectManager::MvpnProjectManager(ErmVpnTable *table)
         : table_(table),
           listener_id_(DBTable::kInvalidId),
           table_delete_ref_(this, table->deleter()) {
@@ -399,11 +399,11 @@ const MvpnProjectManager *MvpnManager::GetProjectManager() const {
             GetRoutingInstance(project_manager_network);
     if (!rtinstance || rtinstance->deleted())
         return NULL;
-    MvpnTable *table =
-        dynamic_cast<MvpnTable *>(rtinstance->GetTable(Address::MVPN));
+    ErmVpnTable *table =
+        dynamic_cast<ErmVpnTable *>(rtinstance->GetTable(Address::ERMVPN));
     if (!table || table->IsDeleted())
         return NULL;
-    return table->project_manager();
+    return table->mvpn_project_manager();
 }
 
 // Initialize MvpnManager by allcating one MvpnManagerPartition for each DB
@@ -656,6 +656,8 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                                      spmsi_rt->GetPrefix().groupIpAddress());
     MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
+    if (!project_manager_partition)
+        return;
     MvpnState *mvpn_state = project_manager_partition->GetState(sg);
 
     // Retrieve any state associcated with this S-PMSI route.

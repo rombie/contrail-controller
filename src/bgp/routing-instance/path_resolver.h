@@ -129,6 +129,7 @@ private:
     typedef std::set<ResolverNexthop *> ResolverNexthopList;
 
     PathResolverPartition *GetPartition(int part_id);
+    PathResolverPartition *GetPartition(int part_id) const;
 
     ResolverNexthop *LocateResolverNexthop(IpAddress address, BgpTable *table);
     void RemoveResolverNexthop(ResolverNexthop *rnexthop);

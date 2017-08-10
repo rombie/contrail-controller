@@ -23,6 +23,7 @@ class BgpRoute;
 class BgpServer;
 class BgpTable;
 class ErmVpnRoute;
+class ErmVpnTable;
 class MvpnManager;
 class MvpnManagerPartition;
 class MvpnPrefix;
@@ -386,7 +387,7 @@ public:
     typedef std::vector<MvpnProjectManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
 
-    explicit MvpnProjectManager(MvpnTable *table);
+    explicit MvpnProjectManager(ErmVpnTable *table);
     virtual ~MvpnProjectManager();
     MvpnProjectManagerPartition *GetPartition(int part_id);
     const MvpnProjectManagerPartition *GetPartition(int part_id) const;
@@ -401,7 +402,7 @@ private:
     void FreePartitions();
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
 
-    MvpnTable *table_;
+    ErmVpnTable *table_;
     int listener_id_;
     PartitionList partitions_;
 
