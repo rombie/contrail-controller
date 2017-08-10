@@ -256,8 +256,7 @@ private:
 MvpnManager::MvpnManager(MvpnTable *table)
         : table_(table),
           listener_id_(DBTable::kInvalidId),
-          resolver_(NULL),
-          // resolver_(new PathResolver(table, true)),
+          resolver_(new PathResolver(table, true)),
           table_delete_ref_(this, table->deleter()) {
     deleter_.reset(new DeleteActor(this));
     Initialize();
