@@ -31,7 +31,7 @@ size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
 }
 
 MvpnTable::MvpnTable(DB *db, const string &name)
-    : BgpTable(db, name), manager_(NULL) {
+    : BgpTable(db, name), manager_(NULL), project_manager_(NULL) {
 }
 
 void MvpnTable::ResolvePath(BgpRoute *rt, BgpPath *path) {
