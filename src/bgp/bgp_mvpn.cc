@@ -256,7 +256,8 @@ private:
 MvpnManager::MvpnManager(MvpnTable *table)
         : table_(table),
           listener_id_(DBTable::kInvalidId),
-          resolver_(new PathResolver(table, true)),
+          resolver_(NULL),
+          // resolver_(new PathResolver(table, true)),
           table_delete_ref_(this, table->deleter()) {
     deleter_.reset(new DeleteActor(this));
     Initialize();
@@ -531,7 +532,7 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
     BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
                                         rtinstance->GetTable(Address::INET6);
-    table->path_resolver()->StartPathResolution(rt, path, table, &address);
+    resolver_->StartPathResolution(rt, path, table, &address);
 }
 
 bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
