@@ -20,10 +20,6 @@ public:
     McastTreeManagerMock(ErmVpnTable *table) : McastTreeManager(table) {
     }
     ~McastTreeManagerMock() { }
-
-    // virtual void Initialize() { }
-    // virtual void Terminate() { }
-
     virtual UpdateInfo *GetUpdateInfo(ErmVpnRoute *route) { return NULL; }
 
 private:
