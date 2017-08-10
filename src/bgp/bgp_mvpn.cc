@@ -546,6 +546,7 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
         return false;
 
     // Find if the resolved path points to an active Mvpn neighbor.
+    // TODO(Ananth) Shouldn't we use the attr->originator_id() instead ?
     if (!findNeighbor(attr->nexthop(), neighbor))
         return false;
 
@@ -868,6 +869,12 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
 
     if (!new_attr)
         new_attr = BgpAttrPtr(src_path->GetAttr());
+
+    // TODO(Ananth) Set the originator id ?
+    if (IsMaster()) {
+        new_attr = attr_db->ReplaceOriginatorIdAndLocate(new_attr.get(),
+            table()->server()->bgp_identifier());
+    }
 
     // Find or create the route.
     MvpnRoute rt_key(prefix);
