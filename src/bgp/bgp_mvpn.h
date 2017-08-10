@@ -218,7 +218,7 @@ private:
 
     MvpnTable *table_;
     int listener_id_;
-    boost::scoped_ptr<PathResolver> resolver_;
+    PathResolver *resolver_;
     PartitionList partitions_;
 
     NeighborsMap neighbors_;

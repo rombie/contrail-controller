@@ -282,7 +282,7 @@ int MvpnManager::listener_id() const {
 }
 
 PathResolver *MvpnManager::resolver() {
-    return resolver_.get();
+    return resolver_;
 }
 
 void MvpnManager::Terminate() {
