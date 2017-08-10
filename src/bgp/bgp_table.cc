@@ -439,7 +439,7 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
         BgpPath *new_path;
         new_path = new BgpPath(
             peer, path_id, BgpPath::BGP_XMPP, attrs, flags, label, l3_label);
-        if (path->NeedsResolution())
+        if (new_path->NeedsResolution())
             ResolvePath(rt, new_path);
         rt->InsertPath(new_path);
         notify_rt = true;

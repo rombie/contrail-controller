@@ -20,7 +20,8 @@ static const std::map<string, Address::Family>
         ("inet6-vpn", Address::INET6VPN) 
         ("route-target", Address::RTARGET) 
         ("e-vpn", Address::EVPN)
-        ("erm-vpn", Address::ERMVPN);
+        ("erm-vpn", Address::ERMVPN)
+        ("m-vpn", Address::MVPN);
 
 static const std::map<Address::Family, string>  
     toString = boost::assign::map_list_of
@@ -31,7 +32,8 @@ static const std::map<Address::Family, string>
         (Address::INET6VPN, "inet6-vpn") 
         (Address::RTARGET, "route-target") 
         (Address::EVPN, "e-vpn")
-        (Address::ERMVPN, "erm-vpn");
+        (Address::ERMVPN, "erm-vpn")
+        (Address::MVPN, "m-vpn");
 
 static const std::map<string, Address::Family>
     fromTableName = boost::assign::map_list_of
@@ -42,7 +44,8 @@ static const std::map<string, Address::Family>
         ("l3vpn-inet6", Address::INET6VPN)
         ("rtarget", Address::RTARGET)
         ("evpn", Address::EVPN)
-        ("ermvpn", Address::ERMVPN);
+        ("ermvpn", Address::ERMVPN)
+        ("mvpn", Address::MVPN);
 
 static const std::map<Address::Family, string>
     toTableName = boost::assign::map_list_of
@@ -53,7 +56,8 @@ static const std::map<Address::Family, string>
         (Address::INET6VPN, "l3vpn-inet6")
         (Address::RTARGET, "rtarget")
         (Address::EVPN, "evpn")
-        (Address::ERMVPN, "ermvpn");
+        (Address::ERMVPN, "ermvpn")
+        (Address::MVPN, "mvpn");
 
 Address::Family Address::FamilyFromString(const std::string &family) {
     std::map<string, Address::Family>::const_iterator loc =
