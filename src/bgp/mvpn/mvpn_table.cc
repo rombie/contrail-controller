@@ -124,6 +124,9 @@ void MvpnTable::CreateManager() {
         return;
     assert(!manager_);
     manager_ = BgpObjectFactory::Create<MvpnManager>(this);
+
+    // TODO(Ananth) Only the project manager table needs this.
+    project_manager_ = BgpObjectFactory::Create<MvpnProjectManager>(this);
 }
 
 void MvpnTable::DestroyManager() {
