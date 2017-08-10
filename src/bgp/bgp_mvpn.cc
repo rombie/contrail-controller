@@ -429,41 +429,50 @@ void MvpnManager::Initialize() {
 void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     CHECK_CONCURRENCY("db::DBTable");
 
+    // We only care about vrf[s].vpn.0 tables here.
     if (IsMaster())
         return;
 
     MvpnRoute *route = dynamic_cast<MvpnRoute *>(db_entry);
-    if (!route)
-        return;
+    assert(route);
 
     MvpnManagerPartition *partition = partitions_[tpart->index()];
+
+    // Process Type1 Intra-AS and Type2 Inter-AS routes.
     if (route->GetPrefix().type() == MvpnPrefix::IntraASPMSIADRoute ||
             route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute) {
         UpdateNeighbor(route);
         return;
     }
 
+    // Process Type3 S-PMSI route.
     if (route->GetPrefix().type() == MvpnPrefix::SPMSIADRoute) {
         partition->ProcessType3SPMSIRoute(route);
         return;
     }
 
+    // Process Type7 C-Join route.
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
         if (partition->ProcessType7SourceTreeJoinRoute(route))
             route->front() ? route->Notify() : route->Delete();
         return;
     }
 
+    // Process Type4 LeadAD route.
     if (route->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
         partition->ProcessType4LeafADRoute(route);
         return;
     }
 }
 
+// ErmVpnTable route listener callback function.
+//
+// Process changes (create/update/delete) to GlobalErmVpnRoute.
 void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
         DBEntryBase *db_entry) {
     CHECK_CONCURRENCY("db::DBTable");
 
+    // We only care about vrf[s].vpn.0 tables here.
     if (table_->IsMaster())
         return;
 
