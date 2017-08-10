@@ -873,7 +873,7 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
     // TODO(Ananth) Set the originator id ?
     if (IsMaster()) {
         new_attr = attr_db->ReplaceOriginatorIdAndLocate(new_attr.get(),
-            table()->server()->bgp_identifier());
+            Ip4Address(table()->server()->bgp_identifier()));
     }
 
     // Find or create the route.
