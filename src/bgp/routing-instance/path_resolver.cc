@@ -195,7 +195,7 @@ ResolverRouteState *PathResolver::FindResolverRouteState(BgpRoute *route) {
 }
 
 const BgpPath *PathResolver::FindResolvedPath(const BgpRoute *route,
-                                              const BgpPath *path) {
+                                              const BgpPath *path) const {
     ResolverPath *resolver_path = GetPartition(route->get_table_partition()->
         index())->FindResolverPath(path);
     return resolver_path ? resolver_path->FindResolvedPath() : NULL;
@@ -713,6 +713,12 @@ ResolverPath *PathResolverPartition::CreateResolverPath(const BgpPath *path,
 //
 ResolverPath *PathResolverPartition::FindResolverPath(const BgpPath *path) {
     PathToResolverPathMap::iterator loc = rpath_map_.find(path);
+    return (loc != rpath_map_.end() ? loc->second : NULL);
+}
+
+ResolverPath *PathResolverPartition::FindResolverPath(const BgpPath *path)
+        const {
+    PathToResolverPathMap::const_iterator loc = rpath_map_.find(path);
     return (loc != rpath_map_.end() ? loc->second : NULL);
 }
 

@@ -105,7 +105,8 @@ public:
     Address::Family family() const;
     DBTableBase::ListenerId listener_id() const { return listener_id_; }
     BgpConditionListener *get_condition_listener(Address::Family family);
-    const BgpPath *FindResolvedPath(const BgpRoute *route, const BgpPath *path);
+    const BgpPath *FindResolvedPath(const BgpRoute *route, const BgpPath *path)
+        const;
     bool resolution_only() const { return resolution_only_; }
 
     bool IsDeleted() const;
@@ -223,6 +224,7 @@ private:
     ResolverPath *CreateResolverPath(const BgpPath *path, BgpRoute *route,
         ResolverNexthop *rnexthop);
     ResolverPath *FindResolverPath(const BgpPath *path);
+    ResolverPath *FindResolverPath(const BgpPath *path) const;
     ResolverPath *RemoveResolverPath(const BgpPath *path);
     bool ProcessResolverPathUpdateList();
 

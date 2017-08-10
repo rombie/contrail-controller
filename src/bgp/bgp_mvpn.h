@@ -196,7 +196,8 @@ public:
     MvpnTable *table();
     const MvpnTable *table() const;
     int listener_id() const;
-    PathResolver *resolver();
+    PathResolver *path_resolver();
+    PathResolver *path_resolver() const;
     LifetimeActor *deleter();
     const LifetimeActor *deleter() const;
     bool deleted() const;
@@ -218,7 +219,6 @@ private:
 
     MvpnTable *table_;
     int listener_id_;
-    PathResolver *resolver_;
     PartitionList partitions_;
 
     NeighborsMap neighbors_;

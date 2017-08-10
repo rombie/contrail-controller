@@ -62,6 +62,7 @@ public:
     static DBTableBase *CreateTable(DB *db, const std::string &name);
     size_t HashFunction(const MvpnPrefix &prefix) const;
     void ResolvePath(BgpRoute *rt, BgpPath *path);
+    PathResolver *CreatePathResolver();
     const MvpnManager *manager() const { return manager_; }
     MvpnManager *manager() { return manager_; }
     MvpnProjectManager *project_manager() { return project_manager_; }

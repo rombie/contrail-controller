@@ -256,7 +256,6 @@ private:
 MvpnManager::MvpnManager(MvpnTable *table)
         : table_(table),
           listener_id_(DBTable::kInvalidId),
-          resolver_(new PathResolver(table, true)),
           table_delete_ref_(this, table->deleter()) {
     deleter_.reset(new DeleteActor(this));
     Initialize();
@@ -281,8 +280,12 @@ int MvpnManager::listener_id() const {
     return listener_id_;
 }
 
-PathResolver *MvpnManager::resolver() {
-    return resolver_;
+PathResolver *MvpnManager::path_resolver() {
+    return table_->path_resolver();
+}
+
+PathResolver *MvpnManager::path_resolver() const {
+    return table_->path_resolver();
 }
 
 void MvpnManager::Terminate() {
@@ -531,13 +534,13 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
     BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
                                         rtinstance->GetTable(Address::INET6);
-    resolver_->StartPathResolution(rt, path, table, &address);
+    path_resolver()->StartPathResolution(rt, path, table, &address);
 }
 
 bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
         const BgpPath *src_path, MvpnNeighbor *neighbor,
         ExtCommunity::ExtCommunityValue *rt_import) const {
-    const BgpPath *path = resolver_->FindResolvedPath(src_rt, src_path);
+    const BgpPath *path = path_resolver()->FindResolvedPath(src_rt, src_path);
     if (!path)
         return false;
 

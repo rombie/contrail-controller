@@ -34,6 +34,12 @@ MvpnTable::MvpnTable(DB *db, const string &name)
     : BgpTable(db, name), manager_(NULL), project_manager_(NULL) {
 }
 
+PathResolver *MvpnTable::CreatePathResolver() {
+    if (routing_instance()->IsMasterRoutingInstance())
+        return NULL;
+    return (new PathResolver(this));
+}
+
 void MvpnTable::ResolvePath(BgpRoute *rt, BgpPath *path) {
     if (manager_)
         manager_->ResolvePath(routing_instance(), rt, path);
