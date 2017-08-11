@@ -866,7 +866,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
 
     // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
     // the path attributes. Community should be route-target with root PE
-    // router-id + 0. (Page 254)
+    // router-id + 0 (Page 254).
     BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
         src_path->GetAttr(), pmsi_spec);
     bool replicated;
