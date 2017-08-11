@@ -11,6 +11,7 @@
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_server.h"
+#include "bgp/extended-community/vrf_route_import.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
@@ -565,25 +566,34 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
     if (!attr)
         return false;
 
-    // Find if the resolved path points to an active Mvpn neighbor.
-    // TODO(Ananth) Shouldn't we use the attr->originator_id() instead ?
-    if (!findNeighbor(attr->nexthop(), neighbor))
-        return false;
-
-    if (!rt_import)
-        return true;
-
     if (!attr->ext_community())
         return false;
+
+    bool vrf_route_import_found = false;
+    ExtCommunity::ExtCommunityValue rt_import_s;
+    if (!rt_import)
+        rt_import = &rt_import_s;
 
     // Use rt-import from the resolved path as export route-target.
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
                   attr->ext_community()->communities()) {
         if (ExtCommunity::is_vrf_route_import(value)) {
+            vrf_route_import_found = true;
             *rt_import = value;
-            return true;
+            break;
         }
     }
+
+    if (!vrf_route_import_found)
+        return false;
+
+    VrfRouteImport vrf_import(*rt_import);
+
+    // Find if the resolved path points to an active Mvpn neighbor based on the
+    // IP address encoded inside the vrf import route target extended community.
+    if (!findNeighbor(vrf_import.GetIPv4Address(), neighbor))
+        return false;
+
     return true;
 }
 
@@ -889,12 +899,6 @@ BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
 
     if (!new_attr)
         new_attr = BgpAttrPtr(src_path->GetAttr());
-
-    // TODO(Ananth) Set the originator id ?
-    if (IsMaster()) {
-        new_attr = attr_db->ReplaceOriginatorIdAndLocate(new_attr.get(),
-            Ip4Address(table()->server()->bgp_identifier()));
-    }
 
     // Find or create the route.
     MvpnRoute rt_key(prefix);
