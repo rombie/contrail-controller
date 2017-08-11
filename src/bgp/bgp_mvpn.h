@@ -131,9 +131,11 @@ private:
     void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);
     void ProcessType4LeafADRoute(MvpnRoute *leaf_ad);
 
+    MvpnState *GetState(MvpnRoute *route);
     const MvpnState *GetState(MvpnRoute *route) const;
     const MvpnState *GetState(ErmVpnRoute *route) const;
-    MvpnState *LocateState(MvpnRoute *route) const;
+    MvpnState *GetState(ErmVpnRoute *route);
+    MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
 
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
