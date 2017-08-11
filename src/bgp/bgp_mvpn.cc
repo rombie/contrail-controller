@@ -745,11 +745,10 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
-        MvpnState *mvpn_state = GetState(spmsi_rt);
         if (!mvpn_dbstate)
             return;
+        MvpnState *mvpn_state = GetState(spmsi_rt);
         assert(mvpn_dbstate->state == mvpn_state);
-        spmsi_rt->ClearState(table(), listener_id());
         if (mvpn_dbstate->route) {
             BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
             if (path)
@@ -759,7 +758,8 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         assert(mvpn_state->leaf_ad_routes_originated_.erase(
                    mvpn_dbstate->route));
-        project_manager_partition->DeleteState(mvpn_state);
+        spmsi_rt->ClearState(table(), listener_id());
+        DeleteState(mvpn_state);
     } else {
         MvpnState *mvpn_state = LocateState(spmsi_rt);
         if (!mvpn_state)
@@ -787,8 +787,14 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                     new_attr->ext_community(), export_target);
         }
 
-    if (leaf_ad_rt)
+    if (!leaf_ad_rt)
+        return;
+
+    if (!leaf_ad_rt->front()) {
+        leaf_ad_rt->Delete();
+    } else {
         leaf_ad_rt->Notify();
+    }
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
