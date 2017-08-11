@@ -123,6 +123,7 @@ libs = MapBuildDir(['base',
                     'bgp/inet6',
                     'bgp/inet6vpn',
                     'bgp/ermvpn',
+                    'bgp/mvpn',
                     'bgp/evpn',
                     'bgp/extended-community',
                     'bgp/l3vpn',
@@ -153,6 +154,7 @@ lib_inet = File('../bgp/inet/libbgp_inet.a')
 lib_inet6 = File('../bgp/inet6/libbgp_inet6.a')
 lib_inet6vpn = File('../bgp/inet6vpn/libbgp_inet6vpn.a')
 lib_ermvpn = File('../bgp/ermvpn/libbgp_ermvpn.a')
+lib_mvpn = File('../bgp/mvpn/libbgp_mvpn.a')
 lib_evpn = File('../bgp/evpn/libbgp_evpn.a')
 lib_mvpn = File('../bgp/mvpn/libbgp_mvpn.a')
 lib_rtarget = File('../bgp/rtarget/librtarget.a')
@@ -179,6 +181,7 @@ else:
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6.path])
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_inet6vpn.path])
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_ermvpn.path])
+    env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_mvpn.path])
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_evpn.path])
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_mvpn.path])
     env.Prepend(LINKFLAGS = ['-Wl,-force_load,' + lib_rtarget.path])
@@ -227,6 +230,7 @@ env.Depends(ctrlnode, lib_inet)
 env.Depends(ctrlnode, lib_inet6)
 env.Depends(ctrlnode, lib_inet6vpn)
 env.Depends(ctrlnode, lib_ermvpn)
+env.Depends(ctrlnode, lib_mvpn)
 env.Depends(ctrlnode, lib_evpn)
 env.Depends(ctrlnode, lib_mvpn)
 env.Depends(ctrlnode, lib_rtarget)

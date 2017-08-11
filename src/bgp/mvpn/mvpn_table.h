@@ -34,10 +34,8 @@ public:
 
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
     virtual std::auto_ptr<DBEntry> AllocEntryStr(const std::string &key) const;
-
     void CreateManager();
     void DestroyManager();
-
     virtual Address::Family family() const { return Address::MVPN; }
     bool IsMaster() const;
     virtual bool IsVpnTable() const { return IsMaster(); }
@@ -53,7 +51,6 @@ public:
     virtual BgpRoute *RouteReplicate(BgpServer *server, BgpTable *src_table,
                                      BgpRoute *src_rt, const BgpPath *path,
                                      ExtCommunityPtr ptr);
-
     virtual bool Export(RibOut *ribout, Route *route,
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
@@ -70,6 +67,7 @@ public:
     MvpnRoute *LocateType2ADRoute() { return NULL; }
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
+    virtual void set_routing_instance(RoutingInstance *rtinstance);
 
 private:
     friend class BgpMulticastTest;
