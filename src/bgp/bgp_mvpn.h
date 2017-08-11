@@ -5,7 +5,7 @@
 #ifndef SRC_BGP_BGP_MVPN_H_
 #define SRC_BGP_BGP_MVPN_H_
 
-#include <tbb/mutex.h>
+#include <tbb/reader_writer_lock.h>
 #include <map>
 #include <set>
 #include <sstream>
@@ -223,7 +223,7 @@ private:
     PartitionList partitions_;
 
     NeighborsMap neighbors_;
-    mutable tbb::mutex neighbors_mutex_;
+    mutable tbb::reader_writer_lock neighbors_mutex_;
 
     boost::scoped_ptr<DeleteActor> deleter_;
     LifetimeRef<MvpnManager> table_delete_ref_;

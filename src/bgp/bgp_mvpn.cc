@@ -162,7 +162,7 @@ bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
 
 bool MvpnManager::findNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
         const {
-    tbb::mutex::scoped_lock(neighbors_mutex_);
+    tbb::reader_writer_lock::scoped_lock_read lock(neighbors_mutex_);
 
     NeighborsMap::const_iterator iter = neighbors_.find(address);
     if (iter != neighbors_.end()) {
@@ -465,6 +465,42 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     }
 }
 
+// Update MVPN neighbor list with create/delete/update of auto-discovery routes.
+//
+// Protect access to neighbors_ map with a mutex as the same be 'read' off other
+// DB tasks in parallel. (Type-1 and Type-2 do not carrry any <S,G> information.
+void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
+    MvpnNeighbor old_neighbor;
+    RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
+    IpAddress address = route->GetPrefix().originatorIpAddress();
+
+    // Check if an entry is already present.
+    bool found = findNeighbor(address, &old_neighbor);
+    MvpnNeighbor neighbor(address, route->GetPrefix().asn(), rd.GetVrfId(),
+        route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
+
+    if (!route->IsValid()) {
+        if (found) {
+            tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
+            neighbors_.erase(address);
+            NotifyAllRoutes();
+        }
+        return;
+    }
+
+    // Ignore if there is no change.
+    if (found && old_neighbor == neighbor)
+        return;
+
+    tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
+    if (found)
+        neighbors_.erase(address);
+    assert(neighbors_.insert(make_pair(address, neighbor)).second);
+
+    // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
+    NotifyAllRoutes();
+}
+
 // ErmVpnTable route listener callback function.
 //
 // Process changes (create/update/delete) to GlobalErmVpnRoute.
@@ -488,6 +524,8 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     }
 }
 
+// Notify all LeafAD routes for re-evaluation during replication if the
+// associated GlobalErmVpnRoute has gotten changed.
 void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
     SG sg = SG(ermvpn_rt->GetPrefix().source(), ermvpn_rt->GetPrefix().group());
     MvpnState *mvpn_state = GetState(sg);
@@ -503,36 +541,6 @@ void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
     BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
         leaf_ad_route->Notify();
     }
-}
-
-void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
-    tbb::mutex::scoped_lock(neighbors_mutex_);
-
-    MvpnNeighbor old_neighbor;
-    RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
-    IpAddress address = route->GetPrefix().originatorIpAddress();
-    bool found = findNeighbor(address, &old_neighbor);
-    MvpnNeighbor neighbor(address, route->GetPrefix().asn(), rd.GetVrfId(),
-        route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
-
-    if (!route->IsValid()) {
-        if (found) {
-            neighbors_.erase(address);
-            NotifyAllRoutes();
-        }
-        return;
-    }
-
-    // Ignore if there is no change.
-    if (found && old_neighbor == neighbor)
-        return;
-
-    if (found)
-        neighbors_.erase(address);
-    assert(neighbors_.insert(make_pair(address, neighbor)).second);
-
-    // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
-    NotifyAllRoutes();
 }
 
 void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
