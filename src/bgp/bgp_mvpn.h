@@ -131,6 +131,11 @@ private:
     void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);
     void ProcessType4LeafADRoute(MvpnRoute *leaf_ad);
 
+    const MvpnState *GetState(MvpnRoute *route) const;
+    const MvpnState *GetState(ErmVpnRoute *route) const;
+    MvpnState *LocateState(MvpnRoute *route) const;
+    void DeleteState(MvpnState *state);
+
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *source_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
@@ -275,11 +280,13 @@ public:
     explicit MvpnState(const SG &sg);
     virtual ~MvpnState();
     const SG &sg() const;
-    const RoutesSet &cjoin_routes() const;
     ErmVpnRoute *global_ermvpn_tree_rt();
     const ErmVpnRoute *global_ermvpn_tree_rt() const;
     const RoutesSet &leaf_ad_routes() const;
+    RoutesSet *leaf_ad_routes();
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
+    const RoutesSet &cjoin_routes_received() const;
+    RoutesSet *cjoin_routes_received();
 
 private:
     friend class MvpnDBState;
@@ -346,9 +353,9 @@ public:
 
     MvpnProjectManagerPartition(MvpnProjectManager*manager, int part_id);
     virtual ~MvpnProjectManagerPartition();
-    MvpnState *LocateState(const SG &sg);
-    const MvpnState *GetState(const SG &sg) const;
     MvpnState *GetState(const SG &sg);
+    const MvpnState *GetState(const SG &sg) const;
+    MvpnState *LocateState(const SG &sg);
     MvpnState *CreateState(const SG &sg);
     void DeleteState(MvpnState *mvpn_state);
     bool GetLeafAdTunnelInfo(ErmVpnRoute *global_ermvpn_tree_rt,

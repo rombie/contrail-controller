@@ -189,10 +189,6 @@ const MvpnState::SG &MvpnState::sg() const {
     return sg_;
 }
 
-const MvpnState::RoutesSet &MvpnState::cjoin_routes() const {
-    return cjoin_routes_received_;
-}
-
 ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() {
     return global_ermvpn_tree_rt_;
 }
@@ -203,6 +199,18 @@ const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
 
 const MvpnState::RoutesSet &MvpnState::leaf_ad_routes() const {
     return leaf_ad_routes_originated_;
+}
+
+MvpnState::RoutesSet *MvpnState::leaf_ad_routes() {
+    return &leaf_ad_routes_originated_;
+}
+
+const MvpnState::RoutesSet &MvpnState::cjoin_routes_received() const {
+    return cjoin_routes_received_;
+}
+
+MvpnState::RoutesSet *MvpnState::cjoin_routes_received() {
+    return &cjoin_routes_received_;
 }
 
 void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
@@ -380,6 +388,43 @@ MvpnProjectManager *MvpnManager::GetProjectManager() {
         static_cast<const MvpnManager *>(this)->GetProjectManager());
 }
 
+bool MvpnManagerPartition::LocateState(MvpnRoute *rt) {
+    MvpnProjectManagerPartition *project_manager_partition =
+        GetProjectManagerPartition();
+    if (!project_manager_partition)
+        return;
+    MvpnState::SG sg = MvpnState::SG(rt->GetPrefix().sourceIpAddress(),
+                                     rt->GetPrefix().groupIpAddress());
+    return project_manager_partition->GetState(sg);
+}
+
+bool MvpnManagerPartition::GetState(MvpnRoute *rt) const {
+    MvpnProjectManagerPartition *project_manager_partition =
+        GetProjectManagerPartition();
+    if (!project_manager_partition)
+        return;
+    MvpnState::SG sg = MvpnState::SG(rt->GetPrefix().sourceIpAddress(),
+                                     rt->GetPrefix().groupIpAddress());
+    return project_manager_partition->GetState(sg);
+}
+
+bool MvpnManagerPartition::GetState(ErmVpnRoute *rt) const {
+    MvpnProjectManagerPartition *project_manager_partition =
+        GetProjectManagerPartition();
+    if (!project_manager_partition)
+        return;
+    MvpnState::SG sg = MvpnState::SG(rt->source(), rt->group());
+    return project_manager_partition->GetState(sg);
+}
+
+bool MvpnManagerPartition::DeleteState(MvpnState *state) {
+    MvpnProjectManagerPartition *project_manager_partition =
+        GetProjectManagerPartition();
+    if (!project_manager_partition)
+        return;
+    return project_manager_partition->DeleteState(state);
+}
+
 bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
     uint32_t *label, Ip4Address *address) const {
     return true;
@@ -529,7 +574,7 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
 // associated GlobalErmVpnRoute has gotten changed.
 void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
     SG sg = SG(ermvpn_rt->GetPrefix().source(), ermvpn_rt->GetPrefix().group());
-    MvpnState *mvpn_state = GetState(sg);
+    MvpnState *mvpn_state = GetState(ermvpn_rt);
     assert(mvpn_state);
 
     if (!ermvpn_rt->IsValid()) {
@@ -604,7 +649,12 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     if (!mvpn_dbstate && !join_rt->IsValid())
         return false;
 
+    SG sg = SG(join_rt->source(), join_rt->group());
+
     if (!join_rt->IsValid()) {
+        MvpnState *state = GetState(join_rt);
+        if (state)
+            state->cjoin_routes_received()->erase(join_rt);
         if (mvpn_dbstate) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
@@ -620,22 +670,27 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return false;
     }
 
+    MvpnState *state = LocateState(join_rt);
     const BgpPath *path = join_rt->BestPath();
     assert(!path);
+
+    if (!mvpn_dbstate) {
+        mvpn_dbstate = new MvpnDBState(state);
+        join_rt->SetState(table(), listener_id(), mvpn_dbstate);
+    }
+
     if (dynamic_cast<const BgpSecondaryPath *>(path)) {
         if (IsMaster())
             return false;
 
         // Originate/Update S-PMSI route towards the receivers.
-        if (!mvpn_dbstate) {
-            mvpn_dbstate = new MvpnDBState();
-            join_rt->SetState(table(), listener_id(), mvpn_dbstate);
-        }
         if (!mvpn_dbstate->route)
             mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
         return true;
     }
 
+    // Maintain list of all primary Type7 cjoin routes.
+    state->cjoin_routes_received()->insert(join_rt);
     const BgpAttr *src_path_attr = path->GetAttr();
     bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
 
@@ -683,7 +738,6 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         GetProjectManagerPartition();
     if (!project_manager_partition)
         return;
-    MvpnState *mvpn_state = project_manager_partition->GetState(sg);
 
     // Retrieve any state associcated with this S-PMSI route.
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
@@ -691,6 +745,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     MvpnRoute *leaf_ad_rt = NULL;
     if (!spmsi_rt->IsValid()) {
+        MvpnState *mvpn_state = GetState(spmsi_rt);
         if (!mvpn_dbstate)
             return;
         assert(mvpn_dbstate->state == mvpn_state);
@@ -706,6 +761,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                    mvpn_dbstate->route));
         project_manager_partition->DeleteState(mvpn_state);
     } else {
+        MvpnState *mvpn_state = LocateState(spmsi_rt);
         if (!mvpn_state)
             mvpn_state = project_manager_partition->CreateState(sg);
 
@@ -723,8 +779,13 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
             assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
                     second);
             mvpn_state->refcount_++;
+
+            ExtCommunity::ExtCommunityList export_target;
+            export_target.push_back(rt_import);
+            ExtCommunityPtr ext_community =
+                table()->server()->extcomm_db()->ReplaceRTargetAndLocate(
+                    new_attr->ext_community(), export_target);
         }
-    }
 
     if (leaf_ad_rt)
         leaf_ad_rt->Notify();
@@ -843,12 +904,12 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
         }
     }
 
-    MvpnState::SG sg = MvpnState::SG(src_rt->GetPrefix().sourceIpAddress(),
-                                     src_rt->GetPrefix().groupIpAddress());
-    MvpnProjectManagerPartition *project_manager_partition =
-        GetProjectManagerPartition();
-    MvpnState *mvpn_state = project_manager_partition->GetState(sg);
+    MvpnState *mvpn_state = GetState(src_rt);
     assert(mvpn_state);
+
+    // Do not replicate if there is no receiver interested for this <S,G>.
+    if (mvpn_state->cjoin_routes_received().empty())
+        return NULL;
 
     uint32_t label;
     Ip4Address address;

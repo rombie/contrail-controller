@@ -67,7 +67,6 @@ public:
     MvpnRoute *LocateType2ADRoute() { return NULL; }
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
-    virtual void set_routing_instance(RoutingInstance *rtinstance);
 
 private:
     friend class BgpMulticastTest;
