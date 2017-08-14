@@ -666,13 +666,19 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         MvpnState *state = GetState(join_rt);
         if (state)
             state->cjoin_routes_received()->erase(join_rt);
+
+        // DB State is maintained for any S-PMSI route originated as a Sender
+        // for the received type7 join routes. If such a route was originated
+        // before, delete the same as there is no more receiver interested to
+        // receive multicast traffic for this C-<S,G>.
         if (mvpn_dbstate) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
             if (mvpn_dbstate->route) {
                 BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
-                if (path)
+                if (path) {
                     mvpn_dbstate->route->DeletePath(path);
+                }
                 mvpn_dbstate->route = NULL;
             }
             join_rt->ClearState(table(), listener_id());
@@ -690,20 +696,37 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         join_rt->SetState(table(), listener_id(), mvpn_dbstate);
     }
 
+    // If the path is a secondary path, it implies the sender side. This would
+    // be for both the cases, where in routes are received over bgp (in this
+    // case primary path will be bgp.mvpn.0) and in case of local replication
+    // (in this case, primary path will be another vrf.mvpn.0). In either of
+    // these cases, S-PMSI path needs to be originated if not already done so.
     if (dynamic_cast<const BgpSecondaryPath *>(path)) {
         if (IsMaster())
             return false;
 
         // Originate/Update S-PMSI route towards the receivers.
-        if (!mvpn_dbstate->route)
+        if (!mvpn_dbstate->route) {
             mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
+        } else {
+            // TODO(Ananth) For any change in Join routes, do we need to notify
+            // the route again ?
+        }
         return true;
     }
 
-    // Maintain list of all primary Type7 cjoin routes.
+    // Ignore notifications to bgp.mvpn.0 master table.
+    if (IsMaster())
+        return false;
+
+    // This is case in the receiver side, where in Usable join routes have been
+    // added/modified in a vrf.mvpn.0 table. Check of the Source is resolvable
+    // over an active MVPN neighbor and if so, update source-rd accordingly
+    // and notify the route for replication into master and other tables as
+    // appropriate.
     state->cjoin_routes_received()->insert(join_rt);
     const BgpAttr *src_path_attr = path->GetAttr();
-    bool resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
+    bool was_resolved = src_path_attr && !src_path_attr->source_rd().IsZero();
 
     // Reset source rd first to mark the route as unresolved.
     BgpAttrPtr new_attr = table()->server()->attr_db()->
@@ -714,7 +737,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     MvpnNeighbor neighbor;
     ExtCommunity::ExtCommunityValue rt_import;
     if (!manager_->FindResolvedNeighbor(join_rt, path, &neighbor, &rt_import))
-        return resolved;
+        return was_resolved;
 
     ExtCommunity::ExtCommunityList export_target;
     export_target.push_back(rt_import);
@@ -726,6 +749,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // vrf import route target found above.
     const_cast<BgpAttr *>(src_path_attr)->set_ext_community(ext_community);
     RouteDistinguisher rd(neighbor.address.to_v4().to_ulong(), neighbor.vn_id);
+
     new_attr = table()->server()->attr_db()->
         ReplaceSourceRdAndLocate(path->GetAttr(), rd);
     new_attr = table()->server()->attr_db()->
@@ -872,6 +896,10 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnNeighbor neighbor;
     if (!manager_->FindResolvedNeighbor(src_rt, src_path, &neighbor))
         return NULL;
+
+    // TODO(Ananth) Find out change in source-rd and delete paths if already
+    // replicated. This is the case in which join is targetted to a different
+    // sender due to change in the source resolution.
 
     // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
     // if the Type-7 prefix.
