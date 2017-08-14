@@ -849,7 +849,6 @@ BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
             src_table, src_rt, src_path, community);
 }
 
-// At the moment, we only do resolution for C-<S,G> Type-7 routes.
 BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
