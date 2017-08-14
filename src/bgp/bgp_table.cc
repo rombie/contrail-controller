@@ -685,3 +685,7 @@ void BgpTable::FillRibOutStatisticsInfo(
         ribout->FillStatisticsInfo(sros_list);
     }
 }
+
+RouteDistinguisher BgpTable::GetSourceRouteDistinguisher(BgpPath *path) const {
+    return path->GetSourceRouteDistinguisher();
+}

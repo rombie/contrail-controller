@@ -923,8 +923,8 @@ BgpPath *ResolverPath::LocateResolvedPath(const IPeer *peer, uint32_t path_id,
 // Return an extended community that's built by combining the values in the
 // original path's attributes with values from the nexthop path's attributes.
 //
-// Pick up the security groups, tunnel encapsulation and load balance from
-// the nexthop path's attributes.
+// Pick up the security groups, tunnel encapsulation load balance, source-as
+// and vrf import target values from the nexthop path's attributes.
 //
 static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
     const BgpAttr *attr, const BgpAttr *nh_attr) {
@@ -933,6 +933,8 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
     if (!nh_ext_community)
         return ext_community;
 
+    ExtCommunity::ExtCommunityList rtarget;
+    ExtCommunity::ExtCommunityList source_as;
     ExtCommunity::ExtCommunityList sgid_list;
     ExtCommunity::ExtCommunityList encap_list;
     ExtCommunity::ExtCommunityValue lb;
@@ -943,13 +945,21 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
             sgid_list.push_back(value);
         } else if (ExtCommunity::is_tunnel_encap(value)) {
             encap_list.push_back(value);
+        } else if (ExtCommunity::is_vrf_route_import(value)) {
+            export_target.push_back(value);
+        } else if (ExtCommunity::is_source_as(value)) {
+            source_as.push_back(value);
         } else if (ExtCommunity::is_load_balance(value) && !lb_is_valid) {
             lb_is_valid = true;
             lb = value;
         }
     }
 
-    // Replace sgid list, encap list and load balance.
+    // Replace rtarget, sgid list, encap list and load balance.
+    ext_community = extcomm_db->ReplaceRTargetAndLocate(ext_community.get(),
+                                                        rtarget);
+    ext_community = extcomm_db->ReplaceSourceASAndLocate(ext_community.get(),
+                                                         source_as);
     ext_community = extcomm_db->ReplaceSGIDListAndLocate(
         ext_community.get(), sgid_list);
     ext_community = extcomm_db->ReplaceTunnelEncapsulationAndLocate(
@@ -992,7 +1002,8 @@ bool ResolverPath::UpdateResolvedPaths() {
         return false;
     }
 
-    BgpServer *server = partition_->table()->server();
+    BgpTable *table = partition_->table();
+    BgpServer *server = table->server();
     BgpAttrDB *attr_db = server->attr_db();
     ExtCommunityDB *extcomm_db = server->extcomm_db();
 
@@ -1026,7 +1037,8 @@ bool ResolverPath::UpdateResolvedPaths() {
             continue;
 
         // Skip if there's no source rd.
-        RouteDistinguisher source_rd = nh_path->GetSourceRouteDistinguisher();
+        RouteDistinguisher source_rd =
+            table->GetSourceRouteDistinguisher(nh_path);
         if (source_rd.IsZero())
             continue;
 

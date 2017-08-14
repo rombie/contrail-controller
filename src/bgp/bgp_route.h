@@ -40,7 +40,6 @@ public:
     bool RemovePath(const IPeer *peer);
 
     bool IsUsable() const;
-    virtual bool IsValid() const;
 
     // Check if there's a better path with the same forwarding information.
     bool DuplicateForwardingPath(const BgpPath *in_path) const;
@@ -77,6 +76,10 @@ public:
     void FillRouteInfo(const BgpTable *table, ShowRouteBrief *show_route) const;
     void FillRouteInfo(const BgpTable *table, ShowRoute *show_route,
         const std::string &source = "", const std::string &protocol = "") const;
+
+protected:
+    // TODO(Ananth)
+    virtual bool IsValid() const;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(BgpRoute);

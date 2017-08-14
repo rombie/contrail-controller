@@ -176,6 +176,7 @@ public:
 
     void FillRibOutStatisticsInfo(
         std::vector<ShowRibOutStatistics> *sros_list) const;
+    virtual RouteDistinguisher GetSourceRouteDistinguisher(BgpPath *path) const;
 
 private:
     friend class BgpTableTest;

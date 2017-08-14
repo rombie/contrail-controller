@@ -43,7 +43,7 @@ class RoutingInstance;
 struct MvpnNeighbor {
 public:
     MvpnNeighbor();
-    MvpnNeighbor(const IpAddress &address, uint32_t asn, uint16_t vn_id,
+    MvpnNeighbor(const IpAddress &address, uint32_t asn, uint16_t vrf_id,
                  bool external);
     std::string ToString() const;
     bool operator==(const MvpnNeighbor &rhs) const;
@@ -53,7 +53,7 @@ private:
 
     IpAddress address;
     uint32_t asn;
-    uint16_t vn_id;
+    uint16_t vrf_id;
     bool external;
     std::string name;
 };
@@ -191,7 +191,7 @@ public:
 
     explicit MvpnManager(MvpnTable *table);
     virtual ~MvpnManager();
-    bool findNeighbor(const IpAddress &address, MvpnNeighbor *nbr) const;
+    bool FindNeighbor(const IpAddress &address, MvpnNeighbor *nbr) const;
     MvpnProjectManager *GetProjectManager();
     const MvpnProjectManager *GetProjectManager() const;
     void ManagedDelete();

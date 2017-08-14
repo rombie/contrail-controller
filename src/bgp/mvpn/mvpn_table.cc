@@ -122,7 +122,7 @@ bool MvpnTable::Export(RibOut *ribout, Route *route,
 }
 
 void MvpnTable::CreateManager() {
-    // Don't create the McastTreeManager for the VPN table.
+    // Don't create the MvpnManager for the VPN table.
     if (IsMaster())
         return;
     assert(!manager_);
@@ -139,6 +139,11 @@ void MvpnTable::DestroyManager() {
 void MvpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     BgpTable::set_routing_instance(rtinstance);
     CreateManager();
+}
+
+RouteDistinguisher MvpnTable::GetSourceRouteDistinguisher(BgpPath *path) const {
+    assert(!manager_);
+    return manager_->GetSourceRouteDistinguisher();
 }
 
 bool MvpnTable::IsMaster() const {
