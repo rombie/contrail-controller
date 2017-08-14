@@ -664,9 +664,8 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 
     if (!join_rt->IsValid()) {
         MvpnState *state = GetState(join_rt);
-        if (state) {
-            assert(state->cjoin_routes_received()->erase(join_rt));
-        }
+        if (state)
+            state->cjoin_routes_received()->erase(join_rt);
         if (mvpn_dbstate) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
