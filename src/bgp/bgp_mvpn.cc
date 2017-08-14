@@ -656,6 +656,10 @@ bool MvpnManager::FindResolvedNeighbor(MvpnRoute *src_rt,
 }
 
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
+    // Ignore notifications to bgp.mvpn.0 master table.
+    if (IsMaster())
+        return false;
+
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
         join_rt->GetState(table(), listener_id()));
 
@@ -714,10 +718,6 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         }
         return true;
     }
-
-    // Ignore notifications to bgp.mvpn.0 master table.
-    if (IsMaster())
-        return false;
 
     // This is case in the receiver side, where in Usable join routes have been
     // added/modified in a vrf.mvpn.0 table. Check of the Source is resolvable
