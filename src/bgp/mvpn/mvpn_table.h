@@ -67,6 +67,8 @@ public:
     MvpnRoute *LocateType2ADRoute() { return NULL; }
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
+    void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+            RtGroupMemberList *secondary_tables);
 
 private:
     friend class BgpMulticastTest;

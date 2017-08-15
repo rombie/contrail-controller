@@ -154,4 +154,10 @@ static void RegisterFactory() {
     DB::RegisterFactory("mvpn.0", &MvpnTable::CreateTable);
 }
 
+void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+        RtGroupMemberList *secondary_tables) {
+    if (manager_)
+        manager_->UpdateSecondaryTablesForReplication(rt, secondary_tables);
+}
+
 MODULE_INITIALIZER(RegisterFactory);

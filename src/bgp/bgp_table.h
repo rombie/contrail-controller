@@ -84,6 +84,8 @@ public:
             subscription_gen_id_ = subscription_gen_id;
         }
         uint64_t subscription_gen_id() const { return subscription_gen_id_; }
+        virtual void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+            RtGroupMemberList *secondary_tables) { }
 
     private:
         BgpAttrPtr attrs_;

@@ -692,6 +692,8 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
                 }
                 mvpn_dbstate->route->NotifyOrDelete();
                 mvpn_dbstate->route = NULL;
+                if (state)
+                    state->spmsi_rt = NULL;
             }
             join_rt->ClearState(table(), listener_id());
             return true;
@@ -717,6 +719,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         // Originate/Update S-PMSI route towards the receivers.
         if (!mvpn_dbstate->route) {
             mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
+            mvpn_state->spmsi_rt = route;
             // TODO(Ananth) InsertPath
         } else {
             // TODO(Ananth) For any change in Join routes, do we need to notify
@@ -826,6 +829,28 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
 ///                     Route Replication Functions                          ///
 ////////////////////////////////////////////////////////////////////////////////
 
+void MvpnManager::UpdateSecondaryTablesForReplication(BgpRoute *rt,
+        RtGroupMemberList *secondary_tables) {
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
+    assert(mvpn_rt);
+    if (mvpn_rt->GetPrefix().type() != MvpnPrefix::LeafADRoute)
+        return;
+    MvpnManagerPartition *partition =
+        GetPartition(rt->get_table_partition()->index());
+    partition->UpdateSecondaryTablesForReplication(rt, secondary_tables);
+}
+
+void MvpnManagerPartition::UpdateSecondaryTablesForReplication(
+        MvpnRoute *rt, RtGroupMemberList *secondary_tables) {
+    // Find the table based on the type-3 prefix, which is encoded inside the
+    // type4 leaf ad prefix.
+    MvpnPrefix spmsi_prefix = mvpn_rt->GetSPMSIPrefix();
+    MvpnState *state = GetState(rt);
+    if (!state || !state->spmsi_rt)
+        return;
+    secondary_tables.insert(spmsi_rt->get_table_partition()->parent());
+}
+
 BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
     BgpRoute *rt, const BgpPath *src_path, ExtCommunityPtr community) {
     CHECK_CONCURRENCY("db::DBTable");
@@ -854,8 +879,6 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
 
-    // If src_path is not marked for resolution requested, replicate it right
-    // away.
     if (src_table->IsMaster()) {
         return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                              src_path, community);
@@ -870,7 +893,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
         return NULL;
 
     // Find source-as extended-community. If not present, do not replicate
-    bool source_as_found = falase;
+    bool source_as_found = false;
     ExtCommunity::ExtCommunityValue source_as;
 
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
@@ -909,22 +932,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
     if (!attr || !attr->ext_community())
         return NULL;
 
-    // Do not replicate if there is no matching type-3 S-PMSI route.
     if (!IsMaster()) {
-        bool found = false;
-        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
-                attr->ext_community()->communities()) {
-            if (ExtCommunity::is_route_target(value)) {
-                if (value == table()->GetAutoVrfImportRouteTarget()) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        if (!found)
-            return NULL;
-
         // Make sure that there is an associated Type3 S-PMSI route.
         MvpnRoute *spmsi_rt = table()->FindSPMSIRoute(src_rt);
         if (!spmsi_rt)
