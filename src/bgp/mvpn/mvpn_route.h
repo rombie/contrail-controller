@@ -114,7 +114,6 @@ public:
     virtual u_int16_t Afi() const { return BgpAf::IPv4; }
     virtual u_int8_t Safi() const { return BgpAf::MVpn; }
     virtual u_int8_t XmppSafi() const { return BgpAf::Mcast; }
-    MvpnPrefix GetSPMSIPrefixFromLeafADRoute() const { return prefix_; }
 
 private:
     MvpnPrefix prefix_;
