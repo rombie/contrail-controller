@@ -46,16 +46,19 @@ public:
     MvpnNeighbor(const IpAddress &address, uint32_t asn, uint16_t vrf_id,
                  bool external);
     std::string ToString() const;
+    const IpAddress &address() const;
+    uint16_t vrf_id() const;
+    uint32_t asn() const;
     bool operator==(const MvpnNeighbor &rhs) const;
 
 private:
     friend class MvpnManagerPartition;
 
-    IpAddress address;
-    uint32_t asn;
-    uint16_t vrf_id;
-    bool external;
-    std::string name;
+    IpAddress address_;
+    uint32_t asn_;
+    uint16_t vrf_id_;
+    bool external_;
+    std::string name_;
 };
 
 // This class manages Mvpn routes with in a partition of an MvpnTable.
@@ -113,6 +116,7 @@ private:
 //
 class MvpnManagerPartition {
 public:
+    typedef std::set<BgpTable *> RtGroupMemberList;
     MvpnManagerPartition(MvpnManager *manager, int part_id);
     virtual ~MvpnManagerPartition();
     MvpnProjectManagerPartition *GetProjectManagerPartition();
@@ -137,6 +141,8 @@ private:
     MvpnState *GetState(ErmVpnRoute *route);
     MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
+    void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+        RtGroupMemberList *secondary_tables);
 
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *source_rt, const BgpPath *src_path,
@@ -188,6 +194,7 @@ public:
     typedef std::vector<MvpnManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
     typedef std::map<IpAddress, MvpnNeighbor> NeighborsMap;
+    typedef std::set<BgpTable *> RtGroupMemberList;
 
     explicit MvpnManager(MvpnTable *table);
     virtual ~MvpnManager();
@@ -210,6 +217,9 @@ public:
     const LifetimeActor *deleter() const;
     bool deleted() const;
     void Terminate();
+    RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
+    void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+        RtGroupMemberList *secondary_tables);
 
 private:
     friend class MvpnManagerPartition;
@@ -221,8 +231,7 @@ private:
     void UpdateNeighbor(MvpnRoute *route);
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
     void NotifyAllRoutes();
-    bool FindResolvedNeighbor(MvpnRoute *src_rt, const BgpPath *src_path,
-            MvpnNeighbor *neighbor,
+    bool FindResolvedNeighbor(const BgpPath *path, MvpnNeighbor *neighbor,
             ExtCommunity::ExtCommunityValue *rt_import = NULL) const;
 
     MvpnTable *table_;
@@ -273,6 +282,8 @@ public:
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
         SG(const IpAddress &source, const IpAddress &group);
+        SG(const ErmVpnRoute *route);
+        SG(const MvpnRoute *route);
         bool operator<(const SG &other) const;
 
         IpAddress source;
@@ -287,8 +298,9 @@ public:
     MvpnRoute *spmsi_rt();
     const MvpnRoute *spmsi_rt() const;
     const RoutesSet &leaf_ad_routes() const;
-    RoutesSet *leaf_ad_routes();
+    RoutesSet &leaf_ad_routes();
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
+    void set_spmsi_rt(MvpnRoute *spmsi_rt);
     const RoutesSet &cjoin_routes_received() const;
     RoutesSet *cjoin_routes_received();
 
@@ -370,7 +382,9 @@ private:
     friend class MvpnProjectManager;
     friend class MvpnManagerPartition;
 
-    void NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt);
+    ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *rt) const;
+    ErmVpnTable *table();
+    const ErmVpnTable *table() const;
 
     // Back pointer to the parent MvpnProjectManager
     MvpnProjectManager *manager_;
@@ -405,6 +419,8 @@ public:
     const MvpnProjectManagerPartition *GetPartition(int part_id) const;
     void ManagedDelete();
     void Terminate();
+    ErmVpnTable *table();
+    const ErmVpnTable *table() const;
 
 private:
     class DeleteActor;

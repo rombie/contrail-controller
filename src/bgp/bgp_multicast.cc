@@ -565,16 +565,13 @@ void McastSGEntry::UpdateRoutes(uint8_t level) {
     }
 }
 
-bool McastSGEntry::IsGlobalTreeRootRoute(ErmVpnRoute *route) const {
-    // Find the first node with a valid route.
+ErmVpnRoute *McastSGEntry::GetGlobalTreeRootRoute() const {
+    if (!IsTreeBuilder(McastTreeManager::LevelLocal))
+        return NULL;
     ForwarderSet *forwarders = forwarder_sets_[McastTreeManager::LevelLocal];
-    for (ForwarderSet::iterator it = forwarders->begin();
-        it != forwarders->end(); ++it) {
-        if ((*it)->global_tree_route())
-            return route == (*it)->global_tree_route();
-    }
-
-    return false;
+    assert(!forwarders->empty());
+    ForwarderSet::const_iterator it = forwarders->begin();
+    return (*it)->global_tree_route();
 }
 
 //
@@ -745,12 +742,6 @@ const McastSGEntry *McastManagerPartition::FindSGEntry(
     return (it != sg_list_.end() ? *it : NULL);
 }
 
-bool McastManagerPartition::IsGlobalTreeRootRoute(ErmVpnRoute *route) const {
-    const McastSGEntry *sg = FindSGEntry(route->GetPrefix().source(),
-                                   route->GetPrefix().group());
-    return sg ? sg->IsGlobalTreeRootRoute(route) : false;
-}
-
 //
 // Find or create the McastSGEntry for the given group and source.
 //
@@ -762,6 +753,13 @@ McastSGEntry *McastManagerPartition::LocateSGEntry(
         sg_list_.insert(sg_entry);
     }
     return sg_entry;
+}
+
+ErmVpnRoute *McastManagerPartition::GetGlobalTreeRootRoute(ErmVpnRoute *route)
+        const {
+    const McastSGEntry *sg = FindSGEntry(route->GetPrefix().source(),
+                                         route->GetPrefix().group());
+    return sg ? sg->GetGlobalTreeRootRoute() : NULL;
 }
 
 //
@@ -883,12 +881,6 @@ const McastManagerPartition *McastTreeManager::GetPartition(int part_id) const {
 //
 DBTablePartBase *McastTreeManager::GetTablePartition(size_t part_id) {
     return table_->GetTablePartition(part_id);
-}
-
-bool McastTreeManager::IsGlobalTreeRootRoute(ErmVpnRoute *route) const {
-    const McastManagerPartition *partition =
-        GetPartition(route->get_table_partition()->index());
-    return partition->IsGlobalTreeRootRoute(route);
 }
 
 //

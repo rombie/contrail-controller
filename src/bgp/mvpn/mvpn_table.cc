@@ -141,23 +141,25 @@ void MvpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     CreateManager();
 }
 
-RouteDistinguisher MvpnTable::GetSourceRouteDistinguisher(BgpPath *path) const {
-    assert(!manager_);
-    return manager_->GetSourceRouteDistinguisher();
+RouteDistinguisher MvpnTable::GetSourceRouteDistinguisher(
+    const BgpPath *path) const {
+    if (!manager_)
+        return RouteDistinguisher();
+    return manager_->GetSourceRouteDistinguisher(path);
 }
 
 bool MvpnTable::IsMaster() const {
     return routing_instance()->IsMasterRoutingInstance();
 }
 
-static void RegisterFactory() {
-    DB::RegisterFactory("mvpn.0", &MvpnTable::CreateTable);
-}
-
-void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
         RtGroupMemberList *secondary_tables) {
     if (manager_)
         manager_->UpdateSecondaryTablesForReplication(rt, secondary_tables);
+}
+
+static void RegisterFactory() {
+    DB::RegisterFactory("mvpn.0", &MvpnTable::CreateTable);
 }
 
 MODULE_INITIALIZER(RegisterFactory);

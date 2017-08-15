@@ -686,6 +686,7 @@ void BgpTable::FillRibOutStatisticsInfo(
     }
 }
 
-RouteDistinguisher BgpTable::GetSourceRouteDistinguisher(BgpPath *path) const {
+RouteDistinguisher BgpTable::GetSourceRouteDistinguisher(
+    const BgpPath *path) const {
     return path->GetSourceRouteDistinguisher();
 }

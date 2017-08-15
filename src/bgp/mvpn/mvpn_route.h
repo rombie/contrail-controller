@@ -73,7 +73,6 @@ public:
     uint32_t asn() const { return asn_; }
     void set_route_distinguisher(const RouteDistinguisher &rd) { rd_ = rd; }
     uint8_t ip_prefix_length() const { return ip_prefixlen_; }
-
     void BuildProtoPrefix(BgpProtoPrefix *prefix) const;
 
 private:
@@ -115,6 +114,7 @@ public:
     virtual u_int16_t Afi() const { return BgpAf::IPv4; }
     virtual u_int8_t Safi() const { return BgpAf::MVpn; }
     virtual u_int8_t XmppSafi() const { return BgpAf::Mcast; }
+    MvpnPrefix GetSPMSIPrefixFromLeafADRoute() const { return prefix_; }
 
 private:
     MvpnPrefix prefix_;

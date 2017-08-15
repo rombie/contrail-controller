@@ -19,6 +19,7 @@ class MvpnProjectManager;
 
 class MvpnTable : public BgpTable {
 public:
+    typedef std::set<BgpTable *> RtGroupMemberList;
     static const int kPartitionCount = 1;
 
     struct RequestKey : BgpTable::RequestKey {
@@ -67,8 +68,10 @@ public:
     MvpnRoute *LocateType2ADRoute() { return NULL; }
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
-    void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+    void UpdateSecondaryTablesForReplication(BgpRoute *rt,
             RtGroupMemberList *secondary_tables);
+    RouteDistinguisher GetSourceRouteDistinguisher(
+        const BgpPath *path) const;
 
 private:
     friend class BgpMulticastTest;

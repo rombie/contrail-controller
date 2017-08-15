@@ -383,6 +383,8 @@ public:
 
     ExtCommunityPtr ReplaceRTargetAndLocate(const ExtCommunity *src,
             const ExtCommunity::ExtCommunityList &export_list);
+    ExtCommunityPtr ReplaceSourceASAndLocate(const ExtCommunity *src,
+            const ExtCommunity::ExtCommunityList &source_as_list);
     ExtCommunityPtr ReplaceSGIDListAndLocate(const ExtCommunity *src,
             const ExtCommunity::ExtCommunityList &sgid_list);
     ExtCommunityPtr ReplaceTagListAndLocate(const ExtCommunity *src,

@@ -11,6 +11,7 @@
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_server.h"
+#include "bgp/extended-community/source_as.h"
 #include "bgp/extended-community/vrf_route_import.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/path_resolver.h"
@@ -141,24 +142,36 @@ void MvpnProjectManagerPartition::DeleteState(MvpnState *mvpn_state) {
     delete mvpn_state;
 }
 
-MvpnNeighbor::MvpnNeighbor() : asn(0), vrf_id(0), external(false) {
+MvpnNeighbor::MvpnNeighbor() : asn_(0), vrf_id_(0), external_(false) {
 }
 
 MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint32_t asn,
         uint16_t vrf_id, bool external) :
-    address(address), asn(asn), vrf_id(vrf_id), external(external) {
+    address_(address), asn_(asn), vrf_id_(vrf_id), external_(external) {
     ostringstream os;
     os << address << ":" << asn << ":" << vrf_id << ":" << external;
-    name = os.str();
+    name_ = os.str();
 }
 
 string MvpnNeighbor::ToString() const {
-    return name;
+    return name_;
+}
+
+const IpAddress &MvpnNeighbor::address() const {
+    return address_;
+}
+
+uint16_t MvpnNeighbor::vrf_id() const {
+    return vrf_id_;
+}
+
+uint32_t MvpnNeighbor::asn() const {
+    return asn_;
 }
 
 bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
-    return address == rhs.address && asn == rhs.asn &&
-           vrf_id == rhs.vrf_id && external == rhs.external;
+    return address_ == rhs.address_ && asn_ == rhs.asn_ &&
+           vrf_id_ == rhs.vrf_id_ && external_ == rhs.external_;
 }
 
 bool MvpnManager::FindNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
@@ -175,6 +188,16 @@ bool MvpnManager::FindNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
 
 MvpnState::SG::SG(const Ip4Address &source, const Ip4Address &group) :
     source(IpAddress(source)), group(IpAddress(group)) {
+}
+
+MvpnState::SG::SG(const ErmVpnRoute *route) :
+        source(route->GetPrefix().source()),
+        group(route->GetPrefix().group()) {
+}
+
+MvpnState::SG::SG(const MvpnRoute *route) :
+        source(route->GetPrefix().source()),
+        group(route->GetPrefix().group()) {
 }
 
 MvpnState::SG::SG(const IpAddress &source, const IpAddress &group) :
@@ -197,11 +220,11 @@ const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
     return global_ermvpn_tree_rt_;
 }
 
-MvpnRoute *MvpnState::global_ermvpn_tree_rt() {
+MvpnRoute *MvpnState::spmsi_rt() {
     return spmsi_rt_;
 }
 
-const MvpnRoute *MvpnState::global_ermvpn_tree_rt() const {
+const MvpnRoute *MvpnState::spmsi_rt() const {
     return spmsi_rt_;
 }
 
@@ -222,7 +245,11 @@ MvpnState::RoutesSet *MvpnState::cjoin_routes_received() {
 }
 
 void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
-    global_ermvpn_tree_rt = global_ermvpn_tree_rt_;
+    global_ermvpn_tree_rt_ = global_ermvpn_tree_rt;
+}
+
+void MvpnState::set_spmsi_rt(MvpnRoute *spmsi_rt) {
+    spmsi_rt_ = spmsi_rt;
 }
 
 MvpnDBState::MvpnDBState() : state(NULL), route(NULL) {
@@ -449,6 +476,22 @@ bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
     return true;
 }
 
+ErmVpnTable *MvpnProjectManager::table() {
+    return table_;
+}
+
+const ErmVpnTable *MvpnProjectManager::table() const {
+    return table_;
+}
+
+ErmVpnTable *MvpnProjectManagerPartition::table() {
+    return manager_->table();
+}
+
+const ErmVpnTable *MvpnProjectManagerPartition::table() const {
+    return manager_->table();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
@@ -568,6 +611,17 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     NotifyAllRoutes();
 }
 
+ErmVpnRoute *MvpnProjectManagerPartition::GetGlobalTreeRootRoute(
+        ErmVpnRoute *rt) const {
+    if (!table()->tree_manager())
+        return NULL;
+    ErmVpnRoute *global_rt = table()->tree_manager()->GetPartition(part_id_)->
+        GetGlobalTreeRootRoute(rt);
+    if (!global_rt || !global_rt->IsUsable())
+        return NULL;
+    return global_rt;
+}
+
 // ErmVpnTable route listener callback function.
 //
 // Process changes (create/update/delete) to GlobalErmVpnRoute in vrf.ermvpn.0
@@ -584,28 +638,19 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     ErmVpnTable *ermvpn_table = dynamic_cast<ErmVpnTable *>(tpart->parent());
     assert(ermvpn_table);
 
-    // Notify all T-4 Leaf AD routes already originated for this S,G.
-    // TODO(Ananth) Manage using DBState on the ErmVpnRoute.
-    if (ermvpn_table->tree_manager()->IsGlobalTreeRootRoute(ermvpn_route)) {
-        MvpnProjectManagerPartition *partition = partitions_[tpart->index()];
-        partition->NotifyLeafAdRoutes(ermvpn_route);
-    }
-}
+    MvpnProjectManagerPartition *partition =
+        GetPartition(ermvpn_route->get_table_partition()->index());
+    MvpnState *mvpn_state = partition->GetState(ermvpn_route);
+    ErmVpnRoute *global_rt = partition->GetGlobalTreeRootRoute(ermvpn_route);
 
-// Notify all LeafAD routes for re-evaluation during replication if the
-// associated GlobalErmVpnRoute has gotten changed.
-void MvpnProjectManagerPartition::NotifyLeafAdRoutes(ErmVpnRoute *ermvpn_rt) {
-    // TODO(Ananth) Add a new constructor to SG.
-    SG sg = SG(ermvpn_rt->GetPrefix().source(), ermvpn_rt->GetPrefix().group());
-    MvpnState *mvpn_state = GetState(sg);
-    assert(mvpn_state);
+    if (!global_rt && (!mvpn_state || !mvpn_state->global_ermvpn_tree_rt()))
+        return;
 
-    // TOO(Ananth) Check IsValid vs IsUsable.
-    if (!ermvpn_rt->IsUsable()) {
-        mvpn_state->set_global_ermvpn_tree_rt(NULL);
-    } else {
-        mvpn_state->set_global_ermvpn_tree_rt(ermvpn_rt);
+    if (global_rt && !mvpn_state) {
+        MvpnState::SG sg(ermvpn_route);
+        mvpn_state = partition->LocateState(sg);
     }
+    mvpn_state->set_global_ermvpn_tree_rt(global_rt);
 
     // Notify all originated t-4 routes for PMSI re-computation.
     BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
@@ -625,15 +670,15 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
     path_resolver()->StartPathResolution(rt, path, table, &address);
 }
 
-RouteDistinguisher MvpnManager::GetSourceRouteDistinguisher(BgpPath *path)
-        const {
+RouteDistinguisher MvpnManager::GetSourceRouteDistinguisher(
+    const BgpPath *path) const {
     MvpnNeighbor neighbor;
-    if (!manager_->FindResolvedNeighbor(path, &neighbor))
+    if (!FindResolvedNeighbor(path, &neighbor))
         return RouteDistinguisher();
 
     // Form source id based on the neighbor address and neighbor vrf id.
-    return RouteDistinguisher(neighbor.address.to_v4().to_ulong(),
-                              neighbor.vrf_id);
+    return RouteDistinguisher(neighbor.address().to_v4().to_ulong(),
+                              neighbor.vrf_id());
 }
 
 bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
@@ -694,10 +739,10 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
             if (mvpn_dbstate->route) {
-                BgpPath *path = mvpn_dbstate->route->FindPath(local, 0);
-                if (path) {
+                BgpPath *path = mvpn_dbstate->route->FindPath(
+                    BgpPath::Local, 0);
+                if (path)
                     mvpn_dbstate->route->DeletePath(path);
-                }
                 mvpn_dbstate->route->NotifyOrDelete();
                 mvpn_dbstate->route = NULL;
                 if (state)
@@ -727,7 +772,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         // Originate/Update S-PMSI route towards the receivers.
         if (!mvpn_dbstate->route) {
             mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
-            mvpn_state->spmsi_rt_ = route;
+            state->set_spmsi_rt(mvpn_dbstate->route);
             // TODO(Ananth) InsertPath
         } else {
             // TODO(Ananth) For any change in Join routes, do we need to notify
@@ -845,18 +890,21 @@ void MvpnManager::UpdateSecondaryTablesForReplication(BgpRoute *rt,
         return;
     MvpnManagerPartition *partition =
         GetPartition(rt->get_table_partition()->index());
-    partition->UpdateSecondaryTablesForReplication(rt, secondary_tables);
+    partition->UpdateSecondaryTablesForReplication(mvpn_rt, secondary_tables);
 }
 
 void MvpnManagerPartition::UpdateSecondaryTablesForReplication(
-        MvpnRoute *rt, RtGroupMemberList *secondary_tables) {
+        MvpnRoute *mvpn_rt, RtGroupMemberList *secondary_tables) {
     // Find the table based on the type-3 prefix, which is encoded inside the
     // type4 leaf ad prefix.
-    MvpnPrefix spmsi_prefix = mvpn_rt->GetSPMSIPrefix();
-    const MvpnState *state = GetState(rt);
+    MvpnPrefix spmsi_prefix = mvpn_rt->GetSPMSIPrefixFromLeafADRoute();
+    const MvpnState *state = GetState(mvpn_rt);
     if (!state || !state->spmsi_rt())
         return;
-    secondary_tables.insert(state->spmsi_rt()->get_table_partition()->parent());
+    BgpTable *table = dynamic_cast<BgpTable *>(
+        state->spmsi_rt()->get_table_partition()->parent());
+    assert(table);
+    secondary_tables->insert(table);
 }
 
 BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
@@ -902,13 +950,13 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
 
     // Find source-as extended-community. If not present, do not replicate
     bool source_as_found = false;
-    ExtCommunity::ExtCommunityValue source_as;
+    SourceAs source_as;
 
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
                   attr->ext_community()->communities()) {
         if (ExtCommunity::is_source_as(value)) {
             source_as_found = true;
-            source_as = value;
+            source_as = SourceAs(value);
             break;
         }
     }
@@ -921,7 +969,7 @@ BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
     // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
     // if the Type-7 prefix.
     MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, attr->source_rd(),
-                      source_as, src_rt->GetPrefix().group(),
+                      source_as.GetAsn(), src_rt->GetPrefix().group(),
                       src_rt->GetPrefix().source());
     return ReplicatePath(server, prefix, src_table, src_rt, src_path,
                          community);

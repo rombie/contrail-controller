@@ -34,6 +34,7 @@ struct UpdateInfo;
 class BgpTable : public RouteTable {
 public:
     typedef std::map<RibExportPolicy, RibOut *> RibOutMap;
+    typedef std::set<BgpTable *> RtGroupMemberList;
 
     struct RequestKey : DBRequestKey {
         virtual const IPeer *GetPeer() const = 0;
@@ -178,7 +179,8 @@ public:
 
     void FillRibOutStatisticsInfo(
         std::vector<ShowRibOutStatistics> *sros_list) const;
-    virtual RouteDistinguisher GetSourceRouteDistinguisher(BgpPath *path) const;
+    virtual RouteDistinguisher GetSourceRouteDistinguisher(
+        const BgpPath *path) const;
 
 private:
     friend class BgpTableTest;

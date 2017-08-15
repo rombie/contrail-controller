@@ -52,13 +52,9 @@ public:
         return RouteDistinguisher::kZeroRd;
     }
 
-    BgpTable *table() {
-        return dynamic_cast<BgpTable *>(get_table_partition()->parent());
-    }
-
-    const BgpTable *table() const {
-        return dynamic_cast<BgpTable *>(get_table_partition()->parent());
-    }
+    BgpTable *table();
+    const BgpTable *table() const;
+    void NotifyOrDelete();
 
     // Get AFI and SAFI.
     virtual u_int16_t Afi() const = 0;

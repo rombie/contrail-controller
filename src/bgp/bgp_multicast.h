@@ -110,7 +110,7 @@ public:
     Ip4Address router_id() const { return router_id_; }
 
     bool empty() { return tree_links_.empty(); }
-    const ErmVpnRoute *global_tree_route() const { return global_tree_route_; }
+    ErmVpnRoute *global_tree_route() const { return global_tree_route_; }
 
 private:
     friend class BgpMulticastTest;
@@ -234,7 +234,7 @@ public:
     void clear_on_work_queue() { on_work_queue_ = false; }
 
     bool empty() const;
-    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
+    ErmVpnRoute *GetGlobalTreeRootRoute() const;
 
 private:
     friend class BgpMulticastTest;
@@ -316,7 +316,7 @@ public:
     BgpServer *server();
     const BgpServer *server() const;
     McastTreeManager *tree_manager() const { return tree_manager_; }
-    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
+    ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
 
     bool empty() const { return sg_list_.empty(); }
     size_t size() const { return sg_list_.size(); }
@@ -411,7 +411,7 @@ public:
     LifetimeActor *deleter();
     const LifetimeActor *deleter() const;
     bool deleted() const;
-    bool IsGlobalTreeRootRoute(ErmVpnRoute *route) const;
+    const ErmVpnRoute *GetGlobalErmVpnTreeMvpnRoute() const;
 
 private:
     friend class BgpMulticastTest;

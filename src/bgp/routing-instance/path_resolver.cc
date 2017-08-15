@@ -946,7 +946,7 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
         } else if (ExtCommunity::is_tunnel_encap(value)) {
             encap_list.push_back(value);
         } else if (ExtCommunity::is_vrf_route_import(value)) {
-            export_target.push_back(value);
+            rtarget.push_back(value);
         } else if (ExtCommunity::is_source_as(value)) {
             source_as.push_back(value);
         } else if (ExtCommunity::is_load_balance(value) && !lb_is_valid) {
