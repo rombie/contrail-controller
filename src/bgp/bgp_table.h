@@ -34,7 +34,7 @@ struct UpdateInfo;
 class BgpTable : public RouteTable {
 public:
     typedef std::map<RibExportPolicy, RibOut *> RibOutMap;
-    typedef std::set<BgpTable *> RtGroupMemberList;
+    typedef std::set<BgpTable *> TableSet;
 
     struct RequestKey : DBRequestKey {
         virtual const IPeer *GetPeer() const = 0;
@@ -120,7 +120,7 @@ public:
     UpdateInfo *GetUpdateInfo(RibOut *ribout, BgpRoute *route,
                               const RibPeerSet &peerset);
     virtual void UpdateSecondaryTablesForReplication(BgpRoute *rt,
-                     RtGroupMemberList *secondary_tables) {
+                     TableSet *secondary_tables) {
     }
 
     void ManagedDelete();

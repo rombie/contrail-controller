@@ -16,10 +16,10 @@ class BgpRoute;
 class BgpServer;
 class MvpnManager;
 class MvpnProjectManager;
+class MvpnProjectManagerPartition;
 
 class MvpnTable : public BgpTable {
 public:
-    typedef std::set<BgpTable *> RtGroupMemberList;
     static const int kPartitionCount = 1;
 
     struct RequestKey : BgpTable::RequestKey {
@@ -68,16 +68,30 @@ public:
     MvpnRoute *LocateType2ADRoute() { return NULL; }
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
+    RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
+    const MvpnProjectManager *GetProjectManager() const;
+    MvpnProjectManager *GetProjectManager();
+    const MvpnProjectManagerPartition *GetProjectManagerPartition(
+            BgpRoute *route) const;
+    MvpnProjectManagerPartition *GetProjectManagerPartition(BgpRoute *rt);
     void UpdateSecondaryTablesForReplication(BgpRoute *rt,
-            RtGroupMemberList *secondary_tables);
-    RouteDistinguisher GetSourceRouteDistinguisher(
-        const BgpPath *path) const;
+        TableSet *secondary_tables);
 
 private:
     friend class BgpMulticastTest;
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
+    BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
+        MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
+        ExtCommunityPtr comm);
+    BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
+        MvpnRoute *src_rt, const BgpPath *src_path, ExtCommunityPtr comm);
+    BgpRoute *ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
+        MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
+        ExtCommunityPtr comm, BgpAttrPtr new_attr = NULL,
+        bool *replicated = NULL);
+
     MvpnManager *manager_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnTable);

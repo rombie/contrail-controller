@@ -116,7 +116,6 @@ private:
 //
 class MvpnManagerPartition {
 public:
-    typedef std::set<BgpTable *> RtGroupMemberList;
     MvpnManagerPartition(MvpnManager *manager, int part_id);
     virtual ~MvpnManagerPartition();
     MvpnProjectManagerPartition *GetProjectManagerPartition();
@@ -141,8 +140,6 @@ private:
     MvpnState *GetState(ErmVpnRoute *route);
     MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
-    void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
-        RtGroupMemberList *secondary_tables);
 
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *source_rt, const BgpPath *src_path,
@@ -194,7 +191,6 @@ public:
     typedef std::vector<MvpnManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
     typedef std::map<IpAddress, MvpnNeighbor> NeighborsMap;
-    typedef std::set<BgpTable *> RtGroupMemberList;
 
     explicit MvpnManager(MvpnTable *table);
     virtual ~MvpnManager();
@@ -218,8 +214,6 @@ public:
     bool deleted() const;
     void Terminate();
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
-    void UpdateSecondaryTablesForReplication(BgpRoute *rt,
-        RtGroupMemberList *secondary_tables);
 
 private:
     friend class MvpnManagerPartition;
@@ -375,7 +369,7 @@ public:
     MvpnState *LocateState(const SG &sg);
     MvpnState *CreateState(const SG &sg);
     void DeleteState(MvpnState *mvpn_state);
-    bool GetLeafAdTunnelInfo(ErmVpnRoute *global_ermvpn_tree_rt,
+    bool GetLeafAdTunnelInfo(const ErmVpnRoute *global_ermvpn_tree_rt,
                              uint32_t *label, Ip4Address *address) const;
 
 private:

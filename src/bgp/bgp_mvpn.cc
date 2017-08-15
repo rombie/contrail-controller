@@ -11,7 +11,6 @@
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_server.h"
-#include "bgp/extended-community/source_as.h"
 #include "bgp/extended-community/vrf_route_import.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/path_resolver.h"
@@ -416,11 +415,12 @@ MvpnManagerPartition::GetProjectManagerPartition() const {
     return project_manager ? project_manager->GetPartition(part_id_) : NULL;
 }
 
-// Call const version of the GetProjectManager().
-// Use C++ casts to call const version of the same and avoid code duplication!
 MvpnProjectManager *MvpnManager::GetProjectManager() {
-    return const_cast<MvpnProjectManager *>(
-        static_cast<const MvpnManager *>(this)->GetProjectManager());
+    return table_->GetProjectManager();
+}
+
+const MvpnProjectManager *MvpnManager::GetProjectManager() const {
+    return table_->GetProjectManager();
 }
 
 MvpnState *MvpnManagerPartition::LocateState(MvpnRoute *rt) {
@@ -471,7 +471,7 @@ void MvpnManagerPartition::DeleteState(MvpnState *state) {
     project_manager_partition->DeleteState(state);
 }
 
-bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(ErmVpnRoute *rt,
+bool MvpnProjectManagerPartition::GetLeafAdTunnelInfo(const ErmVpnRoute *rt,
     uint32_t *label, Ip4Address *address) const {
     return true;
 }
@@ -493,26 +493,6 @@ const ErmVpnTable *MvpnProjectManagerPartition::table() const {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
-// with a parent project maanger network via configuration. MvpnProjectManager
-// is retrieved from this parent network RoutingInstance object.
-const MvpnProjectManager *MvpnManager::GetProjectManager() const {
-    std::string project_manager_network =
-        table_->routing_instance()->mvpn_project_manager_network();
-    if (project_manager_network.empty())
-        return NULL;
-    RoutingInstance *rtinstance =
-        table_->routing_instance()->manager()->
-            GetRoutingInstance(project_manager_network);
-    if (!rtinstance || rtinstance->deleted())
-        return NULL;
-    ErmVpnTable *table =
-        dynamic_cast<ErmVpnTable *>(rtinstance->GetTable(Address::ERMVPN));
-    if (!table || table->IsDeleted())
-        return NULL;
-    return table->mvpn_project_manager();
-}
 
 // Initialize MvpnManager by allcating one MvpnManagerPartition for each DB
 // partition, and register a route listener for the MvpnTable.
@@ -869,232 +849,4 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
 
     // LeafAD route has been imported into a table. Retrieve PMSI information
     // from the path attribute and update the ingress sender (agent).
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///                     Route Replication Functions                          ///
-////////////////////////////////////////////////////////////////////////////////
-
-void MvpnManager::UpdateSecondaryTablesForReplication(BgpRoute *rt,
-        RtGroupMemberList *secondary_tables) {
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
-    assert(mvpn_rt);
-    if (mvpn_rt->GetPrefix().type() != MvpnPrefix::LeafADRoute)
-        return;
-    MvpnManagerPartition *partition =
-        GetPartition(rt->get_table_partition()->index());
-    partition->UpdateSecondaryTablesForReplication(mvpn_rt, secondary_tables);
-}
-
-void MvpnManagerPartition::UpdateSecondaryTablesForReplication(
-        MvpnRoute *mvpn_rt, RtGroupMemberList *secondary_tables) {
-    // Find the table based on the type-3 prefix, which is encoded inside the
-    // type4 leaf ad prefix.
-    const MvpnState *state = GetState(mvpn_rt);
-    if (!state || !state->spmsi_rt())
-        return;
-    BgpTable *table = dynamic_cast<BgpTable *>(
-        state->spmsi_rt()->get_table_partition()->parent());
-    assert(table);
-    secondary_tables->insert(table);
-}
-
-BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
-    BgpRoute *rt, const BgpPath *src_path, ExtCommunityPtr community) {
-    CHECK_CONCURRENCY("db::DBTable");
-
-    MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
-    MvpnTable *src_table = dynamic_cast<MvpnTable *>(table);
-
-    MvpnManagerPartition *mvpn_manager_partition =
-        GetPartition(src_rt->get_table_partition()->index());
-
-    if (src_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
-        return mvpn_manager_partition->ReplicateType7SourceTreeJoin(server,
-            src_table, src_rt, src_path, community);
-    }
-
-    if (src_rt->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
-        return mvpn_manager_partition->ReplicateType4LeafAD(server,
-            src_table, src_rt, src_path, community);
-    }
-
-    return mvpn_manager_partition->ReplicatePath(server, src_rt->GetPrefix(),
-            src_table, src_rt, src_path, community);
-}
-
-BgpRoute *MvpnManagerPartition::ReplicateType7SourceTreeJoin(BgpServer *server,
-    MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community) {
-
-    if (src_table->IsMaster()) {
-        return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
-                             src_path, community);
-    }
-
-    const BgpAttr *attr = src_path->GetAttr();
-    if (!attr)
-        return NULL;
-
-    // If source is resolved, only then replicate the path, not otherwise.
-    if (attr->source_rd().IsZero())
-        return NULL;
-
-    // Find source-as extended-community. If not present, do not replicate
-    bool source_as_found = false;
-    SourceAs source_as;
-
-    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
-                  attr->ext_community()->communities()) {
-        if (ExtCommunity::is_source_as(value)) {
-            source_as_found = true;
-            source_as = SourceAs(value);
-            break;
-        }
-    }
-
-    if (!source_as_found)
-        return NULL;
-
-    // TODO(Ananth) Remove source-as extended community.
-
-    // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
-    // if the Type-7 prefix.
-    MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, attr->source_rd(),
-                      source_as.GetAsn(), src_rt->GetPrefix().group(),
-                      src_rt->GetPrefix().source());
-    return ReplicatePath(server, prefix, src_table, src_rt, src_path,
-                         community);
-}
-
-// Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
-// this path for advertisement to ingress routers with associated PMSI tunnel
-// information.
-BgpRoute *MvpnManagerPartition::ReplicateType4LeafAD(BgpServer *server,
-    MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community) {
-    const BgpAttr *attr = src_path->GetAttr();
-
-    // Do not replicate into non-master tables if the [only] route-target of the
-    // route does not match the auto-created vrf-import route target of 'this'.
-    if (!attr || !attr->ext_community())
-        return NULL;
-
-    if (!IsMaster()) {
-        // Make sure that there is an associated Type3 S-PMSI route.
-        MvpnRoute *spmsi_rt = table()->FindSPMSIRoute(src_rt);
-        if (!spmsi_rt)
-            return NULL;
-
-        if (src_table->IsMaster()) {
-            return ReplicatePath(server, src_rt->GetPrefix(), src_table,
-                                 src_rt, src_path, community, attr);
-        }
-    }
-
-    MvpnState *mvpn_state = GetState(src_rt);
-    assert(mvpn_state);
-
-    // Do not replicate if there is no receiver interested for this <S,G>.
-    if (mvpn_state->cjoin_routes_received()->empty())
-        return NULL;
-
-    uint32_t label;
-    Ip4Address address;
-    if (!GetProjectManagerPartition()->GetLeafAdTunnelInfo(
-        mvpn_state->global_ermvpn_tree_rt(), &label, &address)) {
-        // TODO(Ananth) old forest node must be updated to reset input tunnel
-        // attribute, if encoded.
-        return NULL;
-    }
-    PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
-    pmsi_spec->tunnel_flags = 0;
-    pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec->SetLabel(label);
-    pmsi_spec->SetIdentifier(address);
-
-    // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
-    // the path attributes. Community should be route-target with root PE
-    // router-id + 0 (Page 254).
-    BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
-        src_path->GetAttr(), pmsi_spec);
-    bool replicated;
-
-    BgpRoute *replicated_path = ReplicatePath(server, src_rt->GetPrefix(),
-            src_table, src_rt, src_path, community, new_attr, &replicated);
-
-    if (replicated) {
-        // Notify GlobalErmVpnTreeRoute forest node so that its input tunnel
-        // attributes can be updated with the MvpnNeighbor information of the
-        // S-PMSI route associated with this LeadAD route.
-        mvpn_state->global_ermvpn_tree_rt()->Notify();
-    }
-
-    return replicated_path;
-}
-
-BgpRoute *MvpnManagerPartition::ReplicatePath(BgpServer *server,
-        const MvpnPrefix &prefix, MvpnTable *src_table, MvpnRoute *src_rt,
-        const BgpPath *src_path, ExtCommunityPtr community, BgpAttrPtr new_attr,
-        bool *replicated) {
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
-    assert(mvpn_rt);
-    MvpnPrefix mvpn_prefix(mvpn_rt->GetPrefix());
-    BgpAttrDB *attr_db = server->attr_db();
-    assert(src_table->family() == Address::MVPN);
-
-    if (replicated)
-        *replicated = false;
-
-    if (!new_attr)
-        new_attr = BgpAttrPtr(src_path->GetAttr());
-
-    // Find or create the route.
-    MvpnRoute rt_key(prefix);
-    DBTablePartition *rtp = static_cast<DBTablePartition *>(
-        table()->GetTablePartition(&rt_key));
-    BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
-    if (dest_route == NULL) {
-        dest_route = new MvpnRoute(mvpn_prefix);
-        rtp->Add(dest_route);
-    } else {
-        dest_route->ClearDelete();
-    }
-
-    new_attr = attr_db->ReplaceExtCommunityAndLocate(new_attr.get(), community);
-
-    // Check whether peer already has a path.
-    BgpPath *dest_path = dest_route->FindSecondaryPath(src_rt,
-            src_path->GetSource(), src_path->GetPeer(),
-            src_path->GetPathId());
-    if (dest_path != NULL) {
-        if ((new_attr != dest_path->GetOriginalAttr()) ||
-            (src_path->GetFlags() != dest_path->GetFlags()) ||
-            (src_path->GetLabel() != dest_path->GetLabel()) ||
-            (src_path->GetL3Label() != dest_path->GetL3Label())) {
-            bool success = dest_route->RemoveSecondaryPath(src_rt,
-                src_path->GetSource(), src_path->GetPeer(),
-                src_path->GetPathId());
-            assert(success);
-        } else {
-            return dest_route;
-        }
-    }
-
-    if (replicated)
-        *replicated = true;
-
-    // Create replicated path and insert it on the route
-    BgpSecondaryPath *replicated_path =
-        new BgpSecondaryPath(src_path->GetPeer(), src_path->GetPathId(),
-                             src_path->GetSource(), new_attr,
-                             src_path->GetFlags(), src_path->GetLabel(),
-                             src_path->GetL3Label());
-    replicated_path->SetReplicateInfo(src_table, src_rt);
-    dest_route->InsertPath(replicated_path);
-
-    // Always trigger notification.
-    dest_route->Notify();
-
-    return dest_route;
 }
