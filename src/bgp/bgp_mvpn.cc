@@ -853,10 +853,10 @@ void MvpnManagerPartition::UpdateSecondaryTablesForReplication(
     // Find the table based on the type-3 prefix, which is encoded inside the
     // type4 leaf ad prefix.
     MvpnPrefix spmsi_prefix = mvpn_rt->GetSPMSIPrefix();
-    MvpnState *state = GetState(rt);
-    if (!state || !state->spmsi_rt)
+    const MvpnState *state = GetState(rt);
+    if (!state || !state->spmsi_rt())
         return;
-    secondary_tables.insert(spmsi_rt->get_table_partition()->parent());
+    secondary_tables.insert(state->spmsi_rt()->get_table_partition()->parent());
 }
 
 BgpRoute *MvpnManager::RouteReplicate(BgpServer *server, BgpTable *table,
