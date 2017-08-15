@@ -284,6 +284,8 @@ public:
     const SG &sg() const;
     ErmVpnRoute *global_ermvpn_tree_rt();
     const ErmVpnRoute *global_ermvpn_tree_rt() const;
+    MvpnRoute *spmsi_rt();
+    const MvpnRoute *spmsi_rt() const;
     const RoutesSet &leaf_ad_routes() const;
     RoutesSet *leaf_ad_routes();
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
@@ -297,6 +299,7 @@ private:
 
     SG sg_;
     ErmVpnRoute *global_ermvpn_tree_rt_;
+    MvpnRoute *spmsi_rt_;
     RoutesSet leaf_ad_routes_originated_;
     RoutesSet cjoin_routes_received_;
 

@@ -197,6 +197,14 @@ const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
     return global_ermvpn_tree_rt_;
 }
 
+MvpnRoute *MvpnState::global_ermvpn_tree_rt() {
+    return spmsi_rt_;
+}
+
+const MvpnRoute *MvpnState::global_ermvpn_tree_rt() const {
+    return spmsi_rt_;
+}
+
 const MvpnState::RoutesSet &MvpnState::leaf_ad_routes() const {
     return leaf_ad_routes_originated_;
 }
@@ -693,7 +701,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
                 mvpn_dbstate->route->NotifyOrDelete();
                 mvpn_dbstate->route = NULL;
                 if (state)
-                    state->spmsi_rt = NULL;
+                    state->spmsi_rt_ = NULL;
             }
             join_rt->ClearState(table(), listener_id());
             return true;
@@ -719,7 +727,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         // Originate/Update S-PMSI route towards the receivers.
         if (!mvpn_dbstate->route) {
             mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
-            mvpn_state->spmsi_rt = route;
+            mvpn_state->spmsi_rt_ = route;
             // TODO(Ananth) InsertPath
         } else {
             // TODO(Ananth) For any change in Join routes, do we need to notify
