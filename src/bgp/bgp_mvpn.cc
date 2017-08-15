@@ -561,8 +561,9 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 
     // Process Type7 C-Join route.
     if (route->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
-        if (partition->ProcessType7SourceTreeJoinRoute(route))
-            route->front() ? route->Notify() : route->Delete();
+        if (partition->ProcessType7SourceTreeJoinRoute(route)) {
+            route->NotifyOrDelete();
+        }
         return;
     }
 
@@ -860,11 +861,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     if (!leaf_ad_rt)
         return;
 
-    if (!leaf_ad_rt->front()) {
-        leaf_ad_rt->Delete();
-    } else {
-        leaf_ad_rt->Notify();
-    }
+    leaf_ad_rt->NotifyOrDelete();
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
