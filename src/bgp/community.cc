@@ -496,6 +496,19 @@ ExtCommunityPtr ExtCommunityDB::ReplaceTagListAndLocate(
     return Locate(clone);
 }
 
+ExtCommunityPtr ExtCommunityDB::RemoveSourceASAndLocate(
+        const ExtCommunity *src) {
+    ExtCommunity *clone;
+    if (src) {
+        clone = new ExtCommunity(*src);
+    } else {
+        clone = new ExtCommunity(this);
+    }
+
+    clone->RemoveSourceAS();
+    return Locate(clone);
+}
+
 ExtCommunityPtr ExtCommunityDB::RemoveSiteOfOriginAndLocate(
         const ExtCommunity *src) {
     ExtCommunity *clone;

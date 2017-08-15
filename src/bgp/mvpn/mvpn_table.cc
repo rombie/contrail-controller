@@ -269,7 +269,10 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     if (!source_as_found)
         return NULL;
 
-    // TODO(Ananth) Remove source-as extended community.
+    ExtCommunityPtr comm =
+        server->extcomm_db()->RemoveSourceASAndLocate(attr->ext_community());
+    BgpAttrPtr new_attr = server->attr_db()->ReplaceExtCommunityAndLocate(
+        attr, comm);
 
     // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
     // if the Type-7 prefix.
@@ -277,7 +280,7 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
                       source_as.GetAsn(), src_rt->GetPrefix().group(),
                       src_rt->GetPrefix().source());
     return ReplicatePath(server, prefix, src_table, src_rt, src_path,
-                         community);
+                         community, new_attr);
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
