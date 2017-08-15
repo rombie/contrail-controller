@@ -349,7 +349,6 @@ protected:
     void WaitForAgentToBeEstablished(test::NetworkAgentMock *agent);
     void WaitForPeerToBeEstablished( BgpPeerTest *peer);
     void BgpPeersAdminUpOrDown(bool down);
-    bool AttemptGRHelperMode(BgpPeerTest *peer, int code, int subcode) const;
 
     void SandeshStartup();
     void SandeshShutdown();
@@ -634,9 +633,6 @@ void GracefulRestartTest::Configure() {
         BgpPeerTest *peer = bgp_servers_[0]->FindPeerByUuid(
                                 BgpConfigManager::kMasterInstance, uuid);
         peer->set_id(i-1);
-        peer->attempt_gr_helper_mode_fnc_ =
-            boost::bind(&GracefulRestartTest::AttemptGRHelperMode, this, peer,
-                        _1, _2);
         bgp_server_peers_.push_back(peer);
     }
 }
@@ -688,7 +684,7 @@ string GracefulRestartTest::GetConfig(bool delete_config) {
                    <enable>true</enable>\
                    <restart-time>600</restart-time>\
                    <long-lived-restart-time>60000</long-lived-restart-time>\
-                   <end-of-rib-timeout>120</end-of-rib-timeout>\
+                   <end-of-rib-timeout>10</end-of-rib-timeout>\
                    <bgp-helper-enable>true</bgp-helper-enable>\
                    <xmpp-helper-enable>true</xmpp-helper-enable>\
                </graceful-restart-parameters>\
@@ -1178,14 +1174,6 @@ void GracefulRestartTest::VerifyRoutingInstances(BgpServer *server) {
     TASK_UTIL_EXPECT_NE(static_cast<RoutingInstance *>(NULL),
                         server->routing_instance_mgr()->GetRoutingInstance(
                                BgpConfigManager::kMasterInstance));
-}
-
-bool GracefulRestartTest::AttemptGRHelperMode(BgpPeerTest *peer, int code,
-                                              int subcode) const {
-    if (code == BgpProto::Notification::Cease &&
-            subcode == BgpProto::Notification::AdminShutdown)
-        return true;
-    return peer->AttemptGRHelperModeDefault(code, subcode);
 }
 
 // Invoke stale timer callbacks directly to speed up.

@@ -461,11 +461,24 @@ class EventManager(object):
                 self.curr_build_info = self.new_build_info
         return self.curr_build_info
 
+    def get_corefile_path(self):
+        self.core_file_path = "/var/crashes"
+        cat_command = "cat /proc/sys/kernel/core_pattern"
+        (core_pattern, stderr) = Popen(
+                cat_command.split(),
+                stdout=PIPE, close_fds=True).communicate()
+        if core_pattern is not None:
+            dirname_cmd = "dirname " + core_pattern
+            (self.core_file_path, stderr) = Popen(
+                dirname_cmd.split(),
+                stdout=PIPE, close_fds=True).communicate()
+        return self.core_file_path
+
     def update_process_core_file_list(self):
         #LOG_DEBUG sys.stderr.write('update_process_core_file_list: begin:')
         ret_value = False
         try:
-            ls_command = "ls -1 /var/crashes"
+            ls_command = "ls -1 " + self.get_corefile_path()
             (corenames, stderr) = Popen(
                 ls_command.split(),
                 stdout=PIPE, close_fds=True).communicate()
@@ -542,14 +555,14 @@ class EventManager(object):
     # end send_process_state_db
 
     def update_all_core_file(self):
-        stat_command_option = "stat --printf=%Y /var/crashes"
+        stat_command_option = "stat --printf=%Y " + self.get_corefile_path()
         modified_time = Popen(
             stat_command_option.split(),
             stdout=PIPE, close_fds=True).communicate()
         if modified_time[0] == self.core_dir_modified_time:
             return False
         self.core_dir_modified_time = modified_time[0]
-        ls_command_option = "ls /var/crashes"
+        ls_command_option = "ls " + self.get_corefile_path()
         (corename, stderr) = Popen(
             ls_command_option.split(),
             stdout=PIPE, close_fds=True).communicate()
@@ -585,11 +598,15 @@ class EventManager(object):
             send_uve = True
             proc_stat.stop_time = str(int(time.time() * 1000000))
             proc_stat.last_exit_unexpected = False
+            proc_stat.last_cpu = None
+            proc_stat.last_time = 0
 
         if (pstate == 'PROCESS_STATE_EXITED'):
             proc_stat.exit_count += 1
             send_uve = True
             proc_stat.exit_time = str(int(time.time() * 1000000))
+            proc_stat.last_cpu = None
+            proc_stat.last_time = 0
             if not process_info['expected']:
                 self.stderr.write(
                     pname + " with pid:" + process_info['pid'] +
@@ -597,7 +614,7 @@ class EventManager(object):
                 proc_stat.last_exit_unexpected = True
                 # check for core file for this exit
                 find_command_option = \
-                    "find /var/crashes -name core.[A-Za-z]*." + \
+                    "find " + self.get_corefile_path() + " -name core.[A-Za-z]*." + \
                     process_info['pid'] + "*"
                 self.stderr.write(
                     "find command option for cores:" +
@@ -674,39 +691,44 @@ class EventManager(object):
     # end send_nodemgr_process_status
 
     def send_init_info(self):
-        # system_cpu_info
-        mem_cpu_usage_data = MemCpuUsageData(os.getpid(), self.last_cpu, self.last_time)
-        sys_cpu = SystemCpuInfo()
-        sys_cpu.num_socket = mem_cpu_usage_data.get_num_socket()
-        sys_cpu.num_cpu = mem_cpu_usage_data.get_num_cpu()
-        sys_cpu.num_core_per_socket = mem_cpu_usage_data.get_num_core_per_socket()
-        sys_cpu.num_thread_per_core = mem_cpu_usage_data.get_num_thread_per_core()
+        self.group_names = list(set([pstat.group for pstat in self.process_state_db.values()]))
+        for group in self.group_names:
+            key = next(key for key, pstat in self.process_state_db.items() if pstat.group == group)
+            # system_cpu_info
+            mem_cpu_usage_data = MemCpuUsageData(os.getpid(), self.last_cpu, self.last_time)
+            sys_cpu = SystemCpuInfo()
+            sys_cpu.num_socket = mem_cpu_usage_data.get_num_socket()
+            sys_cpu.num_cpu = mem_cpu_usage_data.get_num_cpu()
+            sys_cpu.num_core_per_socket = mem_cpu_usage_data.get_num_core_per_socket()
+            sys_cpu.num_thread_per_core = mem_cpu_usage_data.get_num_thread_per_core()
 
-        node_status = NodeStatus(
-                        name=socket.gethostname(),
-                        system_cpu_info=sys_cpu,
-                        build_info = self.get_build_info())
+            node_status = NodeStatus(
+                            name=self.process_state_db[key].name,
+                            system_cpu_info=sys_cpu,
+                            build_info = self.get_build_info())
 
-        # installed/running package version
-        installed_package_version = \
-            NodeMgrUtils.get_package_version(self.get_package_name())
-        if installed_package_version is None:
-            sys.stderr.write("Error getting %s package version\n"
+            # installed/running package version
+            installed_package_version = \
+                NodeMgrUtils.get_package_version(self.get_package_name())
+            if installed_package_version is None:
+                sys.stderr.write("Error getting %s package version\n"
                              % (self.get_package_name()))
-            exit(-1)
-        else:
-            self.installed_package_version = installed_package_version
-            node_status.installed_package_version = installed_package_version
-            node_status.running_package_version = installed_package_version
+                exit(-1)
+            else:
+                self.installed_package_version = installed_package_version
+                node_status.installed_package_version = installed_package_version
+                node_status.running_package_version = installed_package_version
 
-        node_status_uve = NodeStatusUVE(table=self.type_info._object_table,
-                                        data=node_status)
-        node_status_uve.send()
+            node_status_uve = NodeStatusUVE(table=self.type_info._object_table,
+                                            data=node_status)
+            node_status_uve.send()
 
-    def get_all_processes_mem_cpu_usage(self):
+    def get_group_processes_mem_cpu_usage(self, group_name):
         process_mem_cpu_usage = {}
         for key in self.process_state_db:
             pstat = self.process_state_db[key]
+            if pstat.group != group_name:
+                continue
             if (pstat.process_state == 'PROCESS_STATE_RUNNING'):
                 try:
                     mem_cpu_usage_data = MemCpuUsageData(pstat.pid, pstat.last_cpu, pstat.last_time)
@@ -850,51 +872,54 @@ class EventManager(object):
 
     def event_tick_60(self):
         self.tick_count += 1
-        # get disk usage info periodically
-        disk_usage_info = self.get_disk_usage()
 
-        # typical ntp sync time is about 5 min - first time,
-        # we scan only after 10 min
-        if self.tick_count >= 10:
-            self.check_ntp_status()
-        if self.update_process_core_file_list():
-            self.send_process_state_db(['default'])
+        for group in self.group_names:
+            key = next(key for key, pstat in self.process_state_db.items() if pstat.group == group)
+            # get disk usage info periodically
+            disk_usage_info = self.get_disk_usage()
 
-        process_mem_cpu_usage = self.get_all_processes_mem_cpu_usage()
+            # typical ntp sync time is about 5 min - first time,
+            # we scan only after 10 min
+            if self.tick_count >= 10:
+                self.check_ntp_status()
+            if self.update_process_core_file_list():
+                self.send_process_state_db(['default'])
 
-        # get system mem/cpu usage
-        system_mem_cpu_usage_data = MemCpuUsageData(os.getpid(), self.last_cpu, self.last_time)
-        system_mem_usage = system_mem_cpu_usage_data.get_sys_mem_info(
-            self.type_info._uve_node_type)
-        system_cpu_usage = system_mem_cpu_usage_data.get_sys_cpu_info(
-            self.type_info._uve_node_type)
+            process_mem_cpu_usage = self.get_group_processes_mem_cpu_usage(group)
 
-        # update last_cpu/time after all processing is complete
-        self.last_cpu = system_mem_cpu_usage_data.last_cpu
-        self.last_time = system_mem_cpu_usage_data.last_time
+            # get system mem/cpu usage
+            system_mem_cpu_usage_data = MemCpuUsageData(os.getpid(), self.last_cpu, self.last_time)
+            system_mem_usage = system_mem_cpu_usage_data.get_sys_mem_info(
+                self.type_info._uve_node_type)
+            system_cpu_usage = system_mem_cpu_usage_data.get_sys_cpu_info(
+                self.type_info._uve_node_type)
 
-        # send above encoded buffer
-        node_status = NodeStatus(name=socket.gethostname(),
-                                 disk_usage_info=disk_usage_info,
-                                 system_mem_usage=system_mem_usage,
-                                 system_cpu_usage=system_cpu_usage,
-                                 process_mem_cpu_usage=process_mem_cpu_usage)
-        # encode other core file
-        if self.update_all_core_file():
-            node_status.all_core_file_list = self.all_core_file_list
+            # update last_cpu/time after all processing is complete
+            self.last_cpu = system_mem_cpu_usage_data.last_cpu
+            self.last_time = system_mem_cpu_usage_data.last_time
 
-        installed_package_version = \
-            NodeMgrUtils.get_package_version(self.get_package_name())
-        if installed_package_version is None:
-            sys.stderr.write("Error getting %s package version\n"
-                             % (self.get_package_name()))
-            installed_package_version = "package-version-unknown"
-        if (installed_package_version != self.installed_package_version):
-            self.installed_package_version = installed_package_version
-            node_status.installed_package_version = installed_package_version
-        node_status_uve = NodeStatusUVE(table=self.type_info._object_table,
-                                        data=node_status)
-        node_status_uve.send()
+            # send above encoded buffer
+            node_status = NodeStatus(name=self.process_state_db[key].name,
+                                     disk_usage_info=disk_usage_info,
+                                     system_mem_usage=system_mem_usage,
+                                     system_cpu_usage=system_cpu_usage,
+                                     process_mem_cpu_usage=process_mem_cpu_usage)
+            # encode other core file
+            if self.update_all_core_file():
+                node_status.all_core_file_list = self.all_core_file_list
+
+            installed_package_version = \
+                NodeMgrUtils.get_package_version(self.get_package_name())
+            if installed_package_version is None:
+                sys.stderr.write("Error getting %s package version\n"
+                                 % (self.get_package_name()))
+                installed_package_version = "package-version-unknown"
+            if (installed_package_version != self.installed_package_version):
+                node_status.installed_package_version = installed_package_version
+            node_status_uve = NodeStatusUVE(table=self.type_info._object_table,
+                                            data=node_status)
+            node_status_uve.send()
+        self.installed_package_version = installed_package_version
 
     def do_periodic_events(self):
         self.event_tick_60()

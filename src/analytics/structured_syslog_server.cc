@@ -9,8 +9,6 @@
 #include <boost/intrusive_ptr.hpp>
 #include <boost/algorithm/string.hpp>
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <sandesh/sandesh_message_builder.h>
 
 #include <base/logging.h>
@@ -393,6 +391,11 @@ void StructuredSyslogDecorate (SyslogParser::syslog_m_t &v, StructuredSyslogConf
             std::string an = SyslogParser::GetMapVals(v, "nested-application", "unknown");
             if (boost::iequals(an, "unknown")) {
                 an = SyslogParser::GetMapVals(v, "application", "unknown");
+            }
+            size_t found = an.find_first_of(':');
+            while (found != string::npos) {
+                an[found] = '/';
+                found = an.find_first_of(':', found+1);
             }
             v.insert(std::pair<std::string, SyslogParser::Holder>("app-category",
             SyslogParser::Holder("app-category", "UNKNOWN")));

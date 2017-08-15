@@ -5,9 +5,6 @@
 #ifndef ctrlplane_misc_utils_h
 #define ctrlplane_misc_utils_h
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh_constants.h>
-#include <sandesh/sandesh.h>
 #include <sandesh/sandesh_trace.h>
 #include <sandesh/common/vns_types.h>
 #include <sandesh/common/vns_constants.h>
@@ -59,12 +56,16 @@ public:
     static void GetHostIp(const std::string name, std::vector<std::string> &ip_list);
     static void LogVersionInfo(const std::string str, Category::type categ);
     static bool GetPlatformInfo(std::string &distro, std::string &code_name);
+    static time_t GetUpTimeSeconds();
+    static time_t set_startup_time_secs();
+
 private:
     static bool GetContrailVersionInfo(BuildModule id, std::string &rpm_version, std::string &build_num);
     static std::string BaseName(std::string filename);
     static bool GetVersionInfoInternal(const std::string &cmd,
                                        std::string &rpm_version,
                                        std::string &build_num);
+    static time_t startup_time_secs_;
 };
 
 #endif // ctrlplane_misc_utils_h 

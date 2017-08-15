@@ -67,12 +67,15 @@ class ComputeArgsParser(object):
             'priority_id': None,
             'priority_scheduling': None,
             'priority_bandwidth': None,
-            'collectors': self.get_config(
-                'GLOBAL', 'analytics_list', ['127.0.0.1']),
-            'control_nodes': self.get_config(
-                'GLOBAL', 'controller_list', ['127.0.0.1']),
+            'tsn_mode': False, 
+            'collectors': self.get_config_list(
+                'GLOBAL', 'analytics_nodes', ['127.0.0.1']),
+            'control_nodes': self.get_config_list(
+                'GLOBAL', 'controller_nodes', ['127.0.0.1']),
             'xmpp_auth_enable': self.get_config(
                 'GLOBAL', 'xmpp_auth_enable', False),
+            'xmpp_dns_auth_enable': self.get_config(
+                'GLOBAL', 'xmpp_dns_auth_enable', False),
             'sandesh_ssl_enable': self.get_config(
                 'GLOBAL', 'sandesh_ssl_enable', False),
             'introspect_ssl_enable': self.get_config(
@@ -106,6 +109,12 @@ class ComputeArgsParser(object):
     def get_config(self, section, option, default):
         if self.config.has_option(section, option):
             return self.evaluate(self.config.get(section, option))
+        else:
+            return default
+
+    def get_config_list(self, section, option, default):
+        if self.config.has_option(section, option):
+            return self.evaluate(self.config.get(section, option)).split(',')
         else:
             return default
 
@@ -241,6 +250,7 @@ class ComputeArgsParser(object):
         parser.add_argument(
                 "--vrouter_module_params", help="vRouter module parameters.")
         parser.add_argument("--sriov", help="sriov configuration")
+        parser.add_argument("--tsn_mode", help="tsn mode",action="store_true") 
         parser.add_argument(
                 "--gateway_server_list", help="Compute's acting as gateway",
                 nargs='+', type=str)
@@ -277,6 +287,9 @@ class ComputeArgsParser(object):
                 help="Metadata Proxy secret from openstack node")
         parser.add_argument(
                 "--xmpp_auth_enable", help="Enable xmpp auth",
+                action="store_true")
+        parser.add_argument(
+                "--xmpp_dns_auth_enable", help="Enable DNS xmpp auth",
                 action="store_true")
         parser.add_argument(
                 "--sandesh_ssl_enable",

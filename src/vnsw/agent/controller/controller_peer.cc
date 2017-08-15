@@ -6,8 +6,6 @@
 #include <base/logging.h>
 #include <base/connection_info.h>
 #include <net/bgp_af.h>
-#include <sandesh/sandesh.h>
-#include <sandesh/sandesh_types.h>
 #include "cmn/agent_cmn.h"
 #include "init/agent_param.h"
 #include "controller/controller_peer.h"
@@ -76,7 +74,8 @@ AgentXmppChannel::AgentXmppChannel(Agent *agent,
                                    const std::string &xmpp_server,
                                    const std::string &label_range,
                                    uint8_t xs_idx)
-    : channel_(NULL), xmpp_server_(xmpp_server), label_range_(label_range),
+    : channel_(NULL), channel_str_(),
+      xmpp_server_(xmpp_server), label_range_(label_range),
       xs_idx_(xs_idx), route_published_time_(0), agent_(agent) {
     bgp_peer_id_.reset();
     end_of_rib_tx_timer_.reset(new EndOfRibTxTimer(agent));
@@ -85,10 +84,17 @@ AgentXmppChannel::AgentXmppChannel(Agent *agent,
 }
 
 AgentXmppChannel::~AgentXmppChannel() {
-    channel_->UnRegisterWriteReady(xmps::BGP);
-    channel_->UnRegisterReceive(xmps::BGP);
     end_of_rib_tx_timer_.reset();
     end_of_rib_rx_timer_.reset();
+}
+
+void AgentXmppChannel::Unregister() {
+    if (bgp_peer_id()) {
+        bgp_peer_id()->StopRouteExports();
+    }
+    channel_->UnRegisterWriteReady(xmps::BGP);
+    channel_->UnRegisterReceive(xmps::BGP);
+    channel_ = NULL;
 }
 
 InetUnicastAgentRouteTable *AgentXmppChannel::PrefixToRouteTable
@@ -113,6 +119,7 @@ void AgentXmppChannel::RegisterXmppChannel(XmppChannel *channel) {
         return;
 
     channel_ = channel;
+    channel_str_ = channel_->ToString();
     channel->RegisterReceive(xmps::BGP,
                               boost::bind(&AgentXmppChannel::ReceiveInternal,
                                           this, _1));
@@ -632,10 +639,11 @@ void AgentXmppChannel::AddEcmpRoute(string vrf_name, IpAddress prefix_addr,
     EcmpLoadBalance ecmp_load_balance;
     GetEcmpHashFieldsToUse(item, ecmp_load_balance);
 
-    PathPreference::Preference preference = PathPreference::LOW;
+    // use LOW PathPreference if local preference attribute is not set
+    uint32_t preference = PathPreference::LOW;
     TunnelType::TypeBmap encap = TunnelType::MplsType(); //default
-    if (item->entry.local_preference == PathPreference::HIGH) {
-        preference = PathPreference::HIGH;
+    if (item->entry.local_preference != 0) {
+        preference = item->entry.local_preference;
     }
     PathPreference rp(item->entry.sequence_number, preference, false, false);
     InetUnicastAgentRouteTable *rt_table = PrefixToRouteTable(vrf_name,
@@ -839,11 +847,10 @@ void AgentXmppChannel::AddEvpnRoute(const std::string &vrf_name,
     uint32_t label = item->entry.next_hops.next_hop[n].label;
     TunnelType::TypeBmap encap = GetEnetTypeBitmap
         (item->entry.next_hops.next_hop[n].tunnel_encapsulation_list);
-    PathPreference::Preference preference = PathPreference::LOW;
-    if (item->entry.local_preference == PathPreference::HIGH) {
-        preference = PathPreference::HIGH;
-    } else if (item->entry.local_preference == PathPreference::HA_STALE) {
-        preference = PathPreference::HA_STALE;
+    // use LOW PathPreference if local preference attribute is not set
+    uint32_t preference = PathPreference::LOW;
+    if (item->entry.local_preference != 0) {
+        preference = item->entry.local_preference;
     }
     PathPreference path_preference(item->entry.sequence_number, preference,
                                    false, false);
@@ -988,9 +995,10 @@ void AgentXmppChannel::AddRemoteRoute(string vrf_name, IpAddress prefix_addr,
         return;
     }
 
-    PathPreference::Preference preference = PathPreference::LOW;
-    if (item->entry.local_preference == PathPreference::HIGH) {
-        preference = PathPreference::HIGH;
+    // use LOW PathPreference if local preference attribute is not set
+    uint32_t preference = PathPreference::LOW;
+    if (item->entry.local_preference != 0) {
+        preference = item->entry.local_preference;
     }
     PathPreference path_preference(item->entry.sequence_number, preference,
                                    false, false);
@@ -1222,7 +1230,7 @@ void AgentXmppChannel::ReceiveInternal(const XmppStanza::XmppMessage *msg) {
 }
 
 std::string AgentXmppChannel::ToString() const {
-    return channel_->ToString();
+    return channel_str_;
 }
 
 void AgentXmppChannel::WriteReadyCb(const boost::system::error_code &ec) {
@@ -2463,6 +2471,15 @@ void AgentXmppChannel::EndOfRibRx() {
 }
 
 void AgentXmppChannel::EndOfRibTx() {
+    //This is a callback from walker for bgp peer.
+    //It may happen that channel went down and stop of this walk was executed.
+    //However stop of the walk is enqueued and by that time, walk done for
+    //previously started walk for this peer gets executed.
+    //This can result in channel_ being NULL on walk done call.
+    if (channel_ == NULL) {
+        return;
+    }
+
     string msg;
     msg += "\n<message from=\"";
     msg += channel_->FromString();

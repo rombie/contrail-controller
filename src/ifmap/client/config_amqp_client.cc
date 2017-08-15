@@ -10,9 +10,6 @@
 #include <SimpleAmqpClient/SimpleAmqpClient.h>
 #include "rapidjson/document.h"
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
-
 #include "base/connection_info.h"
 #include "base/task.h"
 #include "base/string_util.h"
@@ -96,6 +93,11 @@ ConfigAmqpClient::ConfigAmqpClient(ConfigClientManager *mgr, string hostname,
 void ConfigAmqpClient::StartRabbitMQReader() {
     if (disable_)
         return;
+
+    // If reinit is triggerred, Don't start the rabbitmq reader
+    if (config_manager()->is_reinit_triggered())
+        return;
+
     TaskScheduler *scheduler = TaskScheduler::GetInstance();
     Task *task = new RabbitMQReader(this);
     scheduler->Enqueue(task);
@@ -296,6 +298,11 @@ bool ConfigAmqpClient::RabbitMQReader::AckRabbitMessages(
 
 bool ConfigAmqpClient::RabbitMQReader::Run() {
     ConnectToRabbitMQ();
+
+    // If reinit is triggerred, don't wait for end of config trigger
+    // return from here to process reinit
+    if (amqpclient_->config_manager()->is_reinit_triggered())
+        return true;
 
     // To start consuming the message, we should have finised bulk sync
     amqpclient_->config_manager()->WaitForEndOfConfig();

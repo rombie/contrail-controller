@@ -10,8 +10,6 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <sandesh/request_pipeline.h>
 
 #include "base/connection_info.h"
@@ -44,7 +42,7 @@ ConfigCassandraClient::ConfigCassandraClient(ConfigClientManager *mgr,
         : ConfigDbClient(options), mgr_(mgr), evm_(evm), parser_(in_parser),
         num_workers_(num_workers) {
     dbif_.reset(IFMapFactory::Create<cass::cql::CqlIf>(evm, config_db_ips(),
-                    GetFirstConfigDbPort(), "", ""));
+                    GetFirstConfigDbPort(), config_db_user(), config_db_password()));
 
     // Initialized the casssadra connection status;
     cassandra_connection_up_ = false;
@@ -644,7 +642,8 @@ bool ConfigCassandraPartition::ConfigReader() {
         ++itnext;
         ObjectProcessRequestType *obj_req = it->second;
 
-        if (obj_req->oper == "CREATE" || obj_req->oper == "UPDATE") {
+        if (obj_req->oper == "CREATE" || obj_req->oper == "UPDATE" ||
+                obj_req->oper == "UPDATE-IMPLICIT") {
             bunch_req_list.insert(obj_req->uuid);
             bool is_last = (itnext == uuid_read_set_.end());
             if (is_last ||

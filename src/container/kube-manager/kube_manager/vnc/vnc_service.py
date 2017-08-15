@@ -14,13 +14,15 @@ from cfgm_common import importutils
 import link_local_manager as ll_mgr
 from vnc_kubernetes_config import VncKubernetesConfig as vnc_kube_config
 from vnc_common import VncCommon
+from kube_manager.common.utils import get_fip_pool_fq_name_from_dict_string
 
 class VncService(VncCommon):
 
-    def __init__(self):
+    def __init__(self, ingress_mgr):
         self._k8s_event_type = 'Service'
         super(VncService,self).__init__(self._k8s_event_type)
         self._name = type(self).__name__
+        self._ingress_mgr = ingress_mgr
         self._vnc_lib = vnc_kube_config.vnc_lib()
         self._label_cache = vnc_kube_config.label_cache()
         self._args = vnc_kube_config.args()
@@ -86,10 +88,12 @@ class VncService(VncCommon):
     def _get_public_fip_pool(self):
         if self._fip_pool_obj:
             return self._fip_pool_obj
-        fip_pool_fq_name = [vnc_kube_config.cluster_domain(),
-                            self._args.public_network_project,
-                            self._args.public_network,
-                            self._args.public_fip_pool]
+
+        if not vnc_kube_config.is_public_fip_pool_configured():
+            return None
+
+        fip_pool_fq_name = get_fip_pool_fq_name_from_dict_string(
+            self._args.public_fip_pool)
         try:
             fip_pool_obj = self._vnc_lib.floating_ip_pool_read(fq_name=fip_pool_fq_name)
         except NoIdError:
@@ -255,9 +259,8 @@ class VncService(VncCommon):
 
         fip_pool = self._get_public_fip_pool()
         if fip_pool is None:
-            self.logger.warning("public_fip_pool [%s, %s] doesn't exists" %
-                                 (self._args.public_network,
-                                 self._args.public_fip_pool))
+            self.logger.warning("public_fip_pool [%s] doesn't exists" %
+                                 (self._args.public_fip_pool))
             return None
 
         fip_obj = FloatingIp(lb.name + "-externalIP", fip_pool)
@@ -318,14 +321,35 @@ class VncService(VncCommon):
                 # Allocate floating-ip from public-pool, if none exists.
                 # if "loadBalancerIp" if specified in Service definition,
                 # allocate the specific ip.
-                allocated_fip = self._allocate_floating_ip(service_id, loadBalancerIp)
-
-            if allocated_fip:
-                if external_ip != allocated_fip:
-                    # If Service's EXTERNAL-IP is not same as allocated floating-ip,
-                    # update kube-api server with allocated fip as the EXTERNAL-IP
+                if loadBalancerIp:
+                    allocated_fip = self._allocate_floating_ip(service_id, loadBalancerIp)
+                    self._update_service_external_ip(service_namespace, service_name, allocated_fip)
+                elif external_ip:
+                    allocated_fip = self._allocate_floating_ip(service_id, external_ip)
+                else:
+                    allocated_fip = self._allocate_floating_ip(service_id)
                     self._update_service_external_ip(service_namespace, service_name, allocated_fip)
 
+                return
+
+            if allocated_fip:
+                if loadBalancerIp and loadBalancerIp != allocated_fip:
+                    self._deallocate_floating_ip(service_id)
+                    self._allocate_floating_ip(service_id, loadBalancerIp)
+                    self._update_service_external_ip(service_namespace, service_name, loadBalancerIp)
+                    return
+
+                if external_ip and external_ip != allocated_fip:
+                    # If Service's EXTERNAL-IP is not same as allocated floating-ip,
+                    # update kube-api server with allocated fip as the EXTERNAL-IP
+                    self._deallocate_floating_ip(service_id)
+                    self._allocate_floating_ip(service_id, external_ip)
+                    self._update_service_external_ip(service_namespace, service_name, external_ip)
+                    return
+
+                if external_ip is None:
+                    self._update_service_external_ip(service_namespace, service_name, allocated_fip)
+                    return
             return
 
         if service_type in ["ClusterIP"]:
@@ -363,8 +387,10 @@ class VncService(VncCommon):
     def vnc_service_add(self, service_id, service_name,
                         service_namespace, service_ip, selectors, ports,
                         service_type, externalIp, loadBalancerIp):
+        ingress_update = False
         lb = LoadbalancerKM.get(service_id)
         if not lb:
+            ingress_update = True
             self._check_service_uuid_change(service_id, service_name,
                                             service_namespace, ports)
 
@@ -381,6 +407,10 @@ class VncService(VncCommon):
 
         self._update_service_public_ip(service_id, service_name,
                         service_namespace, service_type, externalIp, loadBalancerIp)
+
+        if ingress_update:
+            self._ingress_mgr.update_ingress_backend(
+                service_namespace, service_name, 'ADD')
 
 
     def _vnc_delete_pool(self, pool_id):
@@ -440,6 +470,8 @@ class VncService(VncCommon):
         if service_name == self._kubernetes_service_name:
             self._delete_link_local_service(service_name, service_namespace,
                 ports)
+        self._ingress_mgr.update_ingress_backend(
+            service_namespace, service_name, 'DELETE')
 
     def _create_service_event(self, event_type, service_id, lb):
         event = {}

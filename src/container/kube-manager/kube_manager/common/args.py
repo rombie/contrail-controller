@@ -57,14 +57,12 @@ def parse_args(args_str=None):
         'cassandra_password': None,
         'cassandra_server_list': '',
         'cluster_id': '',
-        'vnc_endpoint_ip': 'localhost',
+        'vnc_endpoint_ip': '[127.0.0.1]',
         'vnc_endpoint_port': ApiServerPort,
         'admin_user' : '',
         'admin_password' : '',
         'admin_tenant' : '',
-        'public_network_project':'default-project',
-        'public_network':'__public__',
-        'public_fip_pool':'__fip_pool_public__',
+        'public_fip_pool': '{}',
     }
 
     k8s_opts = {
@@ -78,14 +76,17 @@ def parse_args(args_str=None):
         'kubernetes_cluster_owner': 'k8s',
         'kubernetes_cluster_domain' : 'default-domain',
         'cluster_name': None,
-        'cluster_project' : None,
+        'cluster_project' : "{}",
         'cluster_network' : None,
     }
 
     sandesh_opts = SandeshConfig.get_default_options()
 
     auth_opts = {
-        'auth_token_url': None
+        'auth_token_url': None,
+        'auth_user': 'admin',
+        'auth_password': 'admin',
+        'auth_tenant': 'admin',
     }
 
     config = ConfigParser.SafeConfigParser()

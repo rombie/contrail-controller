@@ -123,8 +123,11 @@ class DBBaseST(DBBase):
             st_obj.object_uuid = self.obj.uuid
         except AttributeError:
             pass
-        st_obj.obj_refs = [self._get_sandesh_ref_list(field)
-                           for field in self.ref_fields]
+        st_obj.obj_refs = []
+        for field in self.ref_fields:
+            if self._get_sandesh_ref_list(field):
+                st_obj.obj_refs.append(self._get_sandesh_ref_list(field))
+
         st_obj.properties = [sandesh.PropList(field, str(getattr(self, field)))
                              for field in self.prop_fields
                              if hasattr(self, field)]
@@ -135,9 +138,12 @@ class DBBaseST(DBBase):
             ref = getattr(self, ref_type)
             refs = [ref] if ref else []
         except AttributeError:
-            refs = getattr(self, ref_type + 's')
-            if isinstance(refs, dict):
-                refs = refs.keys()
+            try:
+                refs = getattr(self, ref_type + 's')
+                if isinstance(refs, dict):
+                    refs = refs.keys()
+            except AttributeError:
+                return
         return sandesh.RefList(ref_type, refs)
 # end DBBaseST
 
@@ -470,7 +476,7 @@ class VirtualNetworkST(DBBaseST):
         self.update_multiple_refs('virtual_machine_interface', {})
         self.delete_inactive_service_chains(self.service_chains)
         for ri_name in self.routing_instances:
-            RoutingInstanceST.delete(ri_name)
+            RoutingInstanceST.delete(ri_name, True)
         if self.acl:
             self._vnc_lib.access_control_list_delete(id=self.acl.uuid)
         if self.dynamic_acl:
@@ -2473,6 +2479,15 @@ class RoutingInstanceST(DBBaseST):
                 pass
     # end delete_obj
 
+    @classmethod
+    def delete(cls, key, delete_vnc_obj=False):
+        obj = cls.get(key)
+        if obj is None:
+            return
+        if obj.is_default or delete_vnc_obj:
+            obj.delete_obj()
+            del cls._dict[key]
+
     def handle_st_object_req(self):
         resp = super(RoutingInstanceST, self).handle_st_object_req()
         resp.obj_refs = [
@@ -2914,10 +2929,10 @@ class ServiceChain(DBBaseST):
         for service in self.service_list:
             if vn1_obj:
                 service_name1 = vn1_obj.get_service_name(self.name, service)
-                RoutingInstanceST.delete(service_name1)
+                RoutingInstanceST.delete(service_name1, True)
             if vn2_obj:
                 service_name2 = vn2_obj.get_service_name(self.name, service)
-                RoutingInstanceST.delete(service_name2)
+                RoutingInstanceST.delete(service_name2, True)
         # end for service
     # end destroy
 

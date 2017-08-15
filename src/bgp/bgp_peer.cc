@@ -32,6 +32,8 @@
 #include "bgp/routing-instance/peer_manager.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/rtarget/rtarget_table.h"
+#include "control-node/control_node.h"
+#include "ifmap/client/config_client_manager.h"
 
 using boost::assign::list_of;
 using boost::assign::map_list_of;
@@ -222,12 +224,13 @@ RibExportPolicy BgpPeer::BuildRibExportPolicy(Address::Family family) const {
     if (!family_attributes ||
         family_attributes->gateway_address.is_unspecified()) {
         policy = RibExportPolicy(peer_type_, RibExportPolicy::BGP, peer_as_,
-            as_override_, peer_close_->IsCloseLongLivedGraceful(), -1, 0);
+            as_override_, peer_close_->IsCloseLongLivedGraceful(),
+            -1, cluster_id_);
     } else {
         IpAddress nexthop = family_attributes->gateway_address;
         policy = RibExportPolicy(peer_type_, RibExportPolicy::BGP, peer_as_,
             as_override_, peer_close_->IsCloseLongLivedGraceful(), nexthop,
-            -1, 0);
+            -1, cluster_id_);
     }
 
     if (private_as_action_ == "remove") {
@@ -280,13 +283,8 @@ uint32_t BgpPeer::GetOutputQueueDepth(Address::Family family) const {
     return server_->membership_mgr()->GetRibOutQueueDepth(this, table);
 }
 
-uint64_t BgpPeer::GetEorSendTimerElapsedTimeUsecs() const {
-    return UTCTimestampUsec() - eor_send_timer_start_time_;
-}
-
-// For RTargets, send eor right away.
-uint32_t BgpPeer::GetEndOfRibSendTime(Address::Family family) const {
-    return family == Address::RTARGET ? 0 : server_->GetEndOfRibSendTime();
+time_t BgpPeer::GetEorSendTimerElapsedTime() const {
+    return UTCTimestamp() - eor_send_timer_start_time_;
 }
 
 uint32_t BgpPeer::GetEndOfRibReceiveTime(Address::Family family) const {
@@ -294,41 +292,95 @@ uint32_t BgpPeer::GetEndOfRibReceiveTime(Address::Family family) const {
         kRouteTargetEndOfRibTimeSecs : server_->GetEndOfRibReceiveTime();
 }
 
+bool BgpPeer::IsServerStartingUp() const {
+    return server_->IsServerStartingUp();
+}
+
+time_t BgpPeer::GetRTargetTableLastUpdatedTimeStamp() const {
+    return server_->GetRTargetTableLastUpdatedTimeStamp();
+}
+
 bool BgpPeer::EndOfRibSendTimerExpired(Address::Family family) {
     if (!IsReady())
         return false;
 
-    // Retry if wait time has not exceeded the max (10 times configured) and
-    // the output queue has not been fully drained yet.
-    if (GetEorSendTimerElapsedTimeUsecs() <
-            GetEndOfRibSendTime(family) * 1000000 * 10) {
-        uint32_t output_depth = GetOutputQueueDepth(family);
-        if (output_depth) {
-            eor_send_timer_[family]->Reschedule(kEndOfRibSendRetryTimeMsecs);
-            BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
-                    BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
-                    "EndOfRib Send Timer rescheduled for family " <<
-                    Address::FamilyToString(family) << " to fire after " <<
-                    kEndOfRibSendRetryTimeMsecs/1000 << " seconds " <<
-                    "due to non-empty output queue (" << output_depth << ")");
-            return true;
-        }
+    // Send EoR if wait time has exceeded the configured maximum.
+    if (GetEorSendTimerElapsedTime() >= server_->GetEndOfRibSendTime()) {
+        SendEndOfRIBActual(family);
+        return false;
     }
 
+    // Defer if output queue has not been fully drained yet.
+    uint32_t output_depth = GetOutputQueueDepth(family);
+    if (output_depth) {
+        eor_send_timer_[family]->Reschedule(kEndOfRibSendRetryTime * 1000);
+        BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
+                BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
+                "EndOfRib Send Timer rescheduled for family " <<
+                Address::FamilyToString(family) << " to fire after " <<
+                kEndOfRibSendRetryTime << " second(s) " <<
+                "due to non-empty output queue (" << output_depth << ")");
+        return true;
+    }
+
+    // Send EoR if we are not still under [re-]starting phase.
+    if (!IsServerStartingUp()) {
+        SendEndOfRIBActual(family);
+        return false;
+    }
+
+    // Defer if configuration processing is not complete yet.
+    if (!ConfigClientManager::end_of_rib_computed()) {
+        eor_send_timer_[family]->Reschedule(kEndOfRibSendRetryTime * 1000);
+        BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
+                BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
+                "EndOfRib Send Timer rescheduled for family " <<
+                Address::FamilyToString(family) << " to fire after " <<
+                kEndOfRibSendRetryTime << " second(s) " <<
+                "as bgp (under restart) has not completed initial configuration"
+                " processing");
+        return true;
+    }
+
+    // For all families except route-target, wait for a certain amount of time
+    // before sending eor as bgp is still in [re-]starting phase (60s).
+    if (family != Address::RTARGET) {
+        eor_send_timer_[family]->Reschedule(kEndOfRibSendRetryTime * 1000);
+        BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
+                BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
+                "EndOfRib Send Timer rescheduled for family " <<
+                Address::FamilyToString(family) << " to fire after " <<
+                kEndOfRibSendRetryTime << " second(s) " <<
+                "as bgp is still under [re-]starting phase");
+        return true;
+    }
+
+    // Defer EoR if any new route-target was added to the table recently (6s).
+    if (UTCTimestamp() - GetRTargetTableLastUpdatedTimeStamp() <
+            0.02 * server_->GetEndOfRibSendTime()) {
+        eor_send_timer_[family]->Reschedule(kEndOfRibSendRetryTime * 1000);
+        BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
+                BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
+                "EndOfRib Send Timer rescheduled for family " <<
+                Address::FamilyToString(family) << " to fire after " <<
+                kEndOfRibSendRetryTime << " second(s) " <<
+                "as new route-targets are still being added to the table");
+        return true;
+    }
+
+    // Send eor as [re-]starting phase is complete for this family.
     SendEndOfRIBActual(family);
     return false;
 }
 
 void BgpPeer::SendEndOfRIB(Address::Family family) {
-    uint32_t timeout = GetEndOfRibSendTime(family);
-
-    eor_send_timer_start_time_ = UTCTimestampUsec();
+    eor_send_timer_start_time_ = UTCTimestamp();
     BGP_LOG_PEER(Message, this, SandeshLevel::SYS_INFO,
         BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
         "EndOfRib Send Timer scheduled for family " <<
         Address::FamilyToString(family) <<
-        " to fire after " << timeout * 1000 << " milliseconds");
-    eor_send_timer_[family]->Start(timeout * 1000,
+        " to fire after " << kEndOfRibSendRetryTime  << " second(s)");
+    eor_send_timer_[family]->Start(kEndOfRibSendRetryTime * 1000,
         boost::bind(&BgpPeer::EndOfRibSendTimerExpired, this, family),
         boost::bind(&BgpPeer::EndOfRibTimerErrorHandler, this, _1, _2));
 }
@@ -398,7 +450,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           trigger_(boost::bind(&BgpPeer::ResumeClose, this),
                    TaskScheduler::GetInstance()->GetTaskId("bgp::StateMachine"),
                    GetTaskInstance()),
-          buffer_len_(0),
+          buffer_capacity_(GetBufferCapacity()),
           session_(NULL),
           keepalive_timer_(TimerManager::CreateTimer(*server->ioservice(),
                      "BGP keepalive timer",
@@ -410,6 +462,8 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           passive_(config->passive()),
           resolve_paths_(config->router_type() == "bgpaas-client"),
           as_override_(config->as_override()),
+          cluster_id_(config->cluster_id()),
+          origin_override_(config->origin_override()),
           defer_close_(false),
           graceful_close_(true),
           vpn_tables_registered_(false),
@@ -429,6 +483,7 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           total_flap_count_(0),
           last_flap_(0),
           inuse_authkey_type_(AuthenticationData::NIL) {
+    buffer_.reserve(buffer_capacity_);
     close_manager_.reset(
         BgpObjectFactory::Create<PeerCloseManager>(peer_close_.get()));
     ostringstream oss1;
@@ -480,7 +535,8 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     total_path_count_ = 0;
     primary_path_count_ = 0;
 
-    if (resolve_paths_) {
+    // Check rtinstance_ to accommodate unit tests.
+    if (resolve_paths_ && rtinstance_) {
         rtinstance_->GetTable(Address::INET)->LocatePathResolver();
         rtinstance_->GetTable(Address::INET6)->LocatePathResolver();
     }
@@ -494,7 +550,15 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
     peer_info.set_admin_down(admin_down_);
     peer_info.set_passive(passive_);
     peer_info.set_as_override(as_override_);
+    peer_info.set_origin_override(origin_override_.origin_override);
+    if (origin_override_.origin_override) {
+        peer_info.set_route_origin(
+            BgpAttr::OriginToString(origin_override_.origin));
+    } else {
+        peer_info.set_route_origin("-");
+    }
     peer_info.set_router_type(router_type_);
+    peer_info.set_cluster_id(Ip4Address(cluster_id_).to_string());
     peer_info.set_peer_type(
         PeerType() == BgpProto::IBGP ? "internal" : "external");
     peer_info.set_local_asn(local_as_);
@@ -535,6 +599,26 @@ BgpPeer::~BgpPeer() {
 void BgpPeer::Initialize() {
     if (!admin_down_)
         state_machine_->Initialize();
+}
+
+size_t BgpPeer::GetBufferCapacity() const {
+    // For testing only - configure through environment variable.
+    char *buffer_capacity_str = getenv("BGP_PEER_BUFFER_SIZE");
+    if (buffer_capacity_str) {
+        size_t env_buffer_capacity = strtoul(buffer_capacity_str, NULL, 0);
+        if (env_buffer_capacity < kMinBufferCapacity)
+            env_buffer_capacity = kMinBufferCapacity;
+        if (env_buffer_capacity > kMaxBufferCapacity)
+            env_buffer_capacity = kMaxBufferCapacity;
+        return env_buffer_capacity;
+    }
+
+    // Return internal default based on peer router-type.
+    if (router_type_ == "bgpaas-client") {
+        return kMinBufferCapacity;
+    } else {
+        return kMaxBufferCapacity;
+    }
 }
 
 void BgpPeer::NotifyEstablished(bool established) {
@@ -726,6 +810,24 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
         clear_session = true;
     }
 
+    if (cluster_id_ != config->cluster_id()) {
+        cluster_id_ = config->cluster_id();
+        peer_info.set_cluster_id(Ip4Address(cluster_id_).to_string());
+        clear_session = true;
+    }
+
+    OriginOverride origin_override(config->origin_override());
+    if (origin_override_ != origin_override) {
+        origin_override_ = origin_override;
+        peer_info.set_origin_override(origin_override_.origin_override);
+        if (origin_override_.origin_override) {
+            peer_info.set_route_origin(config->origin_override().origin);
+        } else {
+            peer_info.set_route_origin("-");
+        }
+        clear_session = true;
+    }
+
     if (router_type_ != config->router_type()) {
         router_type_ = config->router_type();
         peer_info.set_router_type(router_type_);
@@ -912,7 +1014,6 @@ string BgpPeer::gateway_address_string(Address::Family family) const {
 // Reset all stored capabilities information and cancel outstanding timers.
 //
 void BgpPeer::CustomClose() {
-    negotiated_families_.clear();
     ResetCapabilities();
     keepalive_timer_->Cancel();
 
@@ -1013,11 +1114,11 @@ BgpSession *BgpPeer::CreateSession() {
     return bgp_session;
 }
 
-void BgpPeer::SetAdminState(bool down) {
+void BgpPeer::SetAdminState(bool down, int subcode) {
     if (admin_down_ == down)
         return;
     admin_down_ = down;
-    state_machine_->SetAdminState(down);
+    state_machine_->SetAdminState(down, subcode);
     if (admin_down_) {
         BGP_LOG_PEER(Config, this, SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
                      BGP_PEER_DIR_NA, "Session cleared due to admin down");
@@ -1227,39 +1328,56 @@ static bool SkipUpdateSend() {
     return skip_;
 }
 
+BgpPeer::OriginOverride::OriginOverride(
+                const BgpNeighborConfig::OriginOverrideConfig &config)
+        : origin_override(config.origin_override),
+        origin(BgpAttr::OriginFromString(config.origin)) {
+}
+
+bool BgpPeer::OriginOverride::operator!=(const OriginOverride &rhs) const {
+    if (origin_override != rhs.origin_override) {
+        return true;
+    }
+
+    // compare origin only if override is set
+    if (origin_override && origin != rhs.origin) {
+        return true;
+    }
+    return false;
+}
+
 //
 // Accumulate the message in the update buffer.
 // Flush the existing buffer if the message can't fit.
-// Note that FlushUpdateUnlocked resets buffer_len_ to 0.
+// Note that FlushUpdateUnlocked clears the buffer.
 //
 bool BgpPeer::SendUpdate(const uint8_t *msg, size_t msgsize,
     const string *msg_str) {
     tbb::spin_mutex::scoped_lock lock(spin_mutex_);
     bool send_ready = true;
-    if (buffer_len_ + msgsize > kBufferSize) {
+    if (buffer_.size() + msgsize > buffer_capacity_) {
         send_ready = FlushUpdateUnlocked();
-        assert(buffer_len_ == 0);
+        assert(buffer_.empty());
     }
-    copy(msg, msg + msgsize, buffer_ + buffer_len_);
-    buffer_len_ += msgsize;
+    buffer_.insert(buffer_.end(), msg, msg + msgsize);
     inc_tx_update();
     return send_ready;
 }
 
 bool BgpPeer::FlushUpdateUnlocked() {
     // Bail if the update buffer is empty.
-    if (buffer_len_ == 0)
+    if (buffer_.empty())
         return true;
 
     // Bail if there's no session for the peer anymore.
     if (!session_) {
-        buffer_len_ = 0;
+        buffer_.clear();
         return true;
     }
 
     if (!SkipUpdateSend()) {
-        send_ready_ = session_->Send(buffer_, buffer_len_, NULL);
-        buffer_len_ = 0;
+        send_ready_ = session_->Send(buffer_.data(), buffer_.size(), NULL);
+        buffer_.clear();
         if (send_ready_) {
             StartKeepaliveTimerUnlocked();
         } else {
@@ -1287,6 +1405,9 @@ bool BgpPeer::notification() const {
 
 // Check if GR Helper mode sould be attempted.
 bool BgpPeer::AttemptGRHelperMode(int code, int subcode) const {
+    if (!code)
+        return true;
+
     if (code == BgpProto::Notification::Cease &&
             (subcode == BgpProto::Notification::HardReset ||
              subcode == BgpProto::Notification::PeerDeconfigured)) {
@@ -1440,6 +1561,12 @@ uint32_t BgpPeer::GetPathFlags(Address::Family family,
         flags |= BgpPath::OriginatorIdLooped;
     }
 
+    // Check for ClusterList loop in case we are an RR.
+    if (cluster_id_ && attr->cluster_list() &&
+        attr->cluster_list()->cluster_list().ClusterListLoop(cluster_id_)) {
+        flags |= BgpPath::ClusterListLooped;
+    }
+
     if (!attr->as_path())
         return flags;
 
@@ -1479,6 +1606,12 @@ void BgpPeer::ProcessUpdate(const BgpProto::Update *msg, size_t msgsize) {
     if (local_pref) {
         attr = server_->attr_db()->ReplaceLocalPreferenceAndLocate(attr.get(),
             local_pref);
+    }
+
+    // Check if peer is marked to override the route origin attribute
+    if (origin_override_.origin_override) {
+        attr = server_->attr_db()->ReplaceOriginAndLocate(attr.get(),
+                                                       origin_override_.origin);
     }
 
     uint32_t reach_count = 0, unreach_count = 0;
@@ -1657,7 +1790,7 @@ void BgpPeer::StartEndOfRibReceiveTimer(Address::Family family) {
         BGP_LOG_FLAG_SYSLOG, BGP_PEER_DIR_OUT,
         "EndOfRib Receive Timer scheduled for family " <<
         Address::FamilyToString(family) <<
-        " to fire after " << timeout * 1000 << " milliseconds");
+        " to fire after " << timeout  << " second(s)");
     eor_receive_timer_[family]->Start(timeout * 1000,
         boost::bind(&BgpPeer::EndOfRibReceiveTimerExpired, this, family),
         boost::bind(&BgpPeer::EndOfRibTimerErrorHandler, this, _1, _2));
@@ -2008,6 +2141,12 @@ void BgpPeer::FillNeighborInfo(const BgpSandeshContext *bsc,
     bnr->set_admin_down(admin_down_);
     bnr->set_passive(passive_);
     bnr->set_as_override(as_override_);
+    bnr->set_origin_override(origin_override_.origin_override);
+    if (origin_override_.origin_override) {
+        bnr->set_route_origin(BgpAttr::OriginToString(origin_override_.origin));
+    } else {
+        bnr->set_route_origin("-");
+    }
     bnr->set_private_as_action(private_as_action_);
     bnr->set_peer_address(peer_address_string());
     bnr->set_peer_id(bgp_identifier_string());
@@ -2021,6 +2160,7 @@ void BgpPeer::FillNeighborInfo(const BgpSandeshContext *bsc,
     bnr->set_local_address(server_->ToString());
     bnr->set_local_id(Ip4Address(ntohl(local_bgp_id_)).to_string());
     bnr->set_local_asn(local_as());
+    bnr->set_cluster_id(Ip4Address(cluster_id_).to_string());
     bnr->set_negotiated_hold_time(state_machine_->hold_time());
     bnr->set_primary_path_count(GetPrimaryPathCount());
     bnr->set_task_instance(GetTaskInstance());

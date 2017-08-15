@@ -4,9 +4,11 @@
 
 #include "bgp/bgp_server.h"
 
+#include <boost/foreach.hpp>
 #include <boost/tuple/tuple.hpp>
 
 #include "base/connection_info.h"
+#include "base/misc_utils.h"
 #include "base/task_annotations.h"
 #include "bgp/bgp_condition_listener.h"
 #include "bgp/bgp_factory.h"
@@ -15,6 +17,7 @@
 #include "bgp/bgp_membership.h"
 #include "bgp/bgp_peer.h"
 #include "bgp/bgp_ribout_updates.h"
+#include "bgp/rtarget/rtarget_table.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/bgp_update_sender.h"
 #include "bgp/peer_stats.h"
@@ -26,7 +29,6 @@
 #include "bgp/routing-instance/rtarget_group_mgr.h"
 #include "bgp/routing-policy/routing_policy.h"
 
-#include "sandesh/sandesh.h"
 #include "control-node/sandesh/control_node_types.h"
 
 using boost::system::error_code;
@@ -36,6 +38,7 @@ using std::boolalpha;
 using std::make_pair;
 using std::map;
 using std::noboolalpha;
+using std::sort;
 using std::string;
 
 // The ConfigUpdater serves as glue between the BgpConfigManager and the
@@ -562,6 +565,10 @@ uint32_t BgpServer::GetEndOfRibSendTime() const {
     return global_config_->end_of_rib_timeout();
 }
 
+bool BgpServer::IsServerStartingUp() const {
+    return MiscUtils::GetUpTimeSeconds() < 0.20 * GetEndOfRibSendTime();
+}
+
 bool BgpServer::IsGRHelperModeEnabled() const {
 
     // Check if disabled in .conf file.
@@ -989,5 +996,42 @@ bool BgpServer::CollectStats(BgpRouterState *state, bool first) const {
         change = true;
     }
 
+    vector<string> bgp_config_peer_list;
+    BOOST_FOREACH(BgpConfigManager::NeighborMap::value_type value,
+        config_mgr_->NeighborMapItems(BgpConfigManager::kMasterInstance)) {
+        const BgpNeighborConfig *neighbor = value.second;
+        string name(BgpConfigManager::kMasterInstance);
+        name += ":";
+        name += localname();
+        name += ":";
+        name += neighbor->name();
+        bgp_config_peer_list.push_back(name);
+    }
+    sort(bgp_config_peer_list.begin(), bgp_config_peer_list.end());
+    if (first || bgp_config_peer_list != state->get_bgp_config_peer_list()) {
+        state->set_bgp_config_peer_list(bgp_config_peer_list);
+        change = true;
+    }
+
+    vector<string> bgp_oper_peer_list;
+    const RoutingInstance *rtinstance = inst_mgr_->GetDefaultRoutingInstance();
+    const PeerManager *peer_manager = rtinstance->peer_manager();
+    for (const BgpPeer *peer = peer_manager->NextPeer(BgpPeerKey());
+        peer != NULL; peer = peer_manager->NextPeer(peer->peer_key())) {
+        bgp_oper_peer_list.push_back(peer->ToUVEKey());
+    }
+    sort(bgp_oper_peer_list.begin(), bgp_oper_peer_list.end());
+    if (first || bgp_oper_peer_list != state->get_bgp_oper_peer_list()) {
+        state->set_bgp_oper_peer_list(bgp_oper_peer_list);
+        change = true;
+    }
+
     return change;
+}
+
+time_t BgpServer::GetRTargetTableLastUpdatedTimeStamp() const {
+    const RoutingInstanceMgr *ri_mgr = routing_instance_mgr();
+    const RTargetTable *rtarget_table = dynamic_cast<const RTargetTable *>(
+            ri_mgr->GetDefaultRoutingInstance()->GetTable(Address::RTARGET));
+    return rtarget_table->last_updated();
 }

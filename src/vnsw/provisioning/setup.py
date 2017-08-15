@@ -17,7 +17,10 @@ setuptools.setup(
     long_description="Contrail compute provisioning module",
     entry_points={
         'console_scripts': [
-            'contrail-compute-setup = contrail_vrouter_provisioning.setup:main'
+            'contrail-compute-setup = contrail_vrouter_provisioning.setup:main',
+            'contrail-toragent-setup = contrail_vrouter_provisioning.toragent.setup:main',
+            'contrail-toragent-cleanup = contrail_vrouter_provisioning.toragent.cleanup:main',
+            'contrail-compute-upgrade = contrail_vrouter_provisioning.upgrade:main'
             ],
     },
 )

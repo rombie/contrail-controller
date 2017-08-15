@@ -4,8 +4,6 @@
 #include "config_client_manager.h"
 
 #include <boost/assign/list_of.hpp>
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <sandesh/request_pipeline.h>
 
 #include "base/connection_info.h"
@@ -30,6 +28,7 @@ using namespace boost::assign;
 using namespace std;
 
 const set<string> ConfigClientManager::skip_properties = list_of("perms2");
+bool ConfigClientManager::end_of_rib_computed_;
 
 int ConfigClientManager::GetNumConfigReader() {
     static bool init_ = false;
@@ -81,7 +80,7 @@ void ConfigClientManager::SetUp() {
     bgp_schema_Server_GenerateObjectTypeList(&obj_type_to_read_);
     vnc_cfg_Server_GenerateObjectTypeList(&obj_type_to_read_);
 
-    // Init/Reinit task trigger runs in the context of "cassandra::init" task
+    // Init/Reinit task trigger runs in the context of "cassandra::Init" task
     // This task is mutually exclusive to amqp reader task, config reader tasks
     // (both FQName reader or Object UUID table reader) and object processing
     // work queue task
@@ -97,7 +96,7 @@ void ConfigClientManager::SetUp() {
     // cassandra cluster.
     init_trigger_.reset(new
          TaskTrigger(boost::bind(&ConfigClientManager::InitConfigClient, this),
-         TaskScheduler::GetInstance()->GetTaskId("cassandra::init"), 0));
+         TaskScheduler::GetInstance()->GetTaskId("cassandra::Init"), 0));
 
     reinit_triggered_ = false;
 }
@@ -105,18 +104,19 @@ void ConfigClientManager::SetUp() {
 ConfigClientManager::ConfigClientManager(EventManager *evm,
         IFMapServer *ifmap_server, string hostname, string module_name,
         const IFMapConfigOptions& config_options, bool end_of_rib_computed)
-    : end_of_rib_computed_(end_of_rib_computed), evm_(evm),
-    ifmap_server_(ifmap_server), hostname_(hostname), module_name_(module_name),
-    config_options_(config_options) {
+    : evm_(evm), ifmap_server_(ifmap_server), hostname_(hostname),
+      module_name_(module_name), config_options_(config_options) {
+    end_of_rib_computed_ = end_of_rib_computed;
     SetUp();
 }
 
 ConfigClientManager::ConfigClientManager(EventManager *evm,
         IFMapServer *ifmap_server, string hostname, string module_name,
         const IFMapConfigOptions& config_options)
-    : end_of_rib_computed_(false), evm_(evm), ifmap_server_(ifmap_server),
+    : evm_(evm), ifmap_server_(ifmap_server),
     hostname_(hostname), module_name_(module_name),
     config_options_(config_options) {
+    end_of_rib_computed_ = false;
     SetUp();
 }
 
@@ -304,7 +304,7 @@ void ConfigClientManager::PostShutdown() {
 
 bool ConfigClientManager::InitConfigClient() {
     if (is_reinit_triggered()) {
-        // "cassandra::init" task is mutually exclusive to
+        // "cassandra::Init" task is mutually exclusive to
         // 1. FQName reader task
         // 2. Object UUID Table reader task
         // 3. AMQP reader task
@@ -318,6 +318,7 @@ bool ConfigClientManager::InitConfigClient() {
     // Common code path for both init/reinit
     config_db_client_->InitDatabase();
     config_amqp_client_->StartRabbitMQReader();
+    if (is_reinit_triggered()) return false;
     return true;
 }
 

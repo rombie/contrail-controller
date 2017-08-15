@@ -21,8 +21,6 @@
 #include <oper/mpls.h>
 #include <oper/route_common.h>
 #include <oper/multicast.h>
-#include <sandesh/sandesh.h>
-#include <sandesh/sandesh_types.h>
 #include <sandesh/sandesh_trace.h>
 #include <sandesh/common/vns_constants.h>
 #include <resource_manager/resource_manager.h>
@@ -31,9 +29,6 @@
 
 using namespace std;
 using namespace boost::asio;
-
-SandeshTraceBufferPtr AgentDBwalkTraceBuf(SandeshTraceBufferCreate(
-    AGENT_DBWALK_TRACE_BUF, 1000));
 
 class AgentRouteTable::DeleteActor : public LifetimeActor {
   public:
@@ -152,9 +147,11 @@ bool AgentRouteTable::DeleteAllBgpPath(DBTablePartBase *part,
     return true;
 }
 
-void AgentRouteTable::DeleteRouteDone(DBTableBase *base, 
+void AgentRouteTable::DeleteRouteDone(DBTable::DBTableWalkRef walk_ref,
+                                      DBTableBase *base,
                                       RouteTableWalkerState *state) {
     LOG(DEBUG, "Deleted all BGP injected routes for " << base->name());
+    ReleaseWalker(walk_ref);
     delete state;
 }
 
@@ -478,11 +475,14 @@ LifetimeActor *AgentRouteTable::deleter() {
 
 //Delete all the routes
 void AgentRouteTable::ManagedDelete() {
-    DBTableWalker *walker = agent_->db()->GetWalker();
     RouteTableWalkerState *state = new RouteTableWalkerState(deleter());
-    walker->WalkTable(this, NULL, 
+    DBTable::DBTableWalkRef walk_ref = AllocWalker(
          boost::bind(&AgentRouteTable::DelExplicitRouteWalkerCb, this, _1, _2),
-         boost::bind(&AgentRouteTable::DeleteRouteDone, this, _1, state));
+         boost::bind(&AgentRouteTable::DeleteRouteDone, this, _1, _2, state));
+    //On managed delete, walk to delete paths need to be done once as no route
+    //should be added in deleted vrf.
+    //Once the walk is over walkdone will reset walk_ref.
+    WalkTable(walk_ref);
     deleter_->Delete();
 }
 

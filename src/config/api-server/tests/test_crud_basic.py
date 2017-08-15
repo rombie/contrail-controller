@@ -442,8 +442,7 @@ class TestCrud(test_case.ApiServerTestCase):
 
         phy_rout_obj = self._vnc_lib.physical_router_read(id=phy_rout.uuid)
         user_cred_read = phy_rout_obj.get_physical_router_user_credentials()
-        if user_cred_read.password != '**Password Hidden**':
-            raise Exception("ERROR: physical-router: password should be hidden")
+        self.assertEqual(user_cred_read.password, '**Password Hidden**')
        # end test_physical_router_credentials
 
     def test_physical_router_w_no_user_credentials(self):
@@ -685,10 +684,257 @@ class TestCrud(test_case.ApiServerTestCase):
         # updating a port with allowed address pair should throw an exception
         # when port security enabled is set to false
         port_obj.virtual_machine_interface_allowed_address_pairs = addr_pair
-        with ExpectedException(RefsExistError) as e:
+        with ExpectedException(BadRequest) as e:
             self._vnc_lib.virtual_machine_interface_update(port_obj)
     # end test_port_security_and_allowed_address_pairs
+
+    def test_physical_router_credentials_list(self):
+        phy_rout_name = self.id() + '-phy-router-1'
+        phy_rout_name_2 = self.id() + '-phy-router-2'
+        user_cred_create = UserCredentials(username="test_user",
+                                           password="test_pswd")
+        user_cred_create_2 = UserCredentials(username="test_user_2",
+                                             password="test_pswd_2")
+
+        phy_rout = PhysicalRouter(phy_rout_name,
+                           physical_router_user_credentials=user_cred_create)
+        self._vnc_lib.physical_router_create(phy_rout)
+
+        phy_rout_2 = PhysicalRouter(phy_rout_name_2,
+                           physical_router_user_credentials=user_cred_create_2)
+        self._vnc_lib.physical_router_create(phy_rout_2)
+
+        obj_uuids = []
+        obj_uuids.append(phy_rout.uuid)
+        obj_uuids.append(phy_rout_2.uuid)
+
+        phy_rtr_list = self._vnc_lib.physical_routers_list(obj_uuids=obj_uuids,
+                                                           detail=True)
+        for rtr in phy_rtr_list:
+            user_cred_read = rtr.get_physical_router_user_credentials()
+            self.assertEqual(user_cred_read.password, '**Password Hidden**')
+       # end test_physical_router_credentials
 # end class TestCrud
+
+class TestFw(test_case.ApiServerTestCase):
+    @classmethod
+    def setUpClass(cls, *args, **kwargs):
+        cls.console_handler = logging.StreamHandler()
+        cls.console_handler.setLevel(logging.DEBUG)
+        logger.addHandler(cls.console_handler)
+        super(TestFw, cls).setUpClass(*args, **kwargs)
+    # end setUpClass
+
+    @classmethod
+    def tearDownClass(cls, *args, **kwargs):
+        logger.removeHandler(cls.console_handler)
+        super(TestFw, cls).tearDownClass(*args, **kwargs)
+    # end tearDownClass
+
+    def test_tag_basic_sanity(self):
+        pobj = vnc_api.Project('proj-%s' %(self.id()))
+        self._vnc_lib.project_create(pobj)
+
+        tag_obj = Tag(parent_obj=pobj)
+
+        # tag type must be valid
+        tag_obj.set_tag_type('Foobar')
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.tag_create(tag_obj)
+
+        # tag type and value both are required
+        tag_obj.set_tag_type('application')
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.tag_create(tag_obj)
+
+        # tag ID isn't settable by user
+        tag_obj.set_tag_id(0x12345678)
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.tag_create(tag_obj)
+
+        # create a valid project scoped tag
+        tag_obj = Tag(tag_type='application', tag_value='MyTestApp', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag_obj)
+        tag_obj = self._vnc_lib.tag_read(id=tag_obj.uuid)
+        time.sleep(5)
+
+        # create a valid global tag
+        gtag_obj = Tag(tag_type='application', tag_value='MyTestApp')
+        self._vnc_lib.tag_create(gtag_obj)
+        gtag_obj = self._vnc_lib.tag_read(id=gtag_obj.uuid)
+        time.sleep(5)
+
+        # create a VN and attach project and global tag
+        vn_obj = VirtualNetwork('vn-%s' %(self.id()), parent_obj=pobj)
+        self._vnc_lib.virtual_network_create(vn_obj)
+        self._vnc_lib.set_tag(vn_obj, 'application', 'MyTestApp')
+        self._vnc_lib.set_tag(vn_obj, 'application', 'global:MyTestApp')
+
+        # validate vn->tag ref exists
+        vn = self._vnc_lib.virtual_network_read(id=vn_obj.uuid)
+        tag_refs = vn.get_tag_refs()
+        self.assertEqual(len(tag_refs), 2)
+        received_set = set([ref['uuid'] for ref in tag_refs])
+        expected_set = set([tag_obj.uuid, gtag_obj.uuid])
+        self.assertEqual(received_set, expected_set)
+
+        # validate tag->vn back ref exists
+        tag = self._vnc_lib.tag_read(id=tag_obj.uuid)
+        vn_refs = tag.get_virtual_network_back_refs()
+        self.assertEqual(len(vn_refs), 1)
+        self.assertEqual(vn_refs[0]['uuid'], vn_obj.uuid)
+        tag = self._vnc_lib.tag_read(id=gtag_obj.uuid)
+        vn_refs = tag.get_virtual_network_back_refs()
+        self.assertEqual(len(vn_refs), 1)
+        self.assertEqual(vn_refs[0]['uuid'], vn_obj.uuid)
+
+        # tag type or value can't be updated
+        tag = self._vnc_lib.tag_read(id=tag_obj.uuid)
+        tag_obj.set_tag_value('MyTestApp')
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.tag_update(tag_obj)
+
+        tag = self._vnc_lib.tag_read(id=tag_obj.uuid)
+        tag_obj.set_tag_type('application')
+        with ExpectedException(BadRequest) as e:
+            self._vnc_lib.tag_update(tag_obj)
+
+        # only one tag of type (latest) can be associated
+        tag2_obj = Tag(tag_type='application', tag_value='MyTestApp2', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag2_obj)
+        tag2_obj = self._vnc_lib.tag_read(id=tag_obj.uuid)
+        #self._vnc_lib.set_tag(vn_obj, tag2_obj)
+        #vn = self._vnc_lib.virtual_network_read(id=vn_obj.uuid)
+        #tag_refs = vn.get_tag_refs()
+        #self.assertEqual(len(tag_refs), 1)
+        #self.assertEqual(tag_refs[0]['uuid'], tag2_obj.uuid)
+
+    # end test_basic_sanity
+
+    # verify unique id are allocated for global and per-project tags
+    def test_tag_id(self):
+        # create valid tags
+        app_type = cfgm_common.tag_dict['application']
+
+        tag1_obj = Tag('tag1-%s' %(self.id()))
+        tag1_obj.set_tag_type('application')
+        tag1_obj.set_tag_value('MyTestApp-1')
+        self._vnc_lib.tag_create(tag1_obj)
+        tag1 = self._vnc_lib.tag_read(id=tag1_obj.uuid)
+        tag1_id = tag1.get_tag_id()
+
+        proj_obj = Project('%s-project' %(self.id()))
+        self._vnc_lib.project_create(proj_obj)
+        tag2_obj = Tag('tag2-%s' %(self.id()), parent_obj = proj_obj)
+        tag2_obj.set_tag_type('application')
+        tag2_obj.set_tag_value('MyTestApp-1')
+        self._vnc_lib.tag_create(tag2_obj)
+        tag2 = self._vnc_lib.tag_read(id=tag2_obj.uuid)
+        tag2_id = tag2.get_tag_id()
+
+        self.assertNotEqual(tag1_id, tag2_id)
+        self.assertEqual(tag1_id>>27, app_type)
+        self.assertEqual(tag2_id>>27, app_type)
+    # end test_tag_id
+
+    def test_firewall_rule_using_ep_tag(self):
+        pobj = Project('%s-project' %(self.id()))
+        self._vnc_lib.project_create(pobj)
+        pm_obj = PolicyManagement('pm-%s' % self.id())
+        self._vnc_lib.policy_management_create(pm_obj)
+
+        tag1_obj = Tag(tag_type='application', tag_value='App1', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag1_obj)
+        tag1 = self._vnc_lib.tag_read(id=tag1_obj.uuid)
+        time.sleep(5)
+
+        tag2_obj = Tag(tag_type='tier', tag_value='Web', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag2_obj)
+        tag2 = self._vnc_lib.tag_read(id=tag2_obj.uuid)
+        time.sleep(5)
+
+        tag3_obj = Tag(tag_type='application', tag_value='App2', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag3_obj)
+        tag3 = self._vnc_lib.tag_read(id=tag3_obj.uuid)
+        time.sleep(5)
+
+        tag4_obj = Tag(tag_type='tier', tag_value='Db', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag4_obj)
+        tag4 = self._vnc_lib.tag_read(id=tag4_obj.uuid)
+        time.sleep(5)
+
+        rule_obj = FirewallRule(name='rule-%s' % self.id(), parent_obj=pobj,
+                     action_list=ActionListType(simple_action='pass'),
+                     service=FirewallServiceType(protocol="tcp", dst_ports=PortType(8080, 8082)),
+                     endpoint_1=FirewallRuleEndpointType(tags=['application-App1', 'tier-Web']),
+                     endpoint_2=FirewallRuleEndpointType(tags=['application-App2', 'tier-Db']),
+                     direction='<>')
+        self._vnc_lib.firewall_rule_create(rule_obj)
+
+        # validate rule->tag refs exists
+        rule = self._vnc_lib.firewall_rule_read(id=rule_obj.uuid)
+        tag_refs = rule.get_tag_refs()
+        self.assertEqual(len(tag_refs), 4)
+        expected_set = set([obj.get_uuid() for obj in [tag1_obj, tag2_obj, tag3_obj, tag4_obj]])
+        received_set = set([ref['uuid'] for ref in tag_refs])
+        self.assertEqual(received_set, expected_set)
+
+    # end test_firewall_rule_using_ep_tag
+
+    def test_firewall_rule_using_ep_ag_tag(self):
+        pobj = Project('%s-project' %(self.id()))
+        self._vnc_lib.project_create(pobj)
+        pm_obj = PolicyManagement('pm-%s' % self.id())
+        self._vnc_lib.policy_management_create(pm_obj)
+
+        ag_prefix = SubnetListType(subnet=[SubnetType('1.1.1.0', 24), SubnetType('2.2.2.0', 24)])
+        ag_obj = AddressGroup(address_group_prefix=ag_prefix, parent_obj=pobj)
+        self._vnc_lib.address_group_create(ag_obj)
+
+        tag1_obj = Tag(tag_type='application', tag_value='App1', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag1_obj)
+        tag1 = self._vnc_lib.tag_read(id=tag1_obj.uuid)
+        time.sleep(5)
+
+        tag2_obj = Tag(tag_type='tier', tag_value='Web', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag2_obj)
+        tag2 = self._vnc_lib.tag_read(id=tag2_obj.uuid)
+        time.sleep(5)
+
+        tag3_obj = Tag(tag_type='application', tag_value='App2', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag3_obj)
+        tag3 = self._vnc_lib.tag_read(id=tag3_obj.uuid)
+        time.sleep(5)
+
+        tag4_obj = Tag(tag_type='tier', tag_value='Db', parent_obj=pobj)
+        self._vnc_lib.tag_create(tag4_obj)
+        tag4 = self._vnc_lib.tag_read(id=tag4_obj.uuid)
+        time.sleep(5)
+
+        rule_obj = FirewallRule(name='rule-%s' % self.id(), parent_obj=pobj,
+                     action_list=ActionListType(simple_action='pass'),
+                     service=FirewallServiceType(protocol="tcp", dst_ports=PortType(8080, 8082)),
+                     endpoint_1=FirewallRuleEndpointType(address_group=ag_obj.uuid),
+                     endpoint_2=FirewallRuleEndpointType(tags=['application-App2', 'tier-Db']),
+                     direction='<>')
+        self._vnc_lib.firewall_rule_create(rule_obj)
+
+        # validate rule->tag refs exist
+        rule = self._vnc_lib.firewall_rule_read(id=rule_obj.uuid)
+        tag_refs = rule.get_tag_refs()
+        self.assertEqual(len(tag_refs), 2)
+        expected_set = set([obj.get_uuid() for obj in [tag3_obj, tag4_obj]])
+        received_set = set([ref['uuid'] for ref in tag_refs])
+        self.assertEqual(received_set, expected_set)
+
+        # validate rule->address-group refs exist
+        ag_refs = rule.get_address_group_refs()
+        self.assertEqual(len(ag_refs), 1)
+        self.assertEqual(ag_refs[0]['uuid'], ag_obj.uuid)
+
+    # end test_firewall_rule_using_ep_tag
+
+# end class TestFw
 
 class TestVncCfgApiServer(test_case.ApiServerTestCase):
     @classmethod
@@ -969,6 +1215,37 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
                         prop_name='display_name', prop_value='test_update_2')
     # end test_reconnect_to_rabbit
 
+    def test_update_implicit(self):
+        self.ignore_err_in_log = True
+        api_server = self._server_info['api_server']
+        orig_rabbitq_pub = api_server._db_conn._msgbus._producer.publish
+        try:
+            update_implicit = {}
+
+            def rabbitq_pub(*args, **kwargs):
+                if args[0]['oper'] == 'UPDATE-IMPLICIT':
+                    update_implicit.update(args[0])
+                orig_rabbitq_pub(*args, **kwargs)
+
+            logger.info("Creating VN objects")
+            # every VN create, creates RI too
+            vn_objs = self._create_test_objects(count=2)
+            api_server._db_conn._msgbus._producer.publish = rabbitq_pub
+
+            ri_objs = [self._vnc_lib.routing_instance_read(
+                fq_name=vn.fq_name + [vn.name]) for vn in vn_objs]
+            ri_objs[0].add_routing_instance(ri_objs[1], None)
+            self._vnc_lib.routing_instance_update(ri_objs[0])
+
+            for i in range(0, 10):
+                gevent.sleep(0.1)
+                if update_implicit.get('uuid') == ri_objs[1].uuid:
+                    break
+            else:
+                self.assertTrue(False, 'update-implicit was not published')
+        finally:
+            api_server._db_conn._msgbus._producer.publish = orig_rabbitq_pub
+
     def test_handle_trap_on_exception(self):
         self.ignore_err_in_log = True
         api_server = self._server_info['api_server']
@@ -1120,7 +1397,7 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
         ip_allocated = fip_fixt.getObj().floating_ip_address
 
         logger.info("Creating auto-alloc instance-ip, expecting an error")
-        with ExpectedException(RefsExistError) as e:
+        with ExpectedException(BadRequest) as e:
             iip_fixt = self.useFixture(
                 InstanceIpTestFixtureGen(
                     self._vnc_lib, 'iip1', auto_prop_val=False,
@@ -1157,7 +1434,7 @@ class TestVncCfgApiServer(test_case.ApiServerTestCase):
         ip_allocated = aip_fixt.getObj().alias_ip_address
 
         logger.info("Creating auto-alloc instance-ip, expecting an error")
-        with ExpectedException(RefsExistError) as e:
+        with ExpectedException(BadRequest) as e:
             iip_fixt = self.useFixture(
                 InstanceIpTestFixtureGen(
                     self._vnc_lib, 'iip1', auto_prop_val=False,

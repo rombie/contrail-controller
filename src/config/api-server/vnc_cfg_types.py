@@ -124,6 +124,14 @@ class ResourceDbMixin(object):
     def post_dbe_read(cls, obj_dict, db_conn):
         return True, ''
 
+    @classmethod
+    def pre_dbe_list(cls, obj_uuids, db_conn):
+        return True, ''
+
+    @classmethod
+    def post_dbe_list(cls, obj_dict_list, db_conn):
+        return True, ''
+
 # end class ResourceDbMixin
 
 class Resource(ResourceDbMixin):
@@ -202,7 +210,7 @@ class GlobalSystemConfigServer(Resource, GlobalSystemConfig):
         ok, result = cls._check_udc(obj_dict, filter(lambda x: x.get('field',
                     '') == 'user_defined_log_statistics' and x.get(
                         'operation', '') == 'set', kwargs.get(
-                            'prop_collection_updates', [])))
+                            'prop_collection_updates') or []))
         if not ok:
             return ok, result
         ok, result = cls._check_asn(obj_dict, db_conn)
@@ -248,7 +256,7 @@ class FloatingIpServer(Resource, FloatingIp):
         vn_fq_name = obj_dict['fq_name'][:-2]
         req_ip = obj_dict.get("floating_ip_address")
         if req_ip and cls.addr_mgmt.is_ip_allocated(req_ip, vn_fq_name):
-            return (False, (409, 'Ip address already in use'))
+            return (False, (400, 'Ip address already in use'))
         try:
             #
             # Parse through floating-ip-pool config to see if there are any
@@ -363,7 +371,7 @@ class AliasIpServer(Resource, AliasIp):
         vn_fq_name = obj_dict['fq_name'][:-2]
         req_ip = obj_dict.get("alias_ip_address")
         if req_ip and cls.addr_mgmt.is_ip_allocated(req_ip, vn_fq_name):
-            return (False, (409, 'Ip address already in use'))
+            return (False, (400, 'Ip address already in use'))
         try:
             aip_addr = cls.addr_mgmt.ip_alloc_req(vn_fq_name,
                                                   asked_ip_addr=req_ip,
@@ -496,7 +504,7 @@ class InstanceIpServer(Resource, InstanceIp):
         if req_ip and cls.addr_mgmt.is_ip_allocated(req_ip, vn_fq_name,
                                                     vn_uuid=vn_id):
             if not cls.addr_mgmt.is_gateway_ip(vn_dict, req_ip):
-                return (False, (409, 'Ip address already in use'))
+                return (False, (400, 'Ip address already in use'))
             elif cls._vmi_has_vm_ref(db_conn, obj_dict):
                 return (False,
                     (400, 'Gateway IP cannot be used by VM port'))
@@ -854,7 +862,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
         if not port_security and address_pairs is not None:
             msg = "Allowed address pairs are not allowed when port "\
                   "security is disabled"
-            return (False, (409, msg))
+            return (False, (400, msg))
 
         return True, ""
 
@@ -901,23 +909,20 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
 
             sub_vmi_uuids = [ref['uuid'] for ref in sub_vmi_refs]
 
-            if not sub_vmi_uuids:
-                return True, ''
+            if sub_vmi_uuids:
+                ok, sub_vmis = db_conn.dbe_list(
+                    'virtual_machine_interface', obj_uuids=sub_vmi_uuids,
+                    field_names=['virtual_machine_interface_properties'])
+                if not ok:
+                    return ok, sub_vmis
 
-            ok, sub_vmis = db_conn.dbe_list(
-                           'virtual_machine_interface',
-                           obj_uuids=sub_vmi_uuids,
-                           field_names=['virtual_machine_interface_properties'])
-            if not ok:
-                return ok, sub_vmis
-
-            sub_vmi_vlan_tags = [
-                ((vmi.get('virtual_machine_interface_properties') or {}).get(
-                    'sub_interface_vlan_tag')) for vmi in sub_vmis]
-            if vlan_tag in sub_vmi_vlan_tags:
-                msg = "Two sub interfaces under same primary port "\
-                      "can't have same Vlan tag"
-                return (False, (400, msg))
+                sub_vmi_vlan_tags = [((vmi.get(
+                    'virtual_machine_interface_properties') or {}).get(
+                        'sub_interface_vlan_tag')) for vmi in sub_vmis]
+                if vlan_tag in sub_vmi_vlan_tags:
+                    msg = "Two sub interfaces under same primary port "\
+                          "can't have same Vlan tag"
+                    return (False, (400, msg))
 
         (ok, error) = cls._check_bridge_domain_vmi_association(obj_dict, None,
                                                        db_conn, vn_uuid, True)
@@ -1136,6 +1141,117 @@ class BridgeDomainServer(Resource, BridgeDomain):
         return True, ""
     # end pre_dbe_create
 # end class BridgeDomainServer
+
+class TagServer(Resource, Tag):
+
+    @classmethod
+    def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
+
+        tag_type = obj_dict.get('tag_type')
+        tag_value = obj_dict.get('tag_value')
+
+        if tag_type is None or tag_value is None:
+            msg = "Tag must be created with type and value"
+            return (False, (400, msg))
+
+        if obj_dict.get('tag_id'):
+            msg = "Tag id is not setable"
+            return (False, (400, msg))
+
+        # assign name automatically
+        tag_type = tag_type.lower()
+        tag_name = tag_type + "-" + tag_value
+        obj_dict['name'] = tag_name
+        obj_dict['fq_name'][-1] = tag_name
+        obj_dict['tag_type'] = tag_type
+
+        # Allocate id for tag value
+        tag_fq_name = ':'.join(obj_dict['fq_name'])
+        tag_value_id = cls.vnc_zk_client.alloc_tag_value_id(tag_fq_name)
+        def undo_tag_value_id():
+            cls.vnc_zk_client.free_tag_value_id(tag_value_id)
+            return True, ""
+        get_context().push_undo(undo_tag_value_id)
+        obj_dict['tag_id'] = cfgm_common.tag_dict[tag_type] << 27 | tag_value_id
+        return True, ""
+    # end pre_dbe_create
+
+    @classmethod
+    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+        ok, read_result = cls.dbe_read(db_conn, 'tag', id)
+        if not ok:
+            return ok, read_result
+
+        # user can't update type or value once created
+        if obj_dict.get('tag_type') or obj_dict.get('tag_value'):
+            msg = "Tag type or id cannot be updated"
+            return (False, (400, msg))
+
+        return True, ""
+# end class TagServer
+
+class FirewallRuleServer(Resource, FirewallRule):
+
+    @classmethod
+    def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
+
+        ep1 = obj_dict['endpoint_1']
+        ep2 = obj_dict['endpoint_2']
+
+        obj_dict['tag_refs'] = []
+
+        # create tag references for endpoint tag expressions
+        tag_set = set([tag_name for tag_name in ep1['tags'] + ep2['tags']])
+        if len(tag_set) > 0:
+            for tag_name in tag_set:
+                # unless global, inherit project id from caller
+                (tag_type, tag_value) = tag_name.split("-", 1)
+                if tag_value[0:7] == 'global:':
+                    tag_fq_name = [tag_type + "-" + tag_value[7:]]
+                elif obj_dict['parent_type'] == "policy-management":
+                    tag_fq_name = [tag_name]
+                else:
+                    tag_fq_name = copy.deepcopy(obj_dict['fq_name'])
+                    tag_fq_name[-1] = tag_name
+                try:
+                    tag_uuid = db_conn.fq_name_to_uuid('tag', tag_fq_name)
+                except cfgm_common.exceptions.NoIdError:
+                    return (False, (404, 'No tag object found for name %s' % tag_name))
+
+                ref = {
+                    'to'  : tag_fq_name,
+                    'attr': None,
+                    'uuid': tag_uuid
+                }
+                obj_dict['tag_refs'].append(ref)
+
+        if not 'address_group_refs' in obj_dict:
+            obj_dict['address_group_refs'] = []
+        ag_set = set()
+        if ep1['address_group']:
+            ag_set.add(('endpoint1', ep1['address_group']))
+        if ep2['address_group']:
+            ag_set.add(('endpoint2', ep2['address_group']))
+        if len(ag_set) > 0:
+            for ep_name, ref_uuid in ag_set:
+                try:
+                    ref_fq_name = db_conn.uuid_to_fq_name(ref_uuid)
+                except cfgm_common.exceptions.NoIdError:
+                    return(False, (404, 'No tag object found for id %s' % ref_uuid))
+                ref = {
+                    'to'  : ref_fq_name,
+                    'attr': {'endpoint': ep_name},
+                    'uuid': ref_uuid
+                }
+                obj_dict['address_group_refs'].append(ref)
+
+        return True, ""
+    # end pre_dbe_create
+
+    @classmethod
+    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+        return True, ""
+# end class FirewallRuleServer
 
 class VirtualNetworkServer(Resource, VirtualNetwork):
 
@@ -2875,7 +2991,14 @@ class PhysicalRouterServer(Resource, PhysicalRouter):
         if obj_dict.get('physical_router_user_credentials'):
             if obj_dict['physical_router_user_credentials'].get('password'):
                 obj_dict['physical_router_user_credentials']['password'] = "**Password Hidden**"
+        return True, ''
 
+    @classmethod
+    def post_dbe_list(cls, obj_dict_list, db_conn):
+        for obj_dict in obj_dict_list:
+            (ok, err_msg) = cls.post_dbe_read(obj_dict, db_conn)
+            if not ok:
+                return ok, err_msg
         return True, ''
 # end class PhysicalRouterServer
 

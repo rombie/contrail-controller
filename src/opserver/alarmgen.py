@@ -1275,13 +1275,16 @@ class Controller(object):
     def send_alarm_update(self, tab, uk):
         ustruct = None
         alm_copy = []
-        for nm, asm in self.tab_alarms[tab][uk].iteritems():
-            uai = asm.get_uai()
-            if uai:
-                alm_copy.append(copy.deepcopy(uai))
+        if not self.tab_alarms[tab][uk]:
+            del self.tab_alarms[tab][uk]
+        else:
+            for nm, asm in self.tab_alarms[tab][uk].iteritems():
+                uai = asm.get_uai()
+                if uai:
+                    alm_copy.append(copy.deepcopy(uai))
         if len(alm_copy) == 0:
             ustruct = UVEAlarms(name = str(uk).split(':',1)[1], deleted = True)
-            self._logger.info('deleting alarm:')
+            self._logger.info('deleting alarm: %s' % (uk))
         else:
             ustruct = UVEAlarms(name = str(uk).split(':',1)[1],
                                     alarms = alm_copy)
@@ -2401,6 +2404,18 @@ class Controller(object):
                             self._sandesh.reconfig_collectors(random_collectors)
                 except ConfigParser.NoOptionError as e:
                     pass
+            if 'REDIS' in config.sections():
+                try:
+                    new_redis_list = config.get('REDIS', 'redis_uve_list')
+                except ConfigParser.NoOptionError:
+                    pass
+                else:
+                    redis_uve_list = []
+                    for redis_uve in new_redis_list.split():
+                        redis_ip_port = redis_uve.split(':')
+                        redis_elem = (redis_ip_port[0], int(redis_ip_port[1]))
+                        redis_uve_list.append(redis_elem)
+                    self._us.update_redis_uve_list(redis_uve_list)
             if 'API_SERVER' in config.sections():
                 try:
                     api_servers = config.get('API_SERVER', 'api_server_list')

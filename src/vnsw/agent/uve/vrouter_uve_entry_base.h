@@ -10,9 +10,6 @@
 #include <set>
 #include <sys/types.h>
 #include <net/ethernet.h>
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh_constants.h>
-#include <sandesh/sandesh.h>
 #include <vrouter_types.h>
 #include <uve/l4_port_bitmap.h>
 #include <pkt/flow_proto.h>
@@ -71,9 +68,9 @@ protected:
     bool do_vn_walk_;
     bool do_vm_walk_;
     bool do_interface_walk_;
-    DBTableWalker::WalkId vn_walk_id_;
-    DBTableWalker::WalkId vm_walk_id_;
-    DBTableWalker::WalkId interface_walk_id_;
+    DBTable::DBTableWalkRef vn_walk_ref_;
+    DBTable::DBTableWalkRef vm_walk_ref_;
+    DBTable::DBTableWalkRef interface_walk_ref_;
 
     //The following Dispatch functions are not made const function because
     //in derived class they need to be non-const

@@ -75,11 +75,10 @@ struct BgpPeerFamilyAttributesCompare {
 // A BGP peer along with its session and state machine.
 class BgpPeer : public IPeer {
 public:
-    static const int kMinEndOfRibSendTimeUsecs = 10000000;  // 10 Seconds
-    static const int kMaxEndOfRibSendTimeUsecs = 60000000;  // 60 Seconds
-    static const int kEndOfRibSendRetryTimeMsecs = 2000;    // 2 Seconds
+    static const int kEndOfRibSendRetryTime = 1; /* seconds */
     static const int kRouteTargetEndOfRibTimeSecs = 30;     // Seconds
-    static const size_t kBufferSize = 32768;
+    static const size_t kMinBufferCapacity = 4096;
+    static const size_t kMaxBufferCapacity = 32768;
 
     typedef std::set<Address::Family> AddressFamilyList;
     typedef AuthenticationData::KeyType KeyType;
@@ -113,7 +112,8 @@ public:
 
     BgpSession *CreateSession();
 
-    virtual void SetAdminState(bool down);
+    virtual void SetAdminState(bool down,
+                    int subcode = BgpProto::Notification::AdminShutdown);
 
     // Messages
 
@@ -172,7 +172,7 @@ public:
     uint16_t hold_time() const { return hold_time_; }
     as_t local_as() const { return local_as_; }
     as_t peer_as() const { return peer_as_; }
-    size_t buffer_len() const { return buffer_len_; }
+    size_t buffer_size() const { return buffer_.size(); }
 
     // The BGP Identifier in host byte order.
     virtual uint32_t local_bgp_identifier() const;
@@ -215,7 +215,7 @@ public:
     virtual bool IsXmppPeer() const;
     virtual bool CanUseMembershipManager() const;
     virtual bool IsRegistrationRequired() const { return true; }
-    virtual uint64_t GetEorSendTimerElapsedTimeUsecs() const;
+    virtual time_t GetEorSendTimerElapsedTime() const;
     virtual bool send_ready() const { return send_ready_; }
 
     void Close(bool graceful);
@@ -316,7 +316,7 @@ public:
                                 KeyType key_type);
     void ClearListenSocketAuthKey();
     void SetSessionSocketAuthKey(TcpSession *session);
-    virtual bool AttemptGRHelperMode(int code, int subcode) const;
+    bool AttemptGRHelperMode(int code, int subcode) const;
     void Register(BgpTable *table, const RibExportPolicy &policy);
     void Register(BgpTable *table);
     bool EndOfRibSendTimerExpired(Address::Family family);
@@ -335,6 +335,7 @@ public:
     }
     virtual bool IsInGRTimerWaitState() const;
     PeerCloseManager *close_manager() { return close_manager_.get(); }
+    virtual bool IsServerStartingUp() const;
 
 protected:
     virtual void SendEndOfRIBActual(Address::Family family);
@@ -351,9 +352,18 @@ private:
     class DeleteActor;
     class PeerStats;
 
+    struct OriginOverride {
+        OriginOverride(const BgpNeighborConfig::OriginOverrideConfig &config);
+        bool operator!=(const OriginOverride &rhs) const;
+
+        bool origin_override;
+        BgpAttrOrigin::OriginType origin;
+    };
+
     typedef std::map<Address::Family, const uint8_t *> FamilyToCapabilityMap;
     typedef std::vector<BgpPeerFamilyAttributes *> FamilyAttributesList;
 
+    size_t GetBufferCapacity() const;
     bool FlushUpdateUnlocked();
     void KeepaliveTimerErrorHandler(std::string error_name,
                                     std::string error_message);
@@ -367,7 +377,6 @@ private:
     void EndOfRibTimerErrorHandler(std::string error_name,
                                    std::string error_message);
     uint32_t GetEndOfRibReceiveTime(Address::Family family) const;
-    uint32_t GetEndOfRibSendTime(Address::Family family) const;
 
     virtual void BindLocalEndpoint(BgpSession *session);
     void UnregisterAllTables();
@@ -401,6 +410,7 @@ private:
 
     std::string BytesToHexString(const u_int8_t *msg, size_t size);
     virtual uint32_t GetOutputQueueDepth(Address::Family family) const;
+    virtual time_t GetRTargetTableLastUpdatedTimeStamp() const;
 
     static const std::vector<Address::Family> supported_families_;
     BgpServer *server_;
@@ -440,19 +450,21 @@ private:
     // and the io thread should need to lock it once every few seconds at
     // most.  Hence we choose a spin_mutex.
     tbb::spin_mutex spin_mutex_;
-    uint8_t buffer_[kBufferSize];
-    size_t buffer_len_;
+    size_t buffer_capacity_;
+    std::vector<uint8_t> buffer_;
     BgpSession *session_;
     Timer *keepalive_timer_;
     Timer *eor_receive_timer_[Address::NUM_FAMILIES];
     Timer *eor_send_timer_[Address::NUM_FAMILIES];
-    uint64_t eor_send_timer_start_time_;
+    time_t eor_send_timer_start_time_;
     bool send_ready_;
     bool admin_down_;
     bool passive_;
     bool resolve_paths_;
     bool as_override_;
     string private_as_action_;
+    uint32_t cluster_id_;
+    OriginOverride origin_override_;
 
     tbb::atomic<int> membership_req_pending_;
     bool defer_close_;

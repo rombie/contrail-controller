@@ -50,6 +50,9 @@ void ServicesModule::Init(bool run_with_vrouter) {
     arp_proto_.reset(new ArpProto(agent_, io, run_with_vrouter));
     agent_->SetArpProto(arp_proto_.get());
 
+    bfd_proto_.reset(new BfdProto(agent_, io, run_with_vrouter));
+    agent_->SetBfdProto(bfd_proto_.get());
+
     icmp_proto_.reset(new IcmpProto(agent_, io));
     agent_->SetIcmpProto(icmp_proto_.get());
 

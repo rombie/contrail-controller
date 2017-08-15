@@ -140,6 +140,14 @@ public:
         EBGP,
     };
 
+    struct OriginOverrideConfig {
+        OriginOverrideConfig();
+        bool operator<(const OriginOverrideConfig &rhs) const;
+
+        bool origin_override;
+        std::string origin;
+    };
+
     BgpNeighborConfig();
 
     void CopyValues(const BgpNeighborConfig &rhs);
@@ -176,6 +184,9 @@ public:
     void set_private_as_action(const std::string &private_as_action) {
         private_as_action_ = private_as_action;
     }
+
+    uint32_t cluster_id() const { return cluster_id_; }
+    void set_cluster_id(uint32_t cluster_id) { cluster_id_ = cluster_id; }
 
     uint32_t peer_as() const { return peer_as_; }
     void set_peer_as(uint32_t peer_as) { peer_as_ = peer_as; }
@@ -252,6 +263,11 @@ public:
         return CompareTo(rhs) != 0;
     }
 
+    const OriginOverrideConfig &origin_override() const {
+        return origin_override_;
+    }
+    void SetOriginOverride(bool origin_override, std::string origin);
+
 private:
     std::string name_;
     std::string uuid_;
@@ -263,6 +279,7 @@ private:
     bool passive_;
     bool as_override_;
     std::string private_as_action_;
+    uint32_t cluster_id_;
     uint32_t peer_as_;
     uint32_t identifier_;
     IpAddress address_;
@@ -278,6 +295,7 @@ private:
     mutable uint64_t last_change_at_;
     AuthenticationData auth_data_;
     FamilyAttributesList family_attributes_list_;
+    OriginOverrideConfig origin_override_;
 
     DISALLOW_COPY_AND_ASSIGN(BgpNeighborConfig);
 };
@@ -543,7 +561,7 @@ private:
 // Route Policy configuration.
 class BgpGlobalSystemConfig {
 public:
-    static const int kEndOfRibTime = 30; // seconds
+    static const int kEndOfRibTime = 300; // seconds
     BgpGlobalSystemConfig() :
             last_change_at_(0), gr_time_(0), llgr_time_(0),
             end_of_rib_timeout_(kEndOfRibTime), gr_enable_(false),

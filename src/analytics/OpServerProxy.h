@@ -7,7 +7,6 @@
 
 #include <string>
 #include "io/event_manager.h"
-#include <sandesh/sandesh.h>
 #include "redis_types.h"
 
 // This class can be used to send UVE Traces from vizd to the OpSever(s)
@@ -50,7 +49,8 @@ public:
                            const std::string &module, 
                            const std::string &instance_id,
                            const std::string &table, const std::string &barekey,
-                           const std::map<std::string,std::string>& value,
+                           std::map<std::string,
+                               std::pair<std::string, pugi::xml_node> >& value,
                            bool deleted);
 
     // Use this to delete the object when the deleted attribute is set

@@ -347,6 +347,7 @@ public:
         INET6_UNICAST,
         ROUTE_TABLE_MAX
     };
+    static const uint8_t ROUTE_TABLE_START = (Agent::INVALID + 1);
 
     typedef void (*FlowStatsReqHandler)(Agent *agent,
                        uint32_t proto, uint32_t port,
@@ -792,6 +793,9 @@ public:
     ArpProto *GetArpProto() const { return arp_proto_; }
     void SetArpProto(ArpProto *proto) { arp_proto_ = proto; }
 
+    BfdProto *GetBfdProto() const { return bfd_proto_; }
+    void SetBfdProto(BfdProto *proto) { bfd_proto_ = proto; }
+
     DhcpProto *GetDhcpProto() const { return dhcp_proto_; }
     void SetDhcpProto(DhcpProto *proto) { dhcp_proto_ = proto; }
 
@@ -1092,6 +1096,14 @@ public:
     std::string vrouter_build_info() const {
         return vrouter_build_info_;
     }
+
+    void set_vrouter_priority_tagging(bool tagging) {
+        vrouter_priority_tagging_ = tagging;
+    }
+
+    bool vrouter_priority_tagging() const {
+        return vrouter_priority_tagging_;
+    }
     Agent::ForwardingMode TranslateForwardingMode(const std::string &mode) const;
 
     FlowStatsReqHandler& flow_stats_req_handler() {
@@ -1227,6 +1239,7 @@ private:
     std::string pkt_interface_name_;
 
     ArpProto *arp_proto_;
+    BfdProto *bfd_proto_;
     DhcpProto *dhcp_proto_;
     DnsProto *dns_proto_;
     IcmpProto *icmp_proto_;
@@ -1306,6 +1319,8 @@ private:
     //Max OverFlow entries
     uint32_t vrouter_max_oflow_entries_;
     std::string vrouter_build_info_;
+    //Priority tagging status
+    bool vrouter_priority_tagging_;
     FlowStatsReqHandler flow_stats_req_handler_;
 
     uint32_t tbb_keepawake_timeout_;

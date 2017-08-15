@@ -35,6 +35,9 @@ TODO:
 
 class VncService(object):
     """"Client to handle vnc api server interactions"""
+
+    _vnc_mesos = None
+
     def __init__(self, args=None, logger=None):
         self.args = args
         self.logger = logger
@@ -54,6 +57,8 @@ class VncService(object):
         # sync api server db in local cache
         self._sync_sm()
         self.rabbit._db_resync_done.set()
+
+        VncService._vnc_mesos = self
 
     def _vnc_connect(self):
         """Retry till API server connection is up"""
@@ -80,6 +85,22 @@ class VncService(object):
             for obj in cls.list_obj():
                 cls.locate(obj['uuid'], obj)
 
+    @classmethod
+    def get_instance(cls):
+        return VncService._vnc_mesos
+
+    @classmethod
+    def destroy_instance(cls):
+        inst = cls.get_instance()
+        if inst is None:
+            return
+        inst.rabbit.close()
+        for obj_cls in DBBaseMM.get_obj_type_map().values():
+            obj_cls.reset()
+        DBBase.clear()
+        inst._db = None
+        VncService._vnc_mesos = None
+
     @staticmethod
     def reset():
         for cls in DBBaseMM.get_obj_type_map().values():
@@ -94,7 +115,8 @@ class VncService(object):
         # Network creation
         vnc_network = VncMesosNetwork(self.vnc_lib, self.logger)
         network_obj = vnc_network.create_network(project_obj,
-                                                 obj_labels.networks)
+                                                 obj_labels.networks,
+                                                 obj_labels.app_subnets)
         # Register a task
         vnc_task = VncMesosTask(self.vnc_lib, self.logger)
         task_obj = vnc_task.register_task(obj_labels.task_uuid)
@@ -164,11 +186,11 @@ class VncMesosNetwork(object):
         self.vnc_lib = vnc_lib
         self.logger = logger
 
-    def create_network(self, proj_obj, networks):
+    def create_network(self, proj_obj, networks, subnets):
         """Create network in VNC db"""
         vn_obj = VirtualNetwork(name=networks, parent_obj=proj_obj)
-        ipam_obj = self._create_ipam(networks, proj_obj)
-        vn_obj.add_network_ipam(ipam_obj, VnSubnetsType([]))
+        ipam_obj, ipam_subnets = self._create_ipam(networks, proj_obj, subnets)
+        vn_obj.add_network_ipam(ipam_obj, VnSubnetsType(ipam_subnets))
         try:
             self.vnc_lib.virtual_network_create(vn_obj)
             self.logger.info('Network object created')
@@ -176,17 +198,24 @@ class VncMesosNetwork(object):
             vn_obj = self.vnc_lib.virtual_network_read(
                                                   fq_name=vn_obj.get_fq_name())
             self.logger.info('Network already exist. Reading from VNC')
+        except Exception as err:
+            self.logger.error("Error : %s" % str(err))
         return vn_obj
 
-    def _create_ipam(self, ipam_name, proj_obj):
+    def _create_ipam(self, ipam_name, proj_obj, subnets):
         """Create ipam for network"""
+        ipam_subnets = []
+        #Setting default vaules for prefix if network not created with subnet
+        pfx, pfx_len = subnets.split('/')
+        ipam_subnet = IpamSubnetType(subnet=SubnetType(pfx, int(pfx_len)))
+        ipam_subnets.append(ipam_subnet)
         ipam_obj = NetworkIpam(name=ipam_name, parent_obj=proj_obj)
         try:
             self.vnc_lib.network_ipam_create(ipam_obj)
         except RefsExistError:
             ipam__obj = self.vnc_lib.network_ipam_read(
                                                 fq_name=ipam_obj.get_fq_name())
-        return ipam_obj
+        return ipam_obj, ipam_subnets
 
     def delete_network(self, task_uuid):
         """Remove network from VNC DB"""

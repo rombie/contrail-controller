@@ -82,6 +82,12 @@ bool HealthCheckInstance::CreateInstanceTask() {
     deleted_ = false;
 
     HEALTH_CHECK_TRACE(Trace, "Starting " + this->to_string());
+    if (service_->monitor_type_ == "bfd") {
+        BFD::SessionConfig bfd_config;
+        BFD::result_code = service_->table_->agent()->bfd_client()->
+            AddConnection(p_->GetLinkLocalIp(), bfd_config);
+        return result_code == BFD::kResultCode_Ok;
+    }
 
     task_.reset(new HeathCheckProcessInstance("HealthCheckInstance", "", 0,
                                    service_->table_->agent()->event_manager()));

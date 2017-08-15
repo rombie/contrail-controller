@@ -15,8 +15,6 @@
 #include <vnc_cfg_types.h>
 #include <agent_types.h>
 
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h>
 #include <base/sandesh/task_types.h>
 
 #include <init/agent_param.h>
@@ -205,7 +203,7 @@ void Agent::SetAgentTaskPolicy() {
         "sandesh::RecvQueue",
         "io::ReaderTask",
         "Agent::ControllerXmpp",
-        "Agent::RouteWalker",
+        "db::Walker",
         "db::DBTable",
         "xmpp::StateMachine",
         "bgp::ShowCommand",
@@ -225,10 +223,10 @@ void Agent::SetAgentTaskPolicy() {
     SetTaskPolicyOne("Agent::ControllerXmpp", controller_xmpp_exclude_list,
                      sizeof(controller_xmpp_exclude_list) / sizeof(char *));
 
-    const char *walk_cancel_exclude_list[] = {
+    const char *walker_exclude_list[] = {
         "Agent::ControllerXmpp",
         "db::DBTable",
-        // For ToR Agent Agent::KSync and Agent::RouteWalker both task tries
+        // For ToR Agent Agent::KSync and db::Walker both task tries
         // to modify route path list inline (out of DB table context) to
         // manage route exports from dynamic peer before release the peer
         // which is resulting in parallel access, for now we will avoid this
@@ -239,8 +237,8 @@ void Agent::SetAgentTaskPolicy() {
         AGENT_SHUTDOWN_TASKNAME,
         AGENT_INIT_TASKNAME
     };
-    SetTaskPolicyOne("Agent::RouteWalker", walk_cancel_exclude_list,
-                     sizeof(walk_cancel_exclude_list) / sizeof(char *));
+    SetTaskPolicyOne("db::Walker", walker_exclude_list,
+                     sizeof(walker_exclude_list) / sizeof(char *));
 
     const char *ksync_exclude_list[] = {
         "db::DBTable",
@@ -637,8 +635,8 @@ void Agent::ReconfigSignalHandler(boost::system::error_code ec, int signum) {
 Agent::Agent() :
     params_(NULL), cfg_(NULL), stats_(NULL), ksync_(NULL), uve_(NULL),
     stats_collector_(NULL), flow_stats_manager_(NULL), pkt_(NULL),
-    services_(NULL), vgw_(NULL), rest_server_(NULL), oper_db_(NULL),
-    diag_table_(NULL), controller_(NULL), resource_manager_(),
+    services_(NULL), vgw_(NULL), rest_server_(NULL), port_ipc_handler_(NULL),
+    oper_db_(NULL), diag_table_(NULL), controller_(NULL), resource_manager_(),
     event_notifier_(), event_mgr_(NULL),
     agent_xmpp_channel_(), ifmap_channel_(),
     xmpp_client_(), xmpp_init_(), dns_xmpp_channel_(), dns_xmpp_client_(),
@@ -684,7 +682,8 @@ Agent::Agent() :
     vrouter_server_port_(0), vrouter_max_labels_(0), vrouter_max_nexthops_(0),
     vrouter_max_interfaces_(0), vrouter_max_vrfs_(0),
     vrouter_max_mirror_entries_(0), vrouter_max_bridge_entries_(0),
-    vrouter_max_oflow_bridge_entries_(0), flow_stats_req_handler_(NULL),
+    vrouter_max_oflow_bridge_entries_(0), vrouter_priority_tagging_(true),
+    flow_stats_req_handler_(NULL),
     tbb_keepawake_timeout_(kDefaultTbbKeepawakeTimeout),
     task_monitor_timeout_msec_(kDefaultTaskMonitorTimeout) {
 
@@ -996,11 +995,11 @@ void Agent::SetXmppDscp(uint8_t val) {
     for (uint8_t count = 0; count < MAX_XMPP_SERVERS; count++) {
         XmppClient *client = xmpp_client_[count];
         if (client) {
-            client->SetDscpValue(val);
+            client->SetDscpValue(val, XmppInit::kControlNodeJID);
         }
         client = dns_xmpp_client_[count];
         if (client) {
-            client->SetDscpValue(val);
+            client->SetDscpValue(val, XmppInit::kDnsNodeJID);
         }
     }
 }
@@ -1018,6 +1017,7 @@ VrouterObjectLimits Agent::GetVrouterObjectLimits() {
    vr_limits.set_vrouter_build_info(vrouter_build_info());
    vr_limits.set_vrouter_max_flow_entries(vrouter_max_flow_entries());
    vr_limits.set_vrouter_max_oflow_entries(vrouter_max_oflow_entries());
+   vr_limits.set_vrouter_priority_tagging(vrouter_priority_tagging());
    return vr_limits;
 }
 

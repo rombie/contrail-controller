@@ -41,18 +41,21 @@ class KubeMonitor(object):
         else:
             self.db = None
 
+        self.kubernetes_api_server = self.args.kubernetes_api_server
         if self.token:
             protocol = "https"
             header = {'Authorization': "Bearer " + self.token}
             self.headers.update(header)
             self.verify = False
+            self.kubernetes_api_server_port = self.args.kubernetes_api_secure_port
         else: # kubernetes
             protocol = "http"
+            self.kubernetes_api_server_port = self.args.kubernetes_api_port
 
         # URL to the api server.
         self.url = "%s://%s:%s" % (protocol,
-                                   self.args.kubernetes_api_server,
-                                   self.args.kubernetes_api_secure_port)
+                                   self.kubernetes_api_server,
+                                   self.kubernetes_api_server_port)
         # URL to the v1-components in api server.
         self.v1_url = "%s/api/v1" % (self.url)
         # URL to v1-beta1 components to api server.
@@ -67,8 +70,8 @@ class KubeMonitor(object):
 
     def _is_kube_api_server_alive(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex((self.args.kubernetes_api_server, \
-                                  self.args.kubernetes_api_secure_port))
+        result = sock.connect_ex((self.kubernetes_api_server, \
+                                  self.kubernetes_api_server_port))
         if result == 0:
             return True
         else:
@@ -191,7 +194,7 @@ class KubeMonitor(object):
         return json_data
 
     def patch_resource(self, resource_type, resource_name, \
-                       merge_patch, namespace=None, beta=False):
+            merge_patch, namespace=None, beta=False, sub_resource_name=None):
         if beta == False:
             base_url = self.v1_url
         else:
@@ -202,6 +205,8 @@ class KubeMonitor(object):
         else:
             url = "%s/namespaces/%s/%s/%s" % (base_url, namespace,
                                               resource_type, resource_name)
+            if sub_resource_name:
+                url = "%s/%s" %(url, sub_resource_name)
 
         headers = {'Accept': 'application/json', \
                    'Content-Type': 'application/strategic-merge-patch+json'}

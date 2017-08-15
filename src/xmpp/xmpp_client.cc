@@ -12,8 +12,6 @@
 #include "xmpp/xmpp_log.h"
 #include "xmpp/xmpp_session.h"
 
-#include "sandesh/sandesh_types.h"
-#include "sandesh/sandesh.h"
 #include "sandesh/common/vns_types.h"
 #include "sandesh/common/vns_constants.h"
 #include "sandesh/xmpp_client_server_sandesh_types.h"
@@ -148,7 +146,8 @@ TcpSession *XmppClient::CreateSession() {
     boost::system::error_code err;
     socket->open(ip::tcp::v4(), err);
     if (err) {
-        XMPP_WARNING(ClientOpenFail, err.message());
+        XMPP_WARNING(ClientOpenFail, session->ToUVEKey(), XMPP_PEER_DIR_OUT,
+                     err.message());
         DeleteSession(session);
         return NULL;
     }
@@ -159,7 +158,8 @@ TcpSession *XmppClient::CreateSession() {
     socket->set_option(reuse_addr_t(true), err);
 #endif
     if (err) {
-        XMPP_WARNING(SetSockOptFail, err.message());
+        XMPP_WARNING(SetSockOptFail, session->ToUVEKey(), XMPP_PEER_DIR_OUT,
+                     err.message());
         return session;
     }
 
@@ -279,9 +279,8 @@ XmppChannel *XmppClient::FindChannel(const string &address) {
     return (connection ? connection->ChannelMux() : NULL);
 }
 
-int XmppClient::SetDscpValue(uint8_t value) {
-    XmppClientConnection *connection =
-        FindConnection(XmppInit::kControlNodeJID);
+int XmppClient::SetDscpValue(uint8_t value, const char *conn_id) {
+    XmppClientConnection *connection = FindConnection(conn_id);
     if (connection) {
         return connection->SetDscpValue(value);
     }

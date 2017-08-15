@@ -106,6 +106,14 @@ class LinkObject(object):
     # end __init__
 # end class LinkObject
 
+class OpserverStdLog(object):
+    def __init__(self, server_name, http_port):
+        self._server_name = server_name
+        self._port = http_port
+
+    def write(self, text):
+        sys.stderr.write('[' + self._server_name + ':' + str(self._port) + ']' + text)
+
 class ContrailGeventServer(bottle.GeventServer):
     def run(self, handler):
         from gevent import wsgi as wsgi_fast, pywsgi, monkey, local
@@ -113,7 +121,8 @@ class ContrailGeventServer(bottle.GeventServer):
             import threading
             if not threading.local is local.local: monkey.patch_all()
         wsgi = wsgi_fast if self.options.get('fast') else pywsgi
-        self.srv = wsgi.WSGIServer((self.host, self.port), handler)
+        self._std_log = OpserverStdLog("API", self.port)
+        self.srv = wsgi.WSGIServer((self.host, self.port), handler, log = self._std_log)
         self.srv.serve_forever()
     def stop(self):
         if hasattr(self, 'srv'):
@@ -381,8 +390,6 @@ class OpServer(object):
         * ``/analytics/tables``:
         * ``/analytics/table/<table>``:
         * ``/analytics/table/<table>/schema``:
-        * ``/analytics/table/<table>/column-values``:
-        * ``/analytics/table/<table>/column-values/<column>``:
         * ``/analytics/query/<queryId>``
         * ``/analytics/query/<queryId>/chunk-final/<chunkId>``
         * ``/analytics/send-tracebuffer/<source>/<module>/<name>``
@@ -774,12 +781,6 @@ class OpServer(object):
         bottle.route('/analytics/table/<table>', 'GET', self.table_process)
         bottle.route('/analytics/table/<table>/schema',
                      'GET', self.table_schema_process)
-        for i in range(0, len(self._VIRTUAL_TABLES)):
-            if len(self._VIRTUAL_TABLES[i].columnvalues) > 0:
-                bottle.route('/analytics/table/<table>/column-values',
-                             'GET', self.column_values_process)
-                bottle.route('/analytics/table/<table>/column-values/<column>',
-                             'GET', self.column_process)
         bottle.route('/analytics/send-tracebuffer/<source>/<module>/<instance_id>/<name>',
                      'GET', self.send_trace_buffer)
         bottle.route('/doc-style.css', 'GET',
@@ -1300,6 +1301,7 @@ class OpServer(object):
             for i in range(0, len(self._VIRTUAL_TABLES)):
                 if self._VIRTUAL_TABLES[i].name == tabl:
                     tabn = i
+                    break
 
             if (tabn is not None) and (tabl.find("StatTable") == 0):
                 query_err = self._is_valid_stats_table_query(request.json, tabn)
@@ -2296,10 +2298,6 @@ class OpServer(object):
             if (self._VIRTUAL_TABLES[i].name == table):
                 link = LinkObject('schema', base_url + 'schema')
                 json_links.append(obj_to_dict(link))
-                if len(self._VIRTUAL_TABLES[i].columnvalues) > 0:
-                    link = LinkObject(
-                        'column-values', base_url + 'column-values')
-                    json_links.append(obj_to_dict(link))
                 break
 
         if(len(json_links) == 0):
@@ -2307,8 +2305,6 @@ class OpServer(object):
             tables = self._uve_server.get_tables()
             if table in tables:
                 link = LinkObject('schema', base_url + 'schema')
-                json_links.append(obj_to_dict(link))
-                link = LinkObject('column-values', base_url + 'column-values')
                 json_links.append(obj_to_dict(link))
 
         bottle.response.set_header('Content-Type', 'application/json')
@@ -2336,39 +2332,6 @@ class OpServer(object):
 
         return (json.dumps({}))
     # end table_schema_process
-
-    @validate_user_token
-    def column_values_process(self, table):
-        (ok, result) = self._get_common(bottle.request)
-        if not ok:
-            (code, msg) = result
-            bottle.abort(code, msg)
-
-        base_url = bottle.request.urlparts.scheme + '://' + \
-            bottle.request.urlparts.netloc + \
-            '/analytics/table/' + table + '/column-values/'
-
-        bottle.response.set_header('Content-Type', 'application/json')
-        json_links = []
-        found_table = False
-        for i in range(0, len(self._VIRTUAL_TABLES)):
-            if (self._VIRTUAL_TABLES[i].name == table):
-                found_table = True
-                for col in self._VIRTUAL_TABLES[i].columnvalues:
-                    link = LinkObject(col, base_url + col)
-                    json_links.append(obj_to_dict(link))
-                break
-
-        if (found_table == False):
-            # Also check for the table in actual raw UVE contents
-            tables = self._uve_server.get_tables()
-            if table in tables:
-                for col in _OBJECT_TABLE_COLUMN_VALUES:
-                    link = LinkObject(col, base_url + col)
-                    json_links.append(obj_to_dict(link))
-
-        return (json.dumps(json_links))
-    # end column_values_process
 
     def generator_info(self, table, column):
         if ((column == MODULE) or (column == SOURCE)):
@@ -2585,6 +2548,18 @@ class OpServer(object):
                                 self._vnc_api_client.update_api_servers,
                                     random_api_servers)
                             self.gevs.append(self._vnc_api_client_connect)
+            if 'REDIS' in config.sections():
+                try:
+                    new_redis_list = config.get('REDIS', 'redis_uve_list')
+                except ConfigParser.NoOptionError:
+                    pass
+                else:
+                    redis_uve_list = []
+                    for redis_uve in new_redis_list.split():
+                        redis_ip_port = redis_uve.split(':')
+                        redis_elem = (redis_ip_port[0], int(redis_ip_port[1]))
+                        redis_uve_list.append(redis_elem)
+                    self._uve_server.update_redis_uve_list(redis_uve_list)
     # end sighup_handler
 
 def main(args_str=' '.join(sys.argv[1:])):

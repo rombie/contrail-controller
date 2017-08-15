@@ -13,9 +13,6 @@
 #include <base/util.h>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <base/logging.h>
-#include <sandesh/sandesh_constants.h>
-#include <sandesh/sandesh_types.h>
-#include <sandesh/sandesh.h> 
 #include <sandesh/sandesh_trace.h>
 #include <sandesh/sandesh_message_builder.h>
 #include <sandesh/protocol/TXMLProtocol.h>
@@ -781,7 +778,7 @@ bool Ruleeng::handle_uve_publish(const pugi::xml_node& parent,
         return false;
     }
 
-    map<string,string> vmap;
+    map<string,pair<string,pugi::xml_node> > vmap;
     if (deleted) {
         if (!osp_->UVEDelete(object_name, source, node_type, module, 
                              instance_id, key, seq, is_alarm)) {
@@ -802,8 +799,6 @@ bool Ruleeng::handle_uve_publish(const pugi::xml_node& parent,
            node = node.next_sibling()) {
         std::ostringstream ostr; 
         std::ostringstream tstr;
-        tstr << UTCTimestampUsec();
-        node.append_attribute("timestamp") = tstr.str().c_str();
         node.print(ostr, "", pugi::format_raw | pugi::format_no_escapes);
         std::string agg;
         std::string atyp;
@@ -811,7 +806,9 @@ bool Ruleeng::handle_uve_publish(const pugi::xml_node& parent,
         if (strcmp(tempstr, "")) {
             continue;
         }
-        vmap.insert(make_pair(node.name(), ostr.str()));
+        // "node" has the underlying XML node.
+        // "ostr" is the encoded attribute for the UVE
+        vmap.insert(make_pair(node.name(), make_pair(ostr.str(), node)));
         tempstr = node.attribute("aggtype").value();
         if (strcmp(tempstr, "")) {
             agg = std::string(tempstr);

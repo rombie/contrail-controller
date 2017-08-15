@@ -25,6 +25,7 @@ class VncNamespace(VncCommon):
         self._ns_sg = {}
         self._label_cache = vnc_kube_config.label_cache()
         self._logger = vnc_kube_config.logger()
+        self._queue = vnc_kube_config.queue()
 
     def _get_namespace(self, ns_name):
         """
@@ -40,6 +41,9 @@ class VncNamespace(VncCommon):
         if ns:
             NamespaceKM.delete(ns.uuid)
 
+    def _get_namespace_vn_name(self, ns_name):
+        return ns_name + "-vn"
+
     def _is_namespace_isolated(self, ns_name):
         """
         Check if this namespace is configured as isolated.
@@ -47,6 +51,17 @@ class VncNamespace(VncCommon):
         ns = self._get_namespace(ns_name)
         if ns:
             return ns.is_isolated()
+
+        # Kubernetes namespace obj is not available to check isolation config.
+        #
+        # Check if the virtual network associated with the namespace is
+        # annotated as isolated. If yes, then the namespace is isolated.
+        vn_uuid = VirtualNetworkKM.get_ann_fq_name_to_uuid(self, ns_name,
+            ns_name)
+        if vn_uuid:
+            vn_obj = VirtualNetworkKM.get(vn_uuid)
+            if vn_obj:
+                return vn_obj.is_k8s_namespace_isolated()
 
         # By default, namespace is not isolated.
         return False
@@ -144,6 +159,11 @@ class VncNamespace(VncCommon):
         vn = VirtualNetwork(name=vn_name, parent_obj=proj_obj,
             virtual_network_properties=VirtualNetworkType(forwarding_mode='l3'),
             address_allocation_mode='flat-subnet-only')
+
+        # Add annotatins on this isolated virtual-network.
+        VirtualNetworkKM.add_annotations(self, vn, namespace=ns_name,
+            name=ns_name, isolated='True')
+
         try:
             vn_uuid = self._vnc_lib.virtual_network_create(vn)
         except RefsExistError:
@@ -321,7 +341,7 @@ class VncNamespace(VncCommon):
 
         # If this namespace is isolated, create it own network.
         if self._is_namespace_isolated(name) == True:
-            vn_name = name + "-vn"
+            vn_name = self._get_namespace_vn_name(name)
             self._create_isolated_ns_virtual_network(ns_name=name,
                 vn_name=vn_name, proj_obj=proj_obj)
 
@@ -361,23 +381,29 @@ class VncNamespace(VncCommon):
         try:
             # If the namespace is isolated, delete its virtual network.
             if self._is_namespace_isolated(name) == True:
-                self._delete_isolated_ns_virtual_network(vn_name=name,
+                vn_name = self._get_namespace_vn_name(name)
+                self._delete_isolated_ns_virtual_network(name, vn_name=vn_name,
                     proj_fq_name=proj_fq_name)
+
             # delete default-sg and ns-sg security groups
             security_groups = project.get_security_groups()
-            for sg in security_groups or []:
-                if sg['to'] in sg_list[:]:
-                    self._vnc_lib.security_group_delete(id=sg['uuid'])
-                    sg_list.remove(sg['to'])
+            for sg_uuid in security_groups:
+                sg = SecurityGroupKM.get(sg_uuid)
+                if sg and sg.fq_name in sg_list[:]:
+                    self._vnc_lib.security_group_delete(id=sg_uuid)
+                    sg_list.remove(sg.fq_name)
                     if not len(sg_list):
                         break
+
             # delete the label cache
             if project:
                 self._clear_namespace_label_cache(namespace_id, project)
             # delete the namespace
             self._delete_namespace(name)
-            # delete the project
-            self._vnc_lib.project_delete(fq_name=proj_fq_name)
+
+            # If namespace=project, delete the project
+            if vnc_kube_config.cluster_project_name(name) == name:
+                self._vnc_lib.project_delete(fq_name=proj_fq_name)
         except Exception as e:
             pass
 

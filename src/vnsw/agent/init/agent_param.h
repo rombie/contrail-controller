@@ -324,6 +324,7 @@ public:
     bool test_mode() const { return test_mode_; }
 
     void AddOptions(const boost::program_options::options_description &opt);
+    void ConfigAddOptions(const boost::program_options::options_description &opt);
     void ParseArguments(int argc, char *argv[]);
     const boost::program_options::variables_map &var_map() const {
         return var_map_;
@@ -466,6 +467,7 @@ public:
         return mac_learning_delete_tokens_;
     }
 
+    bool qos_priority_tagging() const { return qos_priority_tagging_; }
 protected:
     void set_hypervisor_mode(HypervisorMode m) { hypervisor_mode_ = m; }
     virtual void InitFromSystem();
@@ -692,6 +694,8 @@ private:
     uint32_t tbb_keepawake_timeout_;
     // Monitor task library and assert if inactivity detected
     uint32_t task_monitor_timeout_msec_;
+    //Knob to configure priority tagging when in DCB mode.
+    bool qos_priority_tagging_;
     std::map<uint16_t, uint16_t> qos_queue_map_;
     std::set<uint16_t> nic_queue_list_;
     uint16_t default_nic_queue_;
