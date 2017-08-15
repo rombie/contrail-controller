@@ -409,7 +409,8 @@ BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
 
     // Always trigger notification.
     dest_route->Notify();
-    *replicated = true;
+    if (replicated)
+        *replicated = true;
 
     return dest_route;
 }
