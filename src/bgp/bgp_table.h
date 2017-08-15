@@ -85,8 +85,6 @@ public:
             subscription_gen_id_ = subscription_gen_id;
         }
         uint64_t subscription_gen_id() const { return subscription_gen_id_; }
-        virtual void UpdateSecondaryTablesForReplication(BgpRoute *rt,
-            RtGroupMemberList *secondary_tables) { }
 
     private:
         BgpAttrPtr attrs_;
@@ -121,6 +119,9 @@ public:
     static bool PathSelection(const Path &path1, const Path &path2);
     UpdateInfo *GetUpdateInfo(RibOut *ribout, BgpRoute *route,
                               const RibPeerSet &peerset);
+    virtual void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+                     RtGroupMemberList *secondary_tables) {
+    }
 
     void ManagedDelete();
     virtual void RetryDelete();
