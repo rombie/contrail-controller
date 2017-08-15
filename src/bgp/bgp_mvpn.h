@@ -231,8 +231,8 @@ private:
     void UpdateNeighbor(MvpnRoute *route);
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
     void NotifyAllRoutes();
-    bool FindResolvedNeighbor(const BgpPath *path, MvpnNeighbor *neighbor,
-            ExtCommunity::ExtCommunityValue *rt_import = NULL) const;
+    bool FindResolvedNeighbor(const BgpPath *path,
+            MvpnNeighbor *neighbor) const;
 
     MvpnTable *table_;
     int listener_id_;

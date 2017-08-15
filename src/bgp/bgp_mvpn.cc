@@ -683,8 +683,7 @@ RouteDistinguisher MvpnManager::GetSourceRouteDistinguisher(
 }
 
 bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
-        MvpnNeighbor *neighbor,
-        ExtCommunity::ExtCommunityValue *rt_import) const {
+        MvpnNeighbor *neighbor) const {
     const BgpAttr *attr = path->GetAttr();
     if (!attr)
         return false;
@@ -693,16 +692,14 @@ bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
         return false;
 
     bool vrf_route_import_found = false;
-    ExtCommunity::ExtCommunityValue rt_import_s;
-    if (!rt_import)
-        rt_import = &rt_import_s;
+    ExtCommunity::ExtCommunityValue rt_import;
 
     // Use rt-import from the resolved path as export route-target.
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
                   attr->ext_community()->communities()) {
         if (ExtCommunity::is_vrf_route_import(value)) {
             vrf_route_import_found = true;
-            *rt_import = value;
+            rt_import = value;
             break;
         }
     }
@@ -710,13 +707,12 @@ bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
     if (!vrf_route_import_found)
         return false;
 
-    VrfRouteImport vrf_import(*rt_import);
+    VrfRouteImport vrf_import(rt_import);
 
     // Find if the resolved path points to an active Mvpn neighbor based on the
     // IP address encoded inside the vrf import route target extended community.
     if (!FindNeighbor(vrf_import.GetIPv4Address(), neighbor))
         return false;
-
     return true;
 }
 
