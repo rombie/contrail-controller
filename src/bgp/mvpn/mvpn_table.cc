@@ -92,15 +92,17 @@ DBTableBase *MvpnTable::CreateTable(DB *db, const string &name) {
 
 bool MvpnTable::Export(RibOut *ribout, Route *route,
     const RibPeerSet &peerset, UpdateInfoSList &uinfo_slist) {
-
-    // in phase 1 source is outside so no need to send anything
-    // to agent
-    if (!ribout->IsEncodingBgp())
-        return false;
-
     MvpnRoute *mvpn_route = dynamic_cast<MvpnRoute *>(route);
-    uint8_t rt_type = mvpn_route->GetPrefix().type();
 
+    if (ribout->IsEncodingXmpp()) {
+        UpdateInfo *uinfo = GetMvpnUpdateInfo(ribout, mvpn_route, peerset);
+        if (!uinfo)
+            return false;
+        uinfo_slist->push_front(*uinfo);
+        return true;
+    }
+
+    uint8_t rt_type = mvpn_route->GetPrefix().type();
     if (ribout->peer_type() == BgpProto::EBGP &&
                 rt_type == MvpnPrefix::IntraASPMSIADRoute) {
         return false;
@@ -110,7 +112,6 @@ bool MvpnTable::Export(RibOut *ribout, Route *route,
         return false;
     }
     BgpRoute *bgp_route = static_cast<BgpRoute *> (route);
-
     UpdateInfo *uinfo = GetUpdateInfo(ribout, bgp_route, peerset);
     if (!uinfo)
         return false;
@@ -163,8 +164,41 @@ MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///                     Route Replication Functions                          ///
+///                Route Replication and export Functions                    ///
 ////////////////////////////////////////////////////////////////////////////////
+
+// Export MVPN routes
+UpdateInfo *MvpnTable::GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
+    const RibPeerSet &peerset) {
+    if (mvpn_rt->GetPrefix().type() != MvpnPrefix::LeafADRoute)
+        return NULL;
+    if (!route->IsUsable())
+        return NULL;
+    const BgpPath *path = route->BestPath();
+    if (!dynamic_cast<BgpSecondaryPath *>(path))
+        return NULL;
+
+    // Imported (replicated) Type4 secondary paths have been found. Send
+    // the route to sender xmpp agent with the PMSI tunnel information as
+    // encoded in the path attributes.
+    const BgpAttr *attr = path->GetAttr();
+    if (!attr)
+        return NULL;
+
+    PmsiTunnel *pmsi = ttr->pmsi_tunnel();
+    if (!pmsi)
+        return NULL;
+    if (!(pmsi->tunnel_type & PmsiTunnelSpec::IngressReplication))
+        return NULL;
+    uint32_t label = attr->pmsi_tunnel()->GetLabel();
+    if (!label)
+        return NULL;
+
+    Ip4Address nexthop = pmsi->identifier();
+    UpdateInfo *uinfo = new UpdateInfo;
+    uinfo->roattr = RibOutAttr(this, route, attr, label, true, true);
+    return uinfo;
+}
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
 // with a parent project maanger network via configuration. MvpnProjectManager
