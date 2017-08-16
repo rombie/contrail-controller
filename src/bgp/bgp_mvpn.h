@@ -126,8 +126,6 @@ private:
 
     MvpnTable *table();
     const MvpnTable *table() const;
-    bool IsMaster();
-    bool IsMaster() const;
     int listener_id() const;
 
     bool ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt);
@@ -201,7 +199,6 @@ public:
     BgpRoute *RouteReplicate(BgpServer *server, BgpTable *src_table,
         BgpRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr comm);
     void ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt, BgpPath *path);
-    bool IsMaster() const;
     MvpnManagerPartition *GetPartition(int part_id);
     const MvpnManagerPartition *GetPartition(int part_id) const;
     MvpnTable *table();

@@ -307,10 +307,6 @@ MvpnManager::MvpnManager(MvpnTable *table)
 MvpnManager::~MvpnManager() {
 }
 
-bool MvpnManager::IsMaster() const {
-    return table_->IsMaster();
-}
-
 MvpnTable *MvpnManager::table() {
     return table_;
 }
@@ -382,14 +378,6 @@ MvpnTable *MvpnManagerPartition::table() {
 
 const MvpnTable *MvpnManagerPartition::table() const {
     return manager_->table();
-}
-
-bool MvpnManagerPartition::IsMaster() {
-    return table()->IsMaster();
-}
-
-bool MvpnManagerPartition::IsMaster() const {
-    return table()->IsMaster();
 }
 
 int MvpnManagerPartition::listener_id() const {
@@ -497,7 +485,7 @@ const ErmVpnTable *MvpnProjectManagerPartition::table() const {
 // Initialize MvpnManager by allcating one MvpnManagerPartition for each DB
 // partition, and register a route listener for the MvpnTable.
 void MvpnManager::Initialize() {
-    assert(!IsMaster());
+    assert(!table_->IsMaster());
     AllocPartitions();
 
     listener_id_ = table_->Register(
@@ -516,10 +504,6 @@ void MvpnManager::Initialize() {
 // Process changes (create/update/delete) to all different types of MvpnRoute.
 void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
     CHECK_CONCURRENCY("db::DBTable");
-
-    // We only care about vrf[s].vpn.0 tables here.
-    if (IsMaster())
-        return;
 
     MvpnRoute *route = dynamic_cast<MvpnRoute *>(db_entry);
     assert(route);
@@ -609,10 +593,6 @@ ErmVpnRoute *MvpnProjectManagerPartition::GetGlobalTreeRootRoute(
 void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
         DBEntryBase *db_entry) {
     CHECK_CONCURRENCY("db::DBTable");
-
-    // We only care about vrf[s].vpn.0 tables here.
-    if (table_->IsMaster())
-        return;
 
     ErmVpnRoute *ermvpn_route = dynamic_cast<ErmVpnRoute *>(db_entry);
     assert(ermvpn_route);
@@ -765,8 +745,6 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 // Process changes to Type3 S-PMSI routes by originating or deleting Type 4
 // Lead AD paths as appropriate.
 void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
-    if (IsMaster())
-        return;
     MvpnState::SG sg = MvpnState::SG(spmsi_rt->GetPrefix().sourceIpAddress(),
                                      spmsi_rt->GetPrefix().groupIpAddress());
     MvpnProjectManagerPartition *project_manager_partition =
@@ -839,8 +817,6 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
-    if (IsMaster())
-        return;
     const BgpPath *src_path = leaf_ad->BestPath();
     if (!dynamic_cast<const BgpSecondaryPath *>(src_path))
         return;
