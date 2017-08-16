@@ -417,7 +417,7 @@ BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
 
 const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
         const BgpPath *path) const {
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(route);
     assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
     return mvpn_rt->GetPrefix().sourceIpAddress();
 }
