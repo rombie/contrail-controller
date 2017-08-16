@@ -15,6 +15,7 @@
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
+#include "bgp/rtarget/rtarget_address.h"
 
 using std::make_pair;
 using std::ostringstream;
@@ -794,20 +795,27 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         }
 
         if (!leaf_ad_rt) {
-            // Use route target <pe-router-id>:0
             leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
             mvpn_dbstate->route = leaf_ad_rt;
             assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
                     second);
             mvpn_state->refcount_++;
-
-            ExtCommunity::ExtCommunityValue rt_import;
-            ExtCommunity::ExtCommunityList export_target;
-            export_target.push_back(rt_import);
-            ExtCommunityPtr ext_community =
-                table()->server()->extcomm_db()->ReplaceRTargetAndLocate(NULL,
-                    export_target);
         }
+
+        // TODO(Ananth) delete any path if already exists and prune duplicate
+        // notifications.
+
+        // For LeafAD routes, rtarget is always <sender-router-id>:0.
+        BgpAttrPtr attrp = BgpAttrPtr(spmsi_rt->BestPath()->GetAttr());
+
+        // Always se route target <sender-router-id>:0 for LeafAD routes.
+        ExtCommunity::ExtCommunityList rtarget;
+        rtarget.push_back(RouteTarget(spmsi_rt->GetPrefix().originator(), 0).
+                              GetExtCommunity());
+        ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
+                ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
+        BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
+        leaf_ad_rt->InsertPath(path);
     }
 
     if (!leaf_ad_rt)

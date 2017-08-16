@@ -7,6 +7,7 @@
 
 #include <boost/array.hpp>
 #include <boost/system/error_code.hpp>
+#include "net/address.h"
 
 #include <string>
 
@@ -18,6 +19,7 @@ public:
 
     RouteTarget();
     explicit RouteTarget(const bytes_type &data);
+    RouteTarget(Ip4Address address, uint16_t num);
 
     std::string ToString() const;
 

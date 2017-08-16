@@ -149,13 +149,26 @@ bool MvpnTable::IsMaster() const {
     return routing_instance()->IsMasterRoutingInstance();
 }
 
+// Call the const version to avoid code duplication.
+MvpnProjectManager *MvpnTable::GetProjectManager() {
+    return const_cast<MvpnProjectManager *>(
+        static_cast<const MvpnTable *>(this)->GetProjectManager());
+}
+
+// Call the const version to avoid code duplication.
+MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
+        BgpRoute *rt) {
+    return const_cast<MvpnProjectManagerPartition *>(
+        static_cast<const MvpnTable *>(this)->GetProjectManagerPartition(rt));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///                     Route Replication Functions                          ///
 ////////////////////////////////////////////////////////////////////////////////
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
 // with a parent project maanger network via configuration. MvpnProjectManager
-// is retrieved from this parent network RoutingInstance object.
+// is retrieved from this parent network RoutingInstance's ErmVpnTable.
 const MvpnProjectManager *MvpnTable::GetProjectManager() const {
     std::string pm_network =
         routing_instance()->mvpn_project_manager_network();
@@ -172,11 +185,8 @@ const MvpnProjectManager *MvpnTable::GetProjectManager() const {
     return table->mvpn_project_manager();
 }
 
-MvpnProjectManager *MvpnTable::GetProjectManager() {
-    return const_cast<MvpnProjectManager *>(
-        static_cast<const MvpnTable *>(this)->GetProjectManager());
-}
-
+// Return the MvpnProjectManagerPartition for this route using the same DB
+// partition index as of the route.
 const MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
         BgpRoute *route) const {
     const MvpnProjectManager *manager = GetProjectManager();
@@ -186,52 +196,74 @@ const MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
     return manager->GetPartition(part_id);
 }
 
-MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
-        BgpRoute *rt) {
-    return const_cast<MvpnProjectManagerPartition *>(
-        static_cast<const MvpnTable *>(this)->GetProjectManagerPartition(rt));
-}
-
+// Override virtual method to retrive target table for MVPN routes. For now,
+// only Type-4 LeafAD routes require special treatment, as they always come
+// with the same route target <router-id>:0. Hence, if normal rtf selection
+// mode is used, every table with MVPN enalbled would have to be notified for
+// replication. Instead, find the table based on the correspondong S-PMSI route.
+// This route can be retrieved from the MVPN state of the <S-G> maintained in
+// the MvpnProjectManagerPartition object.
 void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
         TableSet *secondary_tables) {
     if (IsMaster())
         return;
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
     assert(mvpn_rt);
+
+    // Special table lookup is required only for the Type4 LeafAD routes.
     if (mvpn_rt->GetPrefix().type() != MvpnPrefix::LeafADRoute)
         return;
 
+    // Find the right MvpnProjectManagerPartition based on the rt's partition.
     const MvpnProjectManagerPartition *partition =
         GetProjectManagerPartition(rt);
     if (!partition)
         return;
 
+    // Retrieve MVPN state. Ignore if there is no state or if there is no usable
+    // Type3 SPMSI route 0associated with it (perhaps it was deleted already).
     MvpnState::SG sg(mvpn_rt);
     const MvpnState *state = partition->GetState(sg);
-    if (!state || !state->spmsi_rt())
+    if (!state || !state->spmsi_rt() || !state->spmsi_rt()->IsUsable())
         return;
+
+    // Matching Type-3 S-PMSI route was found. Return the table that holds this
+    // route, if it is usable.
     BgpTable *table = dynamic_cast<BgpTable *>(
         state->spmsi_rt()->get_table_partition()->parent());
     assert(table);
+
+    // Update table list to let replicator invoke RouteReplicate() for this
+    // LeafAD route for this table which has the corresponding Type3 SPMSI
+    // route. This was originated as the 'Sender' since receiver joined to
+    // the <C-S,G> group.
     secondary_tables->insert(table);
 }
 
+// RouteReplicate() method called from the RouteReplicator during replication.
+//
+// Handle MVPN routes appropriately based on the route type. Return replicated
+// route, or NULL if not replicated.
 BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *table,
     BgpRoute *rt, const BgpPath *src_path, ExtCommunityPtr community) {
     CHECK_CONCURRENCY("db::DBTable");
     MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
     MvpnTable *src_table = dynamic_cast<MvpnTable *>(table);
 
+    // Replicate Type7 C-Join route.
     if (src_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {
         return ReplicateType7SourceTreeJoin(server, src_table, src_rt,
                                             src_path, community);
     }
 
+    // Replicate Type4 LeafAD route.
     if (src_rt->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
         return ReplicateType4LeafAD(server, src_table, src_rt, src_path,
                                     community);
     }
 
+    // Replicate all other types.
+    // TODO(Ananth) Should we ignore types we don't support like Source-Active.
     return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                          src_path, community);
 }
@@ -240,11 +272,20 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
     ExtCommunityPtr community) {
 
+    // If replicating from Master table, no special checks are required.
     if (src_table->IsMaster()) {
         return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                              src_path, community);
     }
 
+    // This is the case when routes are replicated either to Master or to other
+    // vrf.mvpn.0 as identified the route targets. In either case, basic idea
+    // is to target the replicated path directly to vrf where sender resides.
+    //
+    // Route-target of the target vrf is derived from the Vrf Import Target of
+    // the route the source resolves to. Resolver code would have already
+    // computed this and encoded inside source-rd. Also source-as to encode in
+    // the RD is also encoded as part of the SourceAS extended community.
     const BgpAttr *attr = src_path->GetAttr();
     if (!attr)
         return NULL;
@@ -256,7 +297,6 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     // Find source-as extended-community. If not present, do not replicate
     bool source_as_found = false;
     SourceAs source_as;
-
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &value,
                   attr->ext_community()->communities()) {
         if (ExtCommunity::is_source_as(value)) {
@@ -269,18 +309,19 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     if (!source_as_found)
         return NULL;
 
-    ExtCommunityPtr comm =
-        server->extcomm_db()->RemoveSourceASAndLocate(attr->ext_community());
-    BgpAttrPtr new_attr = server->attr_db()->ReplaceExtCommunityAndLocate(
-        attr, comm);
+    // No need to send SourceAS with this mvpn route. This is only sent along
+    // with the unicast routes.
+    community = server->extcomm_db()->RemoveSourceASAndLocate(community.get());
 
-    // Replicate path using <C-S,G>, source_rd and mvpn neighbror ASN as part
-    // if the Type-7 prefix.
+    // Replicate path using source route's<C-S,G>, source_rd and asn as encoded
+    // in the source-as attribute.
     MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, attr->source_rd(),
                       source_as.GetAsn(), src_rt->GetPrefix().group(),
                       src_rt->GetPrefix().source());
+
+    // Replicate the path with the computed prefix and attributes.
     return ReplicatePath(server, prefix, src_table, src_rt, src_path,
-                         community, new_attr);
+                         community);
 }
 
 // Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
@@ -296,36 +337,54 @@ BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
     if (!attr || !attr->ext_community())
         return NULL;
 
-    if (!IsMaster()) {
-        // Make sure that there is an associated Type3 S-PMSI route.
+    if (src_table->IsMaster()) {
         MvpnRoute *spmsi_rt = FindSPMSIRoute(src_rt);
         if (!spmsi_rt)
             return NULL;
-
-        if (src_table->IsMaster()) {
-            return ReplicatePath(server, src_rt->GetPrefix(), src_table,
-                                 src_rt, src_path, community);
-        }
+        return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
+                             src_path, community);
     }
 
     MvpnProjectManagerPartition *partition = GetProjectManagerPartition(src_rt);
-    if (!partition)
+    if (!partition) {
         return NULL;
+    }
     MvpnState *mvpn_state = partition->GetState(src_rt);
-    assert(mvpn_state);
+    if (!mvpn_state) {
+        return NULL;
+    }
 
     // Do not replicate if there is no receiver interested for this <S,G>.
-    if (mvpn_state->cjoin_routes_received()->empty())
+    if (mvpn_state->cjoin_routes_received()->empty()) {
+        // Old forest node must be updated to reset input tunnel attribute.
+        if (mvpn_state->global_ermvpn_tree_rt())
+            mvpn_state->global_ermvpn_tree_rt()->Notify();
         return NULL;
+    }
+
+    // Make sure that there is an associated Type3 S-PMSI route if replicating
+    // into vrf.mvpn.0.
+    if (!IsMaster()) {
+        MvpnRoute *spmsi_rt = FindSPMSIRoute(src_rt);
+        if (!spmsi_rt) {
+            // Old forest node must be updated to reset input tunnel attribute.
+            if (mvpn_state->global_ermvpn_tree_rt())
+                mvpn_state->global_ermvpn_tree_rt()->Notify();
+            return NULL;
+        }
+    }
 
     uint32_t label;
     Ip4Address address;
     if (!partition->GetLeafAdTunnelInfo(mvpn_state->global_ermvpn_tree_rt(),
                                         &label, &address)) {
-        // TODO(Ananth) old forest node must be updated to reset input tunnel
-        // attribute, if encoded.
+        // Old forest node must be updated to reset input tunnel attribute.
+        if (mvpn_state->global_ermvpn_tree_rt())
+            mvpn_state->global_ermvpn_tree_rt()->Notify();
         return NULL;
     }
+
+    // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
     PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
     pmsi_spec->tunnel_flags = 0;
     pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
@@ -415,6 +474,8 @@ BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
     return dest_route;
 }
 
+// Find MVPN Source address from the route which needs to be resolved in order
+// to propagate the join towards the sender.
 const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
         const BgpPath *path) const {
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(route);
