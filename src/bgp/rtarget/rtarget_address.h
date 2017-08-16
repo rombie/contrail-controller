@@ -19,7 +19,7 @@ public:
 
     RouteTarget();
     explicit RouteTarget(const bytes_type &data);
-    RouteTarget(Ip4Address address, uint16_t num);
+    RouteTarget(const Ip4Address &address, uint16_t num);
 
     std::string ToString() const;
 
