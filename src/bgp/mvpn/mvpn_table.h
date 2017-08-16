@@ -76,6 +76,8 @@ public:
     MvpnProjectManagerPartition *GetProjectManagerPartition(BgpRoute *rt);
     void UpdateSecondaryTablesForReplication(BgpRoute *rt,
         TableSet *secondary_tables);
+    const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
+            const;
 
 private:
     friend class BgpMulticastTest;
