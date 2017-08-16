@@ -600,11 +600,17 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     ErmVpnTable *ermvpn_table = dynamic_cast<ErmVpnTable *>(tpart->parent());
     assert(ermvpn_table);
 
+    // We only care about global tree routes for mvpn stitching.
+    if (ermvpn_route->GetPrefix().type() != ErmVpnPrefix::GlobalTreeRoute)
+        return;
+
     MvpnProjectManagerPartition *partition =
         GetPartition(ermvpn_route->get_table_partition()->index());
     MvpnState *mvpn_state = partition->GetState(ermvpn_route);
     ErmVpnRoute *global_rt = partition->GetGlobalTreeRootRoute(ermvpn_route);
 
+    // TODO(Ananth) Use DBState to further prune changes that we don't care
+    // about.
     if (!global_rt && (!mvpn_state || !mvpn_state->global_ermvpn_tree_rt()))
         return;
 
@@ -620,6 +626,7 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     }
 }
 
+// TODO(Ananth) Not required.
 void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
         BgpPath *path) {
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
@@ -758,7 +765,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         spmsi_rt->GetState(table(), listener_id()));
 
     MvpnRoute *leaf_ad_rt = NULL;
-    if (!spmsi_rt->IsValid()) {
+    if (!spmsi_rt->IsUsable()) {
         if (!mvpn_dbstate)
             return;
         MvpnState *mvpn_state = GetState(spmsi_rt);

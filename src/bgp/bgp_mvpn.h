@@ -139,16 +139,6 @@ private:
     MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
 
-    BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
-        MvpnTable *src_table, MvpnRoute *source_rt, const BgpPath *src_path,
-        ExtCommunityPtr comm);
-    BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
-        MvpnRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr comm);
-    BgpRoute *ReplicatePath(BgpServer *server,
-        const MvpnPrefix &rt_key, MvpnTable *src_table, MvpnRoute *src_rt,
-        const BgpPath *src_path, ExtCommunityPtr community,
-        BgpAttrPtr new_attr = NULL, bool *replicated = NULL);
-
     MvpnManager *manager_;
     int part_id_;
 

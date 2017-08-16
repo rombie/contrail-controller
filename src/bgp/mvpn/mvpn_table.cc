@@ -388,6 +388,7 @@ BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
         return NULL;
     }
 
+    /*
     // Do not replicate if there is no receiver interested for this <S,G>.
     if (mvpn_state->cjoin_routes_received()->empty()) {
         // Old forest node must be updated to reset input tunnel attribute.
@@ -407,11 +408,13 @@ BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
             return NULL;
         }
     }
+    */
 
     uint32_t label;
     Ip4Address address;
+    // TODO(Ananth) Add TunnelType extended community also.
     if (!partition->GetLeafAdTunnelInfo(mvpn_state->global_ermvpn_tree_rt(),
-                                        &label, &address)) {
+                                        &tunnel_types_list, &label, &address)) {
         // Old forest node must be updated to reset input tunnel attribute.
         if (mvpn_state->global_ermvpn_tree_rt())
             mvpn_state->global_ermvpn_tree_rt()->Notify();
@@ -515,6 +518,12 @@ const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(route);
     assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
     return mvpn_rt->GetPrefix().sourceIpAddress();
+}
+
+MvpnTable::GetExportList(BgpRoute *rt) const {
+    if (route->GetPrefix().type() != type7) {
+        BgpTable::GetExportList(rt);
+    }
 }
 
 static void RegisterFactory() {
