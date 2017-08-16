@@ -119,7 +119,7 @@ Address::Family PathResolver::family() const {
 // the BgpPath changes nexthop.
 //
 void PathResolver::StartPathResolution(BgpRoute *route, const BgpPath *path,
-        BgpTable *nh_table, const IpAddress *addrp) {
+        BgpTable *nh_table) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
         "bgp::Config", "bgp::ConfigHelper");
 
@@ -128,7 +128,7 @@ void PathResolver::StartPathResolution(BgpRoute *route, const BgpPath *path,
     assert(nh_table->family() == Address::INET ||
            nh_table->family() == Address::INET6);
     int part_id = route->get_table_partition()->index();
-    partitions_[part_id]->StartPathResolution(route, path, nh_table, addrp);
+    partitions_[part_id]->StartPathResolution(route, path, nh_table);
 }
 
 //
@@ -638,16 +638,16 @@ PathResolverPartition::~PathResolverPartition() {
 // ResolverPath constructor.
 //
 void PathResolverPartition::StartPathResolution(BgpRoute *route,
-        const BgpPath *path, BgpTable *nh_table, const IpAddress *addrp) {
+        const BgpPath *path, BgpTable *nh_table) {
     if (!path->IsResolutionFeasible())
         return;
     if (table()->IsDeleted() || nh_table->IsDeleted())
         return;
 
     Address::Family family = table()->family();
-    const IpAddress address = addrp ? *addrp : path->GetAttr()->nexthop();
-    if (table() == nh_table &&
-            resolver_->RoutePrefixMatch(family, route, address)) {
+    const IpAddress address = table()->GetAddressToResolve(route, path);
+    if (table() == nh_table && resolver_->RoutePrefixMatch(family, route,
+                                                           address)) {
         return;
     }
 

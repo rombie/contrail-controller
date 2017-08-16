@@ -690,3 +690,8 @@ RouteDistinguisher BgpTable::GetSourceRouteDistinguisher(
     const BgpPath *path) const {
     return path->GetSourceRouteDistinguisher();
 }
+
+const IpAddress BgpTable::GetAddressToResolve(BgpRoute *route,
+        const BgpPath *path) const {
+    return path->GetAttr()->nexthop();
+}

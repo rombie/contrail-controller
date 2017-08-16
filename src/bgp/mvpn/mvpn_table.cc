@@ -415,6 +415,13 @@ BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
     return dest_route;
 }
 
+const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
+        const BgpPath *path) const {
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
+    assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
+    return mvpn_rt->GetPrefix().sourceIpAddress();
+}
+
 static void RegisterFactory() {
     DB::RegisterFactory("mvpn.0", &MvpnTable::CreateTable);
 }
