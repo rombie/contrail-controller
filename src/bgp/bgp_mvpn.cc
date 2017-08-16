@@ -643,6 +643,7 @@ void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
         BgpPath *path) {
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
     assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
+    IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
     BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
                                         rtinstance->GetTable(Address::INET6);
     path_resolver()->StartPathResolution(rt, path, table);
