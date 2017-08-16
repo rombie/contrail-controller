@@ -68,12 +68,11 @@ private:
 // The listener_id if used to set state on BgpRoutes for BgpPaths that have
 // requested resolution.
 //
-PathResolver::PathResolver(BgpTable *table, bool resolution_only)
+PathResolver::PathResolver(BgpTable *table)
     : table_(table),
       listener_id_(table->Register(
           boost::bind(&PathResolver::RouteListener, this, _1, _2),
           "PathResolver")),
-      resolution_only_(resolution_only),
       nexthop_reg_unreg_trigger_(new TaskTrigger(
           boost::bind(&PathResolver::ProcessResolverNexthopRegUnregList, this),
           TaskScheduler::GetInstance()->GetTaskId("bgp::Config"),
@@ -864,8 +863,6 @@ ResolverPath::~ResolverPath() {
 void ResolverPath::AddResolvedPath(ResolvedPathList::const_iterator it) {
     BgpPath *path = *it;
     resolved_path_list_.insert(path);
-    if (partition_->resolver()->resolution_only())
-        return;
     const IPeer *peer = path->GetPeer();
     BGP_LOG_STR(BgpMessage, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         "Added resolved path " << route_->ToString() <<
@@ -884,8 +881,6 @@ void ResolverPath::AddResolvedPath(ResolvedPathList::const_iterator it) {
 void ResolverPath::DeleteResolvedPath(ResolvedPathList::const_iterator it) {
     BgpPath *path = *it;
     resolved_path_list_.erase(it);
-    if (partition_->resolver()->resolution_only())
-        return;
     const IPeer *peer = path->GetPeer();
     BGP_LOG_STR(BgpMessage, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         "Deleted resolved path " << route_->ToString() <<
@@ -1059,8 +1054,6 @@ bool ResolverPath::UpdateResolvedPaths() {
         BgpPath *resolved_path =
             LocateResolvedPath(peer, path_id, attr.get(), nh_path->GetLabel());
         future_resolved_path_list.insert(resolved_path);
-        if (partition_->resolver()->resolution_only())
-            break;
     }
 
     // Reconcile the current and future resolved paths and notify/delete the

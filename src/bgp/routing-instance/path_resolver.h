@@ -91,7 +91,7 @@ class TaskTrigger;
 //
 class PathResolver {
 public:
-    PathResolver(BgpTable *table, bool resolution_only = false);
+    PathResolver(BgpTable *table);
     ~PathResolver();
 
     void StartPathResolution(BgpRoute *route, const BgpPath *path,
@@ -107,7 +107,6 @@ public:
     BgpConditionListener *get_condition_listener(Address::Family family);
     const BgpPath *FindResolvedPath(const BgpRoute *route, const BgpPath *path)
         const;
-    bool resolution_only() const { return resolution_only_; }
 
     bool IsDeleted() const;
     void ManagedDelete();
@@ -162,7 +161,6 @@ private:
 
     BgpTable *table_;
     DBTableBase::ListenerId listener_id_;
-    bool resolution_only_;
     mutable tbb::mutex mutex_;
     ResolverNexthopMap nexthop_map_;
     ResolverNexthopList nexthop_reg_unreg_list_;
