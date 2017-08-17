@@ -52,6 +52,7 @@ class RoutingInstance {
 public:
     typedef std::map<std::string, BgpTable *> RouteTableList;
     typedef std::map<Address::Family, BgpTable *> RouteTableFamilyList;
+    typedef std::set<RouteTarget> RouteTargetList;
 
     RoutingInstance(std::string name, BgpServer *server,
                     RoutingInstanceMgr *mgr,
@@ -88,8 +89,8 @@ public:
 
     void RemoveTable(BgpTable *tbl);
 
-    const RouteTarget::List &GetImportList() const { return import_; }
-    const RouteTarget::List &GetExportList() const { return export_; }
+    const RouteTargetList &GetImportList() const { return import_; }
+    const RouteTargetList &GetExportList() const { return export_; }
     bool HasExportTarget(const ExtCommunity *extcomm) const;
 
     const RouteDistinguisher *GetRD() const {
@@ -197,9 +198,9 @@ private:
     void FlushAllRTargetRoutes(as4_t asn);
 
     void AddRouteTarget(bool import, std::vector<std::string> *change_list,
-        RouteTarget::List::const_iterator it);
+        RouteTargetList::const_iterator it);
     void DeleteRouteTarget(bool import, std::vector<std::string> *change_list,
-        RouteTarget::List::iterator it);
+        RouteTargetList::iterator it);
 
     // Cleanup all the state prior to deletion.
     void Shutdown();
@@ -216,8 +217,8 @@ private:
     std::auto_ptr<RouteDistinguisher> rd_;
     RouteTableList vrf_tables_by_name_;
     RouteTableFamilyList vrf_tables_by_family_;
-    RouteTarget::List import_;
-    RouteTarget::List export_;
+    RouteTargetList import_;
+    RouteTargetList export_;
     BgpServer *server_;
     RoutingInstanceMgr *mgr_;
     const BgpInstanceConfig *config_;

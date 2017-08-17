@@ -9,6 +9,7 @@
 #include <boost/system/error_code.hpp>
 #include "net/address.h"
 
+#include <set>
 #include <string>
 
 class RouteTarget {
