@@ -276,11 +276,11 @@ void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
 }
 
 // Find or create the route.
-BgpRoute *MvpnTable::LocateRoute(MvpnPrefix &prefix) {
+MvpnRoute *MvpnTable::LocateRoute(MvpnPrefix &prefix) {
     MvpnRoute rt_key(prefix);
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
         GetTablePartition(&rt_key));
-    BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
+    MvpnRoute *dest_route = static_cast<MvpnRoute *>(rtp->Find(&rt_key));
     if (dest_route == NULL) {
         dest_route = new MvpnRoute(prefix);
         rtp->Add(dest_route);
@@ -298,7 +298,7 @@ MvpnPrefix MvpnTable::CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt) {
     return prefix;
 }
 
-BgpRoute *MvpnTable::LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt) {
+MvpnRoute *MvpnTable::LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt) {
     MvpnPrefix prefix = CreateType4LeafADRoutePrefix(type3_spmsi_rt);
     return LocateRoute(prefix);
 }
@@ -314,7 +314,7 @@ MvpnPrefix MvpnTable::CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt) {
     return prefix;
 }
 
-BgpRoute *MvpnTable::LocateType3SPMSIRoute(MvpnRoute *type7_rt) {
+MvpnRoute *MvpnTable::LocateType3SPMSIRoute(MvpnRoute *type7_rt) {
     MvpnPrefix prefix = CreateType3SPMSIRoutePrefix(type7_rt);
     return LocateRoute(prefix);
 }
@@ -326,7 +326,7 @@ MvpnPrefix MvpnTable::CreateType2ADRoutePrefix() {
     return prefix;
 }
 
-BgpRoute *MvpnTable::LocateType2ADRoute() {
+MvpnRoute *MvpnTable::LocateType2ADRoute() {
     MvpnPrefix prefix = CreateType2ADRoutePrefix();
     return LocateRoute(prefix);
 }
@@ -338,7 +338,7 @@ MvpnPrefix MvpnTable::CreateType1ADRoutePrefix() {
     return prefix;
 }
 
-BgpRoute *MvpnTable::LocateType1ADRoute() {
+MvpnRoute *MvpnTable::LocateType1ADRoute() {
     MvpnPrefix prefix = CreateType1ADRoutePrefix();
     return LocateRoute(prefix);
 }

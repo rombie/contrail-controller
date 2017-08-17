@@ -74,17 +74,23 @@ public:
     const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
             const;
     const RouteTarget::List &GetExportList(BgpRoute *rt) const;
-    BgpRoute *LocateType1ADRoute();
-    BgpRoute *LocateType2ADRoute();
-    BgpRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
-    BgpRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
+    MvpnRoute *LocateType1ADRoute();
+    MvpnRoute *LocateType2ADRoute();
+    MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
+    MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
 
 private:
-    BgpRoute *LocateRoute(MvpnPrefix &prefix);
     friend class BgpMulticastTest;
+    friend class MvpnTableTest;
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
+    MvpnRoute *LocateRoute(MvpnPrefix &prefix);
+    MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
+    MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
+    MvpnPrefix CreateType2ADRoutePrefix();
+    MvpnPrefix CreateType1ADRoutePrefix();
+
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
@@ -97,10 +103,6 @@ private:
         bool *replicated = NULL);
     UpdateInfo *GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
                                   const RibPeerSet &peerset);
-    MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
-    MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
-    MvpnPrefix CreateType2ADRoutePrefix();
-    MvpnPrefix CreateType1ADRoutePrefix();
 
     MvpnManager *manager_;
 
