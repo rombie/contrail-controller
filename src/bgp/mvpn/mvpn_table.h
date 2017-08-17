@@ -84,6 +84,8 @@ public:
     MvpnRoute *LocateType2ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
+    bool force_replication() const { return force_replication_; }
+    void set_force_replication(bool flag) { force_replication_ = flag; }
 
 private:
     friend class BgpMulticastTest;
@@ -107,6 +109,7 @@ private:
                                   const RibPeerSet &peerset);
 
     MvpnManager *manager_;
+    bool force_replication_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnTable);
 };

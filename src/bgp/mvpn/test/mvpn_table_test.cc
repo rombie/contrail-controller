@@ -24,6 +24,7 @@ public:
 
 private:
     void Initialize() { }
+    void Terminate() { }
 };
 
 class MvpnManagerMock : public MvpnManager {
@@ -32,6 +33,7 @@ public:
 
 private:
     void Initialize() { }
+    void Terminate() { }
 };
 
 class MvpnTableTest : public ::testing::Test {
@@ -60,6 +62,7 @@ protected:
 
         blue_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("blue.mvpn.0"));
+        blue_->set_force_replication(true);
         TASK_UTIL_EXPECT_EQ(Address::MVPN, blue_->family());
         master_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("bgp.mvpn.0"));

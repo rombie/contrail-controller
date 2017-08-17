@@ -37,7 +37,7 @@ size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
 }
 
 MvpnTable::MvpnTable(DB *db, const string &name)
-    : BgpTable(db, name), manager_(NULL) {
+    : BgpTable(db, name), manager_(NULL), force_replication_(false) {
 }
 
 PathResolver *MvpnTable::CreatePathResolver() {
@@ -371,6 +371,11 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *table,
     CHECK_CONCURRENCY("db::DBTable");
     MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
     MvpnTable *src_table = dynamic_cast<MvpnTable *>(table);
+
+    if (force_replication()) {
+        return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
+                             src_path, community);
+    }
 
     // Replicate Type7 C-Join route.
     if (src_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute) {

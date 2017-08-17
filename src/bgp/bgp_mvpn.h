@@ -161,7 +161,7 @@ public:
     LifetimeActor *deleter();
     const LifetimeActor *deleter() const;
     bool deleted() const;
-    void Terminate();
+    virtual void Terminate();
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     virtual void Initialize();
 
@@ -350,8 +350,8 @@ private:
 
 // This class glues mvpn and ermvpn modules
 //
-// It maintains a list of MvpnProjectManagerPartition objects, one for each
-// DB partition.
+// It maintains a list of MvpnProjectManagerPartition objects, one for each DB
+// partition.
 //
 // It listens to changes to ErmVpn table and for any applicable change to
 // GlobalErmVpnRoute, it notifies all applicable received SPMSI routes so that
@@ -370,7 +370,7 @@ public:
     MvpnProjectManagerPartition *GetPartition(int part_id);
     const MvpnProjectManagerPartition *GetPartition(int part_id) const;
     void ManagedDelete();
-    void Terminate();
+    virtual void Terminate();
     ErmVpnTable *table();
     const ErmVpnTable *table() const;
     int listener_id() const;
