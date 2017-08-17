@@ -66,6 +66,7 @@ protected:
         TASK_UTIL_EXPECT_EQ(Address::MVPN, blue_->family());
         master_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("bgp.mvpn.0"));
+        master_->set_force_replication(true);
         TASK_UTIL_EXPECT_EQ(Address::MVPN, master_->family());
 
         tid_ = blue_->Register(
