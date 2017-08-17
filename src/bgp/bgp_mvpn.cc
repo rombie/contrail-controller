@@ -578,11 +578,11 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
 }
 
 ErmVpnRoute *MvpnProjectManagerPartition::GetGlobalTreeRootRoute(
-        ErmVpnRoute *rt) const {
+        const Ip4Address &source, const Ip4Address &group) const {
     if (!table()->tree_manager())
         return NULL;
     ErmVpnRoute *global_rt = table()->tree_manager()->GetPartition(part_id_)->
-        GetGlobalTreeRootRoute(rt);
+        GetGlobalTreeRootRoute(source, group);
     if (!global_rt || !global_rt->IsUsable())
         return NULL;
     return global_rt;
@@ -607,7 +607,8 @@ void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
     MvpnProjectManagerPartition *partition =
         GetPartition(ermvpn_route->get_table_partition()->index());
     MvpnState *mvpn_state = partition->GetState(ermvpn_route);
-    ErmVpnRoute *global_rt = partition->GetGlobalTreeRootRoute(ermvpn_route);
+    ErmVpnRoute *global_rt = partition->GetGlobalTreeRootRoute(
+        ermvpn_route->GetPrefix().source(), ermvpn_route->GetPrefix().group());
 
     // TODO(Ananth) Use DBState to further prune changes that we don't care
     // about.
@@ -773,84 +774,96 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         // Check if a type4 LeadAD path was already originated before for this
         // S-PMSI path. If so, delete it as the S-PMSI path is no nonger usable.
-        if (mvpn_dbstate->route) {
-            BgpPath *path = mvpn_dbstate->route->FindPath(NULL);
-            if (path) {
-                mvpn_dbstate->route->DeletePath(path);
-            }
+        leaf_ad_rt = mvpn_dbstate->route;
+        if (leaf_ad_rt) {
+            BgpPath *path = leaf_ad_route->FindPath(BgpPath::Local, 0);
+            if (path)
+                leaf_ad_route->DeletePath(path);
             mvpn_dbstate->route = NULL;
         }
 
-        assert(mvpn_state->leaf_ad_routes_originated_.erase(
-                   mvpn_dbstate->route));
+        assert(mvpn_state->spmsi_routes_received_.erase(spmsi_rt));
         spmsi_rt->ClearState(table(), listener_id());
         DeleteState(mvpn_state);
+        if (leaf_ad_rt)
+            leaf_ad_rt->NotifyOrDelete();
+        return;
+    }
+
+    // A valid S-PMSI path has been imported to a table. Originate a new
+    // LeafAD path, if GlobalErmVpnTreeRoute is available to stitch.
+    // TODO(Ananth) If LeafInfoRequired bit is not set in the S-PMSI route,
+    // then we do not need to originate a leaf ad route for this s-pmsi rt.
+    MvpnState *mvpn_state = LocateState(spmsi_rt);
+    if (!mvpn_dbstate) {
+        mvpn_dbstate = new MvpnDBState(mvpn_state);
+        spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
+        assert(mvpn_state->spmsi_routes_received_.insert(spmsi_rt).second);
     } else {
-        // A valid S-PMSI path has been imported to a table. Originate a new
-        // LeafAD path.
-        // TODO(Ananth) If LeafInfoRequired bit is not set in the S-PMSI route,
-        // then we do not need to originate a leaf ad route for this s-pmsi rt.
-        MvpnState *mvpn_state = LocateState(spmsi_rt);
-        if (!mvpn_state)
-            mvpn_state = project_manager_partition->CreateState(sg);
+        leaf_ad_rt = mvpn_dbstate->route;
+    }
 
-        if (!mvpn_dbstate) {
-            mvpn_dbstate = new MvpnDBState(mvpn_state);
-            spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
-        } else {
-            leaf_ad_rt = mvpn_dbstate->route;
+    ErmVpnRoute *global_ermvpn_rt = partition->GetGlobalTreeRootRoute(
+        spmsi_rt->GetPrefix().source(), spmsi_rt->GetPrefix().group());
+
+    if (!global_ermvpn_rt) {
+        // There is no ermvpn route available to stitch at this time. Remove any
+        // originated Type4 LeafAD route. DB State shall remain on the route as
+        // SPMSI route itself is still a usable route.
+        if (leaf_ad_rt) {
+            BgpPath *path = leaf_ad_route->FindPath(BgpPath::Local, 0);
+            if (path)
+                leaf_ad_route->DeletePath(path);
+            mvpn_dbstate->route = NULL;
+            leaf_ad_rt->NotifyOrDelete();
         }
+        return;
+    }
 
-        if (!leaf_ad_rt) {
-            leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
-            mvpn_dbstate->route = leaf_ad_rt;
-            assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
-                   second);
-            mvpn_state->refcount_++;
-        }
+    if (!leaf_ad_rt) {
+        leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
+        mvpn_dbstate->route = leaf_ad_rt;
+    }
 
-        // TODO(Ananth) delete any path if already exists and prune duplicate
-        // notifications.
+    // TODO(Ananth) delete any path if already exists and prune duplicate
+    // notifications.
 
-        // For LeafAD routes, rtarget is always <sender-router-id>:0.
-        BgpAttrPtr attrp = BgpAttrPtr(spmsi_rt->BestPath()->GetAttr());
+    // For LeafAD routes, rtarget is always <sender-router-id>:0.
+    BgpAttrPtr attrp = BgpAttrPtr(spmsi_rt->BestPath()->GetAttr());
 
-        // Always se route target <sender-router-id>:0 for LeafAD routes.
-        ExtCommunity::ExtCommunityList rtarget;
-        rtarget.push_back(RouteTarget(spmsi_rt->GetPrefix().originator(), 0).
-                              GetExtCommunity());
-        ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
-                ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
+    // Always set route target <sender-router-id>:0 for LeafAD routes.
+    ExtCommunity::ExtCommunityList rtarget;
+    rtarget.push_back(RouteTarget(spmsi_rt->GetPrefix().originator(), 0).
+                          GetExtCommunity());
+    ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
+            ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
 
-        uint32_t label;
-        Ip4Address address;
-        // TODO(Ananth) Add TunnelType extended community also.
-        if (!partition->GetLeafAdTunnelInfo(mvpn_state->global_ermvpn_tree_rt(),
-                            &tunnel_types_list, &label, &address)) {
-            // Old forest node must be updated to reset input tunnel attribute.
-            if (mvpn_state->global_ermvpn_tree_rt())
-                mvpn_state->global_ermvpn_tree_rt()->Notify();
-            return NULL;
-        }
+    uint32_t label;
+    Ip4Address address;
+    // TODO(Ananth) Add TunnelType extended community also.
+    assert(partition->GetLeafAdTunnelInfo(
+               mvpn_state->global_ermvpn_tree_rt(), &tunnel_types_list,
+               &label, &address));
 
-        // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
-        PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
-        pmsi_spec->tunnel_flags = 0;
-        pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec->SetLabel(label);
-        pmsi_spec->SetIdentifier(address);
+    // Old forest node must be updated to reset input tunnel attribute.
+        if (mvpn_state->global_ermvpn_tree_rt())
+    mvpn_state->global_ermvpn_tree_rt()->Notify();
+        return NULL;
 
-       // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
-       // the path attributes. Community should be route-target with root PE
-       // router-id + 0 (Page 254).
-       BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
-           src_path->GetAttr(), pmsi_spec);
-           BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
-           leaf_ad_rt->InsertPath(path);
-       }
+    // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
+    PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
+    pmsi_spec->tunnel_flags = 0;
+    pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
+    pmsi_spec->SetLabel(label);
+    pmsi_spec->SetIdentifier(address);
 
-       if (!leaf_ad_rt)
-           return;
+    / Replicate the LeafAD path with appropriate PMSI tunnel info as part of
+    / the path attributes. Community should be route-target with root PE
+    / router-id + 0 (Page 254).
+    BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
+       src_path->GetAttr(), pmsi_spec);
+       BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
+       leaf_ad_rt->InsertPath(path);
 
     leaf_ad_rt->NotifyOrDelete();
 }
