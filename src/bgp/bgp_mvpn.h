@@ -69,51 +69,21 @@ private:
 // Upon route change notification, based on the route-type for which a route
 // notification has been received, different set of actions are undertaken in
 // this class. This class only handles routes in which customer 'Group' info is
-// encode, such as Type3 S-PMSI routes.
+// encoded, such as Type3 S-PMSI routes.
 //
 // Notification for a Type3 S-PMSI route add/change/delete
 //     When sender indicates that it has a sender for a particular <S,G> entry,
 //     (With Leaf-Information required in the PMSI tunnel attribute), then this
-//     class originates/updates a new Type4 LeafAD route into vrf.mvpn.0 table
+//     class originates/updates a new Type4 LeafAD route into vrf.mvpn.0 table.
+//     LeafAD route however is originated only if a usuable GlobalErmVpnRoute
+//     is avaiable for stitching. On the other hand, if such a route was already
+//     originated before and now no longer feasible, it is deleted instead.
 //
 // Notification for a Type7 SourceTreeJoinRoute route add/change/delete
 //     When this route is successfully imported into a vrf, new Type3 S-PMSI
-//     route is originated/updated into that vrf.mvpn.0. (Typically, only if a
-//     sender PMSI tunnel is configured for that <S,G>)
-//
-// This class also implements all the logic necessary when various MVPN routes
-// are replicated from the primary table into secondary tables.
-//
-// Based on the types of the replicated paths, different set of actions are
-// undertaken.
-//
-// Replication of Type7 SourceTreeJoin Route
-//     If <Source> route is resolvable over a Mvpn neighbor and if the resolved
-//     route has rt-import route target associated with it, only then this path
-//     is replicated. In all other cases, if any replicated if already present
-//     is actually deleted instead.
-//
-//     Route Target of the route is replaced entirely with just the value as
-//     encoded inside the route-import extended community of the path which
-//     resolves the Source address (of the <S,G>).
-//
-// Replication of Type4 LeafAD Route
-//     This path is replicated only if PMSI tunnel information can be gathered
-//     by successfully identifying the forest node of the local tree associated
-//     with GlobalErmVpn route. If replicated, GlobalErmVpnRoute is notified so
-//     that local route associated with the forest node can be correctly updated
-//     with Input tunnel attribute. On the other hand, if the route is not
-//     replicated, then the GlobalErmVpnRoute must be notified so that local
-//     route associated with the forest node of the local tree is updated with
-//     the deletion of any input tunnel attribute previously encoded.
-//
-//     Please refer to MvpnProjectManagerPartition documentation for further
-//     details in this regard.
-//
-// Replication of Type3 S-PMSI route
-//
-// Replication of Type1/Type2 AD route
-//
+//     route is originated/updated into that vrf.mvpn.0 if there is at least
+//     one associated Join route from the agent with flags marked as "Sender"
+//     or "SenderAndReciver".
 class MvpnManagerPartition {
 public:
     MvpnManagerPartition(MvpnManager *manager, int part_id);
@@ -164,16 +134,8 @@ private:
 // deleted always serially from with in the same db task, map will get accessed
 // (read) concurrently from task running of different DB partitions.
 //
-// This class also holds a PathResolver object. This is used to resolve "Source"
-// when Type7 <C-S,G> join routes are received over xmpp/igmp. Resolver, when
-// ever it finds change to resolution status of a route, notifies the route (for
-// which resolution was requested). Inside route notification, which runs off
-// DB table tasks, resolver data structures can be examined at it is always
-// ensured by scheduling policy that resolver and db tasks do not run together.
-//
 // This class also provides DeleteActor and maintains a LifetimeRef to parent
 // MvpnTable object in order to ensure orderly cleanup during table deletion.
-//
 class MvpnManager {
 public:
     typedef std::vector<MvpnManagerPartition *> PartitionList;
@@ -237,18 +199,25 @@ private:
 // This is a refcounted class which is referred by DB States of different
 // routes. When the refcount reaches 0, (last referring db state is deleted),
 // this object is destroyed.
+// TODO(Ananth) Use MvpnStatePtr intrusive pointer to manage this.
 //
 // global_ermvpn_tree_rt_
 //     This is a reference to GlobalErmVpnRoute associated with the ErmVpnTree
 //     used in the data plane for this <S,G>. This route is created/updated
 //     when ErmVpn notifies changes to ermvpn routes.
 //
+// spmsi_rt_
+//     This is the 'only' Type3 SPMSI sender route originated for this S,G.
+//     When an agent indicates that it has an active sender for a particular
+//     <S,G> via Join route, then this route is originated (if there is atleast
+//     one active reeiver)
+//
 // spmsi_routes_received_
-//     This is a set of all type-4 leaf ad routes originated for this <S-G>.
-//     It is possible that when leaf ad routes are originated, there is no
-//     ermvpn tree available for forwarding in the data plane. In such a case,
-//     later when global_ermvpn_tree_rt_ does get updated, all leaf ad routes
-//     in this set are notified and re-evaluated for route replication.
+//     This is a set of all Type3 spmsi routes received for this <S-G>. It is
+//     possible that when these routes are received, then there is no ermvpn
+//     tree route to use for forwarding in the data plane. In such a case, later
+//     when global_ermvpn_tree_rt_ does get updated, all leaf ad routes in this
+//     set are notified and re-evaluated.
 //
 // cjoin_routes_received_
 //     This is a set of all Type7 cjoin routes originated (via xmpp) for this
@@ -256,7 +225,8 @@ private:
 //     after the source can be resolved and MVPN neighbor is detected for the
 //     resolved nexthop address. If MVPN neighbor is discovered or gets deleted,
 //     all type-7 join routes must be re-evaluated so that the routes can now be
-//     replicated (or perhaps deleted)
+//     replicated (or perhaps deleted). Path resolver provides necessary hooks
+//     for this source path resolution.
 class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
@@ -335,7 +305,7 @@ struct MvpnDBState : public DBState {
 // Inside each RoutingInstance object, name of this parent manager virtual
 // network is stored in mvpn_project_manager_network_ string. When ever this
 // information is set/modified/cleared in the routing instance, all associated
-// Type4 leafAD MPVN routes are notified for re-evaluation.
+// Type3 S-PMSI MPVN received routes should be notified for re-evaluation.
 //
 // StateMap states_
 //     A Map of <<S,G>, MvpnState> is maintained to hold MvpnState for all
@@ -384,8 +354,8 @@ private:
 // DB partition.
 //
 // It listens to changes to ErmVpn table and for any applicable change to
-// GlobalErmVpnRoute, it notifies all applicable LeafAdRoutes so that those
-// routes can be replicated/deleted based on the current state of the
+// GlobalErmVpnRoute, it notifies all applicable received SPMSI routes so that
+// those routes can be replicated/deleted based on the current state of the
 // GlobalErmVpnRoute associated with a given <S,G>.
 //
 // This class also provides DeleteActor and maintains a LifetimeRef to parent
