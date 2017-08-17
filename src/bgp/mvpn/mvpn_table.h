@@ -74,6 +74,10 @@ public:
     const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
             const;
     const RouteTarget::List &GetExportList(BgpRoute *rt) const;
+    MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
+    MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
+    MvpnPrefix CreateType2ADRoutePrefix();
+    MvpnPrefix CreateType1ADRoutePrefix();
     MvpnRoute *LocateType1ADRoute();
     MvpnRoute *LocateType2ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
@@ -81,15 +85,10 @@ public:
 
 private:
     friend class BgpMulticastTest;
-    friend class MvpnTableTest;
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     MvpnRoute *LocateRoute(MvpnPrefix &prefix);
-    MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
-    MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
-    MvpnPrefix CreateType2ADRoutePrefix();
-    MvpnPrefix CreateType1ADRoutePrefix();
 
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
