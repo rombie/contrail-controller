@@ -278,8 +278,8 @@ public:
     const ErmVpnRoute *global_ermvpn_tree_rt() const;
     MvpnRoute *spmsi_rt();
     const MvpnRoute *spmsi_rt() const;
-    const RoutesSet &leaf_ad_routes() const;
-    RoutesSet &leaf_ad_routes();
+    const RoutesSet &spmsi_routes() const;
+    RoutesSet &spmsi_routes();
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
     void set_spmsi_rt(MvpnRoute *spmsi_rt);
     const RoutesSet &cjoin_routes_received() const;
@@ -356,8 +356,6 @@ public:
     MvpnState *LocateState(const SG &sg);
     MvpnState *CreateState(const SG &sg);
     void DeleteState(MvpnState *mvpn_state);
-    bool GetLeafAdTunnelInfo(const ErmVpnRoute *global_ermvpn_tree_rt,
-                             uint32_t *label, Ip4Address *address) const;
 
 private:
     friend class MvpnProjectManager;
@@ -366,6 +364,9 @@ private:
     ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *rt) const;
     ErmVpnTable *table();
     const ErmVpnTable *table() const;
+    bool IsUsableGlobalTreeRootRoute(ErmVpnRoute *ermvpn_route) const;
+    void RouteListener(DBEntryBase *db_entry);
+    int listener_id() const;
 
     // Back pointer to the parent MvpnProjectManager
     MvpnProjectManager *manager_;
@@ -402,6 +403,7 @@ public:
     void Terminate();
     ErmVpnTable *table();
     const ErmVpnTable *table() const;
+    int listener_id() const;
 
 private:
     class DeleteActor;

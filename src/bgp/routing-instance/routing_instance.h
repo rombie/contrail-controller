@@ -88,8 +88,8 @@ public:
 
     void RemoveTable(BgpTable *tbl);
 
-    const RouteTargetList &GetImportList() const { return import_; }
-    const RouteTargetList &GetExportList() const { return export_; }
+    const RouteTarget::List &GetImportList() const { return import_; }
+    const RouteTarget::List &GetExportList() const { return export_; }
     bool HasExportTarget(const ExtCommunity *extcomm) const;
 
     const RouteDistinguisher *GetRD() const {
@@ -197,9 +197,9 @@ private:
     void FlushAllRTargetRoutes(as4_t asn);
 
     void AddRouteTarget(bool import, std::vector<std::string> *change_list,
-        RouteTargetList::const_iterator it);
+        RouteTarget::List::const_iterator it);
     void DeleteRouteTarget(bool import, std::vector<std::string> *change_list,
-        RouteTargetList::iterator it);
+        RouteTarget::List::iterator it);
 
     // Cleanup all the state prior to deletion.
     void Shutdown();
@@ -216,8 +216,8 @@ private:
     std::auto_ptr<RouteDistinguisher> rd_;
     RouteTableList vrf_tables_by_name_;
     RouteTableFamilyList vrf_tables_by_family_;
-    RouteTargetList import_;
-    RouteTargetList export_;
+    RouteTarget::List import_;
+    RouteTarget::List export_;
     BgpServer *server_;
     RoutingInstanceMgr *mgr_;
     const BgpInstanceConfig *config_;
