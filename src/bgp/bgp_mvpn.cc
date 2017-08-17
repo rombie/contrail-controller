@@ -802,6 +802,8 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // TODO(Ananth) If LeafInfoRequired bit is not set in the S-PMSI route,
     // then we do not need to originate a leaf ad route for this s-pmsi rt.
     MvpnState *mvpn_state = LocateState(spmsi_rt);
+    if (!mvpn_state)
+        return;
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(mvpn_state);
         spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
