@@ -697,6 +697,8 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     if (!mvpn_dbstate && !join_rt->IsUsable())
         return false;
 
+    // TODO(Ananth) Check if there is active sender route present before
+    // originating SPMSI route towards the receivers.
     if (!join_rt->IsUsable()) {
         MvpnState *state = GetState(join_rt);
         if (state)
