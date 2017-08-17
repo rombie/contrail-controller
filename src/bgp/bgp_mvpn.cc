@@ -768,13 +768,6 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 // Process changes to Type3 S-PMSI routes by originating or deleting Type 4
 // Lead AD paths as appropriate.
 void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
-    MvpnState::SG sg = MvpnState::SG(spmsi_rt->GetPrefix().sourceIpAddress(),
-                                     spmsi_rt->GetPrefix().groupIpAddress());
-    MvpnProjectManagerPartition *project_manager_partition =
-        GetProjectManagerPartition();
-    if (!project_manager_partition)
-        return;
-
     // Retrieve any state associcated with this S-PMSI route.
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
         spmsi_rt->GetState(table(), listener_id()));
