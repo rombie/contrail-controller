@@ -27,6 +27,7 @@ public:
     uint8_t Type() const { return data_[0]; }
     uint8_t Subtype() const { return data_[1]; }
     Ip4Address GetIPv4Address() const;
+    uint16_t GetNumber() const;
 
     bool operator<(const VrfRouteImport &rhs) const {
         return data_ < rhs.data_;

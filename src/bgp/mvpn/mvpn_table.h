@@ -77,6 +77,7 @@ public:
         TableSet *secondary_tables);
     const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
             const;
+    const RouteTarget::List &GetExportList(BgpRoute *rt) const;
 
 private:
     friend class BgpMulticastTest;
@@ -86,10 +87,15 @@ private:
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
+    BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
+                                   MvpnRoute *src_rt, const BgpPath *src_path,
+                                   ExtCommunityPtr community);
     BgpRoute *ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm, BgpAttrPtr new_attr = NULL,
         bool *replicated = NULL);
+    UpdateInfo *GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
+                                  const RibPeerSet &peerset);
 
     MvpnManager *manager_;
 

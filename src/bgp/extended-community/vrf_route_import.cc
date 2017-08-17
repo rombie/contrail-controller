@@ -25,6 +25,10 @@ Ip4Address VrfRouteImport::GetIPv4Address() const {
     return Ip4Address(get_value(&data_[2], 4));
 }
 
+uint16_t VrfRouteImport::GetNumber() const {
+    return get_value(&data_[6], 2);
+}
+
 string VrfRouteImport::ToString() const {
     uint8_t data[VrfRouteImport::kSize];
     copy(data_.begin(), data_.end(), &data[0]);

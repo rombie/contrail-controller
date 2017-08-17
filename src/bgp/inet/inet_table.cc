@@ -67,7 +67,7 @@ BgpRoute *InetTable::RouteReplicate(BgpServer *server,
     // TODO(Ananth)higher numbered vs lower numbered router for resolution in mx
 
     // TODO(Ananth) Retrieve VIT from the src_instance and attach.
-    If (!src_table->IsMaster()) {
+    if (!src_table->routing_instance()->IsMasterRoutingInstance()) {
     }
 
     if (inet) {

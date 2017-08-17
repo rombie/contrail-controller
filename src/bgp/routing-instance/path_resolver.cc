@@ -15,6 +15,7 @@
 #include "bgp/bgp_peer_types.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_table.h"
+#include "bgp/extended-community/vrf_route_import.h"
 #include "bgp/inet/inet_route.h"
 #include "bgp/inet6/inet6_route.h"
 
@@ -942,7 +943,8 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
             encap_list.push_back(value);
         } else if (ExtCommunity::is_vrf_route_import(value)) {
             VrfRouteImport vit(value);
-            rtarget.push_back(RouteTarget(vit));
+            rtarget.push_back(RouteTarget(vit.GetIPv4Address(),
+                                          vit.GetNumber()));
         } else if (ExtCommunity::is_source_as(value)) {
             source_as.push_back(value);
         } else if (ExtCommunity::is_load_balance(value) && !lb_is_valid) {

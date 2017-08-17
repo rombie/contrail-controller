@@ -76,7 +76,7 @@ BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,
     assert(inet);
 
     // TODO(Ananth) Retrieve VIT from the src_instance and attach.
-    If (!src_table->IsMaster()) {
+    if (!src_table->routing_instance()->IsMasterRoutingInstance()) {
     }
 
     const RouteDistinguisher &rd = GenerateDistinguisher(src_table, src_path);
