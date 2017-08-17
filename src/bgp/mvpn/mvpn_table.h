@@ -78,6 +78,8 @@ public:
     MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
     MvpnPrefix CreateType2ADRoutePrefix();
     MvpnPrefix CreateType1ADRoutePrefix();
+    MvpnRoute *FindType1ADRoute();
+    MvpnRoute *FindType2ADRoute();
     MvpnRoute *LocateType1ADRoute();
     MvpnRoute *LocateType2ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
@@ -89,6 +91,7 @@ private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     MvpnRoute *LocateRoute(MvpnPrefix &prefix);
+    MvpnRoute *FindRoute(MvpnPrefix &prefix);
 
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,

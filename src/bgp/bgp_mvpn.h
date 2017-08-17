@@ -168,7 +168,7 @@ private:
     friend class MvpnManagerPartition;
     class DeleteActor;
 
-    void Initialize();
+    virtual void Initialize();
     void AllocPartitions();
     void FreePartitions();
     void UpdateNeighbor(MvpnRoute *route);
@@ -378,7 +378,7 @@ public:
 private:
     class DeleteActor;
 
-    void Initialize();
+    virtual void Initialize();
     void AllocPartitions();
     void FreePartitions();
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);

@@ -276,6 +276,14 @@ void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
 }
 
 // Find or create the route.
+MvpnRoute *MvpnTable::FindRoute(MvpnPrefix &prefix) {
+    MvpnRoute rt_key(prefix);
+    DBTablePartition *rtp = static_cast<DBTablePartition *>(
+        GetTablePartition(&rt_key));
+    return static_cast<MvpnRoute *>(rtp->Find(&rt_key));
+}
+
+// Find or create the route.
 MvpnRoute *MvpnTable::LocateRoute(MvpnPrefix &prefix) {
     MvpnRoute rt_key(prefix);
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
@@ -341,6 +349,16 @@ MvpnPrefix MvpnTable::CreateType1ADRoutePrefix() {
 MvpnRoute *MvpnTable::LocateType1ADRoute() {
     MvpnPrefix prefix = CreateType1ADRoutePrefix();
     return LocateRoute(prefix);
+}
+
+MvpnRoute *MvpnTable::FindType1ADRoute() {
+    MvpnPrefix prefix = CreateType1ADRoutePrefix();
+    return FindRoute(prefix);
+}
+
+MvpnRoute *MvpnTable::FindType2ADRoute() {
+    MvpnPrefix prefix = CreateType2ADRoutePrefix();
+    return FindRoute(prefix);
 }
 
 // RouteReplicate() method called from the RouteReplicator during replication.

@@ -361,6 +361,8 @@ RoutingInstance *RoutingInstanceMgr::GetRoutingInstanceLocked(
 
 void RoutingInstanceMgr::InsertRoutingInstance(RoutingInstance *rtinstance) {
     tbb::mutex::scoped_lock lock(mutex_);
+    if (rtinstance->name() == BgpConfigManager::kMasterInstance)
+        assert(count() == 0);
     int index = instances_.Insert(rtinstance->config()->name(), rtinstance);
     rtinstance->set_index(index);
 }
@@ -533,8 +535,8 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
         config->name(), server_, this, config);
     if (config->name() == BgpConfigManager::kMasterInstance)
         default_rtinstance_ = rtinstance;
-    rtinstance->ProcessConfig();
     InsertRoutingInstance(rtinstance);
+    rtinstance->ProcessConfig();
 
     InstanceTargetAdd(rtinstance);
     InstanceVnIndexAdd(rtinstance);
@@ -971,7 +973,6 @@ void RoutingInstance::ProcessConfig() {
 
     // Create BGP Table
     if (name_ == BgpConfigManager::kMasterInstance) {
-        assert(mgr_->count() == 0);
         is_master_ = true;
 
         LocatePeerManager();

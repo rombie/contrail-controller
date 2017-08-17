@@ -8,6 +8,7 @@
 #include "base/task_annotations.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_multicast.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/origin-vn/origin_vn.h"
 #include "bgp/test/bgp_server_test_util.h"
 #include "control-node/control_node.h"
@@ -16,6 +17,18 @@ using namespace std;
 using namespace boost;
 
 static const int kRouteCount = 8;
+
+class MvpnProjectManagerMock : public MvpnProjectManager {
+public:
+    MvpnProjectManagerMock(ErmVpnTable *table) : MvpnProjectManager(table) { }
+    void Initialize() { }
+};
+
+class MvpnManagerMock : public MvpnManager {
+public:
+    MvpnManagerMock(MvpnTable *table) : MvpnManager(table) { }
+    void Initialize() { }
+};
 
 class MvpnTableTest : public ::testing::Test {
 protected:
@@ -496,6 +509,10 @@ int main(int argc, char **argv) {
     bgp_log_test::init();
     ::testing::InitGoogleTest(&argc, argv);
     ControlNode::SetDefaultSchedulingPolicy();
+    BgpObjectFactory::Register<MvpnManager>(
+        boost::factory<MvpnManagerMock *>());
+    BgpObjectFactory::Register<MvpnProjectManager>(
+        boost::factory<MvpnProjectManagerMock *>());
     int result = RUN_ALL_TESTS();
     TaskScheduler::GetInstance()->Terminate();
     return result;
