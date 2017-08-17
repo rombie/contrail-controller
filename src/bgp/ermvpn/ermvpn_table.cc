@@ -217,6 +217,7 @@ void ErmVpnTable::CreateMvpnProjectManager() {
         return;
     assert(!mvpn_project_manager_);
     mvpn_project_manager_ = BgpObjectFactory::Create<MvpnProjectManager>(this);
+    mvpn_project_manager_->Initialize();
 }
 
 void ErmVpnTable::DestroyMvpnProjectManager() {

@@ -60,7 +60,6 @@ MvpnProjectManager::MvpnProjectManager(ErmVpnTable *table)
           listener_id_(DBTable::kInvalidId),
           table_delete_ref_(this, table->deleter()) {
     deleter_.reset(new DeleteActor(this));
-    Initialize();
 }
 
 MvpnProjectManager::~MvpnProjectManager() {
@@ -302,7 +301,6 @@ MvpnManager::MvpnManager(MvpnTable *table)
           listener_id_(DBTable::kInvalidId),
           table_delete_ref_(this, table->deleter()) {
     deleter_.reset(new DeleteActor(this));
-    Initialize();
 }
 
 MvpnManager::~MvpnManager() {

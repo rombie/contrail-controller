@@ -163,12 +163,12 @@ public:
     bool deleted() const;
     void Terminate();
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
+    virtual void Initialize();
 
 private:
     friend class MvpnManagerPartition;
     class DeleteActor;
 
-    virtual void Initialize();
     void AllocPartitions();
     void FreePartitions();
     void UpdateNeighbor(MvpnRoute *route);
@@ -374,11 +374,11 @@ public:
     ErmVpnTable *table();
     const ErmVpnTable *table() const;
     int listener_id() const;
+    virtual void Initialize();
 
 private:
     class DeleteActor;
 
-    virtual void Initialize();
     void AllocPartitions();
     void FreePartitions();
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);

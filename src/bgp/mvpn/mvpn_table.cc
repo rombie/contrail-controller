@@ -120,6 +120,7 @@ void MvpnTable::CreateManager() {
         return;
     assert(!manager_);
     manager_ = BgpObjectFactory::Create<MvpnManager>(this);
+    manager_->Initialize();
 }
 
 void MvpnTable::DestroyManager() {

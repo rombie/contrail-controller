@@ -21,12 +21,16 @@ static const int kRouteCount = 8;
 class MvpnProjectManagerMock : public MvpnProjectManager {
 public:
     MvpnProjectManagerMock(ErmVpnTable *table) : MvpnProjectManager(table) { }
+
+private:
     void Initialize() { }
 };
 
 class MvpnManagerMock : public MvpnManager {
 public:
     MvpnManagerMock(MvpnTable *table) : MvpnManager(table) { }
+
+private:
     void Initialize() { }
 };
 
