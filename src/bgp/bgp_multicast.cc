@@ -756,8 +756,9 @@ McastSGEntry *McastManagerPartition::LocateSGEntry(
 }
 
 ErmVpnRoute *McastManagerPartition::GetGlobalTreeRootRoute(
-        const Ip4Address &source, const Ip4Address &group) const {
-    const McastSGEntry *sg = FindSGEntry(source, group);
+        ErmVpnRoute *ermvpn_route) const {
+    const McastSGEntry *sg = FindSGEntry(ermvpn_route->GetPrefix().source(),
+                                         ermvpn_route->GetPrefix().group());
     return sg ? sg->GetGlobalTreeRootRoute() : NULL;
 }
 

@@ -8,7 +8,6 @@
 
 #include "base/task_annotations.h"
 #include "bgp/ermvpn/ermvpn_route.h"
-#include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_server.h"
 #include "bgp/extended-community/vrf_route_import.h"
@@ -27,7 +26,7 @@ MvpnState::MvpnState(const SG &sg) :
 
 MvpnState::~MvpnState() {
     assert(!global_ermvpn_tree_rt_);
-    assert(leaf_ad_routes_originated_.empty());
+    assert(spmsi_routes_received_.empty());
     assert(cjoin_routes_received_.empty());
 }
 
@@ -228,12 +227,12 @@ const MvpnRoute *MvpnState::spmsi_rt() const {
     return spmsi_rt_;
 }
 
-const MvpnState::RoutesSet &MvpnState::leaf_ad_routes() const {
-    return leaf_ad_routes_originated_;
+const MvpnState::RoutesSet &MvpnState::spmsi_routes() const {
+    return spmsi_routes_received_;
 }
 
-MvpnState::RoutesSet &MvpnState::leaf_ad_routes() {
-    return leaf_ad_routes_originated_;
+MvpnState::RoutesSet &MvpnState::spmsi_routes() {
+    return spmsi_routes_received_;
 }
 
 const MvpnState::RoutesSet &MvpnState::cjoin_routes_received() const {
@@ -577,15 +576,15 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     NotifyAllRoutes();
 }
 
-ErmVpnRoute *MvpnProjectManagerPartition::GetGlobalTreeRootRoute(
-        const Ip4Address &source, const Ip4Address &group) const {
+bool MvpnProjectManagerPartition::IsUsableGlobalTreeRootRoute(
+        ErmVpnRoute *ermvpn_route) const {
+    if (!ermvpn_route || !ermvpn_route->IsUsable())
+        return false;
     if (!table()->tree_manager())
-        return NULL;
+        return false;
     ErmVpnRoute *global_rt = table()->tree_manager()->GetPartition(part_id_)->
         GetGlobalTreeRootRoute(source, group);
-    if (!global_rt || !global_rt->IsUsable())
-        return NULL;
-    return global_rt;
+    return global_rt == ermvpn_route;
 }
 
 // ErmVpnTable route listener callback function.
@@ -594,48 +593,49 @@ ErmVpnRoute *MvpnProjectManagerPartition::GetGlobalTreeRootRoute(
 void MvpnProjectManager::RouteListener(DBTablePartBase *tpart,
         DBEntryBase *db_entry) {
     CHECK_CONCURRENCY("db::DBTable");
+    MvpnProjectManagerPartition *partition =
+        GetPartition(ermvpn_route->get_table_partition()->index());
+    partition->RouteListener(db_entry);
+}
 
+void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
     ErmVpnRoute *ermvpn_route = dynamic_cast<ErmVpnRoute *>(db_entry);
     assert(ermvpn_route);
-    ErmVpnTable *ermvpn_table = dynamic_cast<ErmVpnTable *>(tpart->parent());
-    assert(ermvpn_table);
 
     // We only care about global tree routes for mvpn stitching.
     if (ermvpn_route->GetPrefix().type() != ErmVpnPrefix::GlobalTreeRoute)
         return;
 
-    MvpnProjectManagerPartition *partition =
-        GetPartition(ermvpn_route->get_table_partition()->index());
-    MvpnState *mvpn_state = partition->GetState(ermvpn_route);
-    ErmVpnRoute *global_rt = partition->GetGlobalTreeRootRoute(
-        ermvpn_route->GetPrefix().source(), ermvpn_route->GetPrefix().group());
+    MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
+        ermvpn_route->GetState(table(), listener_id()));
 
-    // TODO(Ananth) Use DBState to further prune changes that we don't care
-    // about.
-    if (!global_rt && (!mvpn_state || !mvpn_state->global_ermvpn_tree_rt()))
+    if (!IsUsableGlobalTreeRootRoute(ermvpn_route)) {
+        if (!mvpn_dbstate)
+            return;
+        mvpn_dbstate->mvpn_state->set_global_ermvpn_tree_rt(NULL);
+
+        // Notify all originated t-4 routes for PMSI re-computation.
+        BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
+            route->Notify();
+        }
+        ermvpn_route->ClearState(table(), listener_id());
         return;
-
-    if (global_rt && !mvpn_state) {
-        MvpnState::SG sg(ermvpn_route);
-        mvpn_state = partition->LocateState(sg);
     }
-    mvpn_state->set_global_ermvpn_tree_rt(global_rt);
+
+    if (!mvpn_dbstate) {
+        MvpnState::SG sg(ermvpn_route);
+        MvpnState *mvpn_state = LocateState(sg);
+        mvpn_dbstate = new MvpnDBState(mvpn_state);
+        ermvpn_route->SetState(table(), listener_id(), mvpn_dbstate);
+    }
+
+    // Note down current usable ermvpn route for stitching to mvpn.
+    mvpn_state->set_global_ermvpn_tree_rt(ermvpn_route);
 
     // Notify all originated t-4 routes for PMSI re-computation.
-    BOOST_FOREACH(MvpnRoute *leaf_ad_route, mvpn_state->leaf_ad_routes()) {
-        leaf_ad_route->Notify();
+    BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
+        route->Notify();
     }
-}
-
-// TODO(Ananth) Not required.
-void MvpnManager::ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt,
-        BgpPath *path) {
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
-    assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
-    IpAddress address = mvpn_rt->GetPrefix().sourceIpAddress();
-    BgpTable *table = address.is_v4() ? rtinstance->GetTable(Address::INET) :
-                                        rtinstance->GetTable(Address::INET6);
-    path_resolver()->StartPathResolution(rt, path, table);
 }
 
 RouteDistinguisher MvpnManager::GetSourceRouteDistinguisher(
@@ -734,14 +734,21 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // these cases, S-PMSI path needs to be originated if not already done so.
     if (dynamic_cast<const BgpSecondaryPath *>(path)) {
         // Originate/Update S-PMSI route towards the receivers.
-        if (!mvpn_dbstate->route) {
-            mvpn_dbstate->route = table()->LocateType3SPMSIRoute(join_rt);
-            state->set_spmsi_rt(mvpn_dbstate->route);
-            // TODO(Ananth) InsertPath
+        MvpnRoute *spmsi_rt = mvpn_dbstate->route;
+        if (!spmsi_rt) {
+            spmsi_rt = table()->LocateType3SPMSIRoute(join_rt);
+            mvpn_dbstate->route = spmsi_rt;
+            state->set_spmsi_rt(spmsi_rt);
         } else {
-            // TODO(Ananth) For any change in Join routes, do we need to notify
-            // the route again ?
+            BgpPath *old_path = spmsi_rt->FindPath(BgpPath::Local, 0);
+
+            // Path already exists!
+            if (old_path)
+                return;
         }
+        BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, join_rt->GetAttr(),
+                                    0, 0, 0);
+        spmsi_rt->InsertPath(path);
         return true;
     }
 
@@ -782,7 +789,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
             mvpn_dbstate->route = NULL;
         }
 
-        assert(mvpn_state->spmsi_routes_received_.erase(spmsi_rt));
+        assert(mvpn_state->spmsi_routes().erase(spmsi_rt));
         spmsi_rt->ClearState(table(), listener_id());
         DeleteState(mvpn_state);
         if (leaf_ad_rt)
@@ -798,15 +805,13 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(mvpn_state);
         spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
-        assert(mvpn_state->spmsi_routes_received_.insert(spmsi_rt).second);
+        assert(mvpn_state->spmsi_routes().insert(spmsi_rt).second);
     } else {
         leaf_ad_rt = mvpn_dbstate->route;
     }
 
-    ErmVpnRoute *global_ermvpn_rt = partition->GetGlobalTreeRootRoute(
-        spmsi_rt->GetPrefix().source(), spmsi_rt->GetPrefix().group());
-
-    if (!global_ermvpn_rt) {
+    ErmVpnRoute *global_rt = mvpn_state->global_ermvpn_tree_rt();
+    if (!global_rt || !global_rt->IsUsable())
         // There is no ermvpn route available to stitch at this time. Remove any
         // originated Type4 LeafAD route. DB State shall remain on the route as
         // SPMSI route itself is still a usable route.
@@ -824,31 +829,21 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
         mvpn_dbstate->route = leaf_ad_rt;
     }
-
-    // TODO(Ananth) delete any path if already exists and prune duplicate
-    // notifications.
+    BgpPath *old_path = leaf_ad_route->FindPath(BgpPath::Local, 0);
 
     // For LeafAD routes, rtarget is always <sender-router-id>:0.
     BgpAttrPtr attrp = BgpAttrPtr(spmsi_rt->BestPath()->GetAttr());
-
-    // Always set route target <sender-router-id>:0 for LeafAD routes.
     ExtCommunity::ExtCommunityList rtarget;
     rtarget.push_back(RouteTarget(spmsi_rt->GetPrefix().originator(), 0).
-                          GetExtCommunity());
+                                  GetExtCommunity());
     ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
             ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
 
     uint32_t label;
     Ip4Address address;
     // TODO(Ananth) Add TunnelType extended community also.
-    assert(partition->GetLeafAdTunnelInfo(
-               mvpn_state->global_ermvpn_tree_rt(), &tunnel_types_list,
-               &label, &address));
-
-    // Old forest node must be updated to reset input tunnel attribute.
-        if (mvpn_state->global_ermvpn_tree_rt())
-    mvpn_state->global_ermvpn_tree_rt()->Notify();
-        return NULL;
+    assert(partition->GetLeafAdTunnelInfo(global_rt, &tunnel_types_list, &label,
+                                          &address));
 
     // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
     PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
@@ -857,15 +852,25 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     pmsi_spec->SetLabel(label);
     pmsi_spec->SetIdentifier(address);
 
-    / Replicate the LeafAD path with appropriate PMSI tunnel info as part of
-    / the path attributes. Community should be route-target with root PE
-    / router-id + 0 (Page 254).
+    // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
+    // the path attributes. Community should be route-target with root ingress
+    // PE router-id + 0 (Page 254).
     BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
        src_path->GetAttr(), pmsi_spec);
-       BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
-       leaf_ad_rt->InsertPath(path);
 
-    leaf_ad_rt->NotifyOrDelete();
+    if (old_path) {
+        // Ignore if there is no change in the path attributes of the already
+        // originated lead ad path.
+        if (old_path->GetAttr() == new_attr.get())
+            return;
+        lead_ad_rt->DeletePath(old_path);
+    }
+
+    BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
+    leaf_ad_rt->InsertPath(path);
+    leaf_ad_rt->Notify();
+
+    // TODO(Ananth) Notify forest node local route.
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {

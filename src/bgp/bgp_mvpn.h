@@ -243,7 +243,7 @@ private:
 //     used in the data plane for this <S,G>. This route is created/updated
 //     when ErmVpn notifies changes to ermvpn routes.
 //
-// leaf_ad_routes_originated_
+// spmsi_routes_received_
 //     This is a set of all type-4 leaf ad routes originated for this <S-G>.
 //     It is possible that when leaf ad routes are originated, there is no
 //     ermvpn tree available for forwarding in the data plane. In such a case,
@@ -293,7 +293,7 @@ private:
     SG sg_;
     ErmVpnRoute *global_ermvpn_tree_rt_;
     MvpnRoute *spmsi_rt_;
-    RoutesSet leaf_ad_routes_originated_;
+    RoutesSet spmsi_routes_received_;
     RoutesSet cjoin_routes_received_;
 
 #if 0  // In future phases.

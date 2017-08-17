@@ -197,7 +197,7 @@ private:
                           BgpAttr *attr, bool llgr_stale_comm);
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
             const DBRequestKey *prefix) = 0;
-    virtual void ResolvePath(BgpRoute *rt, BgpPath *path);
+    void ResolvePath(BgpRoute *rt, BgpPath *path);
 
     RoutingInstance *rtinstance_;
     PathResolver *path_resolver_;

@@ -46,11 +46,6 @@ PathResolver *MvpnTable::CreatePathResolver() {
     return (new PathResolver(this));
 }
 
-void MvpnTable::ResolvePath(BgpRoute *rt, BgpPath *path) {
-    if (manager_)
-        manager_->ResolvePath(routing_instance(), rt, path);
-}
-
 auto_ptr<DBEntry> MvpnTable::AllocEntry(
     const DBRequestKey *key) const {
     const RequestKey *pfxkey = static_cast<const RequestKey *>(key);
@@ -290,12 +285,6 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *table,
                                             src_path, community);
     }
 
-    // Replicate Type4 LeafAD route.
-    if (src_rt->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
-        return ReplicateType4LeafAD(server, src_table, src_rt, src_path,
-                                    community);
-    }
-
     // Replicate all other types.
     // TODO(Ananth) Should we ignore types we don't support like Source-Active.
     return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
@@ -356,72 +345,6 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     // Replicate the path with the computed prefix and attributes.
     return ReplicatePath(server, prefix, src_table, src_rt, src_path,
                          community);
-}
-
-// Check if GlobalErmVpnTreeRoute is present. If so, only then can we replicate
-// this path for advertisement to ingress routers with associated PMSI tunnel
-// information.
-BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
-    MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community) {
-    const BgpAttr *attr = src_path->GetAttr();
-
-    // Do not replicate into non-master tables if the [only] route-target of the
-    // route does not match the auto-created vrf-import route target of 'this'.
-    if (!attr || !attr->ext_community())
-        return NULL;
-
-    if (src_table->IsMaster()) {
-        MvpnRoute *spmsi_rt = FindSPMSIRoute(src_rt);
-        if (!spmsi_rt)
-            return NULL;
-        return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
-                             src_path, community);
-    }
-
-    MvpnProjectManagerPartition *partition = GetProjectManagerPartition(src_rt);
-    if (!partition) {
-        return NULL;
-    }
-    MvpnState *mvpn_state = partition->GetState(src_rt);
-    if (!mvpn_state) {
-        return NULL;
-    }
-
-    /*
-    // Do not replicate if there is no receiver interested for this <S,G>.
-    if (mvpn_state->cjoin_routes_received()->empty()) {
-        // Old forest node must be updated to reset input tunnel attribute.
-        if (mvpn_state->global_ermvpn_tree_rt())
-            mvpn_state->global_ermvpn_tree_rt()->Notify();
-        return NULL;
-    }
-
-    // Make sure that there is an associated Type3 S-PMSI route if replicating
-    // into vrf.mvpn.0.
-    if (!IsMaster()) {
-        MvpnRoute *spmsi_rt = FindSPMSIRoute(src_rt);
-        if (!spmsi_rt) {
-            // Old forest node must be updated to reset input tunnel attribute.
-            if (mvpn_state->global_ermvpn_tree_rt())
-                mvpn_state->global_ermvpn_tree_rt()->Notify();
-            return NULL;
-        }
-    }
-    */
-    bool replicated;
-
-    BgpRoute *replicated_path = ReplicatePath(server, src_rt->GetPrefix(),
-            src_table, src_rt, src_path, community, new_attr, &replicated);
-
-    if (replicated) {
-        // Notify GlobalErmVpnTreeRoute forest node so that its input tunnel
-        // attributes can be updated with the MvpnNeighbor information of the
-        // S-PMSI route associated with this LeadAD route.
-        mvpn_state->global_ermvpn_tree_rt()->Notify();
-    }
-
-    return replicated_path;
 }
 
 BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,

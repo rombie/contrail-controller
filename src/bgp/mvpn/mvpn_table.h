@@ -57,7 +57,6 @@ public:
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
     size_t HashFunction(const MvpnPrefix &prefix) const;
-    void ResolvePath(BgpRoute *rt, BgpPath *path);
     PathResolver *CreatePathResolver();
     const MvpnManager *manager() const { return manager_; }
     MvpnManager *manager() { return manager_; }
@@ -87,8 +86,6 @@ private:
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
-    BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
-        MvpnRoute *src_rt, const BgpPath *src_path, ExtCommunityPtr comm);
     BgpRoute *ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm, BgpAttrPtr new_attr = NULL,

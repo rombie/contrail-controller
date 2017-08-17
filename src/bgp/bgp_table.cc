@@ -398,12 +398,6 @@ bool BgpTable::DeletePath(DBTablePartBase *root, BgpRoute *rt, BgpPath *path) {
         DBRequest::DB_ENTRY_DELETE, NULL, path->GetPathId(), 0, 0, 0);
 }
 
-void BgpTable::ResolvePath(BgpRoute *rt, BgpPath *path) {
-    Address::Family family = path->GetAttr()->nexthop_family();
-    BgpTable *table = rtinstance_->GetTable(family);
-    path_resolver_->StartPathResolution(rt, path, table);
-}
-
 bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
                            const IPeer *peer, DBRequest *req,
                            DBRequest::DBOperation oper, BgpAttrPtr attrs,
@@ -439,8 +433,11 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
         BgpPath *new_path;
         new_path = new BgpPath(
             peer, path_id, BgpPath::BGP_XMPP, attrs, flags, label, l3_label);
-        if (new_path->NeedsResolution())
-            ResolvePath(rt, new_path);
+        if (new_path->NeedsResolution()) {
+            Address::Family family = path->GetAttr()->nexthop_family();
+            BgpTable *table = rtinstance_->GetTable(family);
+            path_resolver_->StartPathResolution(rt, new_path, table);
+        }
         rt->InsertPath(new_path);
         notify_rt = true;
         break;
