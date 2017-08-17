@@ -504,11 +504,13 @@ void MvpnManager::Initialize() {
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
 
+    /*
     // Originate Type1 Intra AS Auto-Discovery Route.
     table_->LocateType1ADRoute();
 
     // Originate Type2 Inter AS Auto-Discovery Route.
     table_->LocateType2ADRoute();
+    */
 }
 
 // MvpnTable route listener callback function.
