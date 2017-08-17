@@ -16,6 +16,7 @@ public:
     static const int kSize = 8;
     static RouteTarget null_rtarget;
     typedef boost::array<uint8_t, kSize> bytes_type;
+    typedef std::set<RouteTarget> List;
 
     RouteTarget();
     explicit RouteTarget(const bytes_type &data);

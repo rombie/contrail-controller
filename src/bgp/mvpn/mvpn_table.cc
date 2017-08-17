@@ -409,30 +409,6 @@ BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
         }
     }
     */
-
-    uint32_t label;
-    Ip4Address address;
-    // TODO(Ananth) Add TunnelType extended community also.
-    if (!partition->GetLeafAdTunnelInfo(mvpn_state->global_ermvpn_tree_rt(),
-                                        &tunnel_types_list, &label, &address)) {
-        // Old forest node must be updated to reset input tunnel attribute.
-        if (mvpn_state->global_ermvpn_tree_rt())
-            mvpn_state->global_ermvpn_tree_rt()->Notify();
-        return NULL;
-    }
-
-    // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
-    PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
-    pmsi_spec->tunnel_flags = 0;
-    pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec->SetLabel(label);
-    pmsi_spec->SetIdentifier(address);
-
-    // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
-    // the path attributes. Community should be route-target with root PE
-    // router-id + 0 (Page 254).
-    BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
-        src_path->GetAttr(), pmsi_spec);
     bool replicated;
 
     BgpRoute *replicated_path = ReplicatePath(server, src_rt->GetPrefix(),
@@ -520,10 +496,12 @@ const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
     return mvpn_rt->GetPrefix().sourceIpAddress();
 }
 
-MvpnTable::GetExportList(BgpRoute *rt) const {
-    if (route->GetPrefix().type() != type7) {
-        BgpTable::GetExportList(rt);
-    }
+const RouteTarget::List &MvpnTable::GetExportList(BgpRoute *rt) const {
+    MvpnRoute *mvpn_route = dynamic_cast<MvpnRoute *>(rt);
+    assert(mvnp_route);
+    if (mvpn_route->GetPrefix().type() != MvpnPrefix::SourceTreeJoinRoute)
+        return BgpTable::GetExportList(rt);
+    return RouteTarget::List();
 }
 
 static void RegisterFactory() {

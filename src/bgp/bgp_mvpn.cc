@@ -805,7 +805,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
             leaf_ad_rt = table()->LocateType4LeafADRoute(spmsi_rt);
             mvpn_dbstate->route = leaf_ad_rt;
             assert(mvpn_state->leaf_ad_routes_originated_.insert(leaf_ad_rt).
-                    second);
+                   second);
             mvpn_state->refcount_++;
         }
 
@@ -821,12 +821,36 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                               GetExtCommunity());
         ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
                 ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
-        BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
-        leaf_ad_rt->InsertPath(path);
-    }
 
-    if (!leaf_ad_rt)
-        return;
+        uint32_t label;
+        Ip4Address address;
+        // TODO(Ananth) Add TunnelType extended community also.
+        if (!partition->GetLeafAdTunnelInfo(mvpn_state->global_ermvpn_tree_rt(),
+                            &tunnel_types_list, &label, &address)) {
+            // Old forest node must be updated to reset input tunnel attribute.
+            if (mvpn_state->global_ermvpn_tree_rt())
+                mvpn_state->global_ermvpn_tree_rt()->Notify();
+            return NULL;
+        }
+
+        // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
+        PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
+        pmsi_spec->tunnel_flags = 0;
+        pmsi_spec->tunnel_type = PmsiTunnelSpec::IngressReplication;
+        pmsi_spec->SetLabel(label);
+        pmsi_spec->SetIdentifier(address);
+
+       // Replicate the LeafAD path with appropriate PMSI tunnel info as part of
+       // the path attributes. Community should be route-target with root PE
+       // router-id + 0 (Page 254).
+       BgpAttrPtr new_attr = server->attr_db()->ReplacePmsiTunnelAndLocate(
+           src_path->GetAttr(), pmsi_spec);
+           BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
+           leaf_ad_rt->InsertPath(path);
+       }
+
+       if (!leaf_ad_rt)
+           return;
 
     leaf_ad_rt->NotifyOrDelete();
 }

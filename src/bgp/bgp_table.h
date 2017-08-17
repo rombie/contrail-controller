@@ -13,6 +13,7 @@
 
 #include "base/lifetime.h"
 #include "bgp/bgp_rib_policy.h"
+#include "bgp/rtarget/rtarget_address.h"
 #include "db/db_table_walker.h"
 #include "route/table.h"
 
@@ -184,6 +185,7 @@ public:
         const BgpPath *path) const;
     virtual const IpAddress GetAddressToResolve(BgpRoute *route,
         const BgpPath *path) const;
+    virtual const RouteTarget::List &GetExportList(BgpRoute *rt) const;
 
 private:
     friend class BgpTableTest;

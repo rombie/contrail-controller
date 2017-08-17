@@ -50,7 +50,6 @@ class TaskTrigger;
 
 class RoutingInstance {
 public:
-    typedef std::set<RouteTarget> RouteTargetList;
     typedef std::map<std::string, BgpTable *> RouteTableList;
     typedef std::map<Address::Family, BgpTable *> RouteTableFamilyList;
 
