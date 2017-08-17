@@ -54,6 +54,11 @@ should configure Mvpn. In order to support multicast sender outside the cluster,
 one must also configure necessary S-PMSI tunnel information inside the routing
 instance as applicable.
 
+Also solution proposed here uses ermvpn in the data plane for packet forwarding.
+Hence, each virtual-network that needs MVPN must also be configured with a
+virtual-network whose ermvpn.0 table is used during forwarding. By default,
+default-domain:default-project:ip-fabric:__default__.ermvpn.0 is used.
+
 ## 3.4 UI changes
 UI shall provide a way to configure/enable Mvpn for bgp and virtual-networks.
 Specifically, mvpn for ipv4 (and later for ipv6) would be one of the families to
@@ -127,44 +132,40 @@ copy of the MvpnNeighbor structure.
 ## 4.4 General Mvpn Routes Flow
 
 ```
-Route-Type      CreateWhen         Primary   ReplicateWhen Secondary
+Route-Type      CreateWhen         Primary   Secondary
 ================================================================================
 Without Inclusive PMSI
-T1 AD          Configure Mvpn      vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T1 AD          Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-                                                        Send only to I-BGP Peers
+T1 AD          Configure Mvpn      vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T1 AD          Receive via bgp     bgp.mvpn  vrf[s].mvpn
+                                             Send only to I-BGP Peers
 
 Without Inclusive PMSI
-T2 AD          Configure Mvpn      vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T2 AD          Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-                                                        Send only to E-BGP Peers
+T2 AD          Configure Mvpn      vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T2 AD          Receive via bgp     bgp.mvpn  vrf[s].mvpn
+                                             Send only to E-BGP Peers
 
 Source-Active AD
-T5 S-Active AD Receive via xmpp    vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T5 S-Active AD Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
+T5 S-Active AD Receive via xmpp    vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T5 S-Active AD Receive via bgp     bgp.mvpn  vrf[s].mvpn
 
 SharedTreeJoin
-T6 C-<*, G>    Receive via xmpp    vrf.mvpn  Src-Active  bgp.mvpn, vrf[s].mvpn
-               PIM-Register                  is present
-T6 C-<*, G>    Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
+T6 C-<*, G>    Receive via xmpp    vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+               PIM-Register     Replicated only when src-active is present
+T6 C-<*, G>    Receive via bgp     bgp.mvpn  vrf[s].mvpn
 
 SourceTreeJoin
-T7 C-<S, G>    Receive via xmpp    vrf.mvpn  Source is   bgp.mvpn, vrf[s].mvpn
-                                             resolvable
-T7 C-<S, G>    Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-                                                         Send T3 S-PMSI
+T7 C-<S, G>    Receive via xmpp    vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+                                Replicated only when resolvable
+T7 C-<S, G>    Receive via bgp     bgp.mvpn  vrf[s].mvpn
+                                             Send T3 S-PMSI
 
 With Leaf Info required
-T3 S-PMSI      T6/T7 create in vrf vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T3 S-PMSI      Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
+T3 S-PMSI      T6/T7 create in vrf vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T3 S-PMSI      Receive via bgp     bgp.mvpn  vrf[s].mvpn
 
 With PMSI (Ingress Replication + GlobalTreeRootLabel + Encap: MPLS over GRE/UDP)
-T4 Leaf-AD    T3 replicated in vrf vrf.mvpn  GlobalErmRt bgp.mvpn, vrf[s].mvpn
-                                             available   Update GlobalErmRt with
-                                                         Input Tunnel Attribute
-T4 Leaf-AD     Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-               or local replication                 Send xmpp update for ingress
-                                                    vrouter with PMSI info
+T4 Leaf-AD    T3 notified in vrf  vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+              and GlobalErmVpnRt found
 
 ```
 
@@ -175,29 +176,28 @@ outside the cluster. Support for Source specific multicast <C-S,G> only
 (No support for C-<*, G> ASM). No support for Inclusive I-PMSI either.
 
 ```
-Route-Type     CreateWhen          Primary   ReplicateWhen Secondary
+Route-Type     CreateWhen          Primary   Secondary
 ================================================================================
 Without Inclusive PMSI
-T1 AD          Configure Mvpn      vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T1 AD          Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-                                                        Send only to I-BGP Peers
+T1 AD          Configure Mvpn      vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T1 AD          Receive via bgp     bgp.mvpn  vrf[s].mvpn
+                                             Send only to I-BGP Peers
 
 Without Inclusive PMSI
-T2 AD          Configure Mvpn      vrf.mvpn  RightAway   bgp.mvpn, vrf[s].mvpn
-T2 AD          Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
-                                                        Send only to E-BGP Peers
+T2 AD          Configure Mvpn      vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+T2 AD          Receive via bgp     bgp.mvpn  vrf[s].mvpn
+                                             Send only to E-BGP Peers
 
 SourceTreeJoin
-T7 C-<S, G>    Receive via xmpp    vrf.mvpn  Source is   bgp.mvpn, vrf[s].mvpn
-                                             resolvable
+T7 C-<S, G>    Receive via xmpp    vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+                               Replicated only when source is resolvable
 
 With Leaf Info required
-T3 S-PMSI      Receive via bgp     bgp.mvpn  RightAway   vrf[s].mvpn
+T3 S-PMSI      Receive via bgp     bgp.mvpn  vrf[s].mvpn
 
 With PMSI (Ingress Replication + GlobalTreeRootLabel + Encap: MPLS over GRE/UDP)
-T4 Leaf-AD    T3 replicated in vrf vrf.mvpn  GlobalErmRt bgp.mvpn, vrf[s].mvpn
-                                             available   Update GlobalErmRt with
-                                                         Input Tunnel Attribute
+T4 Leaf-AD    T3 notified in vrf  vrf.mvpn  bgp.mvpn, vrf[s].mvpn
+              and GlobalErmVpnRt found
 ```
 
 Note: Whenever a route is replicated in bgp.mvpn.0, it is expected to be sent to
@@ -261,7 +261,13 @@ Agent sends over XMPP, IGMP joins over VMI as C-<S,G> routes and keeps track of
 map of all S-G routes => List of VMIs (and VRFs) (for mapping to tree-id). These
 C-<S,G> routes are added to vrf.mvpn.0 table with source protocol XMPP as Type7
 route in vrf.mvpn.0. This shall have zero-rd as the source-root-rd and 0 as the
-root-as asn (since these values are NA for the primary paths)
+root-as asn (since these values are NA for the primary paths). Nexthop is set to
+the Source address and the added path is marked to RolvePath. This causes
+PathResolver to resolve the path and notify when ever the resolution state
+changes.
+
+Agent shall also indicate the kind of path such as ReceiveOnly, SendOnly or
+both.
 
 Format of Type 7 <C-S, G> route added to vrf.mvpn.0 with protocol local/Mvpn
 ```
@@ -269,10 +275,17 @@ Format of Type 7 <C-S, G> route added to vrf.mvpn.0 with protocol local/Mvpn
 ```
 
 MvpnManager who is a listener to this route, upon route change notification
+does the following.
+1. If the route is usable, the path is Secondary, and f there is an active
+sender route (Type-7) interested in sending traffic, then a new Type3 SPMSI
+route is originated (or existing one is  updated). This route is saved in
+MvpnState as well as in the MvpnDBState.
 
-1. Register /32 Source address is for resolution in PathResolver.
-2. Create/Update DB-State in MvpnManager::RouteStatesMap inside the project
-   (S,G) specific MvpnManagerPartition object.
+2. If the route is no longer usable and if there is a previous MvpnDBState
+associated with this route, then necessary cleaup is done and the previously
+origianted SPMSI path is deleted. This is the case even if route is usable but
+there is no longer any active sender route present
+
 
 When ever this address is resolvable (or otherwise), the Type-7 route is
 notified and the route replicator tries to replicate the path.

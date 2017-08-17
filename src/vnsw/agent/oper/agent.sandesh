@@ -2900,6 +2900,10 @@ struct BgpAsAServiceSandeshList {
    2: i32 vm_nat_source_port;
    /** Uuid of vmi for bgp as a service */
    3: string vmi_uuid (link="ItfReq");
+   /** Boolean to indicate if health check is configured on this object */
+   4: bool health_check_configured;
+   /** Uuid of health check for bgp as a service */
+   5: string health_check_uuid (link="HealthCheckSandeshReq");
 }
 
 /**
@@ -3285,6 +3289,10 @@ struct SLOSandeshData {
     3: i32 rate;
     /** List of security-logging-object rules */
     4: list<SLOSandeshRule> rules;
+    /** List of firewall-policy objects */
+    5: list<PolicyLinkData> firewall_policy_list;
+    /** List of firewall-rule uuids*/
+    6: list<string> firewall_rule_list;
 }
 
 /**

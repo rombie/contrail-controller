@@ -735,6 +735,11 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
                                "instance-bgp-router",
                                "routing-instance", true));
     AddDependencyPath("virtual-machine-interface",
+                      MakePath("bgpaas-virtual-machine-interface",
+                               "bgp-as-a-service", true,
+                               "bgpaas-health-check",
+                               "service-health-check", false));
+    AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-qos-config",
                           "qos-config", true));
     AddDependencyPath("virtual-machine-interface",
@@ -905,6 +910,12 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     AddDependencyPath("security-logging-object",
                        MakePath("security-logging-object-security-group",
                                 "security-group", true));
+    AddDependencyPath("security-logging-object",
+                       MakePath("firewall-policy-security-logging-object",
+                                "firewall-policy", true));
+    AddDependencyPath("security-logging-object",
+                       MakePath("firewall-rule-security-logging-object",
+                                "firewall-rule", true));
     RegisterConfigHandler(this, "security-logging-object",
                           agent ? agent->slo_table() : NULL);
 

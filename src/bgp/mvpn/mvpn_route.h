@@ -39,6 +39,7 @@ public:
                const uint32_t asn);
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                const Ip4Address &group, const Ip4Address &source);
+    MvpnPrefix(uint8_t type, const Ip4Address &originator);
     MvpnPrefix(uint8_t type, const RouteDistinguisher &rd,
                const Ip4Address &originator,
                const Ip4Address &group, const Ip4Address &source);
@@ -70,6 +71,7 @@ public:
     IpAddress groupIpAddress() const { return IpAddress(group_); }
     IpAddress sourceIpAddress() const { return IpAddress(source_); }
     IpAddress originatorIpAddress() const { return IpAddress(originator_); }
+    void set_originator(const Ip4Address &originator);
     uint32_t asn() const { return asn_; }
     void set_route_distinguisher(const RouteDistinguisher &rd) { rd_ = rd; }
     uint8_t ip_prefix_length() const { return ip_prefixlen_; }

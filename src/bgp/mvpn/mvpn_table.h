@@ -63,10 +63,6 @@ public:
 
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
-    MvpnRoute *LocateType1ADRoute() { return NULL; }
-    MvpnRoute *LocateType2ADRoute() { return NULL; }
-    MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *join_rt) { return NULL; }
-    MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *spmsi_rt) {return NULL;}
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     const MvpnProjectManager *GetProjectManager() const;
     MvpnProjectManager *GetProjectManager();
@@ -78,8 +74,13 @@ public:
     const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
             const;
     const RouteTarget::List &GetExportList(BgpRoute *rt) const;
+    BgpRoute *LocateType1ADRoute();
+    BgpRoute *LocateType2ADRoute();
+    BgpRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);
+    BgpRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
 
 private:
+    BgpRoute *LocateRoute(MvpnPrefix &prefix);
     friend class BgpMulticastTest;
 
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
@@ -96,6 +97,10 @@ private:
         bool *replicated = NULL);
     UpdateInfo *GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
                                   const RibPeerSet &peerset);
+    MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
+    MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
+    MvpnPrefix CreateType2ADRoutePrefix();
+    MvpnPrefix CreateType1ADRoutePrefix();
 
     MvpnManager *manager_;
 
