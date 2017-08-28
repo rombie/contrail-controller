@@ -58,7 +58,7 @@ Solution proposed here uses ermvpn in the data plane for packet forwarding.
 Hence, each virtual-network that needs MVPN must also be associated with a
 virtual-network whose ermvpn.0 table is used during forwarding. By default,
 default-domain:default-project:ip-fabric:__default__.ermvpn.0 is used. In Phase1
-this is not configurable yet and hardcoded instead.
+this is not configurable yet and hard-coded instead.
 
 ## 3.4 UI changes
 UI shall provide a way to configure/enable Mvpn for bgp and virtual-networks.
@@ -268,7 +268,7 @@ map of all S-G routes => List of VMIs (and VRFs) (for mapping to tree-id). These
 C-<S,G> routes are added to vrf.mvpn.0 table with source protocol XMPP as Type7
 route in vrf.mvpn.0. This shall have zero-rd as the source-root-rd and 0 as the
 root-as asn (since these values are NA for the primary paths). Nexthop is set to
-the Source address and the added path is marked to RolvePath. This causes
+the Source address and the added path is marked to ResolvePath. This causes
 PathResolver to resolve the path and notify when ever the resolution state
 changes.
 
@@ -290,15 +290,15 @@ MvpnState as well as in the MvpnDBState.
 
 2. If the route is no longer usable and if there is a previous MvpnDBState
 associated with this route, then necessary cleaup is done and the previously
-origianted SPMSI path is deleted. This is the case even if route is usable but
+originated SPMSI path is deleted. This is the case even if route is usable but
 there is no longer any active sender route present
 
 3. PathResolver creates a new path when ever it finds the nexthop resolvable.
 When those resolved paths are added or modified, virtual APIs are called to 
 determine the correct RD and path attributes. Specifically, route target
 extended community is formed based on the resolved path vrf import route target
-(of the unicase route of the resolved source). SourceAS extended community is
-also copied onto the resolved path attributes. Source RD is determinded based
+(of the unicast route of the resolved source). SourceAS extended community is
+also copied onto the resolved path attributes. Source RD is determined based
 on the MVPN neighbor which is derived from vrf import community.
 
 Note: If the resolved nexthop is not an Mvpn BGP neighbor, then no join must be

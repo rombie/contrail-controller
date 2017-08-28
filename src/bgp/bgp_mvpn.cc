@@ -569,7 +569,7 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
         if (found) {
             tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
             neighbors_.erase(address);
-            NotifyAllRoutes();
+            path_resolver()->UpdateAllResolverNexthops();
         }
         return;
     }
@@ -582,12 +582,11 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
         return;
 
     tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
-    if (found)
-        neighbors_.erase(address);
+    if (found) neighbors_.erase(address);
     assert(neighbors_.insert(make_pair(address, neighbor)).second);
 
     // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
-    NotifyAllRoutes();
+    path_resolver()->UpdateAllResolverNexthops();
 }
 
 bool MvpnProjectManagerPartition::IsUsableGlobalTreeRootRoute(

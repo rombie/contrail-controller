@@ -244,6 +244,15 @@ ResolverNexthop *PathResolver::LocateResolverNexthop(IpAddress address,
     }
 }
 
+void PathResolver::UpdateAllResolverNexthops() {
+    CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
+        "bgp::Config", "bgp::ConfigHelper");
+    for (ResolverNexthopMap::iterator it = nexthop_map_.begin();
+         it != nexthop_map_.end(); ++it) {
+        resolver_->UpdateResolverNexthop(it->second);
+    }
+}
+
 //
 // Remove the ResolverNexthop from the map and the update list.
 // Called when ResolverPath is being unregistered from BgpConditionListener
