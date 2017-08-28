@@ -174,7 +174,6 @@ UpdateInfo *MvpnTable::GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
 
     MvpnProjectManager *pm = GetProjectManager();
     return pm ? pm->GetUpdateInfo(route) : NULL;
-
 }
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated

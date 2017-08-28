@@ -429,11 +429,22 @@ normal notify code path.
 MvpnManager shall provide an API to ErmVpnManager to encode input tunnel attr
 for the forest node of the (self) local tree.
 
+On the receive side, when leaf-ad routes are imported into the target table
+(where type3 spmsi was orginated before), those routes also get notified. In
+the listener callback, those routes along with the best path attributes are
+stored inside an std::map keyed by the route. When ever these routes get deleted
+the map is also updated accordingly in the same listerner callback routine.
+
+This map is used when ever Type5 SoureActive mvpn route is sent towards xmpp
+agents. (or rather reflected back). In the export, olist is formed by looking
+into the attributes of all replicated type4 leaf ad paths. This olist shall
+contain the (pmsi) label as well as the tunnel encapsulation type. Sender agent
+can use this olist to replicate the multicast packets during data forwarding.
 
 ## 4.12 Source AS extended community
-
-This is mainly applicable for inter-as mvpn stitched over segmented tunnels.
-This is not targeted for Phase I.
+Source AS extended community is added to all unicast routes. This shall contain
+local AS number. This is used later when forming the mvpn prefix to send joins
+towards the sender.
 
 ## 4.13 Multicast Edge Replicated Tree
 
