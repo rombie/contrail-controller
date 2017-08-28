@@ -566,11 +566,13 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     bool found = FindNeighbor(address, &old_neighbor);
 
     if (!route->IsValid()) {
-        if (found) {
+        if (!found)
+            return;
+        {
             tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
             neighbors_.erase(address);
-            path_resolver()->UpdateAllResolverNexthops();
         }
+        path_resolver()->UpdateAllResolverNexthops();
         return;
     }
 
@@ -581,9 +583,12 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     if (found && old_neighbor == neighbor)
         return;
 
-    tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
-    if (found) neighbors_.erase(address);
-    assert(neighbors_.insert(make_pair(address, neighbor)).second);
+    {
+        tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
+        if (found)
+            neighbors_.erase(address);
+        assert(neighbors_.insert(make_pair(address, neighbor)).second);
+    }
 
     // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
     path_resolver()->UpdateAllResolverNexthops();
