@@ -775,6 +775,9 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // case primary path will be bgp.mvpn.0) and in case of local replication
     // (in this case, primary path will be another vrf.mvpn.0). In either of
     // these cases, S-PMSI path needs to be originated if not already done so.
+    //
+    // TODO(Ananth) Origiante SPMSI route only if there is an active sender
+    // for this S,G. (Type4 SourceActiveAD received from an agent)
     if (path->IsSecondary()) {
         // Originate/Update S-PMSI route towards the receivers.
         MvpnRoute *spmsi_rt = mvpn_dbstate->route;
