@@ -97,6 +97,7 @@ public:
     void StartPathResolution(BgpRoute *route, const BgpPath *path,
         BgpTable *nh_table = NULL);
     void StopPathResolution(int part_id, const BgpPath *path);
+    void UpdateAllResolverNexthops();
 
     ResolverRouteState *FindResolverRouteState(BgpRoute *route);
     ResolverRouteState *LocateResolverRouteState(BgpRoute *route);

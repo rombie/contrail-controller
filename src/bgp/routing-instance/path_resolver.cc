@@ -249,7 +249,7 @@ void PathResolver::UpdateAllResolverNexthops() {
         "bgp::Config", "bgp::ConfigHelper");
     for (ResolverNexthopMap::iterator it = nexthop_map_.begin();
          it != nexthop_map_.end(); ++it) {
-        resolver_->UpdateResolverNexthop(it->second);
+        UpdateResolverNexthop(it->second);
     }
 }
 
