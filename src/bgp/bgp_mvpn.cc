@@ -803,10 +803,10 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     MvpnState *state = GetState(leaf_ad);
-    MvpnRoute *sa_active_rt =
-        table()->FindType4SourceActiveADRoute(leaf_ad);
+    MvpnRoute *sa_active_rt = table()->FindType4SourceActiveADRoute(leaf_ad);
     if (!leaf_ad->IsUsable()) {
-        if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt) {
+        if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt &&
+                sa_active_rt->IsUsable()) {
             sa_active_rt->Notify();
         }
         return;
@@ -818,7 +818,7 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
 
     state->leafad_routes_received().insert(
         make_pair(leaf_ad, leaf_ad->BestPath()->GetAttr()));
-    if (sa_active_rt)
+    if (sa_active_rt && sa_active_rt->IsUsable())
         sa_active_rt->Notify();
 }
 

@@ -258,6 +258,11 @@ MvpnRoute *MvpnTable::FindRoute(MvpnPrefix &prefix) {
     return static_cast<MvpnRoute *>(rtp->Find(&rt_key));
 }
 
+const MvpnRoute *MvpnTable::FindRoute(MvpnPrefix &prefix) const {
+    return const_cast<MvpnRoute *>(
+        static_cast<const MvpnTable *>(this)->FindRoute(prefix));
+}
+
 // Find or create the route.
 MvpnRoute *MvpnTable::LocateRoute(MvpnPrefix &prefix) {
     MvpnRoute rt_key(prefix);
@@ -297,7 +302,7 @@ MvpnPrefix MvpnTable::CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt) {
     return prefix;
 }
 
-MvpnPrefix MvpnTable::CreateType4SourceActiveRoutePrefix(MvpnRoute *rt) {
+MvpnPrefix MvpnTable::CreateType4SourceActiveRoutePrefix(MvpnRoute *rt) const {
     const RouteDistinguisher *rd = routing_instance()->GetRD();
     Ip4Address source = rt->GetPrefix().source();
     Ip4Address group = rt->GetPrefix().group();
@@ -347,6 +352,11 @@ MvpnRoute *MvpnTable::FindType2ADRoute() {
 }
 
 MvpnRoute *MvpnTable::FindType4SourceActiveADRoute(MvpnRoute *rt) {
+    MvpnPrefix prefix = CreateType4SourceActiveRoutePrefix(rt);
+    return FindRoute(prefix);
+}
+
+const MvpnRoute *MvpnTable::FindType4SourceActiveADRoute(MvpnRoute *rt) const {
     MvpnPrefix prefix = CreateType4SourceActiveRoutePrefix(rt);
     return FindRoute(prefix);
 }
