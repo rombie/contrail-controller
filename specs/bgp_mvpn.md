@@ -5,15 +5,15 @@ Provide BGP NGEN Mvpn support in contrail software.
 Currently, multicast is supported using ErmVpn (Edge replicated multicast). This
 solution is limited to a single virtual-network. i.e., senders and receivers
 cannot span across different virtual-networks. Also, this solution is not inter
-operable (yet) with any of the other known bgp implementations.
+operable (yet) with any other known bgp implementation.
 
 # 3. Proposed solution
-Use NGEN-Mvpn design to provide inter-vn multicast capabilities by still using
+Use NGEN-Mvpn design to provide inter-vn multicast capabilities but still using
 ErmVpn for packets replication underneath in the data plane.
 
 ## 3.1 Alternatives considered
 Some investigations were made to extend ermvpn itself to support inter-vn
-multicast. There is no clean way to do this and it is also not inter operable
+multicast. There is no clean way to do this and it is also not inter-operable
 as well, as mentioned before.
 
 ## 3.2 API schema changes
@@ -41,7 +41,7 @@ index 2804d8b..732282b 100644
           <xsd:element name='mirror-destination' type="xsd:boolean" default="false" required='optional'
               description='Flag to mark the virtual network as mirror destination network'/>
 +         <!-- Enable or disable ipv4-multicast for virtual-network -->
-+         <xsd:element name='ipv4-multicast' type="xsd:boolean" default="false" required='optional' description='Flag to enable ipv4 multicast service'/>
++         <xsd:element name='ipv4-multicast' type="xsd:boolean" default="false" required='optional' description='Flag to enable ipv4 multicast (mvpn) service'/>
      </xsd:all>
  </xsd:complexType>
 
@@ -54,10 +54,11 @@ should configure Mvpn. In order to support multicast sender outside the cluster,
 one must also configure necessary S-PMSI tunnel information inside the routing
 instance as applicable.
 
-Also solution proposed here uses ermvpn in the data plane for packet forwarding.
-Hence, each virtual-network that needs MVPN must also be configured with a
+Solution proposed here uses ermvpn in the data plane for packet forwarding.
+Hence, each virtual-network that needs MVPN must also be associated with a
 virtual-network whose ermvpn.0 table is used during forwarding. By default,
-default-domain:default-project:ip-fabric:__default__.ermvpn.0 is used.
+default-domain:default-project:ip-fabric:__default__.ermvpn.0 is used. In Phase1
+this is not configurable yet and hardcoded instead.
 
 ## 3.4 UI changes
 UI shall provide a way to configure/enable Mvpn for bgp and virtual-networks.
@@ -92,26 +93,31 @@ for IPv4 multicast vn routes. AFI(1)/SAFI(5). This is not enabled by default.
 MvpnManager
     1. There shall be one instance per vrf.mvpn.0 table
     2. Maintains list of auto-discovered mvpn [bgp] neighbors
-    3. Manages locally originated mvpn auto discovery routes such as
+    3. Manages all locally originated mvpn auto discovery routes such as
        Type-1 (AD), and Type-2 AD.
     4  Manages locally originated Type-4 Leaf AD routes (In response to received
        Type-3 S-PMSI Routes)
     3. Listens to all change to vrf.mvpn.0 table
-    5. Handles initialization or cleanup when mvpn configuration is added or
-       deleted in a virtual-network
+    5. Handles initialization or cleanup when mvpn configuration is enabled or
+       disabled inside a virtual-network
     6. Provides data for inspection at run time via Introspect
 
 MvpnProjectManager
-    1. There shall be one instance per <project>.mvpn.0
+    1. There shall be one instance per <project-vn>.ermvpn.0
     2. Maintains an std::map<MvpnState::SG, MvpnState *>. This map contains the
        current Mvpn state of a particular <S,G> multicast route. Among many
        things, it holds pointers to all Mvpn routes of the corresponding <S,G>
        such Leaf-AD Routes, applicable GlobalErmVpnRoute, etc.
     3. This MvpnState structure inside the map is ref-counted and stored inside
        the DB-State of the referred routes. This ensures that referred routes
-       never get deleted until DB State goes away and vice-versa.
-    4. Listens to all changes to <project>.ermvpn.0 and notifies all type-4 leaf
-       ad routes applicable if GlobalErmvpnRoute changes (add/change/delete)
+       never get deleted until DB State goes away and vice-versa. An intrusive
+       pointer shall be used for easier memory management.
+    4. Listens to all changes to <project-vn>.ermvpn.0 and notifies all type-4
+       leaf ad routes applicable when ever GlobalErmvpnRoute is added or deleted
+       or modified.
+
+    In phase I, this is created only inside
+    default-domain:default-project:ip-fabric:__default__.ermvpn.0.
 
 ## 4.3 Concurrency Model
 
@@ -155,7 +161,7 @@ T6 C-<*, G>    Receive via bgp     bgp.mvpn  vrf[s].mvpn
 
 SourceTreeJoin
 T7 C-<S, G>    Receive via xmpp    vrf.mvpn  bgp.mvpn, vrf[s].mvpn
-                                Replicated only when resolvable
+                                Replicated only when Source is resolvable
 T7 C-<S, G>    Receive via bgp     bgp.mvpn  vrf[s].mvpn
                                              Send T3 S-PMSI
 
@@ -169,9 +175,9 @@ T4 Leaf-AD    T3 notified in vrf  vrf.mvpn  bgp.mvpn, vrf[s].mvpn
 
 ```
 
-## 4.5 Phase-1 Events (For Release 4.1)
+## 4.5 Phase I Events (For Release 4.1)
 
-In Phase-1 receivers always inside the contrail cluster and sender always
+In Phase I receivers always inside the contrail cluster and sender always
 outside the cluster. Support for Source specific multicast <C-S,G> only
 (No support for C-<*, G> ASM). No support for Inclusive I-PMSI either.
 
@@ -228,7 +234,7 @@ Type-1 AD prefix format
 ```
 
 export route target is export route target of the of the routing-instance. These
-routes would get imported to all mvpn tables whose import route-targets list
+routes would get imported in to all mvpn tables whose import route-targets list
 contains this exported route-target (Similar to how vpn-unicast routes get
 imported) (aka JUNOS auto-export)
 
@@ -276,9 +282,10 @@ Format of Type 7 <C-S, G> route added to vrf.mvpn.0 with protocol local/Mvpn
 
 MvpnManager who is a listener to this route, upon route change notification
 does the following.
-1. If the route is usable, the path is Secondary, and f there is an active
+
+1. If the route is usable, the path is Secondary, and if there is an active
 sender route (Type-7) interested in sending traffic, then a new Type3 SPMSI
-route is originated (or existing one is  updated). This route is saved in
+route is originated (or existing one is updated). This route is saved in
 MvpnState as well as in the MvpnDBState.
 
 2. If the route is no longer usable and if there is a previous MvpnDBState
@@ -286,40 +293,32 @@ associated with this route, then necessary cleaup is done and the previously
 origianted SPMSI path is deleted. This is the case even if route is usable but
 there is no longer any active sender route present
 
+3. PathResolver creates a new path when ever it finds the nexthop resolvable.
+When those resolved paths are added or modified, virtual APIs are called to 
+determine the correct RD and path attributes. Specifically, route target
+extended community is formed based on the resolved path vrf import route target
+(of the unicase route of the resolved source). SourceAS extended community is
+also copied onto the resolved path attributes. Source RD is determinded based
+on the MVPN neighbor which is derived from vrf import community.
 
-When ever this address is resolvable (or otherwise), the Type-7 route is
-notified and the route replicator tries to replicate the path.
-
-o If the route is resolvable (over BGP), next-hop address and rt-import extended
-  rtarget community associated with the route is retrieved from the resolver
-  data structure (which holds a copy of the information necessary such as
-  inside the path-attributes).
-
-  If the next-hop (i.e, Multicast Source) is resolvable, then this Type-7 path
-  is replicated into all vrfs applicable, including bgp.mvpn.0.
-
-o If the route is not resolvable any more, then any already replicated Type-7
-  path is deleted (By simply returning NULL from MvpnTable::RouteReplicate())
-
-Format of replicated path for Type 7 C-<S, G> replicated path is as shown below.
-```
-  7:<source-root-rd>:<root-as>:<C, G>
-  7:source-root-router-id:vn-id:<root-as>:<C, G>
-  export route-target should be rt-import route-target of route towards source
-  (as advertised by ingress PE)
-```
-
-Note: If the resolved nexthop is not an Mvpn BGP neighbor, then no join must
-be sent out. Hence, this Type-7 join route is replicated into bgp.mvpn.0 only
-if there is a Type1/Type2 route received from the resolved nexthop bgp neighbor.
+Note: If the resolved nexthop is not an Mvpn BGP neighbor, then no join must be
+sent out. Hence, source rd is not set in such cases. This causes replicator not
+to replicate these resolved paths.
 
 On the other hand, if received Type1/Type2 routes get withdrawn, all replicated
-type-7 (and type-4 ?) routes for that PE must also be no longer replicated and
-instead be deleted from the secondary tables.
+type-7 routes for that PE must also be no longer replicated and instead be
+deleted from the secondary tables. This is achieved by calling a PathResolver
+API to re-resolve all Type-7 routes.
 
 If Type1/Type2 routes come in later (auto-discovery happens afterwards), then
 all type-7 routes must be replicated and advertised again to the newly
-discovered mvpn bgp neighbor.
+discovered mvpn bgp neighbor. This is again achieved by calling PathResolver
+API to re-resolve all type-7 paths.
+
+```
+  7:source-root-router-id:vn-id:<root-as>:<C, G>
+  export route-target should be rt-import route-target of route towards source (as advertised by ingress PE)
+```
 
 Concurrency: Since BGP AD related events do not carry any C,G information,
 we cannot safely walk all the C,Gs from one partition. Instead, we can just
@@ -335,7 +334,7 @@ vrf.mvpn.0 table.
 
 Once replicated into bgp.mvpn.0, the secondary path will be advertised to all
 other mvpn neighbors. (Route Target Filtering will ensure that it is only
-sent to the ingress PE). For phase 1 this route only needs to be replicated to
+sent to the ingress PE). For phase I, this route only needs to be replicated to
 bgp.mvpn.0 (Sender is always outside the contrail cluster). There is no need
 to replicate this route to any other vrf locally. This is required when we add
 support for sender in one virtual-network and receivers in another with in the
@@ -344,43 +343,10 @@ contrail cloud.
 Any change to the reachability to Source shall be dealt as delete of old Type-7
 secondary path and add of new Type-7 secondary path.
 
-Note: This requires advertising IGMP Routes as XMPP routes into different table
-<project>.mvpn.0 (in addition to vrf.mvpn.0). Hence requires changes to agents.
-Agents should refcount and advertise <S,G> once to <project>.mvpn.0, as new
-receivers join (or old receivers leave).
-
-## vrf_index
-
-In bgp.mvpn.0 table, all mvpn prefixes across all VNs reside. Hence the routes
-are made distinct by prepending with appropriate route distinguisher. The format
-of this would be <router-id>:<vrf-id>. Router-Ids could be self (control-node)
-router-id or a remote peer router-id as appropriate. the VRF-ID though must be
-the unique virtual network id associated with that router-id. For remote peers,
-this id can be retrieved from the Type-1/Type-2 auto-discovery routes. Locally,
-this is allocated during RoutingInstance construction.
-
-## 4.8 Nexthop resolver for source
-
-As mentioned in previous section, when C-<S, G> route is received and installed
-in vrf.mvpn.0 table (protocol: XMPP), Source needs to be resolved in vrf.inet.0
-table in order reach out to the ingress PE. Hence, Type-7 paths added in
-BgpXmppChannel::ProcessMvpnItem() are always marked for "ResolutionRequested".
-
-This ensures that route resolution is started when those routes are added to the
-BgpTable automatically, by the current implementation. When Type-7 routes are
-deleted, current code automatically stops resolution requests as well.
-
-PathResolver code should be slightly modified though in order to
-
-1. Support longest prefix match
-2. Add resolved paths into rt only conditionally. mpvn does not need explicit
-   resolved paths in the route. It only needs unicast route resolution.
-3. When unicast RPF Source is [un-]resolved, the Type-7 join route is notified.
-   Inside MvpnTable::Replicate(), Type-7 C-<S,G> route can be replicated into
-   bgp.mvpn.0 table with the correct RD and export route target (or delete the
-   route if it was replicated before and the Source is no longer resolvable, or
-   if resolution parameters change). Check must be also made to ensure that
-   resolved nexthop is also an active mvpn bgp neighbor.
+Note: MVPN feature requires advertising IGMP Routes as XMPP routes into
+different table <project>.mvpn.0 (in addition to vrf.mvpn.0). Hence requires
+changes to agents. Agents should refcount and advertise <S,G> once to
+<project>.mvpn.0, as new receivers join (or old receivers leave).
 
 When this <S,G> Type-7 route sent by egress PE is successfully imported into
 vrf.mvpn.0 (by matching auto-generated rt-import route-target) by the ingress
@@ -394,9 +360,18 @@ e.g. Ingress (Sender) PE S-PMSI configuration in JUNOS
 set routing-instances vrf provider-tunnel selective group 232.2.0.0/16 source 1.2.3.4/32 ingress-replication label-switched-path
 ```
 
+## vrf_index
+
+In bgp.mvpn.0 table, all mvpn prefixes across all VNs reside. Hence the routes
+are made distinct by prepending with appropriate route distinguisher. The format
+of this would be <router-id>:<vrf-id>. Router-Ids could be self (control-node)
+router-id or a remote peer router-id as appropriate. the VRF-ID though must be
+the unique virtual network id associated with that router-id. For remote peers,
+this id can be retrieved from the Type-1/Type-2 auto-discovery routes. Locally,
+this is allocated during RoutingInstance construction.
 ## 4.9 C-<*, G> Routes learning via Agents/IGMP
 
-This is not targeted for Phase 1. Please refer to Section 4.3 for general Routes
+This is not targeted for Phase I. Please refer to Section 4.3 for general Routes
 flow for these ASM routes.
 
 ## 4.10 Type-3 S-PMSI
@@ -412,7 +387,7 @@ expected to be only Ingress-Replication and Label is always expected to be 0.
 
 This route is originated when ever Type-6/Type-7 Customer Join routes are
 received and replicated in vrf.mvpn.0 (at the ingress). Origination of this
-route in control-node is not required for Phase 1.
+route in control-node is not required for Phase I.
 
 ## 4.11 Type-4 PMSI Tunnel advertisement from egress (Leaf AD)
 
@@ -480,7 +455,7 @@ Reference: Page 254
 ## 4.12 Source AS extended community
 
 This is mainly applicable for inter-as mvpn stitched over segmented tunnels.
-This is not targeted for Phase 1.
+This is not targeted for Phase I.
 
 ## 4.13 Multicast Edge Replicated Tree
 
