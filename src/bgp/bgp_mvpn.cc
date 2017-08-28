@@ -755,7 +755,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // case primary path will be bgp.mvpn.0) and in case of local replication
     // (in this case, primary path will be another vrf.mvpn.0). In either of
     // these cases, S-PMSI path needs to be originated if not already done so.
-    if (dynamic_cast<const BgpSecondaryPath *>(path)) {
+    if (path->IsSecondary()) {
         // Originate/Update S-PMSI route towards the receivers.
         MvpnRoute *spmsi_rt = mvpn_dbstate->route;
         if (!spmsi_rt) {
@@ -812,6 +812,10 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
             leaf_ad_route->NotifyOrDelete();
         return;
     }
+
+    // Ignore notifications of primary S-PMSI paths.
+    if (!spmsi_rt->BestPath()->IsSecondary())
+        return;
 
     // A valid S-PMSI path has been imported to a table. Originate a new
     // LeafAD path, if GlobalErmVpnTreeRoute is available to stitch.
@@ -895,7 +899,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     const BgpPath *src_path = leaf_ad->BestPath();
-    if (!dynamic_cast<const BgpSecondaryPath *>(src_path))
+    if (!src_path->IsSecondary())
         return;
 
     // TODO(Ananth) LeafAD route has been imported into a table. Retrieve PMSI

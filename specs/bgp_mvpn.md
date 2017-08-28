@@ -397,44 +397,15 @@ PMSI Tunnel: Tunnel Type: Ingress-Replication and label:Tree-Label
 When Type-3 route is imported into vrf.mvpn.0 table at the egress, (such as
 control-node), the secondary Type-3 route is notified.
 
-MvpnManager, upon notification for any Type-3 route shall do the following.
-
-On Add/Change
-
-1. Originate a new Type-4 route in vrf.mvpn.0 table corresponding to the newly
-   arrived Type-3 route and add this to the S-G specific map inside associated
-   MvpnProjectManager object.
-2. No PMSI Tunnel attribute is encoded (yet) to this Type-4 path
-3. Notify the route
-
-On Delete, any Type-4 path originated is retrieved from the DB state and
-deleted.
-
-This type-4 path is replicated into bgp and other tables if PMSI information can
-be computed (in MvpnTable::RouteReplicate()). PMSI Information is retrieved via
-api ErmVpnManager::GetGlobalRouteForestNodePMSI(). Specifically, Mvpn needs the
-input label and IP address of the MCast Forwarder (Vrouter) of the forest node
-of the global (level-1) ermvpn tree. If this PMSI info is present, the type-4
-leaf-ad route is replicated into bgp and other tables as appropriate.
+MvpnManager, upon notification for any Type-3 route shall check if PMSI tunnel
+information is available. This is computed based forest node local ermvpn route.
+If this is available, then o Originate a new Type-4 route in vrf.mvpn.0 table
+corresponding to the newly arrived Type-3 route and add this to the S-G specific
+map inside associated MvpnProjectManager object.
 
 Also, GlobalErmVpnRoute is notified so that the forest node xmpp route can be
 updated with appropriate input tunnel information (Provided by Mvpn module,
-which is the IP address present in the prefix of this originated leaf-ad route)
-
-If PMSI information cannot be retrieved, (e.g. the global level-1 ermvpn tree is
-not computed yet), then type-4 path is not replicated into other tables.
-
-On the other hand, when global tree is computed or updated, MvpnProjectManager
-listener gets called. In this callback,
-
-o Walk the list of all type-4 paths already originated for this S-G and notify.
-
-o RouteReplicate() of Type-4 path would run like how it did before and can now
-  [un-]replicate the type-4 path based on the [un-]availability of the PMSI
-  information.
-
-MvpnManager shall provide an API to ErmVpnManager to encode input tunnel attr
-for the forest node of the (self) local tree.
+which is the IP address present in the prefix of this S-PMSI route).
 
 MvpnManager::GetInputTunnelAttr(ErmVpnRoute *global_ermvpn_tree_route) const;
 
@@ -444,6 +415,20 @@ indeed replicated successfully, then the ingress PE router address can be
 provided as input tunnel attribute (which is part of the Type-4 route prefix)
 
 Reference: Page 254
+
+On Delete, any Type-4 path if already originated is retrieved from the DB state
+and deleted.
+
+This type-4 path is replicated into bgp and other tables via usual mechanisms.
+
+On the other hand, when global tree is computed or updated, MvpnProjectManager
+listener gets called. In this callback, notify all type-3 s-pmsi routes so that
+corresponding type4 leaf-ad routes are added/deleted/updated as necessary in the
+normal notify code path.
+
+MvpnManager shall provide an API to ErmVpnManager to encode input tunnel attr
+for the forest node of the (self) local tree.
+
 
 ## 4.12 Source AS extended community
 
