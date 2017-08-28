@@ -327,11 +327,6 @@ RouteReplicate(), new type-7/type-4 paths shall be replicated or already
 replicated type-7/type-4 paths shall get deleted based on BGP Mvpn auto
 discovered neighbor presence/absence.
 
-Q: Instead, should we maintain a set of all type-7 and type-4 paths (on a per
-partition basis)? Changes to auto discovery states are quite rare in nature,
-though. Hence it seems this scenario can be handled simply by walking the entire
-vrf.mvpn.0 table.
-
 Once replicated into bgp.mvpn.0, the secondary path will be advertised to all
 other mvpn neighbors. (Route Target Filtering will ensure that it is only
 sent to the ingress PE). For phase I, this route only needs to be replicated to
