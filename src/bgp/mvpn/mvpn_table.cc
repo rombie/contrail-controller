@@ -167,39 +167,14 @@ MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
 UpdateInfo *MvpnTable::GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
     const RibPeerSet &peerset) {
     // TODO(Ananth) if it is not a "Sender" route, ignore.
-    if (route->GetPrefix().type() != MvpnPrefix::SourceTreeJoinRoute)
+    if (route->GetPrefix().type() != MvpnPrefix::SourceActiveADRoute)
         return NULL;
     if (!route->IsUsable())
         return NULL;
 
-    // TODO(Ananth)
-    // Find all leaf-ad paths associated with this sender route and create the
-    // ribout. This list should be available in the MvpnState inside the
-    // MvpnProjectManagerPartition object.
-    const BgpPath *path = route->BestPath();
-    if (!dynamic_cast<const BgpSecondaryPath *>(path))
-        return NULL;
+    MvpnProjectManager *pm = GetProjectManager();
+    return pm ? pm->GetUpdateInfo(route) : NULL;
 
-    // Imported (replicated) Type4 secondary paths have been found. Send
-    // the route to sender xmpp agent with the PMSI tunnel information as
-    // encoded in the path attributes.
-    const BgpAttr *attr = path->GetAttr();
-    if (!attr)
-        return NULL;
-
-    const PmsiTunnel *pmsi = attr->pmsi_tunnel();
-    if (!pmsi)
-        return NULL;
-    if (pmsi->tunnel_type() != PmsiTunnelSpec::IngressReplication)
-        return NULL;
-    uint32_t label = attr->pmsi_tunnel()->GetLabel();
-    if (!label)
-        return NULL;
-
-    // Ip4Address nexthop = pmsi->identifier();
-    UpdateInfo *uinfo = new UpdateInfo;
-    uinfo->roattr = RibOutAttr(this, route, attr, label, true, true);
-    return uinfo;
 }
 
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
@@ -383,25 +358,10 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *table,
                                             src_path, community);
     }
 
-    if (src_rt->GetPrefix().type() == MvpnPrefix::LeafADRoute) {
-        return ReplicateType4LeafAD(server, src_table, src_rt, src_path,
-                                    community);
-    }
-
     // Replicate all other types.
     // TODO(Ananth) Should we ignore types we don't support like Source-Active.
     return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                          src_path, community);
-}
-
-BgpRoute *MvpnTable::ReplicateType4LeafAD(BgpServer *server,
-    MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
-    ExtCommunityPtr community) {
-    BgpRoute *rt = ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
-                                 src_path, community);
-    // TODO(Ananth) Update all replicated type-4 paths, so that sender if any
-    // can be updated with the olist.
-    return rt;
 }
 
 BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
@@ -426,7 +386,7 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     if (!attr)
         return NULL;
 
-    // If source is resolved, only then replicate the path, not otherwise.
+    // Do not resplicate if the source is not resolvable.
     if (attr->source_rd().IsZero())
         return NULL;
 

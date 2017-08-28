@@ -11,6 +11,7 @@
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_server.h"
+#include "bgp/bgp_update.h"
 #include "bgp/extended-community/vrf_route_import.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/path_resolver.h"
@@ -20,9 +21,11 @@
 using std::make_pair;
 using std::ostringstream;
 using std::string;
+using std::vector;
 
 MvpnState::MvpnState(const SG &sg) :
-        sg_(sg), global_ermvpn_tree_rt_(NULL), refcount_(0) {
+        sg_(sg), global_ermvpn_tree_rt_(NULL), spmsi_rt_(NULL),
+        source_active_rt_(NULL), refcount_(0) {
 }
 
 MvpnState::~MvpnState() {
@@ -102,6 +105,16 @@ const MvpnProjectManagerPartition *MvpnProjectManager::GetPartition(
 
 void MvpnProjectManager::ManagedDelete() {
     deleter_->Delete();
+}
+
+const MvpnState *MvpnProjectManager::GetState(MvpnRoute *route) const {
+    return const_cast<MvpnState *>(
+        static_cast<const MvpnProjectManager *>(this)->GetState(route));
+}
+
+MvpnState *MvpnProjectManager::GetState(MvpnRoute *route) {
+    MvpnState::SG sg(route->GetPrefix().source(), route->GetPrefix().group());
+    return GetPartition(route->get_table_partition()->index())->GetState(sg);
 }
 
 MvpnProjectManagerPartition::MvpnProjectManagerPartition(
@@ -227,11 +240,19 @@ const MvpnRoute *MvpnState::spmsi_rt() const {
     return spmsi_rt_;
 }
 
-const MvpnState::RoutesSet &MvpnState::spmsi_routes() const {
+MvpnRoute *MvpnState::source_active_rt() {
+    return source_active_rt_;
+}
+
+const MvpnRoute *MvpnState::source_active_rt() const {
+    return source_active_rt_;
+}
+
+const MvpnState::RoutesSet &MvpnState::spmsi_routes_received() const {
     return spmsi_routes_received_;
 }
 
-MvpnState::RoutesSet &MvpnState::spmsi_routes() {
+MvpnState::RoutesSet &MvpnState::spmsi_routes_received() {
     return spmsi_routes_received_;
 }
 
@@ -239,8 +260,16 @@ const MvpnState::RoutesSet &MvpnState::cjoin_routes_received() const {
     return cjoin_routes_received_;
 }
 
-MvpnState::RoutesSet *MvpnState::cjoin_routes_received() {
-    return &cjoin_routes_received_;
+MvpnState::RoutesSet &MvpnState::cjoin_routes_received() {
+    return cjoin_routes_received_;
+}
+
+const MvpnState::RoutesMap &MvpnState::leafad_routes_received() const {
+    return leafad_routes_received_;
+}
+
+MvpnState::RoutesMap &MvpnState::leafad_routes_received() {
+    return leafad_routes_received_;
 }
 
 void MvpnState::set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt) {
@@ -633,7 +662,7 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
         mvpn_state->set_global_ermvpn_tree_rt(NULL);
 
         // Notify all originated Type3 spmsi routes for PMSI re-computation.
-        BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
+        BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes_received()) {
             route->Notify();
         }
         ermvpn_route->ClearState(table(), listener_id());
@@ -654,7 +683,7 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
     mvpn_dbstate->state->set_global_ermvpn_tree_rt(ermvpn_route);
 
     // Notify all originated Type3 spmsi routes for PMSI re-computation.
-    BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
+    BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes_received()) {
         route->Notify();
     }
 }
@@ -716,7 +745,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     if (!join_rt->IsUsable()) {
         MvpnState *state = GetState(join_rt);
         if (state)
-            state->cjoin_routes_received()->erase(join_rt);
+            state->cjoin_routes_received().erase(join_rt);
 
         // DB State is maintained for any S-PMSI route originated as a Sender
         // for the received type7 join routes. If such a route was originated
@@ -777,8 +806,28 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 
     // This is case in the receiver side, where in Usable join routes have been
     // added/modified in a vrf.mvpn.0 table.
-    state->cjoin_routes_received()->insert(join_rt);
+    state->cjoin_routes_received().insert(join_rt);
     return true;
+}
+
+void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
+    MvpnState *state = GetState(leaf_ad);
+    if (!leaf_ad->IsUsable()) {
+        if (state->leafad_routes_received().erase(leaf_ad) &&
+                state->source_active_rt()) {
+            state->source_active_rt()->Notify();
+        }
+        return;
+    }
+
+    const BgpPath *src_path = leaf_ad->BestPath();
+    if (!src_path->IsSecondary())
+        return;
+
+    state->leafad_routes_received().insert(
+        make_pair(leaf_ad, leaf_ad->BestPath()->GetAttr()));
+    if (state->source_active_rt())
+        state->source_active_rt()->Notify();
 }
 
 // Process changes to Type3 S-PMSI routes by originating or deleting Type4 Leaf
@@ -805,7 +854,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
             mvpn_dbstate->route = NULL;
         }
 
-        assert(mvpn_state->spmsi_routes().erase(spmsi_rt));
+        assert(mvpn_state->spmsi_routes_received().erase(spmsi_rt));
         spmsi_rt->ClearState(table(), listener_id());
         DeleteState(mvpn_state);
         if (leaf_ad_route)
@@ -827,7 +876,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(mvpn_state);
         spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
-        assert(mvpn_state->spmsi_routes().insert(spmsi_rt).second);
+        assert(mvpn_state->spmsi_routes_received().insert(spmsi_rt).second);
     } else {
         leaf_ad_route = mvpn_dbstate->route;
     }
@@ -897,11 +946,36 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // TODO(Ananth) Notify forest node local route.
 }
 
-void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
-    const BgpPath *src_path = leaf_ad->BestPath();
-    if (!src_path->IsSecondary())
-        return;
+UpdateInfo *MvpnProjectManager::GetUpdateInfo(MvpnRoute *route) {
+    MvpnState *state = GetState(route);
+    if (!state || state->leafad_routes_received().empty())
+        return NULL;
 
-    // TODO(Ananth) LeafAD route has been imported into a table. Retrieve PMSI
-    // information from the path attribute and update the ingress sender.
+    BgpOListSpec olist_spec(BgpAttribute::OList);
+    BOOST_FOREACH(MvpnState::RoutesMap::value_type &iter,
+                  state->leafad_routes_received()) {
+        BgpAttrPtr attr = iter.second;
+        const PmsiTunnel *pmsi = attr->pmsi_tunnel();
+        if (!pmsi)
+            continue;
+        if (pmsi->tunnel_type() != PmsiTunnelSpec::IngressReplication)
+            continue;
+        uint32_t label = attr->pmsi_tunnel()->GetLabel();
+        if (!label)
+            continue;
+        const ExtCommunity *extcomm = attr->ext_community();
+        BgpOListElem elem(pmsi->identifier(), label,
+            extcomm ? extcomm->GetTunnelEncap() : vector<string>());
+        olist_spec.elements.push_back(elem);
+    }
+
+    if (olist_spec.elements.empty())
+        return NULL;
+
+    BgpAttrDB *attr_db = table()->server()->attr_db();
+    BgpAttrPtr attr = attr_db->ReplaceLeafOListAndLocate(
+        route->BestPath()->GetAttr(), &olist_spec);
+    UpdateInfo *uinfo = new UpdateInfo;
+    uinfo->roattr = RibOutAttr(table(), route, attr.get(), 0, false, true);
+    return uinfo;
 }

@@ -34,6 +34,7 @@ class MvpnState;
 class MvpnTable;
 class PathResolver;
 class RoutingInstance;
+class UpdateInfo;
 
 // This struct represents a MVPN Neighbor discovered using BGP.
 //
@@ -230,6 +231,7 @@ private:
 class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
+    typedef std::map<MvpnRoute *, BgpAttrPtr> RoutesMap;
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
         SG(const IpAddress &source, const IpAddress &group);
@@ -248,12 +250,16 @@ public:
     const ErmVpnRoute *global_ermvpn_tree_rt() const;
     MvpnRoute *spmsi_rt();
     const MvpnRoute *spmsi_rt() const;
-    const RoutesSet &spmsi_routes() const;
-    RoutesSet &spmsi_routes();
+    MvpnRoute *source_active_rt();
+    const MvpnRoute *source_active_rt() const;
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
     void set_spmsi_rt(MvpnRoute *spmsi_rt);
+    const RoutesSet &spmsi_routes_received() const;
+    RoutesSet &spmsi_routes_received();
     const RoutesSet &cjoin_routes_received() const;
-    RoutesSet *cjoin_routes_received();
+    RoutesSet &cjoin_routes_received();
+    const RoutesMap &leafad_routes_received() const;
+    RoutesMap &leafad_routes_received();
 
 private:
     friend class MvpnDBState;
@@ -263,8 +269,10 @@ private:
     SG sg_;
     ErmVpnRoute *global_ermvpn_tree_rt_;
     MvpnRoute *spmsi_rt_;
+    MvpnRoute *source_active_rt_;
     RoutesSet spmsi_routes_received_;
     RoutesSet cjoin_routes_received_;
+    RoutesMap leafad_routes_received_;
 
 #if 0  // In future phases.
     RoutesSet t4_leaf_ad_received_rt_;
@@ -375,6 +383,9 @@ public:
     const ErmVpnTable *table() const;
     int listener_id() const;
     virtual void Initialize();
+    const MvpnState *GetState(MvpnRoute *route) const;
+    MvpnState *GetState(MvpnRoute *route);
+    UpdateInfo *GetUpdateInfo(MvpnRoute *route);
 
 private:
     class DeleteActor;

@@ -98,9 +98,6 @@ private:
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm);
-    BgpRoute *ReplicateType4LeafAD(BgpServer *server, MvpnTable *src_table,
-                                   MvpnRoute *src_rt, const BgpPath *src_path,
-                                   ExtCommunityPtr community);
     BgpRoute *ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
         MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr comm, BgpAttrPtr new_attr = NULL,
