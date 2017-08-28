@@ -376,7 +376,7 @@ flow for these ASM routes.
 Target would be the export target of the vrf (so it would get imported into
 vrf.mvpn.0 in the egress pe)
 
-PMSI Flags: Leaf Information Required 1 (So that egress can initiate the join
+PMSI Flags: Leaf Information Required Set (So that egress can initiate the join
 for the pmsi tunnel) (Similar to RSVP based S-PMSI, Page 251) TunnelType is
 expected to be only Ingress-Replication and Label is always expected to be 0.
 
@@ -438,14 +438,12 @@ for the forest node of the (self) local tree.
 
 MvpnManager::GetInputTunnelAttr(ErmVpnRoute *global_ermvpn_tree_route) const;
 
-ErmVpn manager shall call this API when ever forest node route (olist) is
-computed. MvpnManager can find this info from the associated db state. If the
-route is indeed replicated successfully, then the ingress PE router address can
-be provided as input tunnel attribute (which is part of the Type-4 route prefix)
+ErmVpn Manager calls this API when ever forest node route (olist) is computed.
+MvpnManager can find this info from the associated db state. If the route is
+indeed replicated successfully, then the ingress PE router address can be
+provided as input tunnel attribute (which is part of the Type-4 route prefix)
 
 Reference: Page 254
-
-? It goes into correct vrf only because the prefix itself is copied ?
 
 ## 4.12 Source AS extended community
 

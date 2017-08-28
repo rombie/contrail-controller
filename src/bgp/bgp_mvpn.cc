@@ -632,7 +632,7 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
         MvpnState *mvpn_state = mvpn_dbstate->state;
         mvpn_state->set_global_ermvpn_tree_rt(NULL);
 
-        // Notify all originated t-4 routes for PMSI re-computation.
+        // Notify all originated Type3 spmsi routes for PMSI re-computation.
         BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
             route->Notify();
         }
@@ -653,7 +653,7 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
     // Note down current usable ermvpn route for stitching to mvpn.
     mvpn_dbstate->state->set_global_ermvpn_tree_rt(ermvpn_route);
 
-    // Notify all originated t-4 routes for PMSI re-computation.
+    // Notify all originated Type3 spmsi routes for PMSI re-computation.
     BOOST_FOREACH(MvpnRoute *route, mvpn_state->spmsi_routes()) {
         route->Notify();
     }
@@ -781,8 +781,8 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     return true;
 }
 
-// Process changes to Type3 S-PMSI routes by originating or deleting Type 4
-// Lead AD paths as appropriate.
+// Process changes to Type3 S-PMSI routes by originating or deleting Type4 Leaf
+// AD paths as appropriate.
 void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // Retrieve any state associcated with this S-PMSI route.
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
@@ -795,7 +795,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         MvpnState *mvpn_state = GetState(spmsi_rt);
         assert(mvpn_dbstate->state == mvpn_state);
 
-        // Check if a type4 LeadAD path was already originated before for this
+        // Check if a Type4 LeafAD path was already originated before for this
         // S-PMSI path. If so, delete it as the S-PMSI path is no nonger usable.
         leaf_ad_route = mvpn_dbstate->route;
         if (leaf_ad_route) {
@@ -898,6 +898,6 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     if (!dynamic_cast<const BgpSecondaryPath *>(src_path))
         return;
 
-    // LeafAD route has been imported into a table. Retrieve PMSI information
-    // from the path attribute and update the ingress sender (agent).
+    // TODO(Ananth) LeafAD route has been imported into a table. Retrieve PMSI
+    // information from the path attribute and update the ingress sender.
 }
