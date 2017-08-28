@@ -24,8 +24,7 @@ using std::string;
 using std::vector;
 
 MvpnState::MvpnState(const SG &sg) :
-        sg_(sg), global_ermvpn_tree_rt_(NULL), spmsi_rt_(NULL),
-        source_active_rt_(NULL), refcount_(0) {
+        sg_(sg), global_ermvpn_tree_rt_(NULL), spmsi_rt_(NULL), refcount_(0) {
 }
 
 MvpnState::~MvpnState() {
@@ -238,14 +237,6 @@ MvpnRoute *MvpnState::spmsi_rt() {
 
 const MvpnRoute *MvpnState::spmsi_rt() const {
     return spmsi_rt_;
-}
-
-MvpnRoute *MvpnState::source_active_rt() {
-    return source_active_rt_;
-}
-
-const MvpnRoute *MvpnState::source_active_rt() const {
-    return source_active_rt_;
 }
 
 const MvpnState::RoutesSet &MvpnState::spmsi_routes_received() const {
@@ -812,10 +803,11 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     MvpnState *state = GetState(leaf_ad);
+    MvpnRoute *sa_active_rt =
+        table()->FindType4SourceActiveADRoute(leaf_ad);
     if (!leaf_ad->IsUsable()) {
-        if (state->leafad_routes_received().erase(leaf_ad) &&
-                state->source_active_rt()) {
-            state->source_active_rt()->Notify();
+        if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt) {
+            sa_active_rt->Notify();
         }
         return;
     }
@@ -826,8 +818,8 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
 
     state->leafad_routes_received().insert(
         make_pair(leaf_ad, leaf_ad->BestPath()->GetAttr()));
-    if (state->source_active_rt())
-        state->source_active_rt()->Notify();
+    if (sa_active_rt)
+        sa_active_rt->Notify();
 }
 
 // Process changes to Type3 S-PMSI routes by originating or deleting Type4 Leaf

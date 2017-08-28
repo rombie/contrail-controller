@@ -297,6 +297,16 @@ MvpnPrefix MvpnTable::CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt) {
     return prefix;
 }
 
+MvpnPrefix MvpnTable::CreateType4SourceActiveRoutePrefix(MvpnRoute *rt) {
+    const RouteDistinguisher *rd = routing_instance()->GetRD();
+    Ip4Address source = rt->GetPrefix().source();
+    Ip4Address group = rt->GetPrefix().group();
+    const Ip4Address originator_ip(server()->bgp_identifier());
+    MvpnPrefix prefix(MvpnPrefix::SourceActiveADRoute, *rd, originator_ip,
+                      group, source);
+    return prefix;
+}
+
 MvpnRoute *MvpnTable::LocateType3SPMSIRoute(MvpnRoute *type7_rt) {
     MvpnPrefix prefix = CreateType3SPMSIRoutePrefix(type7_rt);
     return LocateRoute(prefix);
@@ -333,6 +343,11 @@ MvpnRoute *MvpnTable::FindType1ADRoute() {
 
 MvpnRoute *MvpnTable::FindType2ADRoute() {
     MvpnPrefix prefix = CreateType2ADRoutePrefix();
+    return FindRoute(prefix);
+}
+
+MvpnRoute *MvpnTable::FindType4SourceActiveADRoute(MvpnRoute *rt) {
+    MvpnPrefix prefix = CreateType4SourceActiveRoutePrefix(rt);
     return FindRoute(prefix);
 }
 
