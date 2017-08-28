@@ -739,6 +739,7 @@ sc_test_suite = [
     bgp_xmpp_rtarget_test,
     routepath_replicator_random_test,
     routepath_replicator_test,
+    service_chain_test,
     service_chain_test1,
     service_chain_test2,
     service_chain_test3,
