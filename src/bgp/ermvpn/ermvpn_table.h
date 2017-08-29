@@ -59,6 +59,7 @@ public:
     const McastTreeManager *GetTreeManager() const;
     virtual void set_routing_instance(RoutingInstance *rtinstance);
     const McastTreeManager *tree_manager() const { return tree_manager_; }
+    McastTreeManager *tree_manager() { return tree_manager_; }
     void CreateMvpnProjectManager();
     void DestroyMvpnProjectManager();
     MvpnProjectManager *mvpn_project_manager() { return mvpn_project_manager_; }

@@ -235,6 +235,8 @@ public:
 
     bool empty() const;
     ErmVpnRoute *GetGlobalTreeRootRoute() const;
+    bool GetForestNodePMSI(uint32_t *label, Ip4Address *address,
+                           std::vector<std::string> *encap) const;
 
 private:
     friend class BgpMulticastTest;
@@ -306,8 +308,10 @@ public:
     McastManagerPartition(McastTreeManager *tree_manager, size_t part_id);
     ~McastManagerPartition();
 
-    McastSGEntry *FindSGEntry(Ip4Address group, Ip4Address source);
-    const McastSGEntry *FindSGEntry(Ip4Address group, Ip4Address source) const;
+    McastSGEntry *FindSGEntry(const Ip4Address &group,
+                              const Ip4Address &source);
+    const McastSGEntry *FindSGEntry(const Ip4Address &group,
+                                    const Ip4Address &source) const;
     McastSGEntry *LocateSGEntry(Ip4Address group, Ip4Address source);
     void EnqueueSGEntry(McastSGEntry *sg_entry);
 
@@ -317,10 +321,13 @@ public:
     const BgpServer *server() const;
     McastTreeManager *tree_manager() const { return tree_manager_; }
     ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
-    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
+    void NotifyForestNode(const Ip4Address &source, const Ip4Address &group);
 
     bool empty() const { return sg_list_.empty(); }
     size_t size() const { return sg_list_.size(); }
+    bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                           Ip4Address *address,
+                           std::vector<std::string> *encap) const;
 
 private:
     friend class BgpMulticastTest;
@@ -414,8 +421,11 @@ public:
     bool deleted() const;
     const ErmVpnRoute *GetGlobalErmVpnTreeMvpnRoute() const;
     ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
-    void NotifyForestNode(int part_id, const IpAddress &source,
-                          const IpAddress &group);
+    void NotifyForestNode(int part_id, const Ip4Address &source,
+                          const Ip4Address &group);
+    bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                           Ip4Address *address,
+                           std::vector<std::string> *encap) const;
 
 private:
     friend class BgpMulticastTest;

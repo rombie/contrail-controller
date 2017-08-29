@@ -109,7 +109,7 @@ private:
     MvpnState *GetState(ErmVpnRoute *route);
     MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
-    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
+    void NotifyForestNode(const Ip4Address &source, const Ip4Address &group);
     bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                            Ip4Address *address,
                            std::vector<std::string> *encap) const;
@@ -346,7 +346,7 @@ private:
     bool IsUsableGlobalTreeRootRoute(ErmVpnRoute *ermvpn_route) const;
     void RouteListener(DBEntryBase *db_entry);
     int listener_id() const;
-    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
+    void NotifyForestNode(const Ip4Address &source, const Ip4Address &group);
     bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                            Ip4Address *address,
                            std::vector<std::string> *encap) const;

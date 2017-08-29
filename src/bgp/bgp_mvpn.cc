@@ -17,6 +17,7 @@
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/rtarget/rtarget_address.h"
+#include "bgp/tunnel_encap/tunnel_encap.h"
 
 using std::make_pair;
 using std::ostringstream;
@@ -626,13 +627,13 @@ bool MvpnProjectManagerPartition::IsUsableGlobalTreeRootRoute(
 }
 
 void MvpnProjectManagerPartition::NotifyForestNode(
-        const IpAddress &source, const IpAddress &group) {
+        const Ip4Address &source, const Ip4Address &group) {
     if (table()->tree_manager())
         table()->tree_manager()->NotifyForestNode(part_id_, source, group);
 }
 
 void MvpnManagerPartition::NotifyForestNode(
-        const IpAddress &source, const IpAddress &group) {
+        const Ip4Address &source, const Ip4Address &group) {
     MvpnProjectManagerPartition *pm = GetProjectManagerPartition();
     if (pm)
         pm->NotifyForestNode(source, group);
@@ -641,16 +642,17 @@ void MvpnManagerPartition::NotifyForestNode(
 bool MvpnProjectManagerPartition::GetForestNodePMSI(
         ErmVpnRoute *rt, uint32_t *label, Ip4Address *address,
         vector<string> *encap) const {
-    if (table()->tree_manager())
-        table()->tree_manager()->GetForestNodePMSI(rt, label, address, encap);
+    if (!table()->tree_manager())
+        return false;
+    return table()->tree_manager()->GetForestNodePMSI(rt, label,
+                                                      address, encap);
 }
 
 bool MvpnManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                                              Ip4Address *address,
                                              vector<string> *encap) const {
-    MvpnProjectManagerPartition pm = GetProjectManagerPartition();
-    if (pm)
-        pm->GetForestNodePMSI(rt, label, address, encap);
+    const MvpnProjectManagerPartition *pm = GetProjectManagerPartition();
+    return pm ?  pm->GetForestNodePMSI(rt, label, address, encap) : false;
 }
 
 // ErmVpnTable route listener callback function.
