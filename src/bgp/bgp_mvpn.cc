@@ -651,6 +651,8 @@ bool MvpnProjectManagerPartition::GetForestNodePMSI(
 bool MvpnManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                                              Ip4Address *address,
                                              vector<string> *encap) const {
+    if (!rt)
+        return false;
     const MvpnProjectManagerPartition *pm = GetProjectManagerPartition();
     return pm ?  pm->GetForestNodePMSI(rt, label, address, encap) : false;
 }
@@ -914,11 +916,9 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     uint32_t label;
     Ip4Address address;
     vector<string> tunnel_encaps;
-    bool pmsi_found = false;
-    if (global_rt) {
-        pmsi_found = GetForestNodePMSI(global_rt, &label, &address,
-                                       &tunnel_encaps);
-    }
+    bool pmsi_found = GetForestNodePMSI(global_rt, &label, &address,
+                                        &tunnel_encaps);
+
     if (!global_rt || !global_rt->IsUsable() || !pmsi_found) {
 
         // There is no ermvpn route available to stitch at this time. Remove any
