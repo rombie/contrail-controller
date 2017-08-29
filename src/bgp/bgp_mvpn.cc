@@ -910,7 +910,17 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     }
 
     ErmVpnRoute *global_rt = mvpn_state->global_ermvpn_tree_rt();
-    if (!global_rt || !global_rt->IsUsable()) {
+
+    uint32_t label;
+    Ip4Address address;
+    vector<string> tunnel_encaps;
+    bool pmsi_found = false;
+    if (global_rt) {
+        pmsi_found = GetForestNodePMSI(global_rt, &label, &address,
+                                       &tunnel_encaps);
+    }
+    if (!global_rt || !global_rt->IsUsable() || !pmsi_found) {
+
         // There is no ermvpn route available to stitch at this time. Remove any
         // originated Type4 LeafAD route. DB State shall remain on the route as
         // SPMSI route itself is still a usable route.
@@ -939,11 +949,6 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                                   GetExtCommunity());
     ExtCommunityPtr ext_community = table()->server()->extcomm_db()->
             ReplaceRTargetAndLocate(attrp->ext_community(), rtarget);
-
-    uint32_t label;
-    Ip4Address address;
-    vector<string> tunnel_encaps;
-    assert(GetForestNodePMSI(global_rt, &label, &address, &tunnel_encaps));
 
     ExtCommunity::ExtCommunityList tunnel_encaps_list;
     BOOST_FOREACH(string encap, tunnel_encaps) {
