@@ -638,6 +638,21 @@ void MvpnManagerPartition::NotifyForestNode(
         pm->NotifyForestNode(source, group);
 }
 
+bool MvpnProjectManagerPartition::GetForestNodePMSI(
+        ErmVpnRoute *rt, uint32_t *label, Ip4Address *address,
+        vector<string> *encap) const {
+    if (table()->tree_manager())
+        table()->tree_manager()->GetForestNodePMSI(rt, label, address, encap);
+}
+
+bool MvpnManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                             Ip4Address *address,
+                                             vector<string> *encap) const {
+    MvpnProjectManagerPartition pm = GetProjectManagerPartition();
+    if (pm)
+        pm->GetForestNodePMSI(rt, label, address, encap);
+}
+
 // ErmVpnTable route listener callback function.
 //
 // Process changes (create/update/delete) to GlobalErmVpnRoute in vrf.ermvpn.0
@@ -922,10 +937,9 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     uint32_t label;
     Ip4Address address;
-    uint32_t tunnel_types_list;
+    vector<string> tunnel_encaps;
     // TODO(Ananth) Add TunnelType extended community also.
-    assert(global_rt->GetLeafAdTunnelInfo(&label, &address,
-                                          &tunnel_types_list));
+    assert(GetForestNodePMSI(global_rt, &label, &address, &tunnel_encaps));
 
     // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
     PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();

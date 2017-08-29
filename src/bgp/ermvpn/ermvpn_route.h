@@ -96,8 +96,6 @@ public:
     virtual u_int16_t Afi() const { return BgpAf::IPv4; }
     virtual u_int8_t Safi() const { return BgpAf::ErmVpn; }
     virtual u_int8_t XmppSafi() const { return BgpAf::Mcast; }
-    bool GetLeafAdTunnelInfo(uint32_t *label, Ip4Address *address,
-                             uint32_t *tunnel_encap) const { return true; }
 
 private:
     ErmVpnPrefix prefix_;

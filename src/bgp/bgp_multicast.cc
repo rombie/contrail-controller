@@ -690,6 +690,16 @@ void McastSGEntry::NotifyForestNode() {
     partition_->GetTablePartition()->Notify(forest_node_->route());
 }
 
+bool McastSGEntry::GetForestNodePMSI(uint32_t *label, Ip4Address *address,
+                                     vector<string> *tunnel_encap) const {
+    if (!forest_node_)
+        return false;
+    *label = forest_node_->label();
+    *address = forest_node_->address();
+    *tunnel_encap = forest_node_->encap();
+    return true;
+}
+
 bool McastSGEntry::IsForestNode(McastForwarder *forwarder) {
     return (forwarder == forest_node_);
 }
@@ -768,6 +778,14 @@ void McastManagerPartition::NotifyForestNode(
     if (!sg)
         return;
     sg->NotifyForestNode();
+}
+
+bool McastManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                              Ip4Address *address,
+                                              vector<string> *encap) const {
+    const McastSGEntry *sg = FindSGEntry(rt->GetPrefix().source(),
+                                         rt->GetPrefix().group());
+    return sg ? sg->GetForestNodePMSI() : false;
 }
 
 //
@@ -1091,4 +1109,12 @@ void McastTreeManager::NotifyForestNode(int part_id, const IpAddress &source,
                                         const IpAddress &group) {
     McastManagerPartition *partition = GetPartition(part_id);
     partition->NotifyForestNode(source, group);
+}
+
+bool McastTreeManager::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                         Ip4Address *address,
+                                         vector<string> *encap) const {
+    McastManagerPartition *partition =
+        GetPartition(rt->get_table_partition()->index());
+    return partition->GetForestNodePMSI(rt, label, address, encap);
 }
