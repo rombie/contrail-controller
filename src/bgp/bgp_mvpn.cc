@@ -620,9 +620,22 @@ bool MvpnProjectManagerPartition::IsUsableGlobalTreeRootRoute(
         return false;
     if (!table()->tree_manager())
         return false;
-    ErmVpnRoute *global_rt = table()->tree_manager()->GetPartition(part_id_)->
-        GetGlobalTreeRootRoute(ermvpn_route);
-    return global_rt == ermvpn_route;
+    ErmVpnRoute *global_rt =
+        table()->tree_manager()->GetGlobalTreeRootRoute(ermvpn_route);
+    return (global_rt == ermvpn_route);
+}
+
+void MvpnProjectManagerPartition::NotifyForestNode(
+        const IpAddress &source, const IpAddress &group) {
+    if (table()->tree_manager())
+        table()->tree_manager()->NotifyForestNode(part_id_, source, group);
+}
+
+void MvpnManagerPartition::NotifyForestNode(
+        const IpAddress &source, const IpAddress &group) {
+    MvpnProjectManagerPartition pm = GetProjectManagerPartition();
+    if (pm)
+        pm->NotifyForestNode(source, group);
 }
 
 // ErmVpnTable route listener callback function.
@@ -815,8 +828,8 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
         return;
     }
 
-    const BgpPath *src_path = leaf_ad->BestPath();
-    if (!src_path->IsSecondary())
+    const BgpPath *path = leaf_ad->BestPath();
+    if (!path->IsSecondary())
         return;
 
     state->leafad_routes_received().insert(
@@ -887,6 +900,8 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
                 leaf_ad_route->DeletePath(path);
             mvpn_dbstate->route = NULL;
             leaf_ad_route->NotifyOrDelete();
+            NotifyForestNode(spmsi_rt->GetPrefix().source(),
+                             spmsi_rt->GetPrefix().group());
         }
         return;
     }
@@ -937,8 +952,8 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
     leaf_ad_route->InsertPath(path);
     leaf_ad_route->Notify();
-
-    // TODO(Ananth) Notify forest node local route.
+    NotifyForestNode(spmsi_rt->GetPrefix().source(),
+                     spmsi_rt->GetPrefix().group());
 }
 
 UpdateInfo *MvpnProjectManager::GetUpdateInfo(MvpnRoute *route) {

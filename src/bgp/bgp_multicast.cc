@@ -762,6 +762,14 @@ ErmVpnRoute *McastManagerPartition::GetGlobalTreeRootRoute(
     return sg ? sg->GetGlobalTreeRootRoute() : NULL;
 }
 
+void McastManagerPartition::NotifyForestNode(
+        const IpAddress &source, const IpAddress &group) {
+    const McastSGEntry *sg = FindSGEntry(source, group);
+    if (!sg)
+        return;
+    sg->NotifyForestNode();
+}
+
 //
 // Enqueue the given McastSGEntry on the WorkQueue if it's not already on it.
 //
@@ -1070,4 +1078,17 @@ const LifetimeActor *McastTreeManager::deleter() const {
 //
 bool McastTreeManager::deleted() const {
     return deleter_->IsDeleted();
+}
+
+ErmVpnRoute *McastTreeManager::GetGlobalTreeRootRoute(
+        ErmVpnRoute *ermvpn_route) const {
+    McastManagerPartition *partition =
+        GetPartition(ermvpn_route->get_table_partition()->index());
+    return partition->GetGlobalTreeRootRoute(ermvpn_route);
+}
+
+void McastTreeManager::NotifyForestNode(int part_id, const IpAddress &source,
+                                        const IpAddress &group) {
+    McastManagerPartition *partition = GetPartition(part_id);
+    partition->NotifyForestNode(source, group);
 }
