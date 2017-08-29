@@ -633,7 +633,7 @@ void MvpnProjectManagerPartition::NotifyForestNode(
 
 void MvpnManagerPartition::NotifyForestNode(
         const IpAddress &source, const IpAddress &group) {
-    MvpnProjectManagerPartition pm = GetProjectManagerPartition();
+    MvpnProjectManagerPartition *pm = GetProjectManagerPartition();
     if (pm)
         pm->NotifyForestNode(source, group);
 }

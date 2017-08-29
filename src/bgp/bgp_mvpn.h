@@ -109,6 +109,10 @@ private:
     MvpnState *GetState(ErmVpnRoute *route);
     MvpnState *LocateState(MvpnRoute *route);
     void DeleteState(MvpnState *state);
+    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
+    bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                           Ip4Address *address,
+                           std::vector<std::string> *encap) const;
 
     MvpnManager *manager_;
     int part_id_;
@@ -342,6 +346,10 @@ private:
     bool IsUsableGlobalTreeRootRoute(ErmVpnRoute *ermvpn_route) const;
     void RouteListener(DBEntryBase *db_entry);
     int listener_id() const;
+    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
+    bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                           Ip4Address *address,
+                           std::vector<std::string> *encap) const;
 
     // Back pointer to the parent MvpnProjectManager
     MvpnProjectManager *manager_;

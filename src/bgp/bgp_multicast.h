@@ -317,6 +317,7 @@ public:
     const BgpServer *server() const;
     McastTreeManager *tree_manager() const { return tree_manager_; }
     ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
+    void NotifyForestNode(const IpAddress &source, const IpAddress &group);
 
     bool empty() const { return sg_list_.empty(); }
     size_t size() const { return sg_list_.size(); }
@@ -412,6 +413,9 @@ public:
     const LifetimeActor *deleter() const;
     bool deleted() const;
     const ErmVpnRoute *GetGlobalErmVpnTreeMvpnRoute() const;
+    ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
+    void NotifyForestNode(int part_id, const IpAddress &source,
+                          const IpAddress &group);
 
 private:
     friend class BgpMulticastTest;
