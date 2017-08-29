@@ -882,8 +882,11 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         assert(mvpn_state->spmsi_routes_received().erase(spmsi_rt));
         spmsi_rt->ClearState(table(), listener_id());
         DeleteState(mvpn_state);
-        if (leaf_ad_route)
+        if (leaf_ad_route) {
             leaf_ad_route->NotifyOrDelete();
+            NotifyForestNode(spmsi_rt->GetPrefix().source(),
+                             spmsi_rt->GetPrefix().group());
+        }
         return;
     }
 
@@ -975,7 +978,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attrp, 0, 0, 0);
     leaf_ad_route->InsertPath(path);
-    leaf_ad_route->Notify();
+    leaf_ad_route->NotifyOrDelete();
     NotifyForestNode(spmsi_rt->GetPrefix().source(),
                      spmsi_rt->GetPrefix().group());
 }
