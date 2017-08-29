@@ -938,12 +938,16 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     uint32_t label;
     Ip4Address address;
     vector<string> tunnel_encaps;
-    // TODO(Ananth) Add TunnelType extended community also.
     assert(GetForestNodePMSI(global_rt, &label, &address, &tunnel_encaps));
+
+    ExtCommunity::ExtCommunityList tunnel_encaps_list;
+    BOOST_FOREACH(string encap, tunnel_encaps) {
+        tunnel_encaps_list.push_back(TunnelEncap(encap).GetExtCommunity());
+    }
 
     ext_community = table()->server()->extcomm_db()->
         ReplaceTunnelEncapsulationAndLocate(ext_community.get(),
-                tunnel_encaps);
+                tunnel_encaps_list);
 
     // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
     PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
