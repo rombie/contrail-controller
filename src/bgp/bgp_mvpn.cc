@@ -941,6 +941,10 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // TODO(Ananth) Add TunnelType extended community also.
     assert(GetForestNodePMSI(global_rt, &label, &address, &tunnel_encaps));
 
+    ext_community = table()->server()->extcomm_db()->
+        ReplaceTunnelEncapsulationAndLocate(ext_community.get(),
+                tunnel_encaps);
+
     // Retrieve PMSI tunnel attribute from the GlobalErmVpnTreeRoute.
     PmsiTunnelSpec *pmsi_spec = new PmsiTunnelSpec();
     pmsi_spec->tunnel_flags = 0;
