@@ -171,6 +171,7 @@ public:
     virtual void Terminate();
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     virtual void Initialize();
+    const NeighborsMap &neighbors() const { return neighbors_; }
 
 private:
     friend class MvpnManagerPartition;

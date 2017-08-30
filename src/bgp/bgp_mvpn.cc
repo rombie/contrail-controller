@@ -513,8 +513,11 @@ void MvpnManager::Initialize() {
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
 
-    // Originate Type1 Intra AS Auto-Discovery Route.
-    table_->LocateType1ADRoute();
+    // Originate Type1 Intra AS Auto-Discovery path.
+    MvpnRoute *route = table_->LocateType1ADRoute();
+    BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local,
+                                join_rt->BestPath()->GetAttr(), 0, 0, 0);
+    route->InsertPath(path);
 
     // Originate Type2 Inter AS Auto-Discovery Route.
     table_->LocateType2ADRoute();

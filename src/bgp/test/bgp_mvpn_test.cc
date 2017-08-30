@@ -4,8 +4,10 @@
 
 #include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
+#include "bgp/bgp_attr.h"
 #include "bgp/bgp_config.h"
 #include "bgp/ipeer.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/bgp_server.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/rtarget_group_mgr.h"
@@ -73,7 +75,7 @@ protected:
         master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
             BgpConfigManager::kMasterInstance));
         red_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("red",
-                "target:1:2", "target:1:2"));
+                "target:1:1", "target:1:1"));
 
         TaskScheduler *scheduler = TaskScheduler::GetInstance();
         scheduler->Stop();
@@ -83,7 +85,7 @@ protected:
         server_.routing_instance_mgr()->CreateRoutingInstance(red_cfg_.get());
         scheduler->Start();
 
-        vpn_ = static_cast<BgpTable *>(
+        master_ = static_cast<BgpTable *>(
             server_.database()->FindTable("bgp.l3vpn.0"));
         red_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("red.mvpn.0"));
@@ -99,7 +101,7 @@ protected:
     EventManager evm_;
     BgpServer server_;
     DB db_;
-    BgpTable *vpn_;
+    BgpTable *master_;
     MvpnTable *red_;
     scoped_ptr<BgpInstanceConfig> red_cfg_;
     scoped_ptr<BgpInstanceConfig> master_cfg_;
@@ -108,6 +110,7 @@ protected:
 // Ensure that Type1 and Type2 AD routes are created inside the mvpn table.
 TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, master_->Size());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
@@ -117,10 +120,30 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
 }
 
+// Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
 TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
-    // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
-    // 
-    TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    // Verify that no mvpn neighbor is discovered yet.
+    TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+
+    // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with
+    // red route-target.
+    MvpnPrefix prefix(MvpnPrefix::FromString("123:456:192.168.24.0/24"));
+    DBRequest addReq;
+    addReq.key.reset(new MvpnTable::RequestKey(prefix, NULL));
+
+    BgpAttrSpec attr_spec;
+    ExtCommunitySpec *commspec(new ExtCommunitySpec());
+    RouteTarget tgt = RouteTarget::FromString("target:1:1");
+    commspec->communities.push_back(tgt.GetExtCommunityValue());
+    attr_spec.push_back(commspec);
+
+    BgpAttrPtr attr = server_.attr_db()->Locate(attr_spec);
+    STLDeleteValues(&attr_spec);
+    addReq.data.reset(new MvpnTable::RequestData(attr, 0, 20));
+    addReq.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+    master_->Enqueue(&addReq);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 2 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(3, red_->Size()); // 2 local + 1 remote
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
