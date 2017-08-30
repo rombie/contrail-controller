@@ -109,6 +109,10 @@ TEST_F(BgpMvpnTest, Type1ADBasic) {
     // Ensure that Type-1 and Type-2 AD routes are always created inside the
     // mvpn table.
     TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_->FindType1ADRoute());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_->FindType2ADRoute());
 }
 
 static void SetUp() {
