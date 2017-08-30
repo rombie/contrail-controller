@@ -148,7 +148,6 @@ TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
     // Verify that neighbor is detected.
     TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
 
-    MvpnPrefix prefix(MvpnPrefix::FromString("123:456:192.168.24.0/24"));
     DBRequest delete_req;
     delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
     delete_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
