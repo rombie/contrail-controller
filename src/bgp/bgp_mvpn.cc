@@ -341,11 +341,11 @@ PathResolver *MvpnManager::path_resolver() const {
 void MvpnManager::Terminate() {
     // TODO(Ananth) FindPath and delete the two auto AD routes.
     MvpnRoute *type1_route = table_->FindType1ADRoute();
-    if  (type1_route)
+    if (type1_route)
         type1_route->Delete();
 
     MvpnRoute *type2_route = table_->FindType2ADRoute();
-    if  (type2_route)
+    if (type2_route)
         type2_route->Delete();
 
     table_->Unregister(listener_id_);
@@ -575,7 +575,10 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 // Protect access to neighbors_ map with a mutex as the same be 'read' off other
 // DB tasks in parallel. (Type-1 and Type-2 do not carrry any <S,G> information.
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
-    // TODO(Ananth) Shouldn't this be best-path's nexthop address ?
+    // Ignore primary paths.
+    if (!route->IsSecondary())
+        return;
+
     IpAddress address = route->GetPrefix().originatorIpAddress();
     RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
 
