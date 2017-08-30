@@ -2,19 +2,17 @@
  * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
+#include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
 #include "bgp/bgp_config.h"
-#include "bgp/bgp_log.h"
+#include "bgp/ipeer.h"
 #include "bgp/bgp_server.h"
-#include "bgp/extended-community/etree.h"
-#include "bgp/extended-community/mac_mobility.h"
-#include "bgp/inet/inet_route.h"
-#include "bgp/inet/inet_table.h"
 #include "bgp/mvpn/mvpn_table.h"
-#include "bgp/origin-vn/origin_vn.h"
+#include "bgp/routing-instance/rtarget_group_mgr.h"
+#include "bgp/test/bgp_server_test_util.h"
 #include "control-node/control_node.h"
-#include "net/community_type.h"
 
+using boost::scoped_ptr;
 using std::string;
 
 class PeerMock : public IPeer {
@@ -67,25 +65,50 @@ private:
 
 class BgpMvpnTest : public ::testing::Test {
 protected:
-    BgpMvpnTest() : server_(&evm_), table_(&db_, "test.mvpn.0") {
-        table_.CreateManager();
+    BgpMvpnTest() : server_(&evm_) {
+    }
+
+    virtual void SetUp() {
+        ConcurrencyScope scope("bgp::Config");
+        master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
+            BgpConfigManager::kMasterInstance));
+        red_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("red",
+                "target:1:2", "target:1:2"));
+
+        TaskScheduler *scheduler = TaskScheduler::GetInstance();
+        scheduler->Stop();
+        server_.routing_instance_mgr()->CreateRoutingInstance(
+                master_cfg_.get());
+        server_.rtarget_group_mgr()->Initialize();
+        server_.routing_instance_mgr()->CreateRoutingInstance(red_cfg_.get());
+        scheduler->Start();
+
+        vpn_ = static_cast<BgpTable *>(
+            server_.database()->FindTable("bgp.l3vpn.0"));
+        red_ = static_cast<MvpnTable *>(
+            server_.database()->FindTable("red.mvpn.0"));
     }
 
     void TearDown() {
         server_.Shutdown();
+        task_util::WaitForIdle();
+        evm_.Shutdown();
         task_util::WaitForIdle();
     }
 
     EventManager evm_;
     BgpServer server_;
     DB db_;
-    MvpnTable table_;
+    BgpTable *vpn_;
+    MvpnTable *red_;
+    scoped_ptr<BgpInstanceConfig> red_cfg_;
+    scoped_ptr<BgpInstanceConfig> master_cfg_;
 };
 
 TEST_F(BgpMvpnTest, Type1ADBasic) {
     // Ensure that Type-1 and Type-2 AD routes are always created inside the
     // mvpn table.
-    TASK_UTIL_EXPECT_EQ(2, table_.Size());
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
 }
 
 static void SetUp() {
