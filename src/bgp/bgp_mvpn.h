@@ -301,17 +301,17 @@ inline void intrusive_ptr_add_ref(MvpnState *mvpn_state) {
 
 inline void intrusive_ptr_release(MvpnState *mvpn_state) {
     int prev = mvpn_state->refcount_.fetch_and_decrement();
-    if (prev == 1) {
-        if (mvpn_state->states()) {
-            MvpnState::StatesMap::iterator iter =
-                mvpn_state->states()->find(mvpn_state->sg());
-            if (iter != mvpn_state->states()->end()) {
-                assert(iter->second == mvpn_state);
-                mvpn_state->states()->erase(mvpn_state->sg());
-            }
+    if (prev > 1)
+        return;
+    if (mvpn_state->states()) {
+        MvpnState::StatesMap::iterator iter =
+            mvpn_state->states()->find(mvpn_state->sg());
+        if (iter != mvpn_state->states()->end()) {
+            assert(iter->second == mvpn_state);
+            mvpn_state->states()->erase(mvpn_state->sg());
         }
-        delete mvpn_state;
     }
+    delete mvpn_state;
 }
 
 // This class holds a reference to MvpnState along with associated with route
