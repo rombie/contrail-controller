@@ -52,6 +52,7 @@ public:
     const IpAddress &address() const;
     uint16_t vrf_id() const;
     uint32_t asn() const;
+    bool external() const;
     bool operator==(const MvpnNeighbor &rhs) const;
 
 private:

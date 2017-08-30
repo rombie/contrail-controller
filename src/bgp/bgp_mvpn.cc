@@ -172,6 +172,10 @@ uint16_t MvpnNeighbor::vrf_id() const {
     return vrf_id_;
 }
 
+uint16_t MvpnNeighbor::external() const {
+    return external_;
+}
+
 uint32_t MvpnNeighbor::asn() const {
     return asn_;
 }
