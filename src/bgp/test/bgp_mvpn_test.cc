@@ -121,7 +121,7 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
 }
 
 // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
-TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
+TEST_F(BgpMvpnTest, Type1AD_Remote) {
     // Verify that no mvpn neighbor is discovered yet.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
 
