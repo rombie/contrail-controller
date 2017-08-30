@@ -24,8 +24,9 @@ using std::ostringstream;
 using std::string;
 using std::vector;
 
-MvpnState::MvpnState(const SG &sg) :
-        sg_(sg), global_ermvpn_tree_rt_(NULL), spmsi_rt_(NULL), refcount_(0) {
+MvpnState::MvpnState(const SG &sg, StatesMap *states) :
+    sg_(sg), global_ermvpn_tree_rt_(NULL), spmsi_rt_(NULL), states_(states) {
+    refcount_ = 0;
 }
 
 MvpnState::~MvpnState() {
@@ -107,12 +108,11 @@ void MvpnProjectManager::ManagedDelete() {
     deleter_->Delete();
 }
 
-const MvpnState *MvpnProjectManager::GetState(MvpnRoute *route) const {
-    return const_cast<MvpnState *>(
-        static_cast<const MvpnProjectManager *>(this)->GetState(route));
+MvpnStatePtr MvpnProjectManager::GetState(MvpnRoute *route) const {
+    return static_cast<const MvpnProjectManager *>(this)->GetState(route);
 }
 
-MvpnState *MvpnProjectManager::GetState(MvpnRoute *route) {
+MvpnStatePtr MvpnProjectManager::GetState(MvpnRoute *route) {
     MvpnState::SG sg(route->GetPrefix().source(), route->GetPrefix().group());
     return GetPartition(route->get_table_partition()->index())->GetState(sg);
 }
@@ -125,33 +125,28 @@ MvpnProjectManagerPartition::MvpnProjectManagerPartition(
 MvpnProjectManagerPartition::~MvpnProjectManagerPartition() {
 }
 
-MvpnState *MvpnProjectManagerPartition::CreateState(const SG &sg) {
-    MvpnState *state = new MvpnState(sg);
-    assert(states_.insert(make_pair(sg, state)).second);
+MvpnStatePtr MvpnProjectManagerPartition::CreateState(const SG &sg) {
+    MvpnState *state = new MvpnState(sg, &states_);
+    assert(states_.insert(make_pair(sg, MvpnStatePtr(state))).second);
     return state;
 }
 
-MvpnState *MvpnProjectManagerPartition::LocateState(const SG &sg) {
-    MvpnState *mvpn_state = GetState(sg);
+MvpnStatePtr MvpnProjectManagerPartition::LocateState(const SG &sg) {
+    MvpnStatePtr mvpn_state = GetState(sg);
     return mvpn_state ?: CreateState(sg);
 }
 
-const MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) const {
-    StateMap::const_iterator iter = states_.find(sg);
+MvpnStatePtr MvpnProjectManagerPartition::GetState(const SG &sg) const {
+    MvpnState::StatesMap::const_iterator iter = states_.find(sg);
     return iter != states_.end() ?  iter->second : NULL;
 }
 
-MvpnState *MvpnProjectManagerPartition::GetState(const SG &sg) {
-    StateMap::iterator iter = states_.find(sg);
+MvpnStatePtr MvpnProjectManagerPartition::GetState(const SG &sg) {
+    MvpnState::StatesMap::iterator iter = states_.find(sg);
     return iter != states_.end() ?  iter->second : NULL;
 }
 
-void MvpnProjectManagerPartition::DeleteState(MvpnState *mvpn_state) {
-    assert(mvpn_state->refcount_);
-    if (--mvpn_state->refcount_)
-        return;
-    states_.erase(mvpn_state->sg());
-    delete mvpn_state;
+void MvpnProjectManagerPartition::DeleteState(MvpnStatePtr mvpn_state) {
 }
 
 MvpnNeighbor::MvpnNeighbor() : asn_(0), vrf_id_(0), external_(false) {
@@ -273,24 +268,20 @@ void MvpnState::set_spmsi_rt(MvpnRoute *spmsi_rt) {
 }
 
 MvpnDBState::MvpnDBState() : state(NULL), route(NULL) {
-    if (state)
-        state->refcount_++;
 }
 
-MvpnDBState::MvpnDBState(MvpnState *state) : state(state) , route(NULL) {
-    if (state)
-        state->refcount_++;
+MvpnDBState::MvpnDBState(MvpnStatePtr state) : state(state) , route(NULL) {
 }
 
 MvpnDBState::MvpnDBState(MvpnRoute *route) : state(NULL) , route(route) {
-    if (state)
-        state->refcount_++;
 }
 
-MvpnDBState::MvpnDBState(MvpnState *state, MvpnRoute *route) :
+MvpnDBState::MvpnDBState(MvpnStatePtr state, MvpnRoute *route) :
         state(state) , route(route) {
-    if (state)
-        state->refcount_++;
+}
+
+MvpnDBState::~MvpnDBState() {
+    state = NULL;
 }
 
 class MvpnManager::DeleteActor : public LifetimeActor {
@@ -449,7 +440,7 @@ int MvpnProjectManagerPartition::listener_id() const {
     return manager_->listener_id();
 }
 
-MvpnState *MvpnManagerPartition::LocateState(MvpnRoute *rt) {
+MvpnStatePtr MvpnManagerPartition::LocateState(MvpnRoute *rt) {
     MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     if (!project_manager_partition)
@@ -459,7 +450,7 @@ MvpnState *MvpnManagerPartition::LocateState(MvpnRoute *rt) {
     return project_manager_partition->GetState(sg);
 }
 
-const MvpnState *MvpnManagerPartition::GetState(MvpnRoute *rt) const {
+MvpnStatePtr MvpnManagerPartition::GetState(MvpnRoute *rt) const {
     const MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     if (!project_manager_partition)
@@ -469,12 +460,11 @@ const MvpnState *MvpnManagerPartition::GetState(MvpnRoute *rt) const {
     return project_manager_partition->GetState(sg);
 }
 
-MvpnState *MvpnManagerPartition::GetState(MvpnRoute *rt) {
-    return const_cast<MvpnState *>(
-        static_cast<const MvpnManagerPartition *>(this)->GetState(rt));
+MvpnStatePtr MvpnManagerPartition::GetState(MvpnRoute *rt) {
+    return static_cast<const MvpnManagerPartition *>(this)->GetState(rt);
 }
 
-const MvpnState *MvpnManagerPartition::GetState(ErmVpnRoute *rt) const {
+MvpnStatePtr MvpnManagerPartition::GetState(ErmVpnRoute *rt) const {
     const MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     if (!project_manager_partition)
@@ -484,12 +474,11 @@ const MvpnState *MvpnManagerPartition::GetState(ErmVpnRoute *rt) const {
     return project_manager_partition->GetState(sg);
 }
 
-MvpnState *MvpnManagerPartition::GetState(ErmVpnRoute *rt) {
-    return const_cast<MvpnState *>(
-        static_cast<const MvpnManagerPartition *>(this)->GetState(rt));
+MvpnStatePtr MvpnManagerPartition::GetState(ErmVpnRoute *rt) {
+    return static_cast<const MvpnManagerPartition *>(this)->GetState(rt);
 }
 
-void MvpnManagerPartition::DeleteState(MvpnState *state) {
+void MvpnManagerPartition::DeleteState(MvpnStatePtr state) {
     MvpnProjectManagerPartition *project_manager_partition =
         GetProjectManagerPartition();
     if (!project_manager_partition)
@@ -681,7 +670,7 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
     if (!IsUsableGlobalTreeRootRoute(ermvpn_route)) {
         if (!mvpn_dbstate)
             return;
-        MvpnState *mvpn_state = mvpn_dbstate->state;
+        MvpnStatePtr mvpn_state = mvpn_dbstate->state;
         mvpn_state->set_global_ermvpn_tree_rt(NULL);
 
         // Notify all originated Type3 spmsi routes for PMSI re-computation.
@@ -689,10 +678,11 @@ void MvpnProjectManagerPartition::RouteListener(DBEntryBase *db_entry) {
             route->Notify();
         }
         ermvpn_route->ClearState(table(), listener_id());
+        delete mvpn_dbstate;
         return;
     }
 
-    MvpnState *mvpn_state;
+    MvpnStatePtr mvpn_state;
     if (!mvpn_dbstate) {
         MvpnState::SG sg(ermvpn_route);
         mvpn_state = LocateState(sg);
@@ -766,7 +756,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // TODO(Ananth) Check if there is active sender route present before
     // originating SPMSI route towards the receivers.
     if (!join_rt->IsUsable()) {
-        MvpnState *state = GetState(join_rt);
+        MvpnStatePtr state = GetState(join_rt);
         if (state)
             state->cjoin_routes_received().erase(join_rt);
 
@@ -788,12 +778,13 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
                     state->spmsi_rt_ = NULL;
             }
             join_rt->ClearState(table(), listener_id());
+            delete mvpn_dbstate;
             return true;
         }
         return false;
     }
 
-    MvpnState *state = LocateState(join_rt);
+    MvpnStatePtr state = LocateState(join_rt);
     const BgpPath *path = join_rt->BestPath();
     assert(!path);
 
@@ -837,7 +828,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
-    MvpnState *state = GetState(leaf_ad);
+    MvpnStatePtr state = GetState(leaf_ad);
     MvpnRoute *sa_active_rt = table()->FindType4SourceActiveADRoute(leaf_ad);
     if (!leaf_ad->IsUsable()) {
         if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt &&
@@ -868,7 +859,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     if (!spmsi_rt->IsUsable()) {
         if (!mvpn_dbstate)
             return;
-        MvpnState *mvpn_state = GetState(spmsi_rt);
+        MvpnStatePtr mvpn_state = GetState(spmsi_rt);
         assert(mvpn_dbstate->state == mvpn_state);
 
         // Check if a Type4 LeafAD path was already originated before for this
@@ -883,7 +874,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
         assert(mvpn_state->spmsi_routes_received().erase(spmsi_rt));
         spmsi_rt->ClearState(table(), listener_id());
-        DeleteState(mvpn_state);
+        delete mvpn_dbstate;
         if (leaf_ad_route) {
             leaf_ad_route->NotifyOrDelete();
             NotifyForestNode(spmsi_rt->GetPrefix().source(),
@@ -900,7 +891,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // LeafAD path, if GlobalErmVpnTreeRoute is available to stitch.
     // TODO(Ananth) If LeafInfoRequired bit is not set in the S-PMSI route,
     // then we do not need to originate a leaf ad route for this s-pmsi rt.
-    MvpnState *mvpn_state = LocateState(spmsi_rt);
+    MvpnStatePtr mvpn_state = LocateState(spmsi_rt);
     if (!mvpn_state)
         return;
     if (!mvpn_dbstate) {
@@ -989,7 +980,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 }
 
 UpdateInfo *MvpnProjectManager::GetUpdateInfo(MvpnRoute *route) {
-    MvpnState *state = GetState(route);
+    MvpnStatePtr state = GetState(route);
     if (!state || state->leafad_routes_received().empty())
         return NULL;
 

@@ -36,6 +36,8 @@ class PathResolver;
 class RoutingInstance;
 class UpdateInfo;
 
+typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
+
 // This struct represents a MVPN Neighbor discovered using BGP.
 //
 // Each received Type1 Intra AS Auto-Discovery ad Type2 Inter AS Auto Discovery
@@ -103,12 +105,12 @@ private:
     void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);
     void ProcessType4LeafADRoute(MvpnRoute *leaf_ad);
 
-    MvpnState *GetState(MvpnRoute *route);
-    const MvpnState *GetState(MvpnRoute *route) const;
-    const MvpnState *GetState(ErmVpnRoute *route) const;
-    MvpnState *GetState(ErmVpnRoute *route);
-    MvpnState *LocateState(MvpnRoute *route);
-    void DeleteState(MvpnState *state);
+    MvpnStatePtr GetState(MvpnRoute *route);
+    MvpnStatePtr GetState(MvpnRoute *route) const;
+    MvpnStatePtr GetState(ErmVpnRoute *route) const;
+    MvpnStatePtr GetState(ErmVpnRoute *route);
+    MvpnStatePtr LocateState(MvpnRoute *route);
+    void DeleteState(MvpnStatePtr state);
     void NotifyForestNode(const Ip4Address &source, const Ip4Address &group);
     bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                            Ip4Address *address,
@@ -236,7 +238,6 @@ class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
     typedef std::map<MvpnRoute *, BgpAttrPtr> RoutesMap;
-    typedef std::map<MvpnState::SG, MvpnState *> StateMap;
 
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
@@ -249,7 +250,8 @@ public:
         IpAddress group;
     };
 
-    explicit MvpnState(const SG &sg);
+    typedef std::map<SG, MvpnStatePtr> StatesMap;
+    MvpnState(const SG &sg, StatesMap *states = NULL);
     virtual ~MvpnState();
     const SG &sg() const;
     ErmVpnRoute *global_ermvpn_tree_rt();
@@ -264,11 +266,15 @@ public:
     RoutesSet &cjoin_routes_received();
     const RoutesMap &leafad_routes_received() const;
     RoutesMap &leafad_routes_received();
+    const StatesMap *states() const { return states_; }
+    StatesMap *states() { return states_; }
 
 private:
     friend class MvpnDBState;
     friend class MvpnManagerPartition;
     friend class MvpnProjectManagerPartition;
+    friend void intrusive_ptr_add_ref(MvpnState *mvpn_state);
+    friend void intrusive_ptr_release(MvpnState *mvpn_state);
 
     SG sg_;
     ErmVpnRoute *global_ermvpn_tree_rt_;
@@ -276,7 +282,7 @@ private:
     RoutesSet spmsi_routes_received_;
     RoutesSet cjoin_routes_received_;
     RoutesMap leafad_routes_received_;
-    StateMap *states_;
+    StatesMap *states_;
 
 #if 0  // In future phases.
     RoutesSet t4_leaf_ad_received_rt_;
@@ -289,8 +295,6 @@ private:
     DISALLOW_COPY_AND_ASSIGN(MvpnState);
 };
 
-typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
-
 inline void intrusive_ptr_add_ref(MvpnState *mvpn_state) {
     mvpn_state->refcount_.fetch_and_increment();
 }
@@ -299,10 +303,12 @@ inline void intrusive_ptr_release(MvpnState *mvpn_state) {
     int prev = mvpn_state->refcount_.fetch_and_decrement();
     if (prev == 1) {
         if (mvpn_state->states()) {
-            MvpnState::StateMap::iterator iter =
-                mvpn_state->states().find(mvpn_state->sg());
-            if (iter != mvpn_state->states().end() && iter.second == mvpn_state)
+            MvpnState::StatesMap::iterator iter =
+                mvpn_state->states()->find(mvpn_state->sg());
+            if (iter != mvpn_state->states()->end()) {
+                assert(iter->second == mvpn_state);
                 mvpn_state->states()->erase(mvpn_state->sg());
+            }
         }
         delete mvpn_state;
     }
@@ -317,11 +323,12 @@ inline void intrusive_ptr_release(MvpnState *mvpn_state) {
 // to it.
 struct MvpnDBState : public DBState {
     MvpnDBState();
-    MvpnDBState(MvpnState *state, MvpnRoute *route);
-    explicit MvpnDBState(MvpnState *state);
+    MvpnDBState(MvpnStatePtr state, MvpnRoute *route);
+    ~MvpnDBState();
+    explicit MvpnDBState(MvpnStatePtr state);
     explicit MvpnDBState(MvpnRoute *route);
 
-    MvpnState *state;
+    MvpnStatePtr state;
     MvpnRoute *route;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnDBState);
@@ -338,24 +345,24 @@ struct MvpnDBState : public DBState {
 // information is set/modified/cleared in the routing instance, all associated
 // Type3 S-PMSI MPVN received routes should be notified for re-evaluation.
 //
-// MvpnState::StateMap states_
+// MvpnState::StatesMap states_
 //     A Map of <<S,G>, MvpnState> is maintained to hold MvpnState for all
 //     <S,G>s that fall into a specific DB partition.
 //
 // This provides APIs to create/update/delete MvpnState as required. MvpnState
 // is refcounted. When the refcount reaches 0, it is deleted from the
-// MvpnState::StateMap and destroyed.
+// MvpnState::StatesMap and destroyed.
 class MvpnProjectManagerPartition {
 public:
     typedef MvpnState::SG SG;
 
     MvpnProjectManagerPartition(MvpnProjectManager*manager, int part_id);
     virtual ~MvpnProjectManagerPartition();
-    MvpnState *GetState(const SG &sg);
-    const MvpnState *GetState(const SG &sg) const;
-    MvpnState *LocateState(const SG &sg);
-    MvpnState *CreateState(const SG &sg);
-    void DeleteState(MvpnState *mvpn_state);
+    MvpnStatePtr GetState(const SG &sg);
+    MvpnStatePtr GetState(const SG &sg) const;
+    MvpnStatePtr LocateState(const SG &sg);
+    MvpnStatePtr CreateState(const SG &sg);
+    void DeleteState(MvpnStatePtr mvpn_state);
 
 private:
     friend class MvpnProjectManager;
@@ -377,7 +384,7 @@ private:
 
     // Partition id of the manged DB partition.
     int part_id_;
-    MvpnState::StateMap states_;;
+    MvpnState::StatesMap states_;;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnProjectManagerPartition);
 };
@@ -409,8 +416,8 @@ public:
     const ErmVpnTable *table() const;
     int listener_id() const;
     virtual void Initialize();
-    const MvpnState *GetState(MvpnRoute *route) const;
-    MvpnState *GetState(MvpnRoute *route);
+    MvpnStatePtr GetState(MvpnRoute *route) const;
+    MvpnStatePtr GetState(MvpnRoute *route);
     UpdateInfo *GetUpdateInfo(MvpnRoute *route);
 
 private:

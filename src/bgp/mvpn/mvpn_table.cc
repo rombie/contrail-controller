@@ -233,7 +233,7 @@ void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
     // Retrieve MVPN state. Ignore if there is no state or if there is no usable
     // Type3 SPMSI route 0associated with it (perhaps it was deleted already).
     MvpnState::SG sg(mvpn_rt);
-    const MvpnState *state = partition->GetState(sg);
+    MvpnStatePtr state = partition->GetState(sg);
     if (!state || !state->spmsi_rt() || !state->spmsi_rt()->IsUsable())
         return;
 
