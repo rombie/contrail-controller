@@ -512,15 +512,23 @@ void MvpnManager::Initialize() {
     listener_id_ = table_->Register(
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
+    BgpServer *server = table()->server();
 
     // Originate Type1 Intra AS Auto-Discovery path.
     MvpnRoute *route = table_->LocateType1ADRoute();
-    BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local,
-                                join_rt->BestPath()->GetAttr(), 0, 0, 0);
+    BgpAttrSpec attr_spec;
+    BgpAttrNextHop nexthop(server->bgp_identifier());
+    attr_spec.push_back(&nexthop);
+    BgpAttrPtr attr = server->attr_db()->Locate(attr_spec);
+    BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attr, 0, 0, 0);
     route->InsertPath(path);
+    route->Notify();
 
     // Originate Type2 Inter AS Auto-Discovery Route.
-    table_->LocateType2ADRoute();
+    route = table_->LocateType2ADRoute();
+    path = new BgpPath(NULL, 0, BgpPath::Local, attr, 0, 0, 0);
+    route->InsertPath(path);
+    route->Notify();
 }
 
 // MvpnTable route listener callback function.
