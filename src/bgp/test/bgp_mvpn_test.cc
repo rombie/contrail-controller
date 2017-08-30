@@ -127,7 +127,7 @@ TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
 
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with
     // red route-target.
-    MvpnPrefix prefix(MvpnPrefix::FromString("123:456:192.168.24.0/24"));
+    MvpnPrefix prefix(MvpnPrefix::FromString("1-10.1.1.1:65535,9.8.7.6"));
     DBRequest add_req;
     add_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
 
@@ -150,7 +150,7 @@ TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
 
     DBRequest delete_req;
     delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
-    delete_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+    delete_req.oper = DBRequest::DB_ENTRY_DELETE;
     master_->Enqueue(&delete_req);
 
     // Verify that neighbor is deleted.
