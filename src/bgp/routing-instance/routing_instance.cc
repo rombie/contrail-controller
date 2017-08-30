@@ -998,8 +998,11 @@ void RoutingInstance::ProcessConfig() {
         VrfTableCreate(Address::INET, Address::INETVPN);
         VrfTableCreate(Address::INET6, Address::INET6VPN);
         VrfTableCreate(Address::ERMVPN, Address::ERMVPN);
-        VrfTableCreate(Address::MVPN, Address::MVPN);
         VrfTableCreate(Address::EVPN, Address::EVPN);
+        BgpTable *table = VrfTableCreate(Address::MVPN, Address::MVPN);
+
+        // Create path-resolver in mvpn table.
+        table->LocatePathResolver();
     }
 
     ProcessServiceChainConfig();

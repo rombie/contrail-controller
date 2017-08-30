@@ -86,7 +86,7 @@ protected:
         scheduler->Start();
 
         master_ = static_cast<BgpTable *>(
-            server_.database()->FindTable("bgp.l3vpn.0"));
+            server_.database()->FindTable("bgp.mvpn.0"));
         red_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("red.mvpn.0"));
     }
