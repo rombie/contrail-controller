@@ -163,8 +163,8 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     master_->Enqueue(&delete_req);
 
     // Verify that neighbor is deleted.
-    TASK_UTIL_EXPECT_EQ(2, master_->Size()); // 2 local + 1 remote
-    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 2 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(2, master_->Size()); // 2 local
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 2 local
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
 }
 
