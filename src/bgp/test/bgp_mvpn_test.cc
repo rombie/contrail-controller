@@ -10,6 +10,7 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/inet/inet_route.h"
 #include "bgp/inet/inet_table.h"
+#include "bgp/mvpn/mvpn_table.h"
 #include "bgp/origin-vn/origin_vn.h"
 #include "control-node/control_node.h"
 #include "net/community_type.h"
@@ -67,6 +68,7 @@ private:
 class BgpMvpnTest : public ::testing::Test {
 protected:
     BgpMvpnTest() : server_(&evm_), table_(&db_, "test.mvpn.0") {
+        table_.CreateManager();
     }
 
     void TearDown() {
@@ -77,61 +79,13 @@ protected:
     EventManager evm_;
     BgpServer server_;
     DB db_;
-    MvTable table_;
+    MvpnTable table_;
 };
 
-TEST_F(BgpMvpnTest, Paths) {
-    BgpAttrSpec spec;
-    BgpAttrDB *db = server_.attr_db();
-    BgpAttr *attr = new BgpAttr(db, spec);
-
-    attr->set_origin(BgpAttrOrigin::IGP);
-    attr->set_med(5);
-    attr->set_local_pref(10);
-
-    AsPathSpec as_path;
-    AsPathSpec::PathSegment *ps = new AsPathSpec::PathSegment;
-    ps->path_segment_type = AsPathSpec::PathSegment::AS_SEQUENCE;
-    ps->path_segment.push_back(20);
-    ps->path_segment.push_back(30);
-    as_path.path_segments.push_back(ps);
-
-    attr->set_as_path(&as_path);
-
-
-    PeerMock peer;
-    BgpPath *path = new BgpPath(&peer, BgpPath::BGP_XMPP, attr, 0, 0);
-
-    Ip4Prefix prefix;
-    InetRoute route(prefix);
-    route.InsertPath(path);
-
-    BgpAttr *attr2 = new BgpAttr(*attr);
-    attr2->set_med(4);
-    BgpPath *path2 = new BgpPath(&peer, BgpPath::BGP_XMPP, attr2, 0, 0);
-    route.InsertPath(path2);
-
-    EXPECT_EQ(path2, route.FindPath(BgpPath::BGP_XMPP, &peer, 0));
-
-    BgpAttr *attr3 = new BgpAttr(*attr);
-    attr3->set_local_pref(20);
-    BgpPath *path3 = new BgpPath(&peer, BgpPath::BGP_XMPP, attr3, 0, 0);
-    route.InsertPath(path3);
-
-    EXPECT_EQ(path3, route.FindPath(BgpPath::BGP_XMPP, &peer, 0));
-
-    BgpAttr *attr4 = new BgpAttr(*attr);
-    attr4->set_origin(BgpAttrOrigin::EGP);
-    BgpPath *path4 = new BgpPath(&peer, BgpPath::BGP_XMPP, attr4, 0, 0);
-    route.InsertPath(path4);
-
-    EXPECT_EQ(path3, route.FindPath(BgpPath::BGP_XMPP, &peer, 0));
-
-    // Remove all 4 paths that have been added so far
-    route.RemovePath(&peer);
-    route.RemovePath(&peer);
-    route.RemovePath(&peer);
-    route.RemovePath(&peer);
+TEST_F(BgpMvpnTest, Type1ADBasic) {
+    // Ensure that Type-1 and Type-2 AD routes are always created inside the
+    // mvpn table.
+    TASK_UTIL_EXPECT_EQ(2, table_.Size());
 }
 
 static void SetUp() {
