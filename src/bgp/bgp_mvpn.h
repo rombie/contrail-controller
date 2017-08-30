@@ -236,6 +236,8 @@ class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
     typedef std::map<MvpnRoute *, BgpAttrPtr> RoutesMap;
+    typedef std::map<MvpnState::SG, MvpnState *> StateMap;
+
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
         SG(const IpAddress &source, const IpAddress &group);
@@ -274,6 +276,7 @@ private:
     RoutesSet spmsi_routes_received_;
     RoutesSet cjoin_routes_received_;
     RoutesMap leafad_routes_received_;
+    StateMap *states_;
 
 #if 0  // In future phases.
     RoutesSet t4_leaf_ad_received_rt_;
@@ -281,10 +284,29 @@ private:
     RoutesSet t5_source_active_rt_originated_;
 #endif
 
-    int refcount_;
+    tbb::atomic<int> refcount_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnState);
 };
+
+typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
+
+inline void intrusive_ptr_add_ref(MvpnState *mvpn_state) {
+    mvpn_state->refcount_.fetch_and_increment();
+}
+
+inline void intrusive_ptr_release(MvpnState *mvpn_state) {
+    int prev = mvpn_state->refcount_.fetch_and_decrement();
+    if (prev == 1) {
+        if (mvpn_state->states()) {
+            MvpnState::StateMap::iterator iter =
+                mvpn_state->states().find(mvpn_state->sg());
+            if (iter != mvpn_state->states().end() && iter.second == mvpn_state)
+                mvpn_state->states()->erase(mvpn_state->sg());
+        }
+        delete mvpn_state;
+    }
+}
 
 // This class holds a reference to MvpnState along with associated with route
 // and path pointers. This is stored as DBState inside the table along with the
@@ -316,16 +338,15 @@ struct MvpnDBState : public DBState {
 // information is set/modified/cleared in the routing instance, all associated
 // Type3 S-PMSI MPVN received routes should be notified for re-evaluation.
 //
-// StateMap states_
+// MvpnState::StateMap states_
 //     A Map of <<S,G>, MvpnState> is maintained to hold MvpnState for all
 //     <S,G>s that fall into a specific DB partition.
 //
 // This provides APIs to create/update/delete MvpnState as required. MvpnState
-// is refcounted. When the refcount reaches 0, it is deleted from the StateMap
-// and destroyed.
+// is refcounted. When the refcount reaches 0, it is deleted from the
+// MvpnState::StateMap and destroyed.
 class MvpnProjectManagerPartition {
 public:
-    typedef std::map<MvpnState::SG, MvpnState *> StateMap;
     typedef MvpnState::SG SG;
 
     MvpnProjectManagerPartition(MvpnProjectManager*manager, int part_id);
@@ -356,7 +377,7 @@ private:
 
     // Partition id of the manged DB partition.
     int part_id_;
-    StateMap states_;;
+    MvpnState::StateMap states_;;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnProjectManagerPartition);
 };
