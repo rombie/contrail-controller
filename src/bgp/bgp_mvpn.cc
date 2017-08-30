@@ -341,12 +341,20 @@ PathResolver *MvpnManager::path_resolver() const {
 void MvpnManager::Terminate() {
     // TODO(Ananth) FindPath and delete the two auto AD routes.
     MvpnRoute *type1_route = table_->FindType1ADRoute();
-    if (type1_route)
-        type1_route->Delete();
+    if (type1_route) {
+        BgpPath *path = type1_route->FindPath(BgpPath::Local, 0);
+        if (path)
+            type1_route->DeletePath(path);
+        type1_route->NotifyOrDelete();
+    }
 
     MvpnRoute *type2_route = table_->FindType2ADRoute();
-    if (type2_route)
-        type2_route->Delete();
+    if (type2_route) {
+        BgpPath *path = type2_route->FindPath(BgpPath::Local, 0);
+        if (path)
+            type2_route->DeletePath(path);
+        type2_route->NotifyOrDelete();
+    }
 
     table_->Unregister(listener_id_);
     FreePartitions();
