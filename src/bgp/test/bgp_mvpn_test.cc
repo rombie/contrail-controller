@@ -105,9 +105,21 @@ protected:
     scoped_ptr<BgpInstanceConfig> master_cfg_;
 };
 
-TEST_F(BgpMvpnTest, Type1ADBasic) {
-    // Ensure that Type-1 and Type-2 AD routes are always created inside the
-    // mvpn table.
+// Ensure that Type1 and Type2 AD routes are created inside the mvpn table.
+TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_->FindType1ADRoute());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_->FindType2ADRoute());
+
+    // Verify that no mvpn neighbor is discovered yet.
+    TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+}
+
+TEST_F(BgpMvpnTest, Type1_Type2ADRemote) {
+    // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
+    // 
     TASK_UTIL_EXPECT_EQ(2, red_->Size());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
