@@ -575,10 +575,6 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 // Protect access to neighbors_ map with a mutex as the same be 'read' off other
 // DB tasks in parallel. (Type-1 and Type-2 do not carrry any <S,G> information.
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
-    // Ignore primary paths.
-    if (!route->IsSecondary())
-        return;
-
     IpAddress address = route->GetPrefix().originatorIpAddress();
     RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
 
@@ -586,7 +582,7 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     MvpnNeighbor old_neighbor;
     bool found = FindNeighbor(address, &old_neighbor);
 
-    if (!route->IsValid()) {
+    if (!route->IsUsable()) {
         if (!found)
             return;
         {
@@ -596,6 +592,11 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
         path_resolver()->UpdateAllResolverNexthops();
         return;
     }
+
+    // Ignore primary paths.
+    if (!route->BestPath()->IsSecondary())
+        return;
+
 
     MvpnNeighbor neighbor(address, route->GetPrefix().asn(), rd.GetVrfId(),
         route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
