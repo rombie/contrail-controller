@@ -152,8 +152,8 @@ void MvpnProjectManagerPartition::DeleteState(MvpnStatePtr mvpn_state) {
 MvpnNeighbor::MvpnNeighbor() : asn_(0), vrf_id_(0), external_(false) {
 }
 
-MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint32_t asn,
-        uint16_t vrf_id, bool external) :
+MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint16_t vrf_id,
+                           uint32_t asn, bool external) :
     address_(address), asn_(asn), vrf_id_(vrf_id), external_(external) {
     ostringstream os;
     os << address << ":" << asn << ":" << vrf_id << ":" << external;

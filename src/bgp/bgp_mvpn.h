@@ -46,8 +46,8 @@ typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
 struct MvpnNeighbor {
 public:
     MvpnNeighbor();
-    MvpnNeighbor(const IpAddress &address, uint32_t asn = 0,
-                 uint16_t vrf_id = 0, bool external = false);
+    MvpnNeighbor(const IpAddress &address, uint16_t vrf_id = 0,
+                 uint32_t asn = 0, bool external = false);
     std::string ToString() const;
     const IpAddress &address() const;
     uint16_t vrf_id() const;
