@@ -257,6 +257,11 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
 }
 
+// Add Type7 Join route and verify that it gets sent out to the remote PE with
+// the right set of path attributes.
+TEST_F(BgpMvpnTest, Type7_Join) {
+}
+
 static void SetUp() {
     bgp_log_test::init();
     ControlNode::SetDefaultSchedulingPolicy();
