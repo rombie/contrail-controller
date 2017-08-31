@@ -478,7 +478,7 @@ MvpnStatePtr MvpnManagerPartition::LocateState(MvpnRoute *rt) {
         return NULL;
     MvpnState::SG sg = MvpnState::SG(rt->GetPrefix().sourceIpAddress(),
                                      rt->GetPrefix().groupIpAddress());
-    return project_manager_partition->GetState(sg);
+    return project_manager_partition->LocateState(sg);
 }
 
 MvpnStatePtr MvpnManagerPartition::GetState(MvpnRoute *rt) const {
