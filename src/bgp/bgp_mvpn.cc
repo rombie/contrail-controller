@@ -70,7 +70,6 @@ MvpnProjectManager::~MvpnProjectManager() {
 }
 
 void MvpnProjectManager::Initialize() {
-    assert(!table_->IsMaster());
     AllocPartitions();
 
     listener_id_ = table_->Register(
