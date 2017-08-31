@@ -113,6 +113,10 @@ protected:
         task_util::WaitForIdle();
     }
 
+    void DeleteMvpnRoute(BgpTable *table, const string &prefix_str);
+    void AddMvpnRoute(BgpTable *table, const string &prefix_str,
+                      const string &target);
+
     EventManager evm_;
     BgpServer server_;
     DB db_;
@@ -176,8 +180,8 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     EXPECT_EQ(false, neighbor.external());
 }
 
-void BgpMvpnTest::AddRemoteNeighbor(const string &prefix_str,
-                                    const string &target) {
+void BgpMvpnTest::AddMvpnRoute(BgpTable *table, const string &prefix_str,
+                               const string &target) {
     MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
     DBRequest add_req;
     add_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
@@ -192,8 +196,15 @@ void BgpMvpnTest::AddRemoteNeighbor(const string &prefix_str,
     STLDeleteValues(&attr_spec);
     add_req.data.reset(new MvpnTable::RequestData(attr, 0, 20));
     add_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-    master_->Enqueue(&add_req);
+    table->Enqueue(&add_req);
     task_util::WaitForIdle();
+}
+
+void BgpMvpnTest::DeleteMvpnRoute(BgpTable *table, const string &prefix_str) {
+    DBRequest delete_req;
+    delete_req.key.reset(new MvpnTable::RequestKey(prefix_str, NULL));
+    delete_req.oper = DBRequest::DB_ENTRY_DELETE;
+    table->Enqueue(&delete_req);
 }
 
 // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
@@ -205,7 +216,8 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
 
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red
     // route-target.
-    AddRemoteNeighbor("1-10.1.1.1:65535,9.8.7.6", "target:127.0.0.1:1");
+    string prefix = "1-10.1.1.1:65535,9.8.7.6";
+    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1");
 
     TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
@@ -249,10 +261,7 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
 
-    DBRequest delete_req;
-    delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
-    delete_req.oper = DBRequest::DB_ENTRY_DELETE;
-    master_->Enqueue(&delete_req);
+    DeleteMvpnRoute(master_, prefix);
 
     // Verify that neighbor is deleted.
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
@@ -272,6 +281,18 @@ TEST_F(BgpMvpnTest, Type7_Join) {
 // Add Type3 S-PMSI route and verify that Type4 Leaf-AD gets originated woth the
 // right set of path attributes.
 TEST_F(BgpMvpnTest, Type3_SPMSI) {
+    // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
+    // target. This route should go into red and green table.
+    string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
+    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1");
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(green)
+    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+
+    DeleteMvpnRoute(master_, prefix);
 }
 
 static void SetUp() {
