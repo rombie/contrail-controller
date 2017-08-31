@@ -157,7 +157,7 @@ public:
     explicit MvpnManager(MvpnTable *table);
     virtual ~MvpnManager();
     bool FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
-                      uint16_t vrf_id = 0, bool exact = true) const;
+                      uint16_t vrf_id, bool exact) const;
     MvpnProjectManager *GetProjectManager();
     const MvpnProjectManager *GetProjectManager() const;
     void ManagedDelete();
