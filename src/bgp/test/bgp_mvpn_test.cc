@@ -208,7 +208,7 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     // Verify that neighbor is detected.
     TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
     TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(3, green_->manager()->neighbors().size());
 
     MvpnNeighbor neighbor;
     boost::system::error_code err;
@@ -219,7 +219,6 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
-    TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
 
     EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
         IpAddress::from_string("10.1.1.1", err), 0, false));
@@ -227,7 +226,6 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
 
     DBRequest delete_req;
     delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
