@@ -423,9 +423,9 @@ public:
     ErmVpnRoute *GetGlobalTreeRootRoute(ErmVpnRoute *route) const;
     void NotifyForestNode(int part_id, const Ip4Address &source,
                           const Ip4Address &group);
-    bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
-                           Ip4Address *address,
-                           std::vector<std::string> *encap) const;
+    virtual bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                   Ip4Address *address,
+                                   std::vector<std::string> *encap) const;
 
 private:
     friend class BgpMulticastTest;

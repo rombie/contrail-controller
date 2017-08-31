@@ -1119,6 +1119,8 @@ void McastTreeManager::NotifyForestNode(int part_id, const Ip4Address &source,
 bool McastTreeManager::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                                          Ip4Address *address,
                                          vector<string> *encap) const {
+    if (!rt || !rt->IsUsable())
+        return false;
     const McastManagerPartition *partition =
         GetPartition(rt->get_table_partition()->index());
     return partition->GetForestNodePMSI(rt, label, address, encap);

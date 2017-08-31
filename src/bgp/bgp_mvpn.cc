@@ -674,15 +674,13 @@ bool MvpnProjectManagerPartition::GetForestNodePMSI(
         vector<string> *encap) const {
     if (!table()->tree_manager())
         return false;
-    return table()->tree_manager()->GetForestNodePMSI(rt, label,
-                                                      address, encap);
+    return table()->tree_manager()->GetForestNodePMSI(rt, label, address,
+                                                      encap);
 }
 
 bool MvpnManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                                              Ip4Address *address,
                                              vector<string> *encap) const {
-    if (!rt || !rt->IsUsable())
-        return false;
     const MvpnProjectManagerPartition *pm = GetProjectManagerPartition();
     return pm ?  pm->GetForestNodePMSI(rt, label, address, encap) : false;
 }
