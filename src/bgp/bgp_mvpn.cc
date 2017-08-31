@@ -185,14 +185,32 @@ bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
            vrf_id_ == rhs.vrf_id_ && external_ == rhs.external_;
 }
 
-bool MvpnManager::FindNeighbor(const IpAddress &address, MvpnNeighbor *nbr)
-        const {
+bool MvpnManager::MvpnNeighborCompare::operator()(const MvpnNeighbor &l,
+                                                  const MvpnNeighbor &r) const {
+    if (l.address() == r.address())
+        return l.vrf_id() > r.vrf_id();
+    return l.address() > r.address();
+}
+
+bool MvpnManager::FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
+                               uint16_t vrf_id) const {
     tbb::reader_writer_lock::scoped_lock_read lock(neighbors_mutex_);
 
-    NeighborsMap::const_iterator iter = neighbors_.find(address);
+    NeighborsSet::const_iterator iter = neighbors_.find(MvpnNeighbor(address,
+                                                                     vrf_id));
     if (iter != neighbors_.end()) {
-        *nbr = iter->second;
+        *nbr = *iter;
         return true;
+    }
+
+    // Do a lower-bound search just based on the address.
+    for (iter = neighbors_.lower_bound(MvpnNeighbor(address));
+            iter != neighbors_.end(); iter++) {
+        if (iter->address() == address) {
+            *nbr = *iter;
+            return true;
+        }
+        break;
     }
     return false;
 }
@@ -589,14 +607,15 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
 
     // Check if an entry is already present.
     MvpnNeighbor old_neighbor;
-    bool found = FindNeighbor(address, &old_neighbor);
+    bool found = FindNeighbor(&old_neighbor, Ip4Address(rd.GetAddress()),
+                              rd.GetVrfId());
 
     if (!route->IsUsable()) {
         if (!found)
             return;
         {
             tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
-            neighbors_.erase(address);
+            neighbors_.erase(old_neighbor);
         }
         path_resolver()->UpdateAllResolverNexthops();
         return;
@@ -617,8 +636,8 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
     {
         tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
         if (found)
-            neighbors_.erase(address);
-        assert(neighbors_.insert(make_pair(address, neighbor)).second);
+            neighbors_.erase(old_neighbor);
+        neighbors_.insert(neighbor);
     }
 
     // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
@@ -762,9 +781,8 @@ bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
 
     // Find if the resolved path points to an active Mvpn neighbor based on the
     // IP address encoded inside the vrf import route target extended community.
-    if (!FindNeighbor(vrf_import.GetIPv4Address(), neighbor))
-        return false;
-    return true;
+    return FindNeighbor(neighbor, vrf_import.GetIPv4Address(),
+                        vrf_import.GetNumber());
 }
 
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {

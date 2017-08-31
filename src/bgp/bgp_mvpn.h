@@ -46,8 +46,8 @@ typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
 struct MvpnNeighbor {
 public:
     MvpnNeighbor();
-    MvpnNeighbor(const IpAddress &address, uint32_t asn, uint16_t vrf_id,
-                 bool external);
+    MvpnNeighbor(const IpAddress &address, uint32_t asn = 0,
+                 uint16_t vrf_id = 0, bool external = false);
     std::string ToString() const;
     const IpAddress &address() const;
     uint16_t vrf_id() const;
@@ -135,7 +135,7 @@ private:
 // concurrency across different db partitions), all other operations which are
 // <S,G> agnostic are mainly handled in this class.
 //
-// Specifically, all MVPN BGP neighbors are maintained in std::map NeighborsMap.
+// Specifically, all MVPN BGP neighbors are maintained in std::set NeighborsSet.
 // Neighbors are created or updated when Type1/Type2 paths are received and are
 // deleted when those routes are deleted. All access to this map is protected
 // by a mutex because even though the map itself may be created, updated, or
@@ -148,11 +148,16 @@ class MvpnManager {
 public:
     typedef std::vector<MvpnManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
-    typedef std::map<IpAddress, MvpnNeighbor> NeighborsMap;
+
+    struct MvpnNeighborCompare {
+        bool operator()(const MvpnNeighbor &l, const MvpnNeighbor &r) const;
+    };
+    typedef std::set<MvpnNeighbor, MvpnNeighborCompare> NeighborsSet;
 
     explicit MvpnManager(MvpnTable *table);
     virtual ~MvpnManager();
-    bool FindNeighbor(const IpAddress &address, MvpnNeighbor *nbr) const;
+    bool FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
+                      uint16_t vrf_id = 0) const;
     MvpnProjectManager *GetProjectManager();
     const MvpnProjectManager *GetProjectManager() const;
     void ManagedDelete();
@@ -172,7 +177,7 @@ public:
     virtual void Terminate();
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     virtual void Initialize();
-    const NeighborsMap &neighbors() const { return neighbors_; }
+    const NeighborsSet &neighbors() const { return neighbors_; }
 
 private:
     friend class MvpnManagerPartition;
@@ -190,7 +195,7 @@ private:
     int listener_id_;
     PartitionList partitions_;
 
-    NeighborsMap neighbors_;
+    NeighborsSet neighbors_;
     mutable tbb::reader_writer_lock neighbors_mutex_;
 
     boost::scoped_ptr<DeleteActor> deleter_;

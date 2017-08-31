@@ -1230,7 +1230,7 @@ bool ResolverNexthop::empty() const {
     return true;
 }
 
-bool ResolverNexthop::ResolverRouteCompare::operator() (
+bool ResolverNexthop::ResolverRouteCompare::operator()(
     const BgpRoute *l, const BgpRoute *r) const {
     BgpTable *table = static_cast<BgpTable *>(l->get_table());
     Address::Family family = table->family();

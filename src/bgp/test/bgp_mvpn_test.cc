@@ -142,10 +142,12 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     // Verify that only green has discovered a neighbor from red.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
     TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
 
-    EXPECT_TRUE(green_->manager()->FindNeighbor(
-        IpAddress::from_string("127.0.0.1", err), &neighbor));
+    MvpnNeighbor neighbor;
+    boost::system::error_code err;
+    EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("127.0.0.1", err)));
     EXPECT_EQ("127.0.0.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
@@ -190,17 +192,17 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     MvpnNeighbor neighbor;
     boost::system::error_code err;
 
-    EXPECT_TRUE(red_->manager()->FindNeighbor(
-        IpAddress::from_string("9.8.7.6", err), &neighbor));
-    EXPECT_EQ("9.8.7.6", neighbor.address().to_string());
+    EXPECT_TRUE(red_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("10.1.1.1", err)));
+    EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
     TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
 
-    EXPECT_TRUE(green_->manager()->FindNeighbor(
-        IpAddress::from_string("9.8.7.6", err), &neighbor));
-    EXPECT_EQ("9.8.7.6", neighbor.address().to_string());
+    EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("10.1.1.1", err)));
+    EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
