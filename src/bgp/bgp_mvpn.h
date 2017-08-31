@@ -181,8 +181,8 @@ public:
     const NeighborsSet &neighbors() const { return neighbors_; }
     virtual void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
             BgpTable::TableSet *secondary_tables) const;
-    bool originate_site_ad_routes() { return originate_site_ad_routes_; }
-    void set_originate_site_ad_routes(bool flag) {
+    static bool originate_site_ad_routes() { return originate_site_ad_routes_; }
+    static void set_originate_site_ad_routes(bool flag) {
         originate_site_ad_routes_ = flag;
     }
 
