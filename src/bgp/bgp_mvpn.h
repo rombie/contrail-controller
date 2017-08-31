@@ -257,7 +257,7 @@ public:
         IpAddress group;
     };
 
-    typedef std::map<SG, MvpnStatePtr> StatesMap;
+    typedef std::map<SG, MvpnState *> StatesMap;
     MvpnState(const SG &sg, StatesMap *states = NULL);
     virtual ~MvpnState();
     const SG &sg() const;

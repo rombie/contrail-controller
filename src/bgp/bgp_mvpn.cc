@@ -125,8 +125,8 @@ MvpnProjectManagerPartition::~MvpnProjectManagerPartition() {
 }
 
 MvpnStatePtr MvpnProjectManagerPartition::CreateState(const SG &sg) {
-    MvpnState *state = new MvpnState(sg, &states_);
-    assert(states_.insert(make_pair(sg, MvpnStatePtr(state))).second);
+    MvpnStatePtr state(new MvpnState(sg, &states_));
+    assert(states_.insert(make_pair(sg, state.get())).second);
     return state;
 }
 
@@ -932,8 +932,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
     // TODO(Ananth) If LeafInfoRequired bit is not set in the S-PMSI route,
     // then we do not need to originate a leaf ad route for this s-pmsi rt.
     MvpnStatePtr mvpn_state = LocateState(spmsi_rt);
-    if (!mvpn_state)
-        return;
+    assert(mvpn_state);
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(mvpn_state);
         spmsi_rt->SetState(table(), listener_id(), mvpn_dbstate);
