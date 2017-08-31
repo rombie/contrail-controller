@@ -259,14 +259,20 @@ TEST_F(BgpMvpnTest, Type3_SPMSI) {
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
     AddMvpnRoute(master_, prefix, "target:127.0.0.1:1");
+    TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote + 1 leaf-ad
+    TASK_UTIL_EXPECT_EQ(3, red_->Size()); // 1 local + 1 remote(red) + 1 leaf-ad
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(green) + 1 leaf-ad
+    TASK_UTIL_EXPECT_EQ(5, green_->Size());
+
+    DeleteMvpnRoute(master_, prefix);
     TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
     TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
 
     // 1 local + 2 remote(red) + 1 remote(green)
     TASK_UTIL_EXPECT_EQ(4, green_->Size());
-
-    DeleteMvpnRoute(master_, prefix);
 }
 
 static void SetUp() {

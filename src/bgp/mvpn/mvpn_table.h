@@ -78,11 +78,11 @@ public:
     MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);
     MvpnPrefix CreateType2ADRoutePrefix();
     MvpnPrefix CreateType1ADRoutePrefix();
-    MvpnPrefix CreateType4SourceActiveRoutePrefix(MvpnRoute *rt) const;
+    MvpnPrefix CreateType5SourceActiveRoutePrefix(MvpnRoute *rt) const;
     MvpnRoute *FindType1ADRoute();
     MvpnRoute *FindType2ADRoute();
-    MvpnRoute *FindType4SourceActiveADRoute(MvpnRoute *rt);
-    const MvpnRoute *FindType4SourceActiveADRoute(MvpnRoute *rt) const;
+    MvpnRoute *FindType5SourceActiveADRoute(MvpnRoute *rt);
+    const MvpnRoute *FindType5SourceActiveADRoute(MvpnRoute *rt) const;
     MvpnRoute *LocateType1ADRoute();
     MvpnRoute *LocateType2ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(MvpnRoute *type7_join_rt);

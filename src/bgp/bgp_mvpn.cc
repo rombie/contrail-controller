@@ -838,7 +838,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // these cases, S-PMSI path needs to be originated if not already done so.
     //
     // TODO(Ananth) Origiante SPMSI route only if there is an active sender
-    // for this S,G. (Type4 SourceActiveAD received from an agent)
+    // for this S,G. (Type5 SourceActiveAD received from an agent)
     if (path->IsSecondary()) {
         // Originate/Update S-PMSI route towards the receivers.
         MvpnRoute *spmsi_rt = mvpn_dbstate->route;
@@ -867,7 +867,7 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     MvpnStatePtr state = GetState(leaf_ad);
-    MvpnRoute *sa_active_rt = table()->FindType4SourceActiveADRoute(leaf_ad);
+    MvpnRoute *sa_active_rt = table()->FindType5SourceActiveADRoute(leaf_ad);
     if (!leaf_ad->IsUsable()) {
         if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt &&
                 sa_active_rt->IsUsable()) {
