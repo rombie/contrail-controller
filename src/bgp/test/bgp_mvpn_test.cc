@@ -203,7 +203,7 @@ void BgpMvpnTest::AddMvpnRoute(BgpTable *table, const string &prefix_str,
 void BgpMvpnTest::DeleteMvpnRoute(BgpTable *table, const string &prefix_str) {
     DBRequest delete_req;
     MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
-    delete_req.key.reset(new MvpnTable::RequestKey(prefix_str, NULL));
+    delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
     delete_req.oper = DBRequest::DB_ENTRY_DELETE;
     table->Enqueue(&delete_req);
 }
