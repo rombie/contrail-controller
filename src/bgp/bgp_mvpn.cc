@@ -866,19 +866,32 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 }
 
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
-    MvpnStatePtr state = GetState(leaf_ad);
+    MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
+        leaf_ad->GetState(table(), listener_id()));
     MvpnRoute *sa_active_rt = table()->FindType5SourceActiveADRoute(leaf_ad);
     if (!leaf_ad->IsUsable()) {
-        if (state->leafad_routes_received().erase(leaf_ad) && sa_active_rt &&
-                sa_active_rt->IsUsable()) {
+        if (!mvpn_dbstate)
+            return;
+        assert(mvpn_dbstate->state->leafad_routes_received().erase(leaf_ad));
+        if (sa_active_rt && sa_active_rt->IsUsable())
             sa_active_rt->Notify();
-        }
+        leaf_ad->ClearState(table(), listener_id());
+        delete mvpn_dbstate;
         return;
     }
 
     const BgpPath *path = leaf_ad->BestPath();
     if (!path->IsSecondary())
         return;
+
+    if (!mvpn_dbstate && !leaf_ad->IsUsable())
+        return;
+
+    MvpnStatePtr state = LocateState(leaf_ad);
+    if (!mvpn_dbstate) {
+        mvpn_dbstate = new MvpnDBState(state);
+        leaf_ad->SetState(table(), listener_id(), mvpn_dbstate);
+    }
 
     state->leafad_routes_received().insert(
         make_pair(leaf_ad, leaf_ad->BestPath()->GetAttr()));
