@@ -81,8 +81,7 @@ public:
     void FillRouteInfo(const BgpTable *table, ShowRoute *show_route,
         const std::string &source = "", const std::string &protocol = "") const;
 
-protected:
-    // TODO(Ananth)
+    // protected: TODO(Ananth)
     virtual bool IsValid() const;
 
 private:

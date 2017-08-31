@@ -200,7 +200,7 @@ bool ServiceChain<T>::Match(BgpServer *server, BgpTable *table, BgpRoute *route,
                !connected_table_unregistered() &&
                IsConnectedRoute(route)) {
         if (!deleted) {
-            if (!route->IsUsable() ||
+            if (!route->IsValid() ||
                 route->BestPath()->GetSource() != BgpPath::BGP_XMPP) {
                 deleted = true;
             }
@@ -283,7 +283,7 @@ void ServiceChain<T>::SetConnectedRoute(BgpRoute *connected) {
 
 template <typename T>
 bool ServiceChain<T>::IsConnectedRouteValid() const {
-    return (connected_route_ && connected_route_->IsUsable());
+    return (connected_route_ && connected_route_->IsValid());
 }
 
 template <typename T>
