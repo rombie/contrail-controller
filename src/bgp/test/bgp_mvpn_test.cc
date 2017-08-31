@@ -278,6 +278,7 @@ TEST_F(BgpMvpnTest, Type3_SPMSI) {
 
 static void SetUp() {
     bgp_log_test::init();
+    MvpnManager::set_originate_site_ad_routes(true);
     ControlNode::SetDefaultSchedulingPolicy();
     BgpObjectFactory::Register<McastTreeManager>(
         boost::factory<McastTreeManagerMock *>());

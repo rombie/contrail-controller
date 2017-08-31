@@ -19,6 +19,8 @@
 #include "bgp/rtarget/rtarget_address.h"
 #include "bgp/tunnel_encap/tunnel_encap.h"
 
+bool MvpnManager::originate_site_ad_routes_;
+
 using std::make_pair;
 using std::ostringstream;
 using std::string;
@@ -544,9 +546,12 @@ void MvpnManager::Initialize() {
     listener_id_ = table_->Register(
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
-    BgpServer *server = table()->server();
+
+    if (!originate_site_ad_routes())
+        return;
 
     // Originate Type1 Intra AS Auto-Discovery path.
+    BgpServer *server = table()->server();
     MvpnRoute *route = table_->LocateType1ADRoute();
     BgpAttrSpec attr_spec;
     BgpAttrNextHop nexthop(server->bgp_identifier());
