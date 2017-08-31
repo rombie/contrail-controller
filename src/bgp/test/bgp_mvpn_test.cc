@@ -227,6 +227,21 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
 
+    // Do an exact match as well, as we know the vrf-id passed in the route.
+    EXPECT_TRUE(red_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("10.1.1.1", err), 0, false));
+    EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(65535, neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+
+    EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("10.1.1.1", err), 0, false));
+    EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(65535, neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+
     DBRequest delete_req;
     delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
     delete_req.oper = DBRequest::DB_ENTRY_DELETE;
