@@ -224,30 +224,7 @@ void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
     if (mvpn_rt->GetPrefix().type() != MvpnPrefix::LeafADRoute)
         return;
 
-    // Find the right MvpnProjectManagerPartition based on the rt's partition.
-    const MvpnProjectManagerPartition *partition =
-        GetProjectManagerPartition(rt);
-    if (!partition)
-        return;
-
-    // Retrieve MVPN state. Ignore if there is no state or if there is no usable
-    // Type3 SPMSI route 0associated with it (perhaps it was deleted already).
-    MvpnState::SG sg(mvpn_rt);
-    MvpnStatePtr state = partition->GetState(sg);
-    if (!state || !state->spmsi_rt() || !state->spmsi_rt()->IsUsable())
-        return;
-
-    // Matching Type-3 S-PMSI route was found. Return the table that holds this
-    // route, if it is usable.
-    BgpTable *table = dynamic_cast<BgpTable *>(
-        state->spmsi_rt()->get_table_partition()->parent());
-    assert(table);
-
-    // Update table list to let replicator invoke RouteReplicate() for this
-    // LeafAD route for this table which has the corresponding Type3 SPMSI
-    // route. This was originated as the 'Sender' since receiver joined to
-    // the <C-S,G> group.
-    secondary_tables->insert(table);
+    manager()->UpdateSecondaryTablesForReplication(mvpn_rt, secondary_tables);
 }
 
 // Find or create the route.

@@ -30,6 +30,9 @@ private:
 class MvpnManagerMock : public MvpnManager {
 public:
     MvpnManagerMock(MvpnTable *table) : MvpnManager(table) { }
+    virtual void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+            BgpTable::TableSet *secondary_tables) const {
+    }
 
 private:
     void Initialize() { }

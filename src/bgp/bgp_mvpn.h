@@ -15,6 +15,7 @@
 
 #include "base/lifetime.h"
 #include "bgp/bgp_attr.h"
+#include "bgp/bgp_table.h"
 #include "db/db_entry.h"
 #include "net/address.h"
 
@@ -178,6 +179,8 @@ public:
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     virtual void Initialize();
     const NeighborsSet &neighbors() const { return neighbors_; }
+    virtual void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+            BgpTable::TableSet *secondary_tables) const;
 
 private:
     friend class MvpnManagerPartition;
