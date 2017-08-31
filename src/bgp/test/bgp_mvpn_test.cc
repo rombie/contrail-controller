@@ -176,22 +176,15 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     EXPECT_EQ(false, neighbor.external());
 }
 
-// Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
-TEST_F(BgpMvpnTest, Type1AD_Remote) {
-    // Verify that only green has discovered a neighbor from red.
-    TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
-
-    // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with
-    // red route-target.
-    MvpnPrefix prefix(MvpnPrefix::FromString("1-10.1.1.1:65535,9.8.7.6"));
+void BgpMvpnTest::AddRemoteNeighbor(const string &prefix_str,
+                                    const string &target) {
+    MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
     DBRequest add_req;
     add_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
 
     BgpAttrSpec attr_spec;
     ExtCommunitySpec *commspec(new ExtCommunitySpec());
-    RouteTarget tgt = RouteTarget::FromString("target:127.0.0.1:1");
+    RouteTarget tgt = RouteTarget::FromString(target);
     commspec->communities.push_back(tgt.GetExtCommunityValue());
     attr_spec.push_back(commspec);
 
@@ -200,6 +193,20 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     add_req.data.reset(new MvpnTable::RequestData(attr, 0, 20));
     add_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
     master_->Enqueue(&add_req);
+    task_util::WaitForIdle();
+}
+
+// Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
+TEST_F(BgpMvpnTest, Type1AD_Remote) {
+    // Verify that only green has discovered a neighbor from red.
+    TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
+
+    // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red
+    // route-target.
+    AddRemoteNeighbor("1-10.1.1.1:65535,9.8.7.6", "target:127.0.0.1:1");
+
     TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
     TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
@@ -214,14 +221,14 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     boost::system::error_code err;
 
     EXPECT_TRUE(red_->manager()->FindNeighbor(&neighbor,
-        IpAddress::from_string("10.1.1.1", err), 0, false));
+                IpAddress::from_string("10.1.1.1", err), 0, false));
     EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
 
     EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
-        IpAddress::from_string("10.1.1.1", err), 0, false));
+                IpAddress::from_string("10.1.1.1", err), 0, false));
     EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
@@ -229,14 +236,14 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
 
     // Do an exact match as well, as we know the vrf-id passed in the route.
     EXPECT_TRUE(red_->manager()->FindNeighbor(&neighbor,
-        IpAddress::from_string("10.1.1.1", err), 0, false));
+                IpAddress::from_string("10.1.1.1", err), 0, false));
     EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
 
     EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
-        IpAddress::from_string("10.1.1.1", err), 0, false));
+                IpAddress::from_string("10.1.1.1", err), 0, false));
     EXPECT_EQ("10.1.1.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
     EXPECT_EQ(65535, neighbor.vrf_id());
@@ -260,6 +267,11 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
 // Add Type7 Join route and verify that it gets sent out to the remote PE with
 // the right set of path attributes.
 TEST_F(BgpMvpnTest, Type7_Join) {
+}
+
+// Add Type3 S-PMSI route and verify that Type4 Leaf-AD gets originated woth the
+// right set of path attributes.
+TEST_F(BgpMvpnTest, Type3_SPMSI) {
 }
 
 static void SetUp() {
