@@ -188,8 +188,8 @@ bool MvpnNeighbor::operator==(const MvpnNeighbor &rhs) const {
 bool MvpnManager::MvpnNeighborCompare::operator()(const MvpnNeighbor &l,
                                                   const MvpnNeighbor &r) const {
     if (l.address() == r.address())
-        return l.vrf_id() > r.vrf_id();
-    return l.address() > r.address();
+        return l.vrf_id() < r.vrf_id();
+    return l.address() < r.address();
 }
 
 bool MvpnManager::FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,

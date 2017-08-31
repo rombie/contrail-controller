@@ -72,6 +72,8 @@ protected:
 
     virtual void SetUp() {
         ConcurrencyScope scope("bgp::Config");
+        boost::system::error_code err;
+        server_.set_bgp_identifier(Ip4Address::from_string("127.0.0.1", err));
         master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
             BgpConfigManager::kMasterInstance));
         red_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("red",

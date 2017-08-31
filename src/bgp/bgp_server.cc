@@ -206,7 +206,7 @@ public:
                             identifier.to_string());
             }
             Ip4Address old_identifier = server_->bgp_identifier_;
-            server_->bgp_identifier_ = identifier;
+            server_->set_bgp_identifier(identifier);
             server_->NotifyIdentifierUpdate(old_identifier);
         }
 
