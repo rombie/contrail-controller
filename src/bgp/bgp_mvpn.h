@@ -59,8 +59,8 @@ private:
     friend class MvpnManagerPartition;
 
     IpAddress address_;
-    uint32_t asn_;
     uint16_t vrf_id_;
+    uint32_t asn_;
     bool external_;
     std::string name_;
 };

@@ -149,14 +149,14 @@ MvpnStatePtr MvpnProjectManagerPartition::GetState(const SG &sg) {
 void MvpnProjectManagerPartition::DeleteState(MvpnStatePtr mvpn_state) {
 }
 
-MvpnNeighbor::MvpnNeighbor() : asn_(0), vrf_id_(0), external_(false) {
+MvpnNeighbor::MvpnNeighbor() : vrf_id_(0), asn_(0), external_(false) {
 }
 
 MvpnNeighbor::MvpnNeighbor(const IpAddress &address, uint16_t vrf_id,
                            uint32_t asn, bool external) :
-    address_(address), asn_(asn), vrf_id_(vrf_id), external_(external) {
+    address_(address), vrf_id_(vrf_id), asn_(asn), external_(external) {
     ostringstream os;
-    os << address << ":" << asn << ":" << vrf_id << ":" << external;
+    os << address << ":" << vrf_id << ":" << asn << ":" << external;
     name_ = os.str();
 }
 
@@ -628,7 +628,7 @@ void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
         return;
 
 
-    MvpnNeighbor neighbor(address, route->GetPrefix().asn(), rd.GetVrfId(),
+    MvpnNeighbor neighbor(address, rd.GetVrfId(), route->GetPrefix().asn(),
         route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
 
     // Ignore if there is no change.
