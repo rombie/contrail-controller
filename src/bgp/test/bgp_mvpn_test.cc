@@ -191,7 +191,7 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
 
     BgpAttrSpec attr_spec;
     ExtCommunitySpec *commspec(new ExtCommunitySpec());
-    RouteTarget tgt = RouteTarget::FromString("target:1:1");
+    RouteTarget tgt = RouteTarget::FromString("target:127.0.0.1:1");
     commspec->communities.push_back(tgt.GetExtCommunityValue());
     attr_spec.push_back(commspec);
 
