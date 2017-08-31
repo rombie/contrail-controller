@@ -536,11 +536,7 @@ void MvpnManager::Initialize() {
     route->InsertPath(path);
     route->Notify();
 
-    // Originate Type2 Inter AS Auto-Discovery Route.
-    route = table_->LocateType2ADRoute();
-    path = new BgpPath(NULL, 0, BgpPath::Local, attr, 0, 0, 0);
-    route->InsertPath(path);
-    route->Notify();
+    // TODO(Ananth) Originate Type2 Inter AS Auto-Discovery Route.
 }
 
 // MvpnTable route listener callback function.
@@ -554,12 +550,13 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 
     MvpnManagerPartition *partition = partitions_[tpart->index()];
 
-    // Process Type1 Intra-AS and Type2 Inter-AS routes.
-    if (route->GetPrefix().type() == MvpnPrefix::IntraASPMSIADRoute ||
-            route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute) {
+    // Process Type1 Intra-AS AD route.
+    if (route->GetPrefix().type() == MvpnPrefix::IntraASPMSIADRoute) {
         UpdateNeighbor(route);
         return;
     }
+
+    // TODO(Ananth) Inter-AS Multiast Site AD.
 
     // Process Type3 S-PMSI route.
     if (route->GetPrefix().type() == MvpnPrefix::SPMSIADRoute) {

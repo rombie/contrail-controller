@@ -75,7 +75,14 @@ protected:
         master_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig(
             BgpConfigManager::kMasterInstance));
         red_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("red",
-                "target:1:1", "target:1:1"));
+                "target:127.0.0.1:1", "target:127.0.0.1:1"));
+        blue_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("blue",
+                "target:127.0.0.1:2", "target:127.0.0.1:2"));
+
+        // Green imports routes from both red and blue RIs.
+        green_cfg_.reset(BgpTestUtil::CreateBgpInstanceConfig("green",
+                "target:127.0.0.1:3,target:127.0.0.1:1,target:127.0.0.1:2",
+                "target:127.0.0.1:3"));
 
         TaskScheduler *scheduler = TaskScheduler::GetInstance();
         scheduler->Stop();
@@ -83,12 +90,18 @@ protected:
                 master_cfg_.get());
         server_.rtarget_group_mgr()->Initialize();
         server_.routing_instance_mgr()->CreateRoutingInstance(red_cfg_.get());
+        server_.routing_instance_mgr()->CreateRoutingInstance(blue_cfg_.get());
+        server_.routing_instance_mgr()->CreateRoutingInstance(green_cfg_.get());
         scheduler->Start();
 
         master_ = static_cast<BgpTable *>(
             server_.database()->FindTable("bgp.mvpn.0"));
         red_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("red.mvpn.0"));
+        blue_ = static_cast<MvpnTable *>(
+            server_.database()->FindTable("blue.mvpn.0"));
+        green_ = static_cast<MvpnTable *>(
+            server_.database()->FindTable("green.mvpn.0"));
     }
 
     void TearDown() {
@@ -103,27 +116,49 @@ protected:
     DB db_;
     BgpTable *master_;
     MvpnTable *red_;
+    MvpnTable *blue_;
+    MvpnTable *green_;
     scoped_ptr<BgpInstanceConfig> red_cfg_;
+    scoped_ptr<BgpInstanceConfig> blue_cfg_;
+    scoped_ptr<BgpInstanceConfig> green_cfg_;
     scoped_ptr<BgpInstanceConfig> master_cfg_;
 };
 
 // Ensure that Type1 and Type2 AD routes are created inside the mvpn table.
 TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
-    TASK_UTIL_EXPECT_EQ(2, red_->Size());
-    TASK_UTIL_EXPECT_EQ(2, master_->Size());
+    TASK_UTIL_EXPECT_EQ(3, master_->Size());
+    TASK_UTIL_EXPECT_EQ(1, red_->Size());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
-    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
-                        red_->FindType2ADRoute());
 
-    // Verify that no mvpn neighbor is discovered yet.
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        blue_->FindType1ADRoute());
+
+    TASK_UTIL_EXPECT_EQ(3, green_->Size()); // 1 green + 1 red + 1 blue
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        green_->FindType1ADRoute());
+
+    // Verify that only green has discovered a neighbor from red.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+
+    EXPECT_TRUE(green_->manager()->FindNeighbor(
+        IpAddress::from_string("127.0.0.1", err), &neighbor));
+    EXPECT_EQ("127.0.0.1", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(65535, neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
 }
 
 // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
 TEST_F(BgpMvpnTest, Type1AD_Remote) {
-    // Verify that no mvpn neighbor is discovered yet.
+    // Verify that only green has discovered a neighbor from red.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
 
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with
     // red route-target.
@@ -142,13 +177,19 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     add_req.data.reset(new MvpnTable::RequestData(attr, 0, 20));
     add_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
     master_->Enqueue(&add_req);
-    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 2 local + 1 remote
-    TASK_UTIL_EXPECT_EQ(3, red_->Size()); // 2 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+    TASK_UTIL_EXPECT_EQ(4, green_->Size()); // 1 local + 1 remote(red)
 
     // Verify that neighbor is detected.
     TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+
     MvpnNeighbor neighbor;
     boost::system::error_code err;
+
     EXPECT_TRUE(red_->manager()->FindNeighbor(
         IpAddress::from_string("9.8.7.6", err), &neighbor));
     EXPECT_EQ("9.8.7.6", neighbor.address().to_string());
@@ -157,15 +198,27 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     EXPECT_EQ(false, neighbor.external());
     TASK_UTIL_EXPECT_EQ(1, red_->manager()->neighbors().size());
 
+    EXPECT_TRUE(green_->manager()->FindNeighbor(
+        IpAddress::from_string("9.8.7.6", err), &neighbor));
+    EXPECT_EQ("9.8.7.6", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(65535, neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+
     DBRequest delete_req;
     delete_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
     delete_req.oper = DBRequest::DB_ENTRY_DELETE;
     master_->Enqueue(&delete_req);
 
     // Verify that neighbor is deleted.
-    TASK_UTIL_EXPECT_EQ(2, master_->Size()); // 2 local
-    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 2 local
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+    TASK_UTIL_EXPECT_EQ(3, green_->Size()); // 1 local + 1 red + 1 blue
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
 }
 
 static void SetUp() {
