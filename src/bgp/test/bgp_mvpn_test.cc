@@ -149,12 +149,31 @@ TEST_F(BgpMvpnTest, Type1_Type2ADLocal) {
     MvpnNeighbor neighbor;
     boost::system::error_code err;
     EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("127.0.0.1", err),
+        red_->routing_instance()->index(), true));
+    EXPECT_EQ("127.0.0.1", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(red_->routing_instance()->index(), neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+
+    EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
+        IpAddress::from_string("127.0.0.1", err),
+        blue_->routing_instance()->index(), true));
+    EXPECT_EQ("127.0.0.1", neighbor.address().to_string());
+    EXPECT_EQ(0, neighbor.asn());
+    EXPECT_EQ(blue_->routing_instance()->index(), neighbor.vrf_id());
+    EXPECT_EQ(false, neighbor.external());
+
+    // Verify that non-exact also works just based on the ip address.
+    EXPECT_TRUE(green_->manager()->FindNeighbor(&neighbor,
         IpAddress::from_string("127.0.0.1", err)));
     EXPECT_EQ("127.0.0.1", neighbor.address().to_string());
     EXPECT_EQ(0, neighbor.asn());
-    EXPECT_EQ(65535, neighbor.vrf_id());
+    if (red_->routing_instance()->index() < blue_->routing_instance()->index())
+        EXPECT_EQ(red_->routing_instance()->index(), neighbor.vrf_id());
+    else
+        EXPECT_EQ(blue_->routing_instance()->index(), neighbor.vrf_id());
     EXPECT_EQ(false, neighbor.external());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
 }
 
 // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
@@ -162,7 +181,7 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     // Verify that only green has discovered a neighbor from red.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
     TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
 
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with
     // red route-target.
@@ -222,7 +241,7 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
     TASK_UTIL_EXPECT_EQ(3, green_->Size()); // 1 local + 1 red + 1 blue
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
     TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(1, green_->manager()->neighbors().size());
+    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
 }
 
 static void SetUp() {

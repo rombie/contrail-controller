@@ -193,7 +193,7 @@ bool MvpnManager::MvpnNeighborCompare::operator()(const MvpnNeighbor &l,
 }
 
 bool MvpnManager::FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
-                               uint16_t vrf_id) const {
+                               uint16_t vrf_id, bool exact) const {
     tbb::reader_writer_lock::scoped_lock_read lock(neighbors_mutex_);
 
     NeighborsSet::const_iterator iter = neighbors_.find(MvpnNeighbor(address,
@@ -202,6 +202,9 @@ bool MvpnManager::FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
         *nbr = *iter;
         return true;
     }
+
+    if (exact)
+        return false;
 
     // Do a lower-bound search just based on the address.
     for (iter = neighbors_.lower_bound(MvpnNeighbor(address));
@@ -602,13 +605,12 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 // Protect access to neighbors_ map with a mutex as the same be 'read' off other
 // DB tasks in parallel. (Type-1 and Type-2 do not carrry any <S,G> information.
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
-    IpAddress address = route->GetPrefix().originatorIpAddress();
     RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
+    IpAddress address = Ip4Address(rd.GetAddress());
 
     // Check if an entry is already present.
     MvpnNeighbor old_neighbor;
-    bool found = FindNeighbor(&old_neighbor, Ip4Address(rd.GetAddress()),
-                              rd.GetVrfId());
+    bool found = FindNeighbor(&old_neighbor, address, rd.GetVrfId(), true);
 
     if (!route->IsUsable()) {
         if (!found)
@@ -782,7 +784,7 @@ bool MvpnManager::FindResolvedNeighbor(const BgpPath *path,
     // Find if the resolved path points to an active Mvpn neighbor based on the
     // IP address encoded inside the vrf import route target extended community.
     return FindNeighbor(neighbor, vrf_import.GetIPv4Address(),
-                        vrf_import.GetNumber());
+                        vrf_import.GetNumber(), false);
 }
 
 bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
