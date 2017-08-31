@@ -267,12 +267,13 @@ TEST_F(BgpMvpnTest, Type3_SPMSI) {
     TASK_UTIL_EXPECT_EQ(5, green_->Size());
 
     DeleteMvpnRoute(master_, prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
-    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+    B
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
 
-    // 1 local + 2 remote(red) + 1 remote(green)
-    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
 }
 
 static void SetUp() {
