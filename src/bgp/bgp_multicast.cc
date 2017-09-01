@@ -773,8 +773,8 @@ McastSGEntry *McastManagerPartition::LocateSGEntry(
 
 ErmVpnRoute *McastManagerPartition::GetGlobalTreeRootRoute(
         ErmVpnRoute *ermvpn_route) const {
-    const McastSGEntry *sg = FindSGEntry(ermvpn_route->GetPrefix().group(),
-                                         ermvpn_route->GetPrefix().source());
+    const McastSGEntry *sg = FindSGEntry(ermvpn_route->GetPrefix().source(),
+                                         ermvpn_route->GetPrefix().group());
     return sg ? sg->GetGlobalTreeRootRoute() : NULL;
 }
 
@@ -788,8 +788,8 @@ void McastManagerPartition::NotifyForestNode(
 bool McastManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
                                               Ip4Address *address,
                                               vector<string> *encap) const {
-    const McastSGEntry *sg = FindSGEntry(rt->GetPrefix().group(),
-                                         rt->GetPrefix().source());
+    const McastSGEntry *sg = FindSGEntry(rt->GetPrefix().source(),
+                                         rt->GetPrefix().group());
     return sg ? sg->GetForestNodePMSI(label, address, encap) : false;
 }
 
