@@ -1024,7 +1024,8 @@ bool ResolverPath::UpdateResolvedPaths() {
     // exist only if the BgpRoute in question itself has resolved paths.
     tbb::spin_rw_mutex::scoped_lock nh_read_lock;
     ResolverRouteState *nh_state = rnexthop_->GetResolverRouteState();
-    if (nh_state && !nh_read_lock.try_acquire(nh_state->rw_mutex(), false)) {
+    if (state_ != nh_state &&
+        nh_state && !nh_read_lock.try_acquire(nh_state->rw_mutex(), false)) {
         partition_->DeferPathResolution(this);
         return false;
     }
