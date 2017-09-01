@@ -166,6 +166,9 @@ protected:
 TEST_F(ErmVpnTableTest, TreeManager) {
     TASK_UTIL_EXPECT_TRUE(master_->GetTreeManager() != NULL);
     TASK_UTIL_EXPECT_TRUE(blue_->GetTreeManager() != NULL);
+
+    TASK_UTIL_EXPECT_TRUE(master_->GetMvpnProjectManager() != NULL);
+    TASK_UTIL_EXPECT_TRUE(blue_->GetMvpnProjectManager() == NULL);
 }
 
 class ErmVpnTableNativeTest : public ErmVpnTableTest {

@@ -205,7 +205,8 @@ void ErmVpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     CreateTreeManager();
 
     // TODO(Ananth) Only the project manager table needs this.
-    CreateMvpnProjectManager();
+    if (IsMaster())
+        CreateMvpnProjectManager();
 }
 
 void ErmVpnTable::CreateMvpnProjectManager() {
