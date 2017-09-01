@@ -19,7 +19,7 @@
 #include "bgp/rtarget/rtarget_address.h"
 #include "bgp/tunnel_encap/tunnel_encap.h"
 
-bool MvpnManager::originate_site_ad_routes_;
+bool MvpnManager::enable_;
 
 using std::make_pair;
 using std::ostringstream;
@@ -547,7 +547,7 @@ void MvpnManager::Initialize() {
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
 
-    if (!originate_site_ad_routes())
+    if (!IsEnabled())
         return;
 
     // Originate Type1 Intra AS Auto-Discovery path.

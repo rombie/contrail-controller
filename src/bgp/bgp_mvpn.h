@@ -181,10 +181,8 @@ public:
     const NeighborsSet &neighbors() const { return neighbors_; }
     virtual void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
             BgpTable::TableSet *secondary_tables) const;
-    static bool originate_site_ad_routes() { return originate_site_ad_routes_; }
-    static void set_originate_site_ad_routes(bool flag) {
-        originate_site_ad_routes_ = flag;
-    }
+    static bool IsEnabled() { return enable_; }
+    static void set_enable(bool enable) { enable_ = enable; }
 
 private:
     friend class MvpnManagerPartition;
@@ -208,7 +206,7 @@ private:
     boost::scoped_ptr<DeleteActor> deleter_;
     LifetimeRef<MvpnManager> table_delete_ref_;
 
-    static bool originate_site_ad_routes_;
+    static bool enable_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnManager);
 };

@@ -20,6 +20,10 @@ public:
     McastTreeManagerMock(ErmVpnTable *table) : McastTreeManager(table) {
     }
     ~McastTreeManagerMock() { }
+
+    virtual void Initialize() { }
+    virtual void Terminate() { }
+
     virtual UpdateInfo *GetUpdateInfo(ErmVpnRoute *route) { return NULL; }
 
 private:
@@ -164,11 +168,8 @@ protected:
 };
 
 TEST_F(ErmVpnTableTest, TreeManager) {
-    TASK_UTIL_EXPECT_TRUE(master_->GetTreeManager() != NULL);
+    TASK_UTIL_EXPECT_TRUE(master_->GetTreeManager() == NULL);
     TASK_UTIL_EXPECT_TRUE(blue_->GetTreeManager() != NULL);
-
-    TASK_UTIL_EXPECT_TRUE(master_->mvpn_project_manager() != NULL);
-    TASK_UTIL_EXPECT_TRUE(blue_->mvpn_project_manager() == NULL);
 }
 
 class ErmVpnTableNativeTest : public ErmVpnTableTest {
@@ -625,7 +626,7 @@ TEST_F(ErmVpnTableLocalTest, ReplicateRouteFromVPN4) {
     DelRoute(master_, repr1.str());
     task_util::WaitForIdle();
     VerifyRouteNoExists(master_, repr1.str());
-    TASK_UTIL_EXPECT_EQ(0, master_->Size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->Size());
     VerifyRouteNoExists(blue_, repr2.str());
     TASK_UTIL_EXPECT_EQ(0, blue_->Size());
 }
@@ -889,7 +890,7 @@ TEST_F(ErmVpnTableGlobalTest, ReplicateRouteFromVPN1) {
     DelRoute(master_, repr1.str());
     task_util::WaitForIdle();
     VerifyRouteNoExists(master_, repr1.str());
-    TASK_UTIL_EXPECT_EQ(0, master_->Size());
+    TASK_UTIL_EXPECT_EQ(0, blue_->Size());
     VerifyRouteNoExists(blue_, repr2.str());
     TASK_UTIL_EXPECT_EQ(0, blue_->Size());
 }

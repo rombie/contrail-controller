@@ -180,7 +180,8 @@ bool ErmVpnTable::Export(RibOut *ribout, Route *route,
 }
 
 void ErmVpnTable::CreateTreeManager() {
-    if (IsMaster())
+    // Don't create the McastTreeManager for the VPN table.
+    if (IsMaster() && !MvpnManager::IsEnabled())
         return;
     assert(!tree_manager_);
     tree_manager_ = BgpObjectFactory::Create<McastTreeManager>(this);
