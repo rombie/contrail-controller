@@ -75,7 +75,6 @@ public:
 
     void UpdatePeerRefCount(int count, Address::Family family) const;
 
-    void SetAttr(const BgpAttrPtr attr) { attr_ = attr; }
     void SetAttr(const BgpAttrPtr attr, const BgpAttrPtr original_attr) {
         attr_ = attr;
         original_attr_ = original_attr;

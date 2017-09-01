@@ -535,8 +535,8 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
         config->name(), server_, this, config);
     if (config->name() == BgpConfigManager::kMasterInstance)
         default_rtinstance_ = rtinstance;
-    InsertRoutingInstance(rtinstance);
     rtinstance->ProcessConfig();
+    InsertRoutingInstance(rtinstance);
 
     InstanceTargetAdd(rtinstance);
     InstanceVnIndexAdd(rtinstance);
