@@ -130,11 +130,6 @@ void MvpnTable::DestroyManager() {
     manager_ = NULL;
 }
 
-void MvpnTable::set_routing_instance(RoutingInstance *rtinstance) {
-    BgpTable::set_routing_instance(rtinstance);
-    CreateManager();
-}
-
 RouteDistinguisher MvpnTable::GetSourceRouteDistinguisher(
     const BgpPath *path) const {
     if (!manager_)

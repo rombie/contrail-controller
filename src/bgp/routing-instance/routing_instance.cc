@@ -15,6 +15,7 @@
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_server.h"
+#include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/iservice_chain_mgr.h"
 #include "bgp/routing-instance/istatic_route_mgr.h"
@@ -541,6 +542,12 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
     InstanceTargetAdd(rtinstance);
     InstanceVnIndexAdd(rtinstance);
     rtinstance->InitAllRTargetRoutes(server_->local_autonomous_system());
+
+    // Initialize MVPN Manager.
+    MvpnTable *mvpn_table =
+        dynamic_cast<MvpnTable *>(rtinstance->GetTable(Address::MVPN));
+    if (mvpn_table)
+        mvpn_table->CreateManager();
 
     // Notify clients about routing instance create
     NotifyInstanceOp(config->name(), INSTANCE_ADD);

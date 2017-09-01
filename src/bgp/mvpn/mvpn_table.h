@@ -61,7 +61,6 @@ public:
     const MvpnManager *manager() const { return manager_; }
     MvpnManager *manager() { return manager_; }
 
-    virtual void set_routing_instance(RoutingInstance *rtinstance);
     bool RouteNotify(BgpServer *server, DBTablePartBase *root, DBEntryBase *e);
     RouteDistinguisher GetSourceRouteDistinguisher(const BgpPath *path) const;
     const MvpnProjectManager *GetProjectManager() const;
