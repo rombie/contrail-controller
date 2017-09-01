@@ -457,7 +457,7 @@ TEST_F(RouteAggregatorTest, Default) {
     VERIFY_EQ(3, RouteCount("test.inet.0"));
     BgpRoute *rt = RouteLookup<InetDefinition>("test.inet.0", "0.0.0.0/0");
     ASSERT_TRUE(rt != NULL);
-    TASK_UTIL_EXPECT_EQ(rt->count(), 2);
+    TASK_UTIL_EXPECT_EQ(2, rt->count());
     TASK_UTIL_EXPECT_TRUE(rt->BestPath() != NULL);
     TASK_UTIL_EXPECT_TRUE(rt->BestPath()->IsFeasible());
 

@@ -483,15 +483,6 @@ BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
     return dest_route;
 }
 
-// Find MVPN Source address from the route which needs to be resolved in order
-// to propagate the join towards the sender.
-const IpAddress MvpnTable::GetAddressToResolve(BgpRoute *route,
-        const BgpPath *path) const {
-    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(route);
-    assert(mvpn_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
-    return mvpn_rt->GetPrefix().sourceIpAddress();
-}
-
 const RouteTarget::List &MvpnTable::GetExportList(BgpRoute *rt) const {
     static RouteTarget::List empty_list;
     MvpnRoute *mvpn_route = dynamic_cast<MvpnRoute *>(rt);

@@ -183,8 +183,6 @@ public:
         std::vector<ShowRibOutStatistics> *sros_list) const;
     virtual RouteDistinguisher GetSourceRouteDistinguisher(
         const BgpPath *path) const;
-    virtual const IpAddress GetAddressToResolve(BgpRoute *route,
-        const BgpPath *path) const;
     virtual const RouteTarget::List &GetExportList(BgpRoute *rt) const;
 
 private:

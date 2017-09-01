@@ -71,8 +71,6 @@ public:
     MvpnProjectManagerPartition *GetProjectManagerPartition(BgpRoute *rt);
     void UpdateSecondaryTablesForReplication(BgpRoute *rt,
         TableSet *secondary_tables);
-    const IpAddress GetAddressToResolve(BgpRoute *route, const BgpPath *path)
-            const;
     const RouteTarget::List &GetExportList(BgpRoute *rt) const;
     MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
     MvpnPrefix CreateType3SPMSIRoutePrefix(MvpnRoute *type7_rt);

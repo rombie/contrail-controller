@@ -23,6 +23,27 @@ using std::make_pair;
 using std::string;
 using std::vector;
 
+//
+// Return true if the prefix for the BgpRoute is the same as given IpAddress.
+//
+static bool RoutePrefixIsAddress(Address::Family family, const BgpRoute *route,
+    const IpAddress &address) {
+    if (family == Address::INET) {
+        const InetRoute *inet_route = static_cast<const InetRoute *>(route);
+        if (inet_route->GetPrefix().addr() == address.to_v4() &&
+            inet_route->GetPrefix().prefixlen() == Address::kMaxV4PrefixLen) {
+            return true;
+        }
+    } else if (family == Address::INET6) {
+        const Inet6Route *inet6_route = static_cast<const Inet6Route *>(route);
+        if (inet6_route->GetPrefix().addr() == address.to_v6() &&
+            inet6_route->GetPrefix().prefixlen() == Address::kMaxV6PrefixLen) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Return true if prefix matches the address.
 bool PathResolver::RoutePrefixMatch(Address::Family family,
                                     const BgpRoute *route,
@@ -655,9 +676,8 @@ void PathResolverPartition::StartPathResolution(BgpRoute *route,
         return;
 
     Address::Family family = table()->family();
-    const IpAddress address = table()->GetAddressToResolve(route, path);
-    if (table() == nh_table && resolver_->RoutePrefixMatch(family, route,
-                                                           address)) {
+    const IpAddress address = path->GetAttr()->nexthop();
+    if (table() == nh_table && RoutePrefixIsAddress(family, route, address)) {
         return;
     }
 
@@ -872,8 +892,9 @@ ResolverPath::~ResolverPath() {
 //
 void ResolverPath::AddResolvedPath(ResolvedPathList::const_iterator it) {
     BgpPath *path = *it;
-    resolved_path_list_.insert(path);
     const IPeer *peer = path->GetPeer();
+    resolved_path_list_.insert(path);
+    route_->InsertPath(path);
     BGP_LOG_STR(BgpMessage, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         "Added resolved path " << route_->ToString() <<
         " peer " << (peer ? peer->ToString() : "None") <<
@@ -881,7 +902,6 @@ void ResolverPath::AddResolvedPath(ResolvedPathList::const_iterator it) {
         " nexthop " << path->GetAttr()->nexthop().to_string() <<
         " label " << path->GetLabel() <<
         " in table " << partition_->table()->name());
-    route_->InsertPath(path);
 }
 
 //
@@ -890,7 +910,6 @@ void ResolverPath::AddResolvedPath(ResolvedPathList::const_iterator it) {
 //
 void ResolverPath::DeleteResolvedPath(ResolvedPathList::const_iterator it) {
     BgpPath *path = *it;
-    resolved_path_list_.erase(it);
     const IPeer *peer = path->GetPeer();
     BGP_LOG_STR(BgpMessage, SandeshLevel::SYS_DEBUG, BGP_LOG_FLAG_TRACE,
         "Deleted resolved path " << route_->ToString() <<
@@ -900,6 +919,7 @@ void ResolverPath::DeleteResolvedPath(ResolvedPathList::const_iterator it) {
         " label " << path->GetLabel() <<
         " in table " << partition_->table()->name());
     route_->DeletePath(path);
+    resolved_path_list_.erase(it);
 }
 
 //
@@ -1124,6 +1144,11 @@ bool ResolverNexthop::Match(BgpServer *server, BgpTable *table,
     assert(family == Address::INET || family == Address::INET6);
     if (!resolver_->RoutePrefixMatch(family, route, address_))
         return false;
+
+    if (route->table() == table && route->IsUsable() &&
+            route->BestPath()->GetAttr()->nexthop() == address_) {
+        return false;
+    }
 
     // Set or remove MatchState as appropriate.
     BgpConditionListener *condition_listener =

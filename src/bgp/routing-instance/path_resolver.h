@@ -91,7 +91,7 @@ class TaskTrigger;
 //
 class PathResolver {
 public:
-    PathResolver(BgpTable *table);
+    explicit PathResolver(BgpTable *table);
     ~PathResolver();
 
     void StartPathResolution(BgpRoute *route, const BgpPath *path,
