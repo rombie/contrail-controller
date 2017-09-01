@@ -50,13 +50,14 @@ from sandesh.alarmgen_ctrl.ttypes import PartitionOwnershipReq, \
     PartitionOwnershipResp, PartitionStatusReq, UVECollInfo, UVEGenInfo, \
     PartitionStatusResp, UVETableAlarmReq, UVETableAlarmResp, \
     AlarmgenTrace, UVEKeyInfo, UVETypeCount, UVETypeInfo, AlarmgenStatusTrace, \
-    AlarmgenStatus, AlarmgenStats, AlarmgenPartitionTrace, \
+    AlarmgenStatus, AlarmgenStats, AlarmgenPartitionUVE, \
     AlarmgenPartition, AlarmgenPartionInfo, AlarmgenUpdate, \
     UVETableInfoReq, UVETableInfoResp, UVEObjectInfo, UVEStructInfo, \
     UVETablePerfReq, UVETablePerfResp, UVETableInfo, \
     UVEAlarmStateMachineInfo, UVEAlarmState, UVEAlarmOperState,\
     AlarmStateChangeTrace, UVEQTrace, AlarmConfig, AlarmConfigRequest, \
-    AlarmConfigResponse, AlarmgenUVEStats, AlarmgenAlarmStats
+    AlarmConfigResponse, AlarmgenUVEStats, AlarmgenAlarmStats, \
+    AlarmgenPartitionTrace, AlarmExceptionTrace
 
 from opserver_util import AnalyticsDiscovery
 from stevedore import hook, extension
@@ -233,9 +234,10 @@ class AlarmProcessor(object):
 	except Exception as ex:
 	    template = "Exception {0} in Alarm Processing. Arguments:\n{1!r}"
 	    messag = template.format(type(ex).__name__, ex.args)
-            self._logger.error("%s\n UVE:[%s]:%s\n Alarm config: %s\n traceback %s" % \
-                (messag, uv, str(local_uve), alarm.config().alarm_rules,
-                traceback.format_exc()))
+            ae_trace = AlarmExceptionTrace(messag, uv, str(local_uve),
+                str(alarm.config().alarm_rules), traceback.format_exc())
+            ae_trace.trace_msg(name='AlarmExceptionTrace',
+                sandesh=self._sandesh)
             self.uve_alarms[alarm_fqname] = UVEAlarmInfo(type=alarm_fqname,
                     severity=sev, timestamp=0, token="",
                     alarm_rules=AlarmRules(None),
@@ -881,14 +883,6 @@ class Controller(object):
             self._chksum = hashlib.md5("".join(self._conf.collectors())).hexdigest()
             self._conf.random_collectors = random.sample(self._conf.collectors(), \
                                                         len(self._conf.collectors()))
-        self._api_server_checksum = ""
-        api_server_list = self._conf.api_server_config()['api_server_list']
-        if api_server_list:
-            self._api_server_checksum = hashlib.md5("".join(
-                api_server_list)).hexdigest()
-            random_api_servers = random.sample(api_server_list,
-                len(api_server_list))
-            self._conf.set_api_server_list(random_api_servers)
         self._sandesh.init_generator(self._moduleid, self._hostname,
                                       self._node_type_name, self._instance_id,
                                       self._conf.random_collectors,
@@ -937,7 +931,9 @@ class Controller(object):
         self.trace_buf = [
             {'name':'DiscoveryMsg', 'size':1000},
             {'name':'AlarmStateChangeTrace', 'size':1000},
-            {'name':'UVEQTrace', 'size':20000}
+            {'name':'UVEQTrace', 'size':20000},
+            {'name':'AlarmgenPartitionTrace', 'size':10000},
+            {'name':'AlarmExceptionTrace', 'size':1000}
         ]
         # Create trace buffers 
         for buf in self.trace_buf:
@@ -1015,15 +1011,10 @@ class Controller(object):
         self._alarm_config_change_map = {}
 
         # Create config handler to read/update alarm config
-        rabbitmq_params = self._conf.rabbitmq_params()
         self._config_handler = AlarmGenConfigHandler(self._sandesh,
-            self._moduleid, self._instance_id, self.config_log,
-            self._conf.api_server_config(), self._conf.keystone_params(),
-            rabbitmq_params, self.mgrs, self.alarm_config_change_callback)
-        if rabbitmq_params['servers']:
-            self._config_handler.start()
-        else:
-            self._logger.error('Rabbitmq server not configured ')
+            self._moduleid, self._instance_id, self._conf.rabbitmq_params(),
+            self._conf.cassandra_params(), self.mgrs,
+            self.alarm_config_change_callback)
 
         PartitionOwnershipReq.handle_request = self.handle_PartitionOwnershipReq
         PartitionStatusReq.handle_request = self.handle_PartitionStatusReq
@@ -1032,10 +1023,11 @@ class Controller(object):
         UVETablePerfReq.handle_request = self.handle_UVETablePerfReq
         AlarmConfigRequest.handle_request = self.handle_AlarmConfigRequest
 
-    def config_log(self, msg, level):
-        self._sandesh.logger().log(
-            SandeshLogger.get_py_logger_level(level), msg)
-    # end config_log
+    def partition_log(self, msg):
+        self._logger.error(msg)
+        AlarmgenPartitionTrace(msg).trace_msg(name='AlarmgenPartitionTrace',
+            sandesh=self._sandesh)
+    # end partition_log
 
     def libpart_cb(self, part_list):
 
@@ -1047,33 +1039,33 @@ class Controller(object):
         agp.name = self._hostname
         agp.inst_parts = [agpi]
        
-        agp_trace = AlarmgenPartitionTrace(data=agp, sandesh=self._sandesh)
-        agp_trace.send(sandesh=self._sandesh) 
+        agp_uve = AlarmgenPartitionUVE(data=agp, sandesh=self._sandesh)
+        agp_uve.send(sandesh=self._sandesh)
 
         newset = set(part_list)
         oldset = self._partset
         self._partset = newset
 
         try:
-            self._logger.error('Partition List : new %s old %s' % \
+            self.partition_log('Partition List : new %s old %s' % \
                 (str(newset),str(oldset)))
 
-            self._logger.error('Partition Add : %s' % str(newset-oldset))
+            self.partition_log('Partition Add : %s' % str(newset-oldset))
             self.partition_change(newset-oldset, True)
 
-            self._logger.error('Partition Del : %s' % str(oldset-newset))
+            self.partition_log('Partition Del : %s' % str(oldset-newset))
             if not self.partition_change(oldset-newset, False):
                 self._logger.error('Partition Del : %s failed!' % str(oldset-newset))
                 raise SystemExit(1)
 
-	    self._logger.error('Partition Del done: %s' % str(oldset-newset))
+	    self.partition_log('Partition Del done: %s' % str(oldset-newset))
 
         except Exception as ex:
             template = "Exception {0} in Partition List. Arguments:\n{1!r}"
             messag = template.format(type(ex).__name__, ex.args)
-            self._logger.error("%s : traceback %s" % \
+            self.partition_log("%s : traceback %s" % \
                                     (messag, traceback.format_exc()))
-            self._logger.error('Partition List failed %s %s' % \
+            self.partition_log('Partition List failed %s %s' % \
                 (str(newset),str(oldset)))
         except SystemExit:
             raise SystemExit(1)
@@ -1089,7 +1081,7 @@ class Controller(object):
             self._logger.error('Could not import libpartition: No alarmgen list')
             return None
         try:
-            self._logger.error('Starting PC')
+            self.partition_log('Starting Partition Client')
             agpi = AlarmgenPartionInfo()
             agpi.instance = self._instance_id
             agpi.partitions = []
@@ -1098,14 +1090,15 @@ class Controller(object):
             agp.name = self._hostname
             agp.inst_parts = [agpi]
            
-            agp_trace = AlarmgenPartitionTrace(data=agp, sandesh=self._sandesh)
-            agp_trace.send(sandesh=self._sandesh) 
+            agp_uve = AlarmgenPartitionUVE(data=agp, sandesh=self._sandesh)
+            agp_uve.send(sandesh=self._sandesh)
 
-            pc = PartitionClient(self._conf.kafka_prefix() + "-alarmgen",
+            app_name = self._conf.kafka_prefix() + "-alarmgen"
+            pc = PartitionClient(app_name,
                     self._libpart_name, ag_list,
                     self._conf.partitions(), self.libpart_cb,
                     ','.join(self._conf.zk_list()), self._logger)
-            self._logger.error('Started PC %s' % self._conf.kafka_prefix() + "-alarmgen")
+            self.partition_log('Started Partition Client %s' % (app_name))
             return pc
         except Exception as e:
             self._logger.error('Could not import libpartition: %s' % str(e))
@@ -1200,9 +1193,12 @@ class Controller(object):
 		    sandesh=self._sandesh)
             del self._uveq[part]
 
-    def clear_agg_uve(self, redish, inst, part, acq_time):
-	self._logger.error("Agg %s reset part %d, acq %d" % \
+    def clear_agg_uve(self, redish, inst, part, acq_time=None):
+        if acq_time:
+            self.partition_log("Agg %s reset part %d, acq %d" % \
 		(inst, part, acq_time))
+        else:
+            self.partition_log('Agg %s clear part %d' % (inst, part))
 	ppe2 = redish.pipeline()
 	ppe2.hdel("AGPARTS:%s" % inst, part)
 	ppe2.smembers("AGPARTKEYS:%s:%d" % (inst, part))
@@ -1212,8 +1208,11 @@ class Controller(object):
 	for elem in pperes2[-1]:
 	    ppe3.delete("AGPARTVALUES:%s:%d:%s" % (inst, part, elem))
 	ppe3.delete("AGPARTKEYS:%s:%d" % (inst, part))
-	ppe3.hset("AGPARTS:%s" % inst, part, acq_time)
+        if acq_time:
+            ppe3.hset("AGPARTS:%s" % inst, part, acq_time)
 	pperes3 = ppe3.execute()
+        self.partition_log('Agg %s clear/reset partition %d done' % \
+            (inst, part))
 
     def send_agg_uve(self, redish, inst, part, acq_time, rows):
         """ 
@@ -1374,6 +1373,8 @@ class Controller(object):
                         (part, self._uveqf[part]))
                 self.stop_uve_partition(part)
                 del self._uveqf[part]
+                if lredis:
+                    self.clear_agg_uve(lredis, self._instance_id, part)
                 if part in self._uveq:
 		    uveq_trace = UVEQTrace()
 		    uveq_trace.uves = self._uveq[part].keys()
@@ -2018,10 +2019,14 @@ class Controller(object):
         status = False
         if enl:
             if len(parts - set(self._workers.keys())) != len(parts):
-                self._logger.info("Dup partitions %s" % \
+                self.partition_log("Dup partitions %s" % \
                     str(parts.intersection(set(self._workers.keys()))))
             else:
+                lredis = StrictRedisWrapper(host="127.0.0.1",
+                            port=self._conf.redis_server_port(),
+                            password=self._conf.redis_password(), db=7)
                 for partno in parts:
+                    self.clear_agg_uve(lredis, self._instance_id, partno)
                     ph = UveStreamProc(','.join(self._conf.kafka_broker_list()),
                             partno, self._conf.kafka_prefix()+"-uve-" + str(partno),
                             self._logger,
@@ -2052,21 +2057,22 @@ class Controller(object):
                     #       but it still might start later.
                     #       We possibly need to exit
                     status = False
-                    self._logger.error("Unable to start partitions %s" % \
+                    self.partition_log("Unable to start partitions %s" % \
                             str(parts - set(self._uveq.keys())))
         else:
             if len(parts - set(self._workers.keys())) == 0:
                 for partno in parts:
                     ph = self._workers[partno]
-                    self._logger.error("Kill part %s" % str(partno))
+                    self.partition_log("Kill partition %s" % str(partno))
                     ph.kill(timeout=60)
                     try:
                         res,db = ph.get(False)
                     except gevent.Timeout:
-                        self._logger.error("Unable to kill partition %d" % partno)
+                        self.partition_log("Unable to kill partition %d" % partno)
                         return False
 
-                    self._logger.error("Returned " + str(res))
+                    self.partition_log("Partition %d kill returned %s" % \
+                        (partno, str(res)))
                     self._uveqf[partno] = self._workers[partno].acq_time()
                     del self._workers[partno]
                     del self._uvestats[partno]
@@ -2074,7 +2080,7 @@ class Controller(object):
 
                 tout = 1200
                 idx = 0
-                self._logger.error("Wait for parts %s to exit" % str(parts))
+                self.partition_log("Wait for partitions %s to exit" % str(parts))
                 while idx < tout:
                     # When this partitions stop.s
                     # uveq will get destroyed
@@ -2085,16 +2091,16 @@ class Controller(object):
                     idx += 1
                 if len(parts - set(self._uveq.keys())) == len(parts):
                     status = True 
-                    self._logger.error("Wait done for parts %s to exit" % str(parts))
+                    self.partition_log("Wait done for partitions %s to exit" % str(parts))
                 else:
                     # TODO: The partition has not stopped yet
                     #       but it still might stop later.
                     #       We possibly need to exit
                     status = False
-                    self._logger.error("Unable to stop partitions %s" % \
+                    self.partition_log("Unable to stop partitions %s" % \
                             str(parts.intersection(set(self._uveq.keys()))))
             else:
-                self._logger.error("Partitions absent in %s" % str(parts))
+                self.partition_log("Partitions absent in %s" % str(parts))
 
         return status
     
@@ -2384,7 +2390,8 @@ class Controller(object):
         self._logger.error(trace_sandesh.log(trace=True))
 
     def run(self):
-        self.gevs = [ gevent.spawn(self.run_process_stats),
+        self.gevs = [ gevent.spawn(self._config_handler.start),
+                      gevent.spawn(self.run_process_stats),
                       gevent.spawn(self.run_uve_processing),
                       gevent.spawn(self._us.run)]
         if self._ad is not None:
@@ -2456,23 +2463,6 @@ class Controller(object):
                         redis_elem = (redis_ip_port[0], int(redis_ip_port[1]))
                         redis_uve_list.append(redis_elem)
                     self._us.update_redis_uve_list(redis_uve_list)
-            if 'API_SERVER' in config.sections():
-                try:
-                    api_servers = config.get('API_SERVER', 'api_server_list')
-                except ConfigParser.NoOptionError:
-                    pass
-                else:
-                    if isinstance(api_servers, basestring):
-                        api_servers = api_servers.split()
-                    new_api_server_checksum = hashlib.md5("".join(
-                        api_servers)).hexdigest()
-                    if new_api_server_checksum != self._api_server_checksum:
-                        self._api_server_checksum = new_api_server_checksum
-                        random_api_servers = random.sample(api_servers,
-                            len(api_servers))
-                        self._conf.set_api_server_list(random_api_servers)
-                        self._config_handler.update_api_server_list(
-                            random_api_servers)
       # end sighup_handler
 
 def setup_controller(argv):

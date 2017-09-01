@@ -288,8 +288,6 @@ void FlowData::Reset() {
     vm_cfg_name = "";
     bgp_as_a_service_port = 0;
     bgp_health_check_uuid = nil_uuid();
-    bgp_health_check_service = NULL;
-    bgp_health_check_instance = NULL;
     acl_assigned_vrf_index_ = VrfEntry::kInvalidIndex;
     qos_config_idx = AgentQosConfigTable::kInvalidIndex;
     ttl = 0;
@@ -574,16 +572,9 @@ bool FlowEntry::InitFlowCmn(const PktFlowInfo *info, const PktControlInfo *ctrl,
     }
     if (info->bgp_router_service_flow) {
         set_flags(FlowEntry::BgpRouterService);
-        if (info->bgp_health_check_configured) {
-            set_flags(FlowEntry::BgpHealthCheckService);
-            data_.bgp_health_check_uuid = info->bgp_health_check_uuid;
-        } else {
-            reset_flags(FlowEntry::BgpHealthCheckService);
-        }
         data_.bgp_as_a_service_port = info->nat_sport;
     } else {
         reset_flags(FlowEntry::BgpRouterService);
-        reset_flags(FlowEntry::BgpHealthCheckService);
         data_.bgp_as_a_service_port = 0;
     }
 
@@ -639,6 +630,14 @@ void FlowEntry::InitFwdFlow(const PktFlowInfo *info, const PktInfo *pkt,
         if (info->ttl == 1) {
             data_.ttl = BGP_SERVICE_TTL_FWD_FLOW;
         }
+        if (info->bgp_health_check_configured) {
+            set_flags(FlowEntry::BgpHealthCheckService);
+            data_.bgp_health_check_uuid = info->bgp_health_check_uuid;
+        } else {
+            reset_flags(FlowEntry::BgpHealthCheckService);
+        }
+    } else {
+        reset_flags(FlowEntry::BgpHealthCheckService);
     }
 
     data_.flow_source_vrf = info->flow_source_vrf;
@@ -1242,6 +1241,53 @@ void FlowEntry::RpfUpdate() {
     }
 }
 
+bool FlowEntry::IsClientFlow() {
+    /*
+     * If the flow is Local + Ingress + Forward
+     * then it will be considered as client session
+     */
+    if ((is_flags_set(FlowEntry::LocalFlow)) &&
+        (is_flags_set(FlowEntry::IngressDir)) &&
+        (!(is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+    /*
+     * If the flow is (Ingress + Forward) OR
+     *                (Egress + Reverse)
+     * then it will be consideres as client session
+     */
+    if (((is_flags_set(FlowEntry::IngressDir)) &&
+         (!(is_flags_set(FlowEntry::ReverseFlow)))) ||
+        ((!(is_flags_set(FlowEntry::IngressDir))) &&
+         (is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+     return false;
+}
+
+bool FlowEntry::IsServerFlow() {
+    /*
+     * If the flow is Local + Ingress + Reverse
+     * then it will be considered as server session
+     */
+    if ((is_flags_set(FlowEntry::LocalFlow)) &&
+        (is_flags_set(FlowEntry::IngressDir)) &&
+        (is_flags_set(FlowEntry::ReverseFlow))) {
+        return true;
+    }
+    /*
+     * If the flow is (Egress + Forward) OR
+     *                (Ingress + Reverse)
+     * then it will be consideres as server session
+     */
+    if (((!(is_flags_set(FlowEntry::IngressDir))) &&
+         (!(is_flags_set(FlowEntry::ReverseFlow)))) ||
+        ((is_flags_set(FlowEntry::IngressDir)) &&
+         (is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+    return false;
+}
 /////////////////////////////////////////////////////////////////////////////
 // Flow entry fileds updation routines
 /////////////////////////////////////////////////////////////////////////////

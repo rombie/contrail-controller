@@ -1221,16 +1221,22 @@ class VncDbClient(object):
 
     def _owner_id(self):
         env = get_request().headers.environ
-        tenant_uuid = env.get('HTTP_X_PROJECT_ID')
+        try:
+            tenant_uuid = env.get('HTTP_X_PROJECT_ID')
+        except (TypeError):
+            tenant_uuid = None
+        except (ValueError):
+            tenant_uuid = None
+
         domain = env.get('HTTP_X_DOMAIN_ID')
         if domain is None:
             domain = env.get('HTTP_X_USER_DOMAIN_ID')
             try:
                 domain = str(uuid.UUID(domain))
-            except ValueError:
-                if domain == 'default':
+            except (ValueError, TypeError):
+                if domain == 'default' or domain is None:
                     domain = 'default-domain'
-                domain = self._db_conn.fq_name_to_uuid('domain', [domain])
+                domain = self._object_db.fq_name_to_uuid('domain', [domain])
         if domain:
             domain = domain.replace('-', '')
         return domain, tenant_uuid

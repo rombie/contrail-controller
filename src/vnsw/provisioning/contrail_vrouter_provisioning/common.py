@@ -47,7 +47,7 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
             # so vhost0 should be treated as dev,
             # which is used to get netmask/gateway
             if 'vhost0' in netifaces.interfaces():
-                self.dev = vhost0
+                self.dev = 'vhost0'
             # During intial provision actual interface should be treated as dev
             # which is used to get netmask/gateway
             elif self._args.physical_interface in netifaces.interfaces():
@@ -431,7 +431,7 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
             self.mac = self.get_config(cfg_file, section, key).strip()
             section = "VIRTUAL-HOST-INTERFACE"
             key = "ip"
-            self.cidr = self.get_config(cfg_file, section, key).strip()
+            self.cidr = netaddr.IPNetwork(self.get_config(cfg_file, section, key).strip())
             section = "VIRTUAL-HOST-INTERFACE"
             key = "gateway"
             self.gateway = self.get_config(cfg_file, section, key).strip()
@@ -541,6 +541,10 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                                    for server in self._args.control_nodes)
             collector_servers = ' '.join('%s:%s' % (server, '8086')
                                          for server in self._args.collectors)
+            if self._args.tsn_evpn_mode and self._args.tsn_servers:
+                tsn_servers = ' '.join(self._args.tsn_servers)
+            else:
+                tsn_servers = ''
             configs = {
                 'DEFAULT': {
                     'platform': platform_mode,
@@ -549,7 +553,9 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                     'physical_interface_mac': self.mac,
                     'collectors': collector_servers,
                     'xmpp_auth_enable': self._args.xmpp_auth_enable,
-                    'xmpp_dns_auth_enable': self._args.xmpp_dns_auth_enable},
+                    'xmpp_dns_auth_enable': self._args.xmpp_dns_auth_enable,
+                    'tsn_servers': tsn_servers,
+                    'agent_mode': ''},
                 'NETWORKS': {
                     'control_network_ip': compute_ip},
                 'VIRTUAL-HOST-INTERFACE': {
@@ -625,6 +631,9 @@ class CommonComputeSetup(ContrailSetup, ComputeNetworkSetup):
                 self.fixup_vhost0_interface_configs()
 
     def config_vhost0_interface_in_container(self):
+        if self.reprov:
+            log.info("vhost0 configuration already present")
+            return
         # Insert vrouter and setup vrouter vifs
         insert_cmd = "source /opt/contrail/bin/vrouter-functions.sh && "
         insert_cmd += "insert_vrouter"
@@ -897,9 +906,12 @@ SUBCHANNELS=1,2,3
 
     def start_tsn_service(self):
         nova_conf_file = '/etc/contrail/contrail-vrouter-agent.conf'
+        mode = 'tsn'
+        if self._args.tsn_evpn_mode:
+            mode = 'tsn-no-forwarding'
         local(
-            "openstack-config --set %s DEFAULT agent_mode tsn" %
-            nova_conf_file)
+            "openstack-config --set %s DEFAULT agent_mode %s" %
+            (nova_conf_file, mode))
 
     def setup_tsn_node(self):
         self.disable_nova_compute()
@@ -954,7 +966,7 @@ SUBCHANNELS=1,2,3
         self.fixup_config_files()
         self.increase_vrouter_limit()
         self.setup_sriov_grub()
-        if self._args.tsn_mode:
+        if self._args.tsn_mode or self._args.tsn_evpn_mode:
             self.setup_tsn_node()
             self.run_services()
         else:

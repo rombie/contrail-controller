@@ -38,6 +38,7 @@ from cStringIO import StringIO
 
 from cfgm_common import vnc_cgitb
 from cfgm_common import has_role
+from cfgm_common import _obj_serializer_all
 
 from cfgm_common.uve.vnc_api.ttypes import VncApiLatencyStats, VncApiLatencyStatsLog
 logger = logging.getLogger(__name__)
@@ -756,7 +757,9 @@ class VncApiServer(object):
 
             # build new links in returned dict based on permissions on linked object
             ret_obj_dict[link_field] = [l for l in links
-                if self._permissions.check_perms_read(get_request(), l['uuid'], obj_dict=uuid_to_obj_dict[l['uuid']])[0] == True]
+                if ((l['uuid'] in uuid_to_obj_dict) and
+                    (self._permissions.check_perms_read( get_request(),
+                      l['uuid'], obj_dict=uuid_to_obj_dict[l['uuid']])[0] == True))]
 
         return ret_obj_dict
     # end obj_view
@@ -2588,6 +2591,37 @@ class VncApiServer(object):
         # set ownership of object to creator tenant
         if obj_type == 'project' and 'uuid' in obj_dict:
             perms2['owner'] = str(obj_dict['uuid']).replace('-','')
+
+        elif ('perms2' in obj_dict and obj_dict['perms2'] and
+              obj_dict['perms2']['owner']):
+            perms2['owner'] = obj_dict['perms2']['owner']
+
+        elif 'fq_name' in obj_dict and obj_dict['fq_name'][:-1]:
+            try:
+                if 'parent_type' in obj_dict:
+                    parent_type = obj_dict['parent_type'].replace('-', '_')
+                else:
+                    r_class = self.get_resource_class(obj_type)
+                    if (len(r_class.parent_types) != 1):
+                        raise cfgm_common.exceptions.HttpError(404,
+                              '' + 'parent_type needed')
+                    parent_type = r_class.parent_types[0]
+                    parent_type = parent_type.replace('-', '_')
+                parent_fq_name = obj_dict['fq_name'][:-1]
+                parent_uuid = self._db_conn.fq_name_to_uuid(parent_type,
+                                                            parent_fq_name)
+                (ok, parent_obj_dict) = self._db_conn.dbe_read(parent_type,
+                                                       parent_uuid,
+                                                       obj_fields=['perms2'])
+                if parent_type == 'domain':
+                    perms2['owner'] = parent_uuid
+                else:
+                    perms2['owner'] = parent_obj_dict['perms2']['owner']
+            except:
+                 raise cfgm_common.exceptions.HttpError(404,
+                       '' + parent_type + ' ' + pformat(parent_fq_name) +
+                       ' not present')
+
         elif project_id:
             perms2['owner'] = project_id
 
@@ -2699,6 +2733,13 @@ class VncApiServer(object):
 
         self._create_singleton_entry(DiscoveryServiceAssignment())
         self._create_singleton_entry(GlobalQosConfig())
+
+        sc_ipam_subnet_v4 = IpamSubnetType(subnet=SubnetType('0.0.0.0', 8))
+        sc_ipam_subnet_v6 = IpamSubnetType(subnet=SubnetType('::ffff', 104))
+        sc_ipam_subnets = IpamSubnets([sc_ipam_subnet_v4, sc_ipam_subnet_v6])
+        sc_ipam_obj = NetworkIpam('service-chain-flat-ipam',
+                ipam_subnet_method="flat-subnet", ipam_subnets=sc_ipam_subnets)
+        self._create_singleton_entry(sc_ipam_obj)
 
         if int(self._args.worker_id) == 0:
             self._db_conn.db_resync()
@@ -2817,7 +2858,8 @@ class VncApiServer(object):
         try:
             id = self._db_conn.fq_name_to_uuid(obj_type, fq_name)
         except NoIdError:
-            obj_dict = s_obj.serialize_to_json()
+            obj_json = json.dumps(s_obj, default=_obj_serializer_all)
+            obj_dict = json.loads(obj_json)
             obj_dict['id_perms'] = self._get_default_id_perms()
             obj_dict['perms2'] = self._get_default_perms2()
             (ok, result) = self._db_conn.dbe_alloc(obj_type, obj_dict)

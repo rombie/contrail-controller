@@ -298,9 +298,12 @@ class DBInterface(object):
                 # if instance_id is not a valid uuid, let
                 # virtual_machine_create generate uuid for the vm
                 pass
-            self._vnc_lib.virtual_machine_create(instance_obj)
             # set instance ownership to real tenant
-            self._vnc_lib.chown(instance_id, tenant_id)
+            perms2 = PermType2()
+            perms2.owner = tenant_id
+            instance_obj.set_perms2(perms2)
+            # create object
+            self._vnc_lib.virtual_machine_create(instance_obj)
         except RefsExistError as e:
             instance_obj = self._vnc_lib.virtual_machine_read(id=instance_obj.uuid)
 
@@ -486,7 +489,8 @@ class DBInterface(object):
                                               fields=fields,
                                               detail=detail,
                                               count=count,
-                                              filters=filters)
+                                              filters=filters,
+                                              shared=True)
     #end _virtual_network_list
 
     def _virtual_machine_interface_read(self, port_id=None, fq_name=None,
@@ -1402,7 +1406,7 @@ class DBInterface(object):
         net_q_dict['tenant_id'] = net_obj.parent_uuid.replace('-', '')
         net_q_dict['project_id'] = net_obj.parent_uuid.replace('-', '')
         net_q_dict['admin_state_up'] = id_perms.enable
-        if net_obj.is_shared:
+        if net_obj.is_shared or (net_obj.perms2 and len(net_obj.perms2.share)):
             net_q_dict['shared'] = True
         else:
             net_q_dict['shared'] = False
@@ -1616,7 +1620,7 @@ class DBInterface(object):
                 host_route_dict_list.append(host_route_entry)
         sn_q_dict['routes'] = host_route_dict_list
 
-        if net_obj.is_shared:
+        if net_obj.is_shared or (net_obj.perms2 and len(net_obj.perms2.share)):
             sn_q_dict['shared'] = True
         else:
             sn_q_dict['shared'] = False
@@ -2949,8 +2953,12 @@ class DBInterface(object):
                 continue
             if net_obj.is_shared is None:
                 is_shared = False
+            elif net_obj.is_shared or (
+                             net_obj.perms2 and len(net_obj.perms2.share)):
+                is_shared = True
             else:
-                is_shared = net_obj.is_shared
+                is_shared = False
+
             if not self._filters_is_present(filters, 'shared',
                                             is_shared):
                 continue
@@ -3194,13 +3202,13 @@ class DBInterface(object):
                     ipam_ref['attr'].set_ipam_subnets(new_subnets)
                     net_obj._pending_field_updates.add('network_ipam_refs')
                     try:
-                        self._virtual_network_update(net_obj)
+                        self._vnc_lib.virtual_network_update(net_obj)
                     except RefsExistError:
                         self._raise_contrail_exception('SubnetInUse',
                                                        subnet_id=subnet_id)
 
                     return
-    #end subnet_delete
+    # end subnet_delete
 
     @wait_for_api_server_connection
     def subnets_list(self, context, filters=None):
@@ -3957,10 +3965,13 @@ class DBInterface(object):
         if ip_addr:
             ip_obj.set_instance_ip_address(ip_addr)
 
-        ip_id = self._instance_ip_create(ip_obj)
         # set instance ip ownership to real tenant
+        perms2 = PermType2()
         tenant_id = self._get_obj_tenant_id('port', port_obj.get_uuid())
-        self._vnc_lib.chown(ip_id, tenant_id)
+        perms2.owner = tenant_id
+        ip_obj.set_perms2(perms2)
+        # create instance
+        ip_id = self._instance_ip_create(ip_obj)
         return ip_id
     # end _create_instance_ip
 
@@ -4035,6 +4046,11 @@ class DBInterface(object):
         # initialize port object
         port_obj = self._port_neutron_to_vnc(port_q, net_obj, CREATE)
 
+        # change owner
+        perms2 = PermType2()
+        perms2.owner = tenant_id
+        port_obj.set_perms2(perms2)
+
         # always request for v4 and v6 ip object and handle the failure
         # create the object
         try:
@@ -4049,7 +4065,6 @@ class DBInterface(object):
                 self._raise_contrail_exception(
                    'BadRequest', resource='port', msg=str(e))
 
-        self._vnc_lib.chown(port_id, tenant_id)
         # add support, nova boot --nic subnet-id=subnet_uuid
         subnet_id = port_q.get('subnet_id')
         if 'fixed_ips' in port_q:

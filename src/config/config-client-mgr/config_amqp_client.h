@@ -2,8 +2,8 @@
  * Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
  */
 
-#ifndef ctrlplane_config_amqp_client_h
-#define ctrlplane_config_amqp_client_h
+#ifndef config_amqp_client_h
+#define config_amqp_client_h
 
 #include <string>
 #include <vector>
@@ -13,7 +13,7 @@
 #include <SimpleAmqpClient/SimpleAmqpClient.h>
 #include <tbb/atomic.h>
 
-struct IFMapConfigOptions;
+struct ConfigClientOptions;
 class ConfigClientManager;
 struct ConfigAmqpConnInfo;
 
@@ -25,6 +25,16 @@ public:
 
     virtual AmqpClient::Channel::ptr_t CreateFromUri(std::string uri) {
         return (channel_ = AmqpClient::Channel::CreateFromUri(uri));
+    }
+
+    virtual AmqpClient::Channel::ptr_t CreateSecure(
+            std::string ca_cert, std::string host, std::string client_key,
+            std::string client_cert, int port, std::string username,
+            std::string password, std::string vhost, int frame_max = 131072,
+            bool verify_hostname = false) {
+        return (channel_ = AmqpClient::Channel::CreateSecure(ca_cert, host,
+                    client_key, client_cert, port, username, password, vhost,
+                    frame_max , verify_hostname));
     }
 
     virtual void DeclareExchange(const std::string &exchange_name,
@@ -78,7 +88,7 @@ class ConfigAmqpClient {
 public:
     typedef boost::asio::ip::tcp::endpoint Endpoint;
     ConfigAmqpClient(ConfigClientManager *mgr, std::string hostname,
-                 std::string module_name, const IFMapConfigOptions &options);
+                 std::string module_name, const ConfigClientOptions &options);
     virtual ~ConfigAmqpClient() { }
 
     void StartRabbitMQReader();
@@ -162,4 +172,4 @@ private:
     tbb::atomic<uint64_t> connection_status_change_at_;
 };
 
-#endif // ctrlplane_config_amqp_client_h
+#endif  // config_amqp_client_h

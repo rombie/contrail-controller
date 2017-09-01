@@ -667,6 +667,10 @@ public:
 
         bool operator() (const AllowedAddressPair &lhs,
                          const AllowedAddressPair &rhs) const;
+        bool operator == (const  AllowedAddressPair &rhs) const {
+            return ((mac_ == rhs.mac_) && (addr_ == rhs.addr_) &&
+                    (plen_ == rhs.plen_));
+        }
         bool IsLess(const AllowedAddressPair *rhs) const;
 
         void Copy(const Agent *agent, const VmInterface *vmi) const;
@@ -825,7 +829,8 @@ public:
         InstanceIp();
         InstanceIp(const InstanceIp &rhs);
         InstanceIp(const IpAddress &ip, uint8_t plen, bool ecmp,
-                   bool is_primary, bool is_service_health_check_ip,
+                   bool is_primary, bool is_service_ip,
+                   bool is_service_health_check_ip,
                    bool is_local, const IpAddress &tracking_ip);
         ~InstanceIp();
         bool operator == (const InstanceIp &rhs) const;
@@ -863,6 +868,7 @@ public:
         mutable uint8_t plen_;
         mutable bool ecmp_;
         mutable bool is_primary_;
+        mutable bool is_service_ip_;  // used for service chain nexthop
         mutable bool is_service_health_check_ip_;
         mutable bool is_local_;
         mutable IpAddress tracking_ip_;

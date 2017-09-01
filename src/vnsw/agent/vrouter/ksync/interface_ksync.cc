@@ -16,6 +16,7 @@
 #include <ksync/ksync_object.h>
 #include <ksync/ksync_netlink.h>
 #include <ksync/ksync_sock.h>
+#include <vrouter/ksync/ksync_agent_sandesh.h>
 #include <init/agent_param.h>
 #include "vrouter/ksync/agent_ksync_types.h"
 #include "vr_types.h"
@@ -446,6 +447,13 @@ bool InterfaceKSyncEntry::Sync(DBEntry *e) {
             fat_flow_list_ = vm_intf->fat_flow_list();
             ret = true;
         }
+        if ((allowed_address_pair_list_.list_.size() !=
+             vm_intf->allowed_address_pair_list().list_.size()) ||
+            (allowed_address_pair_list_.list_ !=
+             vm_intf->allowed_address_pair_list().list_)) {
+            allowed_address_pair_list_ = vm_intf->allowed_address_pair_list();
+            ret = true;
+        }
         pbb_mac_ = vm_intf->vm_mac();
     }
     case Interface::PACKET:
@@ -682,9 +690,18 @@ int InterfaceKSyncEntry::Encode(sandesh_op::type op, char *buf, int buf_len) {
         encoder.set_vifr_mac(intf_mac);
 
         if (ksync_obj_->ksync()->agent()->isVmwareVcenterMode()) {
-            encoder.set_vifr_src_mac(std::vector<int8_t>
-                                     ((const int8_t *)smac(),
-                                      (const int8_t *)smac() + smac().size()));
+            std::vector<int8_t> mac;
+            mac.insert(mac.begin(), (const int8_t *)smac(),
+                       (const int8_t *)smac() + smac().size());
+            VmInterface::AllowedAddressPairSet::iterator it =
+                allowed_address_pair_list_.list_.begin();
+            while (it != allowed_address_pair_list_.list_.end()) {
+                const VmInterface::AllowedAddressPair &aap_entry = *it;
+                mac.insert(mac.end(), (const int8_t *)aap_entry.mac_,
+                          (const int8_t *)aap_entry.mac_ + aap_entry.mac_.size());
+                it++;
+            }
+            encoder.set_vifr_src_mac(mac);
         }
 
         // Disable fat-flow when health-check status is inactive
@@ -1022,4 +1039,152 @@ InterfaceKSyncObject::DBEntryFilter(const DBEntry *entry,
 void vr_response::Process(SandeshContext *context) {
     AgentSandeshContext *ioc = static_cast<AgentSandeshContext *>(context);
     ioc->SetErrno(ioc->VrResponseMsgHandler(this));
+}
+
+void InterfaceKSyncEntry::SetKsyncItfSandeshData(KSyncItfSandeshData *data) const {
+
+    data->set_analyzer_name(analyzer_name_);
+
+    if (drop_new_flows_) {
+        data->set_drop_new_flows("Enable");
+    } else {
+        data->set_drop_new_flows("Disable");
+    }
+
+    if (dhcp_enable_) {
+        data->set_dhcp_service("Enable");
+    } else {
+        data->set_dhcp_service("Disable");
+    }
+
+    data->set_fd(fd_);
+    data->set_flow_key_nh_id(flow_key_nh_id_);
+
+    if (has_service_vlan_) {
+        data->set_has_service_vlan("Enable");
+    } else {
+        data->set_has_service_vlan("Disable");
+    }
+
+    data->set_interface_id(interface_id_);
+    data->set_interface_name(interface_name_);
+    data->set_ip(ip_);
+
+    if (hc_active_) {
+        data->set_health_check("Active");
+    } else {
+        data->set_health_check("Inactive");
+    }
+
+    if (ipv4_active_) {
+        data->set_ipv4_active("Active");
+    } else {
+        data->set_ipv4_active("Inactive");
+    }
+
+    if (layer3_forwarding_) {
+        data->set_layer3_forwarding("Enable");
+    } else {
+        data->set_layer3_forwarding("Disable");
+    }
+
+    if (l2_active_) {
+        data->set_l2_active("Active");
+    } else {
+        data->set_l2_active("Inactive");
+    }
+
+    if (metadata_l2_active_) {
+        data->set_metadata_l2_active("Active");
+    } else {
+        data->set_metadata_l2_active("Inactive");
+    }
+
+
+    if (metadata_ip_active_) {
+        data->set_metadata_ip_active("Active");
+    } else {
+        data->set_metadata_ip_active("Inactive");
+    }
+
+    if (bridging_) {
+        data->set_bridging("Enable");
+    } else {
+        data->set_l2_active("Disable");
+    }
+
+    data->set_mac(mac_.ToString());
+    data->set_smac(smac_.ToString());
+    data->set_network_id(network_id_);
+    data->set_os_index(os_index_);
+
+    if (policy_enabled_) {
+        data->set_policy_enabled("Enable");
+    } else {
+        data->set_policy_enabled("Disable");
+    }
+
+    data->set_rx_vlan_id(rx_vlan_id_);
+    data->set_tx_vlan_id(tx_vlan_id_);
+    data->set_vrf_id(vrf_id_);
+
+    if (persistent_) {
+        data->set_persistent("Enable");
+    } else {
+        data->set_persistent("Disable");
+    }
+
+    if (no_arp_) {
+        data->set_no_arp("Enable");
+    } else {
+        data->set_no_arp("Disable");
+    }
+
+    data->set_display_name(display_name_);
+
+    if (flood_unknown_unicast_) {
+        data->set_flood_unknown_unicast("Enable");
+    } else {
+        data->set_flood_unknown_unicast("Disable");
+    }
+
+    if (learning_enabled_) {
+        data->set_learning("Enable");
+    } else {
+        data->set_learning("Disable");
+    }
+
+    data->set_isid(isid_);
+    data->set_pbb_cmac_vrf(pbb_cmac_vrf_);
+    data->set_pbb_mac(pbb_mac_.ToString());
+
+    if (etree_leaf_) {
+        data->set_etree_leaf("Enable");
+    } else {
+        data->set_etree_leaf("Disable");
+    }
+
+    if (pbb_interface_) {
+        data->set_pbb_interface("Enable");
+    } else {
+        data->set_pbb_interface("Disable");
+    }
+}
+
+bool InterfaceKSyncEntry::KSyncEntrySandesh(Sandesh *sresp) {
+    KSyncItfResp *resp = static_cast<KSyncItfResp *> (sresp);
+
+    KSyncItfSandeshData data;
+    SetKsyncItfSandeshData(&data);
+    std::vector<KSyncItfSandeshData> &list =
+            const_cast<std::vector<KSyncItfSandeshData>&>(resp->get_KSyncitf_list());
+    list.push_back(data);
+
+    return true;
+}
+
+void KSyncItfReq::HandleRequest() const {
+    AgentKsyncSandeshPtr sand(new AgentKsyncIntfSandesh(context()));
+    sand->DoKsyncSandesh(sand);
+
 }
