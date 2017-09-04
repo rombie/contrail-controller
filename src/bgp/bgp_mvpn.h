@@ -239,7 +239,7 @@ private:
 //
 // This is a refcounted class which is referred by DB States of different
 // routes. When the refcount reaches 0, (last referring db state is deleted),
-// this object is destroyed.
+// this object is deleted from the container map and then destroyed.
 //
 // global_ermvpn_tree_rt_
 //     This is a reference to GlobalErmVpnRoute associated with the ErmVpnTree
@@ -250,7 +250,7 @@ private:
 //     This is the 'only' Type3 SPMSI sender route originated for this S,G.
 //     When an agent indicates that it has an active sender for a particular
 //     <S,G> via Join route, then this route is originated (if there is atleast
-//     one active reeiver)
+//     one active receiver)
 //
 // spmsi_routes_received_
 //     This is a set of all Type3 spmsi routes received for this <S-G>. It is
@@ -258,11 +258,29 @@ private:
 //     tree route to use for forwarding in the data plane. In such a case, later
 //     when global_ermvpn_tree_rt_ does get updated, all leaf ad routes in this
 //     set are notified and re-evaluated.
+//
+// leafad_routes_received_
+//     This is a map of all type 4 leaf ad routes originated (in response to
+//     received/imported type-3 spmsi routes. For each route, associated path
+//     attributes of the best path are stored as value inside the map. Whenever
+//     this map changes or when a new type-5 source active route is received,
+//     the correspnding sender agent is notified with the olist that contains
+//     the PMSI attributes as received in leafad routes path attributes.
+//
+// states_
+//     This is the parent map that holds 'this' MvpnState pointer as the value
+//     for the associated SG key. When the refcount reaches zero, it indicates
+//     that there is no reference to this state from of the DB States associated
+//     with any Mvpn route. Hence at that time, this state is removed this map
+//     states_ and destroyed. This map actually sits inside the associated
+//     MvpnProjectManagerParitition object.
 class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
     typedef std::map<MvpnRoute *, BgpAttrPtr> RoutesMap;
 
+    // Simple structure to hold <S,G>. Source as "0.0.0.0" can be used to encode
+    // <*,G> as well.
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
         SG(const IpAddress &source, const IpAddress &group);
@@ -309,10 +327,15 @@ private:
     DISALLOW_COPY_AND_ASSIGN(MvpnState);
 };
 
+// Increment refcont atomically.
 inline void intrusive_ptr_add_ref(MvpnState *mvpn_state) {
     mvpn_state->refcount_.fetch_and_increment();
 }
 
+// Decrement refcount of an mvpn_state. If the refcount falls to 1, it implies
+// that there is no more reference to this particular state from any other data
+// structure. Hence, it can be deleted from the container map and destroyed as
+// well.
 inline void intrusive_ptr_release(MvpnState *mvpn_state) {
     int prev = mvpn_state->refcount_.fetch_and_decrement();
     if (prev > 1)
@@ -333,7 +356,7 @@ inline void intrusive_ptr_release(MvpnState *mvpn_state) {
 // associated route.
 //
 // Note: Routes are never deleted until the DB state is deleted. MvpnState which
-// is refcounted is also never deleted until there is no MvpnDBState that refers
+// is refcounted is also deleted only when there is no MvpnDBState that refers
 // to it.
 struct MvpnDBState : public DBState {
     MvpnDBState();
@@ -342,6 +365,7 @@ struct MvpnDBState : public DBState {
     explicit MvpnDBState(MvpnStatePtr state);
     explicit MvpnDBState(MvpnRoute *route);
 
+private:
     MvpnStatePtr state;
     MvpnRoute *route;
 
@@ -364,8 +388,8 @@ struct MvpnDBState : public DBState {
 //     <S,G>s that fall into a specific DB partition.
 //
 // This provides APIs to create/update/delete MvpnState as required. MvpnState
-// is refcounted. When the refcount reaches 0, it is deleted from the
-// MvpnState::StatesMap and destroyed.
+// is refcounted. When the refcount reaches 1, it is deleted from the StatesMap
+// and destroyed.
 class MvpnProjectManagerPartition {
 public:
     typedef MvpnState::SG SG;
@@ -441,6 +465,7 @@ private:
     void FreePartitions();
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
 
+    // Parent ErmVpn table.
     ErmVpnTable *table_;
     int listener_id_;
     PartitionList partitions_;
