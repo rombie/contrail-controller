@@ -364,10 +364,16 @@ struct MvpnDBState : public DBState {
     ~MvpnDBState();
     explicit MvpnDBState(MvpnStatePtr state);
     explicit MvpnDBState(MvpnRoute *route);
+    MvpnStatePtr state();
+    const MvpnStatePtr state() const;
+    MvpnRoute *route();
+    const MvpnRoute *route() const;
+    void set_state(MvpnStatePtr state);
+    void set_route(MvpnRoute *route);
 
 private:
-    MvpnStatePtr state;
-    MvpnRoute *route;
+    MvpnStatePtr state_;
+    MvpnRoute *route_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnDBState);
 };
