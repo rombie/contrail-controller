@@ -39,16 +39,27 @@ class UpdateInfo;
 
 typedef boost::intrusive_ptr<MvpnState> MvpnStatePtr;
 
-// This struct represents a MVPN Neighbor discovered using BGP.
+// This struct represents a MVPN Neighbor discovered using BGP or using auto
+// exported routes from one routing-instance into another.
 //
 // Each received Type1 Intra AS Auto-Discovery ad Type2 Inter AS Auto Discovery
-// routes from MVPN BGP Peers is maintained as MVPN neighbors inside map in each
-// MvpnManager object.
+// routes from MVPN BGP Peers is maintained as MVPN neighbors inside a set in
+// each MvpnManager object.
+//
+// Neighbor is looked up using IP address and VRF ID. If VRF id is not available
+// such as when looking up based on just the IP address as found from the VRF
+// Import Target community, then the first entry that matches the address is
+// used as the mapping neighbor. Remote Mvpn neighbors are expected to have
+// unique IPs anyways. When looking up based on locally imported routes (such
+// as when Type I routes are replicated from red to green with in the same
+// control node due to unicast routing policy, then both IP address and the
+// target value as encoded inside vrf import route target community is used to
+// identify the right mvpn neighbor structure.
 struct MvpnNeighbor {
 public:
     MvpnNeighbor();
-    MvpnNeighbor(const IpAddress &address, uint16_t vrf_id = 0,
-                 uint32_t asn = 0, bool external = false);
+    explicit MvpnNeighbor(const IpAddress &address, uint16_t vrf_id = 0,
+                          uint32_t asn = 0, bool external = false);
     std::string ToString() const;
     const IpAddress &address() const;
     uint16_t vrf_id() const;
@@ -76,19 +87,28 @@ private:
 // this class. This class only handles routes in which customer 'Group' info is
 // encoded, such as Type3 S-PMSI routes.
 //
+// Notification for a Type7 SourceTreeJoinRoute route add/change/delete
+//     When this route is successfully imported into a vrf, new Type3 S-PMSI
+//     route is originated/updated into that vrf.mvpn.0 if there is at least
+//     one associated Join route from the agent with flags marked as "Sender"
+//     or "SenderAndReciver".
+//
 // Notification for a Type3 S-PMSI route add/change/delete
 //     When sender indicates that it has a sender for a particular <S,G> entry,
 //     (With Leaf-Information required in the PMSI tunnel attribute), then this
 //     class originates/updates a new Type4 LeafAD route into vrf.mvpn.0 table.
 //     LeafAD route however is originated only if a usuable GlobalErmVpnRoute
 //     is avaiable for stitching. On the other hand, if such a route was already
-//     originated before and now no longer feasible, it is deleted instead.
+//     originated before and now is no longer feasible, it is deleted instead.
 //
-// Notification for a Type7 SourceTreeJoinRoute route add/change/delete
-//     When this route is successfully imported into a vrf, new Type3 S-PMSI
-//     route is originated/updated into that vrf.mvpn.0 if there is at least
-//     one associated Join route from the agent with flags marked as "Sender"
-//     or "SenderAndReciver".
+// Notification for a Type4 Leaf AD route add/change/delete
+//     When leaf-ad routes are imported into a vrf and notified, the routes are
+//     stored inside a map using route as the key and best path attributes as
+//     values in the associated MvpnState. If the route is deleted, then it is
+//     deleted from the map as well. If a usable Type5 source active route is
+//     present in the vrf, then it is notified so that sender agent can be
+//     updated with the right set of path attributes (PMSI) in order to be able
+//     to replicate multicast traffic in the data plane.
 class MvpnManagerPartition {
 public:
     MvpnManagerPartition(MvpnManager *manager, int part_id);
@@ -220,7 +240,6 @@ private:
 // This is a refcounted class which is referred by DB States of different
 // routes. When the refcount reaches 0, (last referring db state is deleted),
 // this object is destroyed.
-// TODO(Ananth) Use MvpnStatePtr intrusive pointer to manage this.
 //
 // global_ermvpn_tree_rt_
 //     This is a reference to GlobalErmVpnRoute associated with the ErmVpnTree
@@ -239,15 +258,6 @@ private:
 //     tree route to use for forwarding in the data plane. In such a case, later
 //     when global_ermvpn_tree_rt_ does get updated, all leaf ad routes in this
 //     set are notified and re-evaluated.
-//
-// cjoin_routes_received_
-//     This is a set of all Type7 cjoin routes originated (via xmpp) for this
-//     <C-S,G>. These routes are replicated and send towards the source only
-//     after the source can be resolved and MVPN neighbor is detected for the
-//     resolved nexthop address. If MVPN neighbor is discovered or gets deleted,
-//     all type-7 join routes must be re-evaluated so that the routes can now be
-//     replicated (or perhaps deleted). Path resolver provides necessary hooks
-//     for this source path resolution.
 class MvpnState {
 public:
     typedef std::set<MvpnRoute *> RoutesSet;
@@ -256,8 +266,8 @@ public:
     struct SG {
         SG(const Ip4Address &source, const Ip4Address &group);
         SG(const IpAddress &source, const IpAddress &group);
-        SG(const ErmVpnRoute *route);
-        SG(const MvpnRoute *route);
+        explicit SG(const ErmVpnRoute *route);
+        explicit SG(const MvpnRoute *route);
         bool operator<(const SG &other) const;
 
         IpAddress source;
@@ -265,7 +275,7 @@ public:
     };
 
     typedef std::map<SG, MvpnState *> StatesMap;
-    MvpnState(const SG &sg, StatesMap *states = NULL);
+    explicit MvpnState(const SG &sg, StatesMap *states = NULL);
     virtual ~MvpnState();
     const SG &sg() const;
     ErmVpnRoute *global_ermvpn_tree_rt();
@@ -276,8 +286,6 @@ public:
     void set_spmsi_rt(MvpnRoute *spmsi_rt);
     const RoutesSet &spmsi_routes_received() const;
     RoutesSet &spmsi_routes_received();
-    const RoutesSet &cjoin_routes_received() const;
-    RoutesSet &cjoin_routes_received();
     const RoutesMap &leafad_routes_received() const;
     RoutesMap &leafad_routes_received();
     const StatesMap *states() const { return states_; }
@@ -294,7 +302,6 @@ private:
     ErmVpnRoute *global_ermvpn_tree_rt_;
     MvpnRoute *spmsi_rt_;
     RoutesSet spmsi_routes_received_;
-    RoutesSet cjoin_routes_received_;
     RoutesMap leafad_routes_received_;
     StatesMap *states_;
 

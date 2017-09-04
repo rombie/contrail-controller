@@ -23,6 +23,7 @@ bool MvpnManager::enable_;
 
 using std::make_pair;
 using std::ostringstream;
+using std::pair;
 using std::string;
 using std::vector;
 
@@ -34,7 +35,6 @@ MvpnState::MvpnState(const SG &sg, StatesMap *states) :
 MvpnState::~MvpnState() {
     assert(!global_ermvpn_tree_rt_);
     assert(spmsi_routes_received_.empty());
-    assert(cjoin_routes_received_.empty());
 }
 
 class MvpnProjectManager::DeleteActor : public LifetimeActor {
@@ -267,14 +267,6 @@ const MvpnState::RoutesSet &MvpnState::spmsi_routes_received() const {
 
 MvpnState::RoutesSet &MvpnState::spmsi_routes_received() {
     return spmsi_routes_received_;
-}
-
-const MvpnState::RoutesSet &MvpnState::cjoin_routes_received() const {
-    return cjoin_routes_received_;
-}
-
-MvpnState::RoutesSet &MvpnState::cjoin_routes_received() {
-    return cjoin_routes_received_;
 }
 
 const MvpnState::RoutesMap &MvpnState::leafad_routes_received() const {
@@ -829,13 +821,14 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     // originating SPMSI route towards the receivers.
     if (!join_rt->IsUsable()) {
         MvpnStatePtr state = GetState(join_rt);
-        if (state)
-            state->cjoin_routes_received().erase(join_rt);
 
         // DB State is maintained for any S-PMSI route originated as a Sender
         // for the received type7 join routes. If such a route was originated
         // before, delete the same as there is no more receiver interested to
         // receive multicast traffic for this C-<S,G>.
+        //
+        // Note: If there are many receiver joins, join_rt becomes not usable
+        // only after all usable paths go away.
         if (mvpn_dbstate) {
             // Delete any S-PMSI route originated earlier as there is no
             // interested receivers for this route (S,G).
@@ -856,10 +849,14 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         return false;
     }
 
-    MvpnStatePtr state = LocateState(join_rt);
+    // We do not maintain state for primary type 7 join routes on the receiver
+    // side. They just get replicated and sent towards the sender vrf where they
+    // get processed after they are imported as secondary paths.
     const BgpPath *path = join_rt->BestPath();
-    assert(!path);
+    if (!path->IsSecondary())
+        return false;
 
+    MvpnStatePtr state = LocateState(join_rt);
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(state);
         join_rt->SetState(table(), listener_id(), mvpn_dbstate);
@@ -873,29 +870,21 @@ bool MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
     //
     // TODO(Ananth) Origiante SPMSI route only if there is an active sender
     // for this S,G. (Type5 SourceActiveAD received from an agent)
-    if (path->IsSecondary()) {
-        // Originate/Update S-PMSI route towards the receivers.
-        MvpnRoute *spmsi_rt = mvpn_dbstate->route;
-        if (!spmsi_rt) {
-            spmsi_rt = table()->LocateType3SPMSIRoute(join_rt);
-            mvpn_dbstate->route = spmsi_rt;
-            state->set_spmsi_rt(spmsi_rt);
-        } else {
-            BgpPath *old_path = spmsi_rt->FindPath(BgpPath::Local, 0);
+    MvpnRoute *spmsi_rt = mvpn_dbstate->route;
+    if (!spmsi_rt) {
+        spmsi_rt = table()->LocateType3SPMSIRoute(join_rt);
+        mvpn_dbstate->route = spmsi_rt;
+        state->set_spmsi_rt(spmsi_rt);
+    } else {
+        BgpPath *old_path = spmsi_rt->FindPath(BgpPath::Local, 0);
 
-            // Path already exists!
-            if (old_path)
-                return false;
-        }
-        BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local,
-                                    join_rt->BestPath()->GetAttr(), 0, 0, 0);
-        spmsi_rt->InsertPath(path);
-        return true;
+        // Path already exists!
+        if (old_path)
+            return false;
     }
-
-    // This is case in the receiver side, where in Usable join routes have been
-    // added/modified in a vrf.mvpn.0 table.
-    state->cjoin_routes_received().insert(join_rt);
+    BgpPath *new_path = new BgpPath(NULL, 0, BgpPath::Local,
+                                    join_rt->BestPath()->GetAttr(), 0, 0, 0);
+    spmsi_rt->InsertPath(new_path);
     return true;
 }
 
@@ -918,17 +907,24 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     if (!path->IsSecondary())
         return;
 
-    if (!mvpn_dbstate && !leaf_ad->IsUsable())
-        return;
-
     MvpnStatePtr state = LocateState(leaf_ad);
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(state);
         leaf_ad->SetState(table(), listener_id(), mvpn_dbstate);
     }
 
-    state->leafad_routes_received().insert(
-        make_pair(leaf_ad, leaf_ad->BestPath()->GetAttr()));
+    pair<MvpnState::RoutesMap::iterator, bool> result =
+        state->leafad_routes_received().insert(make_pair(leaf_ad,
+                    leaf_ad->BestPath()->GetAttr()));
+
+    // Overwrite the entry with new best path attributes if one already exists.
+    if (!result.second) {
+        // Ignore if there is no change in the best path's attributes.
+        if (result.first->second.get() == leaf_ad->BestPath()->GetAttr())
+            return;
+        result.first->second = leaf_ad->BestPath()->GetAttr();
+    }
+
     if (sa_active_rt && sa_active_rt->IsUsable())
         sa_active_rt->Notify();
 }
