@@ -221,8 +221,9 @@ ResolverRouteState *PathResolver::FindResolverRouteState(BgpRoute *route) {
 
 const BgpPath *PathResolver::FindResolvedPath(const BgpRoute *route,
                                               const BgpPath *path) const {
-    ResolverPath *resolver_path = GetPartition(route->get_table_partition()->
-        index())->FindResolverPath(path);
+    int part_id = route->get_table_partition()->index();
+    const ResolverPath *resolver_path =
+        GetPartition(part_id)->FindResolverPath(path);
     return resolver_path ? resolver_path->FindResolvedPath() : NULL;
 }
 
@@ -251,7 +252,7 @@ ResolverRouteState *PathResolver::LocateResolverRouteState(BgpRoute *route) {
 ResolverNexthop *PathResolver::LocateResolverNexthop(IpAddress address,
     BgpTable *table) {
     CHECK_CONCURRENCY("db::DBTable", "bgp::RouteAggregation",
-        "bgp::Config", "bgp::ConfigHelper");
+                      "bgp::Config", "bgp::ConfigHelper");
 
     tbb::mutex::scoped_lock lock(mutex_);
     ResolverNexthopKey key(address, table);
@@ -676,10 +677,9 @@ void PathResolverPartition::StartPathResolution(BgpRoute *route,
         return;
 
     Address::Family family = table()->family();
-    const IpAddress address = path->GetAttr()->nexthop();
-    if (table() == nh_table && RoutePrefixIsAddress(family, route, address)) {
+    IpAddress address = path->GetAttr()->nexthop();
+    if (table() == nh_table && RoutePrefixIsAddress(family, route, address))
         return;
-    }
 
     ResolverNexthop *rnexthop =
         resolver_->LocateResolverNexthop(address, nh_table);
@@ -1030,8 +1030,7 @@ bool ResolverPath::UpdateResolvedPaths() {
         return false;
     }
 
-    BgpTable *table = partition_->table();
-    BgpServer *server = table->server();
+    BgpServer *server = partition_->table()->server();
     BgpAttrDB *attr_db = server->attr_db();
     ExtCommunityDB *extcomm_db = server->extcomm_db();
 
@@ -1066,7 +1065,7 @@ bool ResolverPath::UpdateResolvedPaths() {
 
         // Skip if there's no source rd.
         RouteDistinguisher source_rd =
-            table->GetSourceRouteDistinguisher(nh_path);
+            partition_->table()->GetSourceRouteDistinguisher(nh_path);
         if (source_rd.IsZero())
             continue;
 
@@ -1091,13 +1090,14 @@ bool ResolverPath::UpdateResolvedPaths() {
 
     // Reconcile the current and future resolved paths and notify/delete the
     // route as appropriate.
-    bool modified;
-    modified = set_synchronize(&resolved_path_list_, &future_resolved_path_list,
+    bool modified = set_synchronize(&resolved_path_list_,
+        &future_resolved_path_list,
         boost::bind(&ResolverPath::AddResolvedPath, this, _1),
         boost::bind(&ResolverPath::DeleteResolvedPath, this, _1));
     if (route_->BestPath()) {
-        if (modified)
+        if (modified) {
             partition_->table_partition()->Notify(route_);
+        }
     } else {
         partition_->table_partition()->Delete(route_);
     }
@@ -1146,6 +1146,7 @@ bool ResolverNexthop::Match(BgpServer *server, BgpTable *table,
     if (!resolver_->RoutePrefixMatch(family, route, address_))
         return false;
 
+    // Do not resolve over self.
     if (route->table() == table && route->IsUsable() &&
             route->BestPath()->GetAttr()->nexthop() == address_) {
         return false;
