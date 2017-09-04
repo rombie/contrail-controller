@@ -177,6 +177,7 @@ const list<string> BackupImplementedServices = [
     SERVICE_SCHEMA_TRANSFORMER,
     SERVICE_SVC_MONITOR,
     SERVICE_DEVICE_MANAGER,
+    SERVICE_KUBE_MANAGER,
 ]
 
 const string ContrailKeystoneAuthConfigurationFile = '/etc/contrail/contrail-keystone-auth.conf'
@@ -282,6 +283,18 @@ const map<byte, string> VrouterAgentVmStateMap = {
     VrouterAgentVmState.VROUTER_AGENT_VM_PAUSED     : 'PAUSED',
     VrouterAgentVmState.VROUTER_AGENT_VM_SHUTDOWN   : 'SHUT OFF',
     VrouterAgentVmState.VROUTER_AGENT_VM_UNKNOWN    : 'UNKNOWN'
+}
+
+enum VrouterAgentGatewayMode {
+    VCPE,
+    SERVER,
+    NONE
+}
+
+const map<byte, string> VrouterAgentGatewayModeMap = {
+    VrouterAgentGatewayMode.VCPE   : 'VCPE',
+    VrouterAgentGatewayMode.SERVER : 'SERVER',
+    VrouterAgentGatewayMode.NONE   : 'NONE'
 }
 
 const string MODULE_CONTROL_NODE_NAME = SERVICE_CONTROL_NODE
@@ -510,6 +523,7 @@ enum Category {
     DISCOVERYCLIENT,
     UDP,
     CONFIG_CASS_CLIENT,
+    CONFIG_CLIENT,
 }
 
 const map<Category, string> CategoryNames = {
@@ -531,6 +545,7 @@ const map<Category, string> CategoryNames = {
     Category.DISCOVERYCLIENT             : "DiscoveryClient",
     Category.UDP                         : "UDP",
     Category.CONFIG_CASS_CLIENT          : "ConfigCassSm",
+    Category.CONFIG_CLIENT               : "ConfigClient",
 }
     
 const map<Module, list<Category>> ModuleCategoryMap = {
@@ -546,6 +561,7 @@ const map<Module, list<Category>> ModuleCategoryMap = {
                                  Category.TCP,
                                  Category.ROUTING_INSTANCE,
                                  Category.CONFIG_CASS_CLIENT,
+                                 Category.CONFIG_CLIENT,
                                 ],
     Module.VROUTER_AGENT      : [Category.DEFAULT,
                                  Category.XMPP,

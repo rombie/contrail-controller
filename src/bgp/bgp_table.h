@@ -13,6 +13,7 @@
 
 #include "base/lifetime.h"
 #include "bgp/bgp_rib_policy.h"
+#include "bgp/rtarget/rtarget_address.h"
 #include "db/db_table_walker.h"
 #include "route/table.h"
 
@@ -34,6 +35,7 @@ struct UpdateInfo;
 class BgpTable : public RouteTable {
 public:
     typedef std::map<RibExportPolicy, RibOut *> RibOutMap;
+    typedef std::set<BgpTable *> TableSet;
 
     struct RequestKey : DBRequestKey {
         virtual const IPeer *GetPeer() const = 0;
@@ -118,6 +120,9 @@ public:
     static bool PathSelection(const Path &path1, const Path &path2);
     UpdateInfo *GetUpdateInfo(RibOut *ribout, BgpRoute *route,
                               const RibPeerSet &peerset);
+    virtual void UpdateSecondaryTablesForReplication(BgpRoute *rt,
+                     TableSet *secondary_tables) {
+    }
 
     void ManagedDelete();
     virtual void RetryDelete();
@@ -152,6 +157,10 @@ public:
     const uint64_t GetLlgrStalePathCount() const {
         return llgr_stale_path_count_;
     }
+    void UpdateStalePathCount(int count) { stale_path_count_ += count; }
+    void UpdateLlgrStalePathCount(int count) {
+        llgr_stale_path_count_ += count;
+    }
 
     // Check whether the route is aggregate route
     bool IsAggregateRoute(const BgpRoute *route) const;
@@ -172,6 +181,9 @@ public:
 
     void FillRibOutStatisticsInfo(
         std::vector<ShowRibOutStatistics> *sros_list) const;
+    virtual RouteDistinguisher GetSourceRouteDistinguisher(
+        const BgpPath *path) const;
+    virtual const RouteTarget::List &GetExportList(BgpRoute *rt) const;
 
 private:
     friend class BgpTableTest;
@@ -183,6 +195,7 @@ private:
                           BgpAttr *attr, bool llgr_stale_comm);
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
             const DBRequestKey *prefix) = 0;
+    void ResolvePath(BgpRoute *rt, BgpPath *path);
 
     RoutingInstance *rtinstance_;
     PathResolver *path_resolver_;

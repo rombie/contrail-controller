@@ -39,7 +39,7 @@ void ArpEntry::HandleDerivedArpRequest() {
         entry->HandleArpRequest();
     } else {
         entry = new ArpEntry(io_, handler_.get(), key, nh_vrf_, ArpEntry::INITING,
-                             interface_);
+                             interface_.get());
         if (arp_proto->AddArpEntry(entry) == false) {
             delete entry;
             return;
@@ -131,7 +131,8 @@ void ArpEntry::SendGratuitousArp() {
     ArpProto *arp_proto = agent->GetArpProto();
     if (agent->router_id_configured()) {
         if (interface_->type() == Interface::VM_INTERFACE) {
-            const VmInterface *vmi = static_cast<const VmInterface *>(interface_);
+            const VmInterface *vmi =
+                static_cast<const VmInterface *>(interface_.get());
             MacAddress smac = vmi->GetVifMac(agent);
             if (key_.vrf && key_.vrf->vn()) {
                 IpAddress gw_ip = key_.vrf->vn()->GetGatewayFromIpam
@@ -181,7 +182,7 @@ void ArpEntry::StartTimer(uint32_t timeout, uint32_t mtype) {
     arp_timer_->Cancel();
     arp_timer_->Start(timeout, boost::bind(&ArpProto::TimerExpiry,
                                            handler_->agent()->GetArpProto(),
-                                           key_, mtype, interface_));
+                                           key_, mtype, interface_.get()));
 }
 
 void ArpEntry::SendArpRequest() {
@@ -193,11 +194,15 @@ void ArpEntry::SendArpRequest() {
     Ip4Address ip;
     MacAddress smac;
     if (interface_->type() == Interface::VM_INTERFACE) {
-        const VmInterface *vmi = static_cast<const VmInterface *>(interface_);
+        const VmInterface *vmi =
+            static_cast<const VmInterface *>(interface_.get());
         ip = vmi->GetServiceIp(Ip4Address(key_.ip)).to_v4();
+        if (vmi->vmi_type() == VmInterface::VHOST) {
+            ip = agent->router_id();
+        }
         vrf_id = nh_vrf_->vrf_id();
         if (vmi->parent()) {
-            intf_id = vmi->id();
+            intf_id = vmi->parent()->id();
             smac = vmi->parent()->mac();
         }
     } else {
@@ -265,12 +270,15 @@ void ArpEntry::AddArpRoute(bool resolved) {
         vn_list = entry->GetActivePath()->dest_vn_list();
     }
 
-    const Interface *itf = NULL;
+    const Interface *itf = handler_->agent()->GetArpProto()->ip_fabric_interface();
     if (interface_->type() == Interface::VM_INTERFACE) {
-        itf = interface_;
-    } else {
-        itf = handler_->agent()->GetArpProto()->ip_fabric_interface();
+        const VmInterface *vintf =
+            static_cast<const VmInterface *>(interface_.get());
+        if (vintf->vmi_type() == VmInterface::VHOST) {
+            itf = vintf->parent();
+        }
     }
+
     handler_->agent()->fabric_inet4_unicast_table()->ArpRoute(
                        DBRequest::DB_ENTRY_ADD_CHANGE, vrf_name, ip, mac,
                        nh_vrf_->GetName(), *itf, resolved, 32, policy,

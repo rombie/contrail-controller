@@ -195,6 +195,7 @@
 class FlowMgmtManager;
 class VrfFlowMgmtTree;
 class FlowMgmtDbClient;
+class HealthCheckInstanceBase;
 
 ////////////////////////////////////////////////////////////////////////////
 // Flow Management module maintains following data structures
@@ -367,6 +368,7 @@ public:
     void set_oper_state(State state) { oper_state_ = state; }
     State oper_state() const { return oper_state_; }
     uint32_t gen_id() const { return gen_id_; }
+    const FlowList &flow_list() const { return flow_list_; }
 protected:
     // Add seen from OperDB entry
     State oper_state_;
@@ -766,6 +768,8 @@ public:
     }
 
     bool NeedsReCompute(const FlowEntry *flow);
+    IpAddress ip() const { return ip_; }
+    uint8_t plen() const { return plen_; }
 
 
 private:
@@ -784,6 +788,8 @@ public:
     bool RecomputeCoveringRouteEntry(FlowMgmtManager *mgr,
                                      InetRouteFlowMgmtKey *covering_route,
                                      InetRouteFlowMgmtKey *key);
+    bool HandleNhChange(FlowMgmtManager *mgr, const FlowMgmtRequest *req,
+                        FlowMgmtKey *key);
 private:
     DISALLOW_COPY_AND_ASSIGN(InetRouteFlowMgmtEntry);
 };
@@ -829,6 +835,7 @@ public:
     }
    bool RecomputeCoveringRoute(InetRouteFlowMgmtKey *covering_route,
                                InetRouteFlowMgmtKey *key);
+   bool RouteNHChangeEvent(const FlowMgmtRequest *req, FlowMgmtKey *key);
 
 private:
     LpmTree lpm_tree_;
@@ -980,12 +987,18 @@ class BgpAsAServiceFlowMgmtKey : public FlowMgmtKey {
 public:
     BgpAsAServiceFlowMgmtKey(const boost::uuids::uuid &uuid,
                              uint32_t source_port,
-                             uint8_t cn_index) :
+                             uint8_t cn_index,
+                             HealthCheckInstanceBase *hc_instance,
+                             HealthCheckService *hc_service) :
         FlowMgmtKey(FlowMgmtKey::BGPASASERVICE, NULL), uuid_(uuid),
-        source_port_(source_port), cn_index_(cn_index) { }
+        source_port_(source_port), cn_index_(cn_index),
+        bgp_health_check_instance_(hc_instance),
+        bgp_health_check_service_(hc_service) { }
     virtual ~BgpAsAServiceFlowMgmtKey() { }
     virtual FlowMgmtKey *Clone() {
-        return new BgpAsAServiceFlowMgmtKey(uuid_, source_port_, cn_index_);
+        return new BgpAsAServiceFlowMgmtKey(uuid_, source_port_, cn_index_,
+                                            bgp_health_check_instance_,
+                                            bgp_health_check_service_);
     }
     virtual bool UseDBEntry() const { return false; }
     virtual bool Compare(const FlowMgmtKey *rhs) const {
@@ -1000,11 +1013,22 @@ public:
     const boost::uuids::uuid &uuid() const { return uuid_; }
     uint32_t source_port() const { return source_port_; }
     uint8_t cn_index() const { return cn_index_; }
+    HealthCheckInstanceBase *bgp_health_check_instance() const {
+        return bgp_health_check_instance_;
+    }
+
+    void StartHealthCheck(Agent *agent, FlowEntry *flow,
+                          const boost::uuids::uuid &hc_uuid);
+    void StopHealthCheck(FlowEntry *flow);
 
 private:
     boost::uuids::uuid uuid_;
     uint32_t source_port_;
     uint8_t cn_index_; //Control node index
+    // By adding the health check instance here, we ensure one BFD session
+    // per <VMI-SRC-IP, BGP-DEST-IP, VMI>
+    mutable HealthCheckInstanceBase *bgp_health_check_instance_;
+    mutable HealthCheckService *bgp_health_check_service_;
     DISALLOW_COPY_AND_ASSIGN(BgpAsAServiceFlowMgmtKey);
 };
 
@@ -1015,6 +1039,9 @@ public:
     virtual bool NonOperEntryDelete(FlowMgmtManager *mgr,
                                     const FlowMgmtRequest *req,
                                     FlowMgmtKey *key);
+    virtual bool HealthCheckUpdate(Agent *agent, FlowMgmtManager *mgr,
+                                   BgpAsAServiceFlowMgmtKey &key,
+                                   BgpAsAServiceFlowMgmtRequest *req);
 
 private:
     DISALLOW_COPY_AND_ASSIGN(BgpAsAServiceFlowMgmtEntry);
@@ -1029,6 +1056,9 @@ public:
 
     void ExtractKeys(FlowEntry *flow, FlowMgmtKeyTree *tree);
     FlowMgmtEntry *Allocate(const FlowMgmtKey *key);
+    bool BgpAsAServiceHealthCheckUpdate(Agent *agent,
+                                        BgpAsAServiceFlowMgmtKey &key,
+                                        BgpAsAServiceFlowMgmtRequest *req);
     bool BgpAsAServiceDelete(BgpAsAServiceFlowMgmtKey &key,
                              const FlowMgmtRequest *req);
     void DeleteAll();
@@ -1051,6 +1081,7 @@ public:
         flow_(flow), tree_(), count_(0), ingress_(false), local_flow_(false) {
     }
     virtual ~FlowEntryInfo() { assert(tree_.size() == 0); }
+    const FlowMgmtKeyTree &tree() const { return tree_; }
 private:
     friend class FlowMgmtManager;
     FlowEntryPtr flow_;
@@ -1114,6 +1145,7 @@ public:
     void AddDBEntryEvent(const DBEntry *entry, uint32_t gen_id);
     void ChangeDBEntryEvent(const DBEntry *entry, uint32_t gen_id);
     void DeleteDBEntryEvent(const DBEntry *entry, uint32_t gen_id);
+    void RouteNHChangeEvent(const DBEntry *entry, uint32_t gen_id);
     void RetryVrfDeleteEvent(const VrfEntry *vrf);
     void RetryVrfDelete(uint32_t vrf_id);
     // Dummy event used for testing
@@ -1135,6 +1167,10 @@ public:
     void DisableWorkQueue(bool disable) { request_queue_.set_disable(disable); }
     void BgpAsAServiceNotify(const boost::uuids::uuid &vm_uuid,
                              uint32_t source_port);
+    void BgpAsAServiceHealthCheckNotify(const boost::uuids::uuid &vm_uuid,
+                                        uint32_t source_port,
+                                        const boost::uuids::uuid &hc_uuid,
+                                        bool add);
     void EnqueueUveAddEvent(const FlowEntry *flow) const;
     void EnqueueUveDeleteEvent(const FlowEntry *flow) const;
 
@@ -1144,6 +1180,10 @@ public:
     InetRouteFlowMgmtTree* ip4_route_flow_mgmt_tree() {
         return &ip4_route_flow_mgmt_tree_;
     }
+
+    BgpAsAServiceFlowMgmtKey *FindBgpAsAServiceInfo(
+                                FlowEntry *flow,
+                                BgpAsAServiceFlowMgmtKey &key);
 
 private:
     // Handle Add/Change of a flow. Builds FlowMgmtKeyTree for all objects

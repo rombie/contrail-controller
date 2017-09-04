@@ -297,7 +297,16 @@ struct FlowData {
     uint32_t dest_vrf;
     uint32_t component_nh_idx;
     uint32_t bgp_as_a_service_port;
+    boost::uuids::uuid bgp_health_check_uuid;
     uint32_t ttl;
+    // In case of policy on fabric, the forwarding happens in
+    // agent_->fabric_vrf(), but policy processing must happen in
+    // agent_->fabric_policy_vrf(). Storing the route infor for
+    // fabric_policy_vrf() for tracking purpose
+    uint32_t src_policy_vrf;
+    uint32_t src_policy_plen;
+    uint32_t dst_policy_vrf;
+    uint32_t dst_policy_plen;
 
     // Stats
     uint8_t source_plen;
@@ -321,6 +330,8 @@ struct FlowData {
     // rpf_vrf will be VrfEntry::kInvalidIndex if flow uses l2-route for RPF
     uint32_t rpf_vrf;
     uint8_t rpf_plen;
+
+    bool disable_validation; // ignore RPF on specific flows (like BFD health check)
 
     std::string vm_cfg_name;
     uint32_t acl_assigned_vrf_index_;
@@ -500,10 +511,12 @@ class FlowEntry {
         Multicast       = 1 << 8,
         // a local port bind is done (used as as src port for linklocal nat)
         LinkLocalBindLocalSrcPort = 1 << 9,
-        TcpAckFlow      = 1 << 10,
-        UnknownUnicastFlood = 1 << 11,
-        BgpRouterService   = 1 << 12,
-        AliasIpFlow     = 1 << 13
+        TcpAckFlow                = 1 << 10,
+        UnknownUnicastFlood       = 1 << 11,
+        BgpRouterService          = 1 << 12,
+        BgpHealthCheckService     = 1 << 13,
+        AliasIpFlow               = 1 << 14,
+        FabricControlFlow         = 1 << 15
     };
 
     FlowEntry(FlowTable *flow_table);
@@ -630,6 +643,7 @@ class FlowEntry {
     bool IsEcmpFlow() const { return is_flags_set(FlowEntry::EcmpFlow); }
     bool IsNatFlow() const { return is_flags_set(FlowEntry::NatFlow); }
     bool IsIngressFlow() const { return is_flags_set(FlowEntry::IngressDir); }
+    bool IsBgpHealthCheckService() const { return is_flags_set(FlowEntry::BgpHealthCheckService); }
     // Flow action routines
     void ResyncFlow();
     void RpfUpdate();
@@ -665,6 +679,7 @@ class FlowEntry {
     void set_deleted(bool deleted) { deleted_ = deleted; }
     void SetAclAction(std::vector<AclAction> &acl_action_l) const;
     void UpdateReflexiveAction();
+    bool IsFabricControlFlow() const;
     void SetAclFlowSandeshData(const AclDBEntry *acl,
                                FlowSandeshData &fe_sandesh_data,
                                Agent *agent) const;
@@ -705,6 +720,8 @@ class FlowEntry {
     }
     void FillUveFwStatsInfo(FlowUveFwPolicyInfo *info) const;
     void FillUveVnAceInfo(FlowUveVnAcePolicyInfo *info) const;
+    bool IsClientFlow();
+    bool IsServerFlow();
 private:
     friend class FlowTable;
     friend class FlowEntryFreeList;

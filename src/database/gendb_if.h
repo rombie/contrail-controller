@@ -44,6 +44,9 @@ struct Op {
         GT,
         LE,
         LT,
+        EQ,
+        LIKE,
+        CONTAINS,
     };
     static std::string ToString(Op::type op);
 };
@@ -105,34 +108,37 @@ struct NewCf {
         COLUMN_FAMILY_SQL = 1,
         COLUMN_FAMILY_NOSQL = 2,
     };
-    typedef std::map<std::string, GenDb::DbDataType::type> SqlColumnMap; /* columns meta-data */
+    typedef std::map<std::string, GenDb::DbDataType::type> ColumnMap; /* columns meta-data */
 
-    NewCf(const std::string& cfname, const DbDataTypeVec& key_type,
-            const SqlColumnMap& cfcolumns) :
+    NewCf(const std::string& cfname, const DbDataTypeVec& keys,
+            const ColumnMap& cfcolumns) :
         cfname_(cfname),
         cftype_(COLUMN_FAMILY_SQL),
-        key_validation_class(key_type),
+        partition_keys_(keys),
         cfcolumns_(cfcolumns) {
     }
 
-    NewCf(const std::string& cfname, const DbDataTypeVec& key_type,
-            const DbDataTypeVec& comp_type,
-            const DbDataTypeVec& valid_class) :
+    NewCf(const std::string& cfname, const DbDataTypeVec& keys,
+            const DbDataTypeVec& clustering_columns,
+            const DbDataTypeVec& columns,
+            const DbDataTypeVec& values) :
         cfname_(cfname),
         cftype_(COLUMN_FAMILY_NOSQL),
-        key_validation_class(key_type),
-        comparator_type(comp_type),
-        default_validation_class(valid_class) {
+        partition_keys_(keys),
+        clustering_columns_(clustering_columns),
+        columns_(columns),
+        value_(values) {
     }
 
     ~NewCf() {}
 
     std::string cfname_;
     ColumnFamilyType cftype_;
-    DbDataTypeVec key_validation_class; /* for key-value comparison */
-    SqlColumnMap cfcolumns_; /* columns meta-data */
-    DbDataTypeVec comparator_type; /* for column-name comparison */
-    DbDataTypeVec default_validation_class; /* for column-value comparison */
+    DbDataTypeVec partition_keys_; /* for key-value comparison */
+    ColumnMap cfcolumns_; /* column-name:datatype - static tables */
+    DbDataTypeVec clustering_columns_; /* clustering column datatype - dynamic tables */
+    DbDataTypeVec columns_; /* column datatype - dynamic tables */
+    DbDataTypeVec value_; /* actual data - used for dynamic tables */
 };
 
 struct NewCol {
@@ -221,6 +227,9 @@ struct ColumnNameRange {
     Op::type finish_op_;
 };
 
+typedef boost::tuple<std::string, GenDb::Op::type, DbDataValue> WhereIndexInfo;
+typedef std::vector<WhereIndexInfo> WhereIndexInfoVec;
+
 // fields to read, whether the field is rowkey, whether the field is column,
 // whether to read writetime
 typedef boost::tuple<std::string, bool, bool, bool> FieldNamesToReadInfo;
@@ -295,6 +304,11 @@ public:
         const DbDataValueVec& rowkey, const ColumnNameRange &crange,
         DbConsistency::type dconsistency, int task_id, int task_instance,
         DbGetRowCb cb) = 0;
+    virtual bool Db_GetRowAsync(const std::string &cfname,
+        const GenDb::DbDataValueVec &rowkey, const GenDb::ColumnNameRange &crange,
+        const GenDb::WhereIndexInfoVec &where_vec,
+        GenDb::DbConsistency::type dconsistency,
+        GenDb::GenDbIf::DbGetRowCb cb) = 0;
     virtual bool Db_GetAllRows(ColListVec *ret,
         const std::string& cfname, DbConsistency::type dconsistency) = 0;
     // Queue

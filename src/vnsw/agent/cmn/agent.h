@@ -34,6 +34,7 @@ class TaskScheduler;
 class AgentInit;
 class AgentStatsCollector;
 class FlowStatsCollector;
+class SessionStatsCollector;
 class FlowStatsManager;
 class MetaDataIpAllocator;
 class ResourceManager;
@@ -235,6 +236,7 @@ class ArpProto;
 class DhcpProto;
 class Dhcpv6Proto;
 class DnsProto;
+class BfdProto;
 class IcmpProto;
 class Icmpv6Proto;
 class FlowProto;
@@ -294,6 +296,7 @@ extern void RouterIdDepInit(Agent *agent);
 #define kTaskFlowAudit "KSync::FlowAudit"
 #define kTaskFlowLogging "Agent::FlowLogging"
 #define kTaskFlowStatsCollector "Flow::StatsCollector"
+#define kTaskSessionStatsCollector "Flow::SessionStatsCollector"
 #define kTaskFlowStatsUpdate "Agent::FlowStatsUpdate"
 
 #define kTaskHealthCheck "Agent::HealthCheck"
@@ -851,6 +854,9 @@ public:
     DnsProto *GetDnsProto() const { return dns_proto_; }
     void SetDnsProto(DnsProto *proto) { dns_proto_ = proto; }
 
+    BfdProto *GetBfdProto() const { return bfd_proto_; }
+    void SetBfdProto(BfdProto *proto) { bfd_proto_ = proto; }
+
     IcmpProto *GetIcmpProto() const { return icmp_proto_; }
     void SetIcmpProto(IcmpProto *proto) { icmp_proto_ = proto; }
 
@@ -890,6 +896,9 @@ public:
     const Peer *mac_vm_binding_peer() const {return mac_vm_binding_peer_.get();}
     const Peer *inet_evpn_peer() const {return inet_evpn_peer_.get();}
     const Peer *mac_learning_peer() const {return mac_learning_peer_.get();}
+    const Peer *fabric_rt_export_peer() const {
+        return fabric_rt_export_peer_.get();
+    }
 
     // Agent Modules
     AgentConfig *cfg() const; 
@@ -992,7 +1001,7 @@ public:
     bool tor_agent_enabled() const {return tor_agent_enabled_;}
     void set_tor_agent_enabled(bool val) {tor_agent_enabled_ = val;}
     bool server_gateway_mode() const {return server_gateway_mode_;}
-    void set_server_gateway_mode(bool val) {server_gateway_mode_ = val;}
+    bool vcpe_gateway_mode() const {return vcpe_gateway_mode_;}
 
     IFMapAgentParser *ifmap_parser() const {return ifmap_parser_;}
     void set_ifmap_parser(IFMapAgentParser *parser) {
@@ -1290,6 +1299,7 @@ private:
     ArpProto *arp_proto_;
     DhcpProto *dhcp_proto_;
     DnsProto *dns_proto_;
+    BfdProto *bfd_proto_;
     IcmpProto *icmp_proto_;
     Dhcpv6Proto *dhcpv6_proto_;
     Icmpv6Proto *icmpv6_proto_;
@@ -1309,6 +1319,7 @@ private:
     std::auto_ptr<Peer> mac_vm_binding_peer_;
     std::auto_ptr<Peer> inet_evpn_peer_;
     std::auto_ptr<Peer> mac_learning_peer_;
+    std::auto_ptr<Peer> fabric_rt_export_peer_;
 
     std::auto_ptr<AgentSignal> agent_signal_;
 
@@ -1331,6 +1342,7 @@ private:
     bool tsn_enabled_;
     bool tor_agent_enabled_;
     bool server_gateway_mode_;
+    bool vcpe_gateway_mode_;
 
     // Flow information
     uint32_t flow_table_size_;

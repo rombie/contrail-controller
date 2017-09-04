@@ -66,6 +66,8 @@ class BgpAsAService {
 public:
     static const uint32_t DefaultBgpPort = 179;
     typedef boost::function<void(boost::uuids::uuid, uint32_t)> ServiceDeleteCb;
+    typedef boost::function<void(const boost::uuids::uuid &, uint32_t,
+                                 const boost::uuids::uuid &, bool)> HealthCheckCb;
 
     //Keep the BGP as a service data here.
     //Is used when flow is established or when CN is updated.
@@ -73,7 +75,9 @@ public:
         BgpAsAServiceEntry();
         BgpAsAServiceEntry(const BgpAsAServiceEntry &rhs);
         BgpAsAServiceEntry(const IpAddress &local_peer_ip,
-                           uint32_t source_port);
+                           uint32_t source_port,
+                           bool health_check_configured,
+                           const boost::uuids::uuid &health_check_uuid);
         ~BgpAsAServiceEntry();
         bool operator == (const BgpAsAServiceEntry &rhs) const;
         bool operator() (const BgpAsAServiceEntry &lhs,
@@ -83,6 +87,13 @@ public:
         bool installed_;
         IpAddress local_peer_ip_;
         uint32_t source_port_;
+        mutable bool health_check_configured_;
+        mutable boost::uuids::uuid health_check_uuid_;
+        // the following three are used to invoke add / delete of health check
+        // after health check audit is done
+        mutable bool new_health_check_add_;
+        mutable bool old_health_check_delete_;
+        mutable boost::uuids::uuid old_health_check_uuid_;
     };
     typedef std::set<BgpAsAServiceEntry, BgpAsAServiceEntry> BgpAsAServiceEntryList;
     typedef BgpAsAServiceEntryList::iterator BgpAsAServiceEntryListIterator;
@@ -104,7 +115,7 @@ public:
     typedef BgpAsAServiceEntryMap::iterator BgpAsAServiceEntryMapIterator;
     typedef BgpAsAServiceEntryMap::const_iterator BgpAsAServiceEntryMapConstIterator;
 
-    typedef std::map<uint32_t, IndexAllocator*> BgpAsAServicePortMap;
+    typedef std::map<uint32_t, IndexVector<boost::uuids::uuid>* > BgpAsAServicePortMap;
     typedef BgpAsAServicePortMap::iterator BgpAsAServicePortMapIterator;
     typedef BgpAsAServicePortMap::const_iterator BgpAsAServicePortMapConstIterator;
 
@@ -118,10 +129,14 @@ public:
                                         const IpAddress &source,
                                         const IpAddress &dest,
                                         IpAddress *nat_server,
-                                        uint32_t *sport) const;
-    size_t AllocateBgpVmiServicePortIndex(const uint32_t sport);
+                                        uint32_t *sport,
+                                        bool *health_check_configured,
+                                        boost::uuids::uuid *health_check_uuid) const;
+    size_t AllocateBgpVmiServicePortIndex(const uint32_t sport,
+                                          const boost::uuids::uuid vm_uuid);
     void FreeBgpVmiServicePortIndex(const uint32_t sport);
-    uint32_t AddBgpVmiServicePortIndex(const uint32_t source_port);
+    uint32_t AddBgpVmiServicePortIndex(const uint32_t source_port,
+                                       const boost::uuids::uuid vm_uuid);
     void ProcessConfig(const std::string &vrf_name,
                        std::list<IFMapNode *> &node_list,
                        const boost::uuids::uuid &vmi_uuid);
@@ -131,17 +146,22 @@ public:
     void RegisterServiceDeleteCb(ServiceDeleteCb callback) {
         service_delete_cb_ = callback;
     }
+    void RegisterHealthCheckCb(HealthCheckCb callback) {
+        health_check_cb_ = callback;
+    }
 
 private:
     void BindBgpAsAServicePorts(const std::vector<uint16_t> &ports);
     void BuildBgpAsAServiceInfo(IFMapNode *bgp_as_a_service_node,
                                 BgpAsAServiceEntryList &new_list,
-                                const std::string &vrf_name);
+                                const std::string &vrf_name,
+                                const boost::uuids::uuid &vm_uuid);
 
     const Agent *agent_;
     BgpAsAServiceEntryMap bgp_as_a_service_entry_map_;
     BgpAsAServicePortMap  bgp_as_a_service_port_map_;
     ServiceDeleteCb service_delete_cb_;
+    HealthCheckCb health_check_cb_;
     DISALLOW_COPY_AND_ASSIGN(BgpAsAService);
 };
 #endif

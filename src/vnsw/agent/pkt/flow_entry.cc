@@ -284,11 +284,17 @@ void FlowData::Reset() {
     rpf_nh.reset(NULL);
     rpf_plen = Address::kMaxV4PrefixLen;
     rpf_vrf = VrfEntry::kInvalidIndex;
+    disable_validation = false;
     vm_cfg_name = "";
     bgp_as_a_service_port = 0;
+    bgp_health_check_uuid = nil_uuid();
     acl_assigned_vrf_index_ = VrfEntry::kInvalidIndex;
     qos_config_idx = AgentQosConfigTable::kInvalidIndex;
     ttl = 0;
+    src_policy_vrf = VrfEntry::kInvalidIndex;
+    src_policy_plen = 0;
+    dst_policy_vrf = VrfEntry::kInvalidIndex;
+    dst_policy_plen = 0;
 }
 
 static std::vector<std::string> MakeList(const VnListType &ilist) {
@@ -578,6 +584,12 @@ bool FlowEntry::InitFlowCmn(const PktFlowInfo *info, const PktControlInfo *ctrl,
         reset_flags(FlowEntry::AliasIpFlow);
     }
 
+    if (IsFabricControlFlow()) {
+        set_flags(FlowEntry::FabricControlFlow);
+    } else {
+        reset_flags(FlowEntry::FabricControlFlow);
+    }
+
     data_.intf_entry = ctrl->intf_ ? ctrl->intf_ : rev_ctrl->intf_;
     data_.vn_entry = ctrl->vn_ ? ctrl->vn_ : rev_ctrl->vn_;
     data_.in_vm_entry.SetVm(ctrl->vm_);
@@ -609,6 +621,7 @@ void FlowEntry::InitFwdFlow(const PktFlowInfo *info, const PktInfo *pkt,
     } else {
         reset_flags(FlowEntry::IngressDir);
     }
+    data_.disable_validation = info->disable_validation;
     if (ctrl->rt_ != NULL) {
         RpfInit(ctrl->rt_);
     }
@@ -617,6 +630,14 @@ void FlowEntry::InitFwdFlow(const PktFlowInfo *info, const PktInfo *pkt,
         if (info->ttl == 1) {
             data_.ttl = BGP_SERVICE_TTL_FWD_FLOW;
         }
+        if (info->bgp_health_check_configured) {
+            set_flags(FlowEntry::BgpHealthCheckService);
+            data_.bgp_health_check_uuid = info->bgp_health_check_uuid;
+        } else {
+            reset_flags(FlowEntry::BgpHealthCheckService);
+        }
+    } else {
+        reset_flags(FlowEntry::BgpHealthCheckService);
     }
 
     data_.flow_source_vrf = info->flow_source_vrf;
@@ -685,6 +706,7 @@ void FlowEntry::InitRevFlow(const PktFlowInfo *info, const PktInfo *pkt,
             reset_flags(FlowEntry::IngressDir);
         }
     }
+    data_.disable_validation = info->disable_validation;
     if (ctrl->rt_ != NULL) {
         RpfInit(ctrl->rt_);
     }
@@ -745,6 +767,50 @@ void FlowEntry::InitAuditFlow(uint32_t flow_idx, uint8_t gen_id) {
     data_.dest_vn_list = FlowHandler::UnknownVnList();
     data_.source_sg_id_l = default_sg_list();
     data_.dest_sg_id_l = default_sg_list();
+}
+
+
+// Fabric control flows are following,
+// - XMPP connection to control node
+// - SSH connection to vhost
+// - Ping to vhost
+// - Introspect to vhost
+// - Port-IPC connection to vhost
+// - Contrail-Status UVE
+// TODO : Review this
+bool FlowEntry::IsFabricControlFlow() const {
+    Agent *agent = flow_table()->agent();
+    if (key_.protocol == IPPROTO_TCP) {
+        if (key_.dst_addr == agent->router_id()) {
+            return (key_.dst_port == 22 || key_.dst_port == 8085 ||
+                    key_.dst_port == 9091 || key_.dst_port == 8097);
+        }
+
+        if (key_.src_addr == agent->router_id()) {
+            return (key_.src_port == 22 || key_.src_port == 8085 ||
+                    key_.src_port == 9091 || key_.src_port == 8097);
+        }
+
+
+        if (key_.src_addr == agent->router_id()) {
+            for (int i = 0; i < MAX_XMPP_SERVERS; i++) {
+                if (key_.dst_addr.to_string() !=
+                        agent->controller_ifmap_xmpp_server(i))
+                    continue;
+
+                return (key_.dst_port == agent->controller_ifmap_xmpp_port(i));
+            }
+        }
+
+        return false;
+    }
+
+    if (key_.protocol == IPPROTO_ICMP) {
+        return (key_.src_addr == agent->router_id() ||
+                key_.dst_addr == agent->router_id());
+    }
+
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -853,7 +919,14 @@ void FlowEntry::RevFlowDepInfo(RevFlowDepParams *params) {
         params->sg_uuid_ = rev_flow->sg_rule_uuid();
         params->rev_egress_uuid_ = rev_flow->egress_uuid();
         if (rev_flow->intf_entry()) {
-            params->vmi_uuid_ = UuidToString(rev_flow->intf_entry()->GetUuid());
+            const VmInterface *vmi =
+                dynamic_cast<const VmInterface *>(rev_flow->intf_entry());
+            if (vmi) {
+                params->vmi_uuid_ = UuidToString(vmi->vmi_cfg_uuid());
+            } else {
+                params->vmi_uuid_ = UuidToString(rev_flow->intf_entry()->
+                                                 GetUuid());
+            }
         }
 
         if (key().family != Address::INET) {
@@ -957,6 +1030,14 @@ static void SetRpfFieldsInternal(FlowEntry *flow, const AgentRoute *rt) {
         return;
     }
 
+    if (!flow->l3_flow()) {
+        flow->data().rpf_vrf = rt->vrf()->vrf_id();
+        /* For L2 flows we don't use rpf_plen. Prefix len is taken after
+         * doing LPMFind on IP. */
+        flow->data().rpf_plen = 0;
+        return;
+    }
+
     // Route is not INET. Dont track any route
     flow->data().rpf_vrf = VrfEntry::kInvalidIndex;
     flow->data().rpf_plen = 0;
@@ -996,6 +1077,8 @@ void FlowEntry::RpfInit(const AgentRoute *rt) {
     // RPF enabled?
     bool rpf_enable = true;
     if (data_.vn_entry && data_.vn_entry->enable_rpf() == false)
+        rpf_enable = false;
+    if (data_.disable_validation)
         rpf_enable = false;
 
     // The src_ip_nh can change below only for l2 flows
@@ -1137,6 +1220,10 @@ void FlowEntry::RpfUpdate() {
         data_.enable_rpf = data_.vn_entry->enable_rpf();
     }
 
+    if (data_.disable_validation) {
+        data_.enable_rpf = false;
+    }
+
     if (data_.enable_rpf == false) {
         data_.rpf_nh = NULL;
         return;
@@ -1154,6 +1241,53 @@ void FlowEntry::RpfUpdate() {
     }
 }
 
+bool FlowEntry::IsClientFlow() {
+    /*
+     * If the flow is Local + Ingress + Forward
+     * then it will be considered as client session
+     */
+    if ((is_flags_set(FlowEntry::LocalFlow)) &&
+        (is_flags_set(FlowEntry::IngressDir)) &&
+        (!(is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+    /*
+     * If the flow is (Ingress + Forward) OR
+     *                (Egress + Reverse)
+     * then it will be consideres as client session
+     */
+    if (((is_flags_set(FlowEntry::IngressDir)) &&
+         (!(is_flags_set(FlowEntry::ReverseFlow)))) ||
+        ((!(is_flags_set(FlowEntry::IngressDir))) &&
+         (is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+     return false;
+}
+
+bool FlowEntry::IsServerFlow() {
+    /*
+     * If the flow is Local + Ingress + Reverse
+     * then it will be considered as server session
+     */
+    if ((is_flags_set(FlowEntry::LocalFlow)) &&
+        (is_flags_set(FlowEntry::IngressDir)) &&
+        (is_flags_set(FlowEntry::ReverseFlow))) {
+        return true;
+    }
+    /*
+     * If the flow is (Egress + Forward) OR
+     *                (Ingress + Reverse)
+     * then it will be consideres as server session
+     */
+    if (((!(is_flags_set(FlowEntry::IngressDir))) &&
+         (!(is_flags_set(FlowEntry::ReverseFlow)))) ||
+        ((is_flags_set(FlowEntry::IngressDir)) &&
+         (is_flags_set(FlowEntry::ReverseFlow)))) {
+        return true;
+    }
+    return false;
+}
 /////////////////////////////////////////////////////////////////////////////
 // Flow entry fileds updation routines
 /////////////////////////////////////////////////////////////////////////////
@@ -1170,6 +1304,34 @@ std::string FlowEntry::DropReasonStr(uint16_t reason) {
 // src-vn and sg-id are used for policy lookup
 // plen is used to track the routes to use by flow_mgmt module
 void FlowEntry::GetSourceRouteInfo(const AgentRoute *rt) {
+
+    if (data_.intf_entry.get()) {
+        //Policy lookup needs to happen in Policy VRF
+        if (data_.intf_entry->vrf() &&
+            data_.intf_entry->vrf()->forwarding_vrf()) {
+
+            data_.src_policy_plen = 0;
+            data_.src_policy_vrf = VrfEntry::kInvalidIndex;
+            VrfEntry *forwarding_vrf = data_.intf_entry->vrf()->forwarding_vrf();
+
+            const InetUnicastRouteEntry *inet_rt =
+                dynamic_cast<const InetUnicastRouteEntry *>(rt);
+            if (inet_rt &&  inet_rt->vrf() == forwarding_vrf) {
+                AgentRoute *new_rt = GetUcRoute(data_.intf_entry->vrf(), 
+                                                inet_rt->addr());
+                if (new_rt) {
+                    rt = new_rt;
+                    inet_rt = dynamic_cast<const InetUnicastRouteEntry *>(new_rt);
+                    data_.src_policy_plen = inet_rt->plen();
+                    data_.src_policy_vrf = inet_rt->vrf()->vrf_id();
+                } else {
+                    data_.src_policy_plen = 0;
+                    data_.src_policy_vrf  = data_.intf_entry->vrf()->vrf_id();
+                }
+            }
+        }
+    }
+
     const AgentPath *path = NULL;
     if (rt) {
         path = rt->GetActivePath();
@@ -1194,6 +1356,38 @@ void FlowEntry::GetSourceRouteInfo(const AgentRoute *rt) {
 // plen is used to track the routes to use by flow_mgmt module
 void FlowEntry::GetDestRouteInfo(const AgentRoute *rt) {
     const AgentPath *path = NULL;
+    if (rt) {
+        path = rt->GetActivePath();
+    }
+
+    if (data_.intf_entry.get()) {
+        //Policy lookup needs to happen in Policy VRF
+        if (data_.intf_entry->vrf() &&
+            data_.intf_entry->vrf()->forwarding_vrf()) {
+
+            data_.dst_policy_plen = 0;
+            data_.dst_policy_vrf = VrfEntry::kInvalidIndex;
+            VrfEntry *forwarding_vrf = data_.intf_entry->vrf()->forwarding_vrf();
+
+            const InetUnicastRouteEntry *inet_rt =
+                dynamic_cast<const InetUnicastRouteEntry *>(rt);
+            if (inet_rt && inet_rt->vrf() == forwarding_vrf) {
+                AgentRoute *new_rt = 
+                    GetUcRoute(data_.intf_entry->vrf(), inet_rt->addr());
+                if (new_rt) {
+                    rt = new_rt;
+                    inet_rt = dynamic_cast<const InetUnicastRouteEntry *>(rt);
+                    data_.dst_policy_plen = inet_rt->plen();
+                    data_.dst_policy_vrf = inet_rt->vrf()->vrf_id();
+                } else {
+                    data_.dst_policy_plen = 0;
+                    data_.dst_policy_vrf  = data_.intf_entry->vrf()->vrf_id();
+                    path = NULL;
+                }
+            }
+        }
+    }
+
     if (rt) {
         path = rt->GetActivePath();
     }
@@ -1264,6 +1458,10 @@ void FlowEntry::ResetPolicy() {
 
 // Rebuild all the policy rules to be applied
 void FlowEntry::GetPolicyInfo(const VnEntry *vn, const FlowEntry *rflow) {
+    if (vn == NULL) {
+        return;
+    }
+
     // Reset old values first
     ResetPolicy();
 
@@ -1327,7 +1525,8 @@ void FlowEntry::GetPolicy(const VnEntry *vn, const FlowEntry *rflow) {
     // and subnet broadcast flow
     if (is_flags_set(FlowEntry::LinkLocalFlow) ||
         is_flags_set(FlowEntry::Multicast) ||
-        is_flags_set(FlowEntry::BgpRouterService)) {
+        is_flags_set(FlowEntry::BgpRouterService) ||
+        is_flags_set(FlowEntry::FabricControlFlow)) {
         return;
     }
 
@@ -1379,7 +1578,8 @@ void FlowEntry::GetVrfAssignAcl() {
 
     if (is_flags_set(FlowEntry::LinkLocalFlow) ||
         is_flags_set(FlowEntry::Multicast) ||
-        is_flags_set(FlowEntry::BgpRouterService)) {
+        is_flags_set(FlowEntry::BgpRouterService) ||
+        is_flags_set(FlowEntry::FabricControlFlow)) {
         return;
     }
 
@@ -1409,7 +1609,8 @@ void FlowEntry::GetSgList(const Interface *intf) {
     // Dont apply network-policy for linklocal and multicast flows
     if (is_flags_set(FlowEntry::LinkLocalFlow) ||
         is_flags_set(FlowEntry::Multicast) ||
-        is_flags_set(FlowEntry::BgpRouterService)) {
+        is_flags_set(FlowEntry::BgpRouterService) ||
+        is_flags_set(FlowEntry::FabricControlFlow)) {
         return;
     }
 
@@ -1453,8 +1654,9 @@ void FlowEntry::GetSgList(const Interface *intf) {
 void FlowEntry::GetApplicationPolicySet(const Interface *intf,
         const FlowEntry *rflow) {
     if (is_flags_set(FlowEntry::LinkLocalFlow) ||
-            is_flags_set(FlowEntry::Multicast) ||
-            is_flags_set(FlowEntry::BgpRouterService)) {
+        is_flags_set(FlowEntry::Multicast) ||
+        is_flags_set(FlowEntry::BgpRouterService) ||
+        is_flags_set(FlowEntry::FabricControlFlow)) {
         return;
     }
 

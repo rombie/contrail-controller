@@ -10,7 +10,7 @@ import requests
 import re
 import uuid
 from cfgm_common import jsonutils as json
-from cfgm_common import PERMS_RWX, PERMS_NONE
+from cfgm_common import PERMS_RWX, PERMS_NONE, PERMS_RX
 import netaddr
 from netaddr import IPNetwork, IPSet, IPAddress
 import gevent
@@ -298,9 +298,12 @@ class DBInterface(object):
                 # if instance_id is not a valid uuid, let
                 # virtual_machine_create generate uuid for the vm
                 pass
-            self._vnc_lib.virtual_machine_create(instance_obj)
             # set instance ownership to real tenant
-            self._vnc_lib.chown(instance_id, tenant_id)
+            perms2 = PermType2()
+            perms2.owner = tenant_id
+            instance_obj.set_perms2(perms2)
+            # create object
+            self._vnc_lib.virtual_machine_create(instance_obj)
         except RefsExistError as e:
             instance_obj = self._vnc_lib.virtual_machine_read(id=instance_obj.uuid)
 
@@ -486,7 +489,8 @@ class DBInterface(object):
                                               fields=fields,
                                               detail=detail,
                                               count=count,
-                                              filters=filters)
+                                              filters=filters,
+                                              shared=True)
     #end _virtual_network_list
 
     def _virtual_machine_interface_read(self, port_id=None, fq_name=None,
@@ -1220,6 +1224,13 @@ class DBInterface(object):
                     'SecurityGroupRemoteGroupAndRemoteIpPrefix')
             endpt = [AddressType(security_group='any')]
             if sgr_q['remote_ip_prefix']:
+                et = sgr_q.get('ethertype')
+                ip_net = netaddr.IPNetwork(sgr_q['remote_ip_prefix'])
+                if ((ip_net.version == 4 and et != 'IPv4') or
+                        (ip_net.version == 6 and et != 'IPv6')):
+                    self._raise_contrail_exception(
+                        'SecurityGroupRuleParameterConflict',
+                        ethertype=et, cidr=sgr_q['remote_ip_prefix'])
                 cidr = sgr_q['remote_ip_prefix'].split('/')
                 pfx = cidr[0]
                 pfx_len = int(cidr[1])
@@ -1298,6 +1309,13 @@ class DBInterface(object):
                 net_obj.router_external = False
             else:
                 net_obj.router_external = external_attr
+                # external network should be readable and reference-able from
+                # outside
+                if external_attr:
+                    net_obj.perms2 = PermType2(
+                        project_obj.uuid, PERMS_RWX, # tenant, tenant-access
+                        PERMS_RX,                    # global-access
+                        [])                          # share list
             if 'shared' in network_q:
                 net_obj.is_shared = network_q['shared']
             else:
@@ -1312,6 +1330,9 @@ class DBInterface(object):
                     net_obj.is_shared = network_q['shared']
                 if external_attr is not attr_not_specified:
                     net_obj.router_external = external_attr
+                    perms2 = net_obj.perms2
+                    perms2.global_access = PERMS_RX if external_attr else PERMS_NONE
+                    net_obj.perms2 = perms2
 
         if 'name' in network_q and network_q['name']:
             net_obj.display_name = network_q['name']
@@ -1385,7 +1406,7 @@ class DBInterface(object):
         net_q_dict['tenant_id'] = net_obj.parent_uuid.replace('-', '')
         net_q_dict['project_id'] = net_obj.parent_uuid.replace('-', '')
         net_q_dict['admin_state_up'] = id_perms.enable
-        if net_obj.is_shared:
+        if net_obj.is_shared or (net_obj.perms2 and len(net_obj.perms2.share)):
             net_q_dict['shared'] = True
         else:
             net_q_dict['shared'] = False
@@ -1599,7 +1620,7 @@ class DBInterface(object):
                 host_route_dict_list.append(host_route_entry)
         sn_q_dict['routes'] = host_route_dict_list
 
-        if net_obj.is_shared:
+        if net_obj.is_shared or (net_obj.perms2 and len(net_obj.perms2.share)):
             sn_q_dict['shared'] = True
         else:
             sn_q_dict['shared'] = False
@@ -2307,6 +2328,43 @@ class DBInterface(object):
         return rtr_back_refs[0]['uuid']
     #end _gw_port_vnc_to_neutron
 
+    def _get_router_gw_interface_for_neutron(self, context, router):
+        # Only admin user can list router gw inteface
+        if not context.get('is_admin', False):
+            return
+
+        si_ref = (router.get_service_instance_refs() or [None])[0]
+        if si_ref is None:
+            # No gateway set on that router
+            return
+
+        # Router's gateway is enabled on the router
+        # As Contrail model uses a service instance composed of 2 VM for the
+        # gw stuff, we use the first VMI of the first SI's VM as Neutron router
+        # gw port
+        try:
+            si = self._vnc_lib.service_instance_read(
+                id=si_ref['uuid'],
+                fields=['virtual_machine_back_refs'],
+            )
+        except NoIdError:
+            return
+        # To be sure to always use the same SI's VM, we sort them by theirs
+        # name
+        vm_ref = sorted(si.get_virtual_machine_back_refs() or [],
+                        key=lambda ref: ref['to'][-1])[0]
+        if vm_ref:
+            # And list right VM's VMIs. Return the first one (sorted by
+            # name) but SI's VM habitually have only one right interface
+            filters = {
+                'virtual_machine_interface_properties':
+                    json.dumps({'service_interface_type': "right"}),
+            }
+            vmis = self._virtual_machine_interface_list(
+                back_ref_id=[vm_ref['uuid']], filters=filters)
+            if vmis:
+                return sorted(vmis, key=lambda vmi: vmi.name)[0]
+
     @catch_convert_exception
     def _port_vnc_to_neutron(self, port_obj, port_req_memo=None, oper=READ):
         port_q_dict = {}
@@ -2491,6 +2549,10 @@ class DBInterface(object):
             if rtr_uuid:
                 port_q_dict['device_id'] = rtr_uuid
                 port_q_dict['device_owner'] = constants.DEVICE_OWNER_ROUTER_GW
+                # Neutron router gateway interface is a system resource only
+                # visible by admin user. Neutron intentionally set the tenant
+                # id to None for that
+                port_q_dict['tenant_id'] = ''
             else:
                 port_q_dict['device_id'] = \
                     port_obj.get_virtual_machine_refs()[0]['to'][-1]
@@ -2891,8 +2953,12 @@ class DBInterface(object):
                 continue
             if net_obj.is_shared is None:
                 is_shared = False
+            elif net_obj.is_shared or (
+                             net_obj.perms2 and len(net_obj.perms2.share)):
+                is_shared = True
             else:
-                is_shared = net_obj.is_shared
+                is_shared = False
+
             if not self._filters_is_present(filters, 'shared',
                                             is_shared):
                 continue
@@ -3136,13 +3202,13 @@ class DBInterface(object):
                     ipam_ref['attr'].set_ipam_subnets(new_subnets)
                     net_obj._pending_field_updates.add('network_ipam_refs')
                     try:
-                        self._virtual_network_update(net_obj)
+                        self._vnc_lib.virtual_network_update(net_obj)
                     except RefsExistError:
                         self._raise_contrail_exception('SubnetInUse',
                                                        subnet_id=subnet_id)
 
                     return
-    #end subnet_delete
+    # end subnet_delete
 
     @wait_for_api_server_connection
     def subnets_list(self, context, filters=None):
@@ -3899,10 +3965,13 @@ class DBInterface(object):
         if ip_addr:
             ip_obj.set_instance_ip_address(ip_addr)
 
-        ip_id = self._instance_ip_create(ip_obj)
         # set instance ip ownership to real tenant
+        perms2 = PermType2()
         tenant_id = self._get_obj_tenant_id('port', port_obj.get_uuid())
-        self._vnc_lib.chown(ip_id, tenant_id)
+        perms2.owner = tenant_id
+        ip_obj.set_perms2(perms2)
+        # create instance
+        ip_id = self._instance_ip_create(ip_obj)
         return ip_id
     # end _create_instance_ip
 
@@ -3977,6 +4046,11 @@ class DBInterface(object):
         # initialize port object
         port_obj = self._port_neutron_to_vnc(port_q, net_obj, CREATE)
 
+        # change owner
+        perms2 = PermType2()
+        perms2.owner = tenant_id
+        port_obj.set_perms2(perms2)
+
         # always request for v4 and v6 ip object and handle the failure
         # create the object
         try:
@@ -3991,7 +4065,6 @@ class DBInterface(object):
                 self._raise_contrail_exception(
                    'BadRequest', resource='port', msg=str(e))
 
-        self._vnc_lib.chown(port_id, tenant_id)
         # add support, nova boot --nic subnet-id=subnet_uuid
         subnet_id = port_q.get('subnet_id')
         if 'fixed_ips' in port_q:
@@ -4243,10 +4316,17 @@ class DBInterface(object):
                     for vmi_ref in
                     router_obj.get_virtual_machine_interface_refs() or []
                 ]
-                # Read all logical router ports and add it to the list
+                # Add all router intefraces on private networks
                 if router_port_ids:
                     port_objs.extend(self._virtual_machine_interface_list(
                         obj_uuids=router_port_ids, parent_id=project_ids))
+
+                # Add router gateway interface
+                for router in router_objs:
+                    gw_vmi = self._get_router_gw_interface_for_neutron(context,
+                                                                       router)
+                    if gw_vmi is not None:
+                        port_objs.append(gw_vmi)
 
             # Filter it with project ids if there are.
             if project_ids:

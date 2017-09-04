@@ -29,6 +29,7 @@
 #include "bgp/routing-instance/rtarget_group_mgr.h"
 #include "bgp/routing-policy/routing_policy.h"
 
+#include "config/config-client-mgr/config_client_show_types.h"
 #include "control-node/sandesh/control_node_types.h"
 
 using boost::system::error_code;
@@ -134,7 +135,7 @@ public:
             peer_manager->ClearAllPeers();
         }
 
-        if (clear_bgpaas_peers)
+        if (clear_peers || clear_bgpaas_peers)
             server_->ClearBgpaaSPeers();
     }
 
@@ -206,7 +207,7 @@ public:
                             identifier.to_string());
             }
             Ip4Address old_identifier = server_->bgp_identifier_;
-            server_->bgp_identifier_ = identifier;
+            server_->set_bgp_identifier(identifier);
             server_->NotifyIdentifierUpdate(old_identifier);
         }
 
@@ -432,6 +433,7 @@ BgpServer::BgpServer(EventManager *evm)
       inet6_condition_listener_(new BgpConditionListener(this)),
       inetvpn_replicator_(new RoutePathReplicator(this, Address::INETVPN)),
       ermvpn_replicator_(new RoutePathReplicator(this, Address::ERMVPN)),
+      mvpn_replicator_(new RoutePathReplicator(this, Address::MVPN)),
       evpn_replicator_(new RoutePathReplicator(this, Address::EVPN)),
       inet6vpn_replicator_(new RoutePathReplicator(this, Address::INET6VPN)),
       inet_service_chain_mgr_(

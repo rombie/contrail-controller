@@ -64,6 +64,12 @@ BgpRoute *InetTable::RouteReplicate(BgpServer *server,
     boost::scoped_ptr<Ip4Prefix> inet_prefix;
     RouteDistinguisher rd;
 
+    // TODO(Ananth)higher numbered vs lower numbered router for resolution in mx
+
+    // TODO(Ananth) Retrieve VIT from the src_instance and attach.
+    if (!src_table->routing_instance()->IsMasterRoutingInstance()) {
+    }
+
     if (inet) {
         inet_prefix.reset(new Ip4Prefix(inet->GetPrefix().ip4_addr(),
                                       inet->GetPrefix().prefixlen()));

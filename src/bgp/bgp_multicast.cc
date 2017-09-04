@@ -4,6 +4,9 @@
 
 #include "bgp/bgp_multicast.h"
 
+#include <string>
+#include <vector>
+
 #include <boost/bind.hpp>
 
 #include "base/string_util.h"
@@ -13,6 +16,9 @@
 #include "bgp/bgp_update.h"
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/routing-instance/routing_instance.h"
+
+using std::string;
+using std::vector;
 
 class McastTreeManager::DeleteActor : public LifetimeActor {
 public:
@@ -565,6 +571,15 @@ void McastSGEntry::UpdateRoutes(uint8_t level) {
     }
 }
 
+ErmVpnRoute *McastSGEntry::GetGlobalTreeRootRoute() const {
+    if (!IsTreeBuilder(McastTreeManager::LevelLocal))
+        return NULL;
+    ForwarderSet *forwarders = forwarder_sets_[McastTreeManager::LevelLocal];
+    assert(!forwarders->empty());
+    ForwarderSet::const_iterator it = forwarders->begin();
+    return (*it)->global_tree_route();
+}
+
 //
 // Implement tree builder election.
 //
@@ -681,6 +696,16 @@ void McastSGEntry::NotifyForestNode() {
     partition_->GetTablePartition()->Notify(forest_node_->route());
 }
 
+bool McastSGEntry::GetForestNodePMSI(uint32_t *label, Ip4Address *address,
+                                     vector<string> *tunnel_encap) const {
+    if (!forest_node_)
+        return false;
+    *label = forest_node_->label();
+    *address = forest_node_->address();
+    *tunnel_encap = forest_node_->encap();
+    return true;
+}
+
 bool McastSGEntry::IsForestNode(McastForwarder *forwarder) {
     return (forwarder == forest_node_);
 }
@@ -719,9 +744,17 @@ McastManagerPartition::~McastManagerPartition() {
 // Find the McastSGEntry for the given group and source.
 //
 McastSGEntry *McastManagerPartition::FindSGEntry(
-        Ip4Address group, Ip4Address source) {
-    McastSGEntry temp_sg_entry(this, group, source);
-    SGList::iterator it = sg_list_.find(&temp_sg_entry);
+        const Ip4Address &group, const Ip4Address &source) {
+    return const_cast<McastSGEntry *>(
+        static_cast<const McastManagerPartition *>(this)->FindSGEntry(group,
+                                                                      source));
+}
+
+const McastSGEntry *McastManagerPartition::FindSGEntry(
+        const Ip4Address &group, const Ip4Address &source) const {
+    McastSGEntry temp_sg_entry(const_cast<McastManagerPartition *>(this),
+                               group, source);
+    SGList::const_iterator it = sg_list_.find(&temp_sg_entry);
     return (it != sg_list_.end() ? *it : NULL);
 }
 
@@ -736,6 +769,28 @@ McastSGEntry *McastManagerPartition::LocateSGEntry(
         sg_list_.insert(sg_entry);
     }
     return sg_entry;
+}
+
+ErmVpnRoute *McastManagerPartition::GetGlobalTreeRootRoute(
+        ErmVpnRoute *ermvpn_route) const {
+    const McastSGEntry *sg = FindSGEntry(ermvpn_route->GetPrefix().group(),
+                                         ermvpn_route->GetPrefix().source());
+    return sg ? sg->GetGlobalTreeRootRoute() : NULL;
+}
+
+void McastManagerPartition::NotifyForestNode(
+        const Ip4Address &source, const Ip4Address &group) {
+    McastSGEntry *sg = FindSGEntry(group, source);
+    if (sg)
+        sg->NotifyForestNode();
+}
+
+bool McastManagerPartition::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                              Ip4Address *address,
+                                              vector<string> *encap) const {
+    const McastSGEntry *sg = FindSGEntry(rt->GetPrefix().group(),
+                                         rt->GetPrefix().source());
+    return sg ? sg->GetForestNodePMSI(label, address, encap) : false;
 }
 
 //
@@ -845,6 +900,10 @@ void McastTreeManager::FreePartitions() {
 }
 
 McastManagerPartition *McastTreeManager::GetPartition(int part_id) {
+    return partitions_[part_id];
+}
+
+const McastManagerPartition *McastTreeManager::GetPartition(int part_id) const {
     return partitions_[part_id];
 }
 
@@ -1042,4 +1101,27 @@ const LifetimeActor *McastTreeManager::deleter() const {
 //
 bool McastTreeManager::deleted() const {
     return deleter_->IsDeleted();
+}
+
+ErmVpnRoute *McastTreeManager::GetGlobalTreeRootRoute(
+        ErmVpnRoute *ermvpn_route) const {
+    const McastManagerPartition *partition =
+        GetPartition(ermvpn_route->get_table_partition()->index());
+    return partition->GetGlobalTreeRootRoute(ermvpn_route);
+}
+
+void McastTreeManager::NotifyForestNode(int part_id, const Ip4Address &source,
+                                        const Ip4Address &group) {
+    McastManagerPartition *partition = GetPartition(part_id);
+    partition->NotifyForestNode(source, group);
+}
+
+bool McastTreeManager::GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
+                                         Ip4Address *address,
+                                         vector<string> *encap) const {
+    if (!rt || !rt->IsUsable())
+        return false;
+    const McastManagerPartition *partition =
+        GetPartition(rt->get_table_partition()->index());
+    return partition->GetForestNodePMSI(rt, label, address, encap);
 }

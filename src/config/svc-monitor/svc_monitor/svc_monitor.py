@@ -76,8 +76,10 @@ class SvcMonitor(object):
         DBBaseSM.init(self, self.logger, self._object_db)
 
         # init rabbit connection
-        self.rabbit = VncAmqpHandle(self.logger, DBBaseSM,
-                REACTION_MAP, 'svc_monitor', args=self._args)
+        rabbitmq_cfg = get_rabbitmq_cfg(args)
+        self.rabbit = VncAmqpHandle(self.logger._sandesh, self.logger,
+                DBBaseSM, REACTION_MAP, 'svc_monitor', rabbitmq_cfg,
+                self._args.trace_file)
         self.rabbit.establish()
 
     def post_init(self, vnc_lib, args=None):
@@ -389,9 +391,9 @@ class SvcMonitor(object):
     #_create_default_analyzer_template
 
     def port_delete_or_si_link(self, vm, vmi):
-        if vmi.port_tuple:
+        if vmi.port_tuples:
             return
-        if (vmi.service_instance and vmi.virtual_machine == None):
+        if (vmi.service_instances and vmi.virtual_machine == None):
             self.vm_manager.cleanup_svc_vm_ports([vmi.uuid])
             return
 
@@ -568,9 +570,10 @@ def timer_callback(monitor):
     # delete vmis with si but no vms
     vmi_delete_list = []
     for vmi in VirtualMachineInterfaceSM.values():
-        si = ServiceInstanceSM.get(vmi.service_instance)
-        if si and not vmi.virtual_machine:
-            vmi_delete_list.append(vmi.uuid)
+        for si_uuid in vmi.service_instances:
+            si = ServiceInstanceSM.get(si_uuid)
+            if si and not vmi.virtual_machine:
+                vmi_delete_list.append(vmi.uuid)
     if len(vmi_delete_list):
         monitor.vm_manager.cleanup_svc_vm_ports(vmi_delete_list)
 
@@ -838,6 +841,17 @@ def parse_args(args_str):
 
     return args
 
+def get_rabbitmq_cfg(args):
+    return {
+        'servers': args.rabbit_server, 'port': args.rabbit_port,
+        'user': args.rabbit_user, 'password': args.rabbit_password,
+        'vhost': args.rabbit_vhost, 'ha_mode': args.rabbit_ha_mode,
+        'use_ssl': args.rabbit_use_ssl,
+        'ssl_version': args.kombu_ssl_version,
+        'ssl_keyfile': args.kombu_ssl_keyfile,
+        'ssl_certfile': args.kombu_ssl_certfile,
+        'ssl_ca_certs': args.kombu_ssl_ca_certs
+    }
 
 def run_svc_monitor(sm_logger, args=None):
     sm_logger.notice("Elected master SVC Monitor node. Initializing... ")
@@ -908,9 +922,11 @@ def main(args_str=None):
 
     # Initialize AMQP handler then close it to be sure remain queue of a
     # precedent run is cleaned
+    rabbitmq_cfg = get_rabbitmq_cfg(args)
     try:
-        vnc_amqp = VncAmqpHandle(sm_logger, DBBaseSM, REACTION_MAP, 'svc_monitor',
-                                 args=args)
+        vnc_amqp = VncAmqpHandle(sm_logger._sandesh, sm_logger, DBBaseSM,
+                                 REACTION_MAP, 'svc_monitor', rabbitmq_cfg,
+                                 args.trace_file)
         vnc_amqp.establish()
         vnc_amqp.close()
     except Exception:

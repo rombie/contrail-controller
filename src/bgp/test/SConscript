@@ -21,6 +21,7 @@ env.Append(LIBPATH = ['#/' + Dir('..').path,
                       '../../base',
                       '../../bgp/inet',
                       '../../bgp/ermvpn',
+                      '../../bgp/mvpn',
                       '../../bgp/evpn',
                       '../../bgp/inet6',
                       '../../bgp/inet6vpn',
@@ -65,13 +66,11 @@ env.Prepend(LIBS = ['control_test',
                     'bgp',
                     'bgp_ifmap_config',
                     'bgp_xmpp',
-                    'peer_sandesh',
-                    'control_node', 'dbtest',
-                    'ifmapio', 'ifmap_vnc', 'bgp_schema', 'task_test',
+                    'control_node', 'dbtest', 'ifmap_vnc', 'bgp_schema', 'task_test',
                     'ifmap_test_util', 'ifmap_test_util_server',
                     'ifmap_server', 'ifmap_common',
-                    'ifmapio', 'curl',
-                    'sandesh', 'http', 'http_parser',
+                    'ifmapio', 'ifmap_server', 'config_client_mgr', 'curl',
+                    'peer_sandesh', 'sandesh', 'http', 'http_parser',
                     'xmpp', 'pugixml', 'xml',
                     'db', 'sandeshvns', 'process_info',
                     'io', 'crypto', 'ssl', 'base', 'gunit'])
@@ -80,6 +79,7 @@ env.Prepend(LIBS = ['control_test',
 if sys.platform == 'darwin':
     bgp_inet = Dir('../inet').path + '/libbgp_inet.a'
     bgp_ermvpn = Dir('../ermvpn').path + '/libbgp_ermvpn.a'
+    bgp_mvpn = Dir('../mvpn').path + '/libbgp_mvpn.a'
     bgp_evpn = Dir('../evpn').path + '/libbgp_evpn.a'
     bgp_l3vpn = Dir('../l3vpn').path + '/libbgp_l3vpn.a'
     bgp_rtarget = Dir('../rtarget').path + '/librtarget.a'
@@ -88,6 +88,7 @@ if sys.platform == 'darwin':
     env.Prepend(LINKFLAGS =
                 ['-Wl,-force_load,' + bgp_inet,
                  '-Wl,-force_load,' + bgp_ermvpn,
+                 '-Wl,-force_load,' + bgp_mvpn,
                  '-Wl,-force_load,' + bgp_evpn,
                  '-Wl,-force_load,' + bgp_l3vpn,
                  '-Wl,-force_load,' + bgp_inet6,
@@ -101,6 +102,7 @@ else:
                  '-lboost_filesystem',
                  '-lbgp_inet',
                  '-lbgp_ermvpn',
+                 '-lbgp_mvpn',
                  '-lbgp_evpn',
                  '-lbgp_l3vpn',
                  '-lrtarget',
@@ -111,6 +113,7 @@ else:
 
 env.Append(LIBS = [
     'bgp_ermvpn',
+    'bgp_mvpn',
     'bgp_evpn',
     'bgp_inet',
     'bgp_inet6',
@@ -120,7 +123,6 @@ env.Append(LIBS = [
     'rtarget',
     'control_node_uve',
     'io',
-    'ifmapio',
     'cassandra_cql',
     'SimpleAmqpClient',
     'rabbitmq',
@@ -243,6 +245,10 @@ env.Alias('src/bgp:bgp_ribout_updates_test', bgp_ribout_updates_test)
 bgp_route_test = env.UnitTest('bgp_route_test',
                              ['bgp_route_test.cc'])
 env.Alias('src/bgp:bgp_route_test', bgp_route_test)
+
+bgp_mvpn_test = env.UnitTest('bgp_mvpn_test',
+                             ['bgp_mvpn_test.cc'])
+env.Alias('src/bgp:bgp_mvpn_test', bgp_mvpn_test)
 
 bgp_server_test = env.UnitTest('bgp_server_test',
                                ['bgp_server_test.cc'])
@@ -410,6 +416,10 @@ env.Alias('src/bgp:routing_instance_mgr_test', routing_instance_mgr_test)
 routing_instance_test = env.UnitTest('routing_instance_test',
                                      ['routing_instance_test.cc'])
 env.Alias('src/bgp:routing_instance_test', routing_instance_test)
+
+routing_policy_match_test = env.UnitTest('routing_policy_match_test',
+                                         ['routing_policy_match_test.cc'])
+env.Alias('src/bgp:routing_policy_match_test', routing_policy_match_test)
 
 routing_policy_test = env.UnitTest('routing_policy_test',
                               ['routing_policy_test.cc'])
@@ -589,6 +599,7 @@ test_suite = [
     bgp_membership_test,
     bgp_msg_builder_test,
     bgp_multicast_test,
+    bgp_mvpn_test,
     bgp_peer_close_gr_test,
     bgp_peer_close_test,
     bgp_peer_test,
@@ -674,6 +685,7 @@ test = env.TestSuite('bgp-test', test_suite)
 env.Alias('controller/src/bgp:test', [
     test,
     'controller/src/bgp/ermvpn:test',
+    'controller/src/bgp/mvpn:test',
     'controller/src/bgp/evpn:test',
     'controller/src/bgp/inet6:test',
     'controller/src/bgp/inet6vpn:test',
@@ -729,6 +741,7 @@ sc_test_suite = [
     bgp_xmpp_rtarget_test,
     routepath_replicator_random_test,
     routepath_replicator_test,
+    service_chain_test,
     service_chain_test1,
     service_chain_test2,
     service_chain_test3,

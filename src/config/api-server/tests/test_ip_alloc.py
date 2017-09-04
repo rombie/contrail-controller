@@ -12,6 +12,7 @@ import uuid
 import logging
 import coverage
 import ipaddress
+import mock
 
 import testtools
 from testtools.matchers import Equals, MismatchError, Not, Contains
@@ -1694,33 +1695,27 @@ class TestIpAlloc(test_case.ApiServerTestCase):
         ipam_obj = self._vnc_lib.network_ipam_read(id=ipam.uuid)
 
         #restore all gw_ips and change dns_server_address in ipam3_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam1_sn_v4.set_default_gateway('11.1.1.100')
         ipam3_sn_v4.set_dns_server_address('13.1.1.210')
         ipam._pending_field_updates.add('ipam_subnets')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:13.1.1.200, new: 13.1.1.210') as e:
-            self._vnc_lib.network_ipam_update(ipam)
+        self._vnc_lib.network_ipam_update(ipam)
         ipam_obj = self._vnc_lib.network_ipam_read(id=ipam.uuid)
 
         #restore ipam3_sn_v4 dns_server_address and change in ipam2_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam3_sn_v4.set_dns_server_address('13.1.1.200')
         ipam2_sn_v4.set_dns_server_address('12.1.1.200')
         ipam._pending_field_updates.add('ipam_subnets')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:12.1.1.253, new: 12.1.1.200') as e:
-            self._vnc_lib.network_ipam_update(ipam)
+        self._vnc_lib.network_ipam_update(ipam)
         ipam_obj = self._vnc_lib.network_ipam_read(id=ipam.uuid)
 
         #restore ipam2_sn_v4 dns_server_address and change in ipam1_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam2_sn_v4.set_dns_server_address('12.1.1.253')
         ipam1_sn_v4.set_dns_server_address('11.1.1.200')
         ipam._pending_field_updates.add('ipam_subnets')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:11.1.1.253, new: 11.1.1.200') as e:
-            self._vnc_lib.network_ipam_update(ipam)
+        self._vnc_lib.network_ipam_update(ipam)
         ipam_obj = self._vnc_lib.network_ipam_read(id=ipam.uuid)
 
         #cleanup
@@ -1788,33 +1783,27 @@ class TestIpAlloc(test_case.ApiServerTestCase):
         net_obj = self._vnc_lib.virtual_network_read(id = vn.uuid)
 
         #restore all gw_ips and change dns_server_address in ipam3_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam1_sn_v4.set_default_gateway('11.1.1.100')
         ipam3_sn_v4.set_dns_server_address('13.1.1.210')
         vn._pending_field_updates.add('network_ipam_refs')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:13.1.1.200, new: 13.1.1.210') as e:
-            self._vnc_lib.virtual_network_update(vn)
+        self._vnc_lib.virtual_network_update(vn)
         net_obj = self._vnc_lib.virtual_network_read(id = vn.uuid)
 
         #restore ipam3_sn_v4 dns_server_address and change in ipam2_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam3_sn_v4.set_dns_server_address('13.1.1.200')
         ipam2_sn_v4.set_dns_server_address('12.1.1.200')
         vn._pending_field_updates.add('network_ipam_refs')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:12.1.1.253, new: 12.1.1.200') as e:
-            self._vnc_lib.virtual_network_update(vn)
+        self._vnc_lib.virtual_network_update(vn)
         net_obj = self._vnc_lib.virtual_network_read(id = vn.uuid)
 
         #restore ipam2_sn_v4 dns_server_address and change in ipam1_sn_v4
-        #we should expect bad request exception.
+        #dns_server_address update will go through
         ipam2_sn_v4.set_dns_server_address('12.1.1.253')
         ipam1_sn_v4.set_dns_server_address('11.1.1.200')
         vn._pending_field_updates.add('network_ipam_refs')
-        with ExpectedException(cfgm_common.exceptions.BadRequest,
-                               'dns server change is not allowed orig:11.1.1.253, new: 11.1.1.200') as e:
-            self._vnc_lib.virtual_network_update(vn)
+        self._vnc_lib.virtual_network_update(vn)
         net_obj = self._vnc_lib.virtual_network_read(id = vn.uuid)
 
         # delete vn and create a new subnet with add from start and add
@@ -1855,6 +1844,49 @@ class TestIpAlloc(test_case.ApiServerTestCase):
         self._vnc_lib.virtual_network_delete(id=vn1.uuid)
         self._vnc_lib.network_ipam_delete(id=ipam1.uuid)
         self._vnc_lib.project_delete(id=project.uuid)
+    #end
+
+    def test_ip_allocation_ipam(self):
+        project = Project('my-v4-v6-proj-%s' %(self.id()), Domain())
+        self._vnc_lib.project_create(project)
+
+        ipam_subnet_v4 = IpamSubnetType(subnet=SubnetType('0.0.0.0', 8))
+        ipam_subnet_v6 = IpamSubnetType(subnet=SubnetType('fd14::', 120))
+        ipam_subnets = IpamSubnets([ipam_subnet_v4, ipam_subnet_v6])
+        ipam_obj = NetworkIpam('flat-ipam', project,
+                ipam_subnet_method="flat-subnet", ipam_subnets=ipam_subnets)
+        self._vnc_lib.network_ipam_create(ipam_obj)
+
+        #ipv4
+        iip_obj = InstanceIp(name=str(uuid.uuid4()), instance_ip_family='v4')
+        iip_obj.uuid = iip_obj.name
+        iip_obj.add_network_ipam(ipam_obj)
+        logger.debug('Created V4 Instance IP object %s', iip_obj.uuid)
+        iip_id = self._vnc_lib.instance_ip_create(iip_obj)
+        iip_obj = self._vnc_lib.instance_ip_read(id=iip_id)
+        ip_addr = iip_obj.get_instance_ip_address()
+        logger.debug('  got V4 IP Address %s', ip_addr)
+        expected_ipaddr = '0.255.255.252'
+        if ip_addr != expected_ipaddr:
+            raise Exception('expected %s but got %s' %(expected_ipaddr, ip_addr))
+        self._vnc_lib.instance_ip_delete(id=iip_id)
+
+        #ipv6
+        iip_obj = None
+        iip_obj = InstanceIp(name=str(uuid.uuid4()), instance_ip_family='v6')
+        iip_obj.uuid = iip_obj.name
+        iip_obj.add_network_ipam(ipam_obj)
+        logger.debug('Created V6 Instance IP object %s', iip_obj.uuid)
+        iip_id = self._vnc_lib.instance_ip_create(iip_obj)
+        iip_obj = self._vnc_lib.instance_ip_read(id=iip_id)
+        ip_addr = iip_obj.get_instance_ip_address()
+        logger.debug('  got V6 IP Address %s', ip_addr)
+        expected_ipaddr = 'fd14::fc'
+        if ip_addr != expected_ipaddr:
+            raise Exception('expected %s but got %s' %(expected_ipaddr, ip_addr))
+        self._vnc_lib.instance_ip_delete(id=iip_id)
+
+        self._vnc_lib.network_ipam_delete(id=ipam_obj.uuid)
     #end
 
     def test_ip_alloction(self):
@@ -2922,6 +2954,48 @@ class TestIpAlloc(test_case.ApiServerTestCase):
             raise Exception("Floating-ip not allocated from requested subnet")
 
     # end test_floating_ip_alloc
+
+    def test_keep_ip_allocation_in_inconsistency_case(self):
+        """
+        Check if IP address correctly belongs to the delete interface before
+        removing the IP allocation.
+        https://bugs.launchpad.net/juniperopenstack/+bug/1702596
+        """
+
+        # Create IIP on a subnet/network
+        ipam = vnc_api.NetworkIpam('ipam-%s' % self.id())
+        self._vnc_lib.network_ipam_create(ipam)
+        vn = VirtualNetwork('vn-%s' % self.id())
+        vn.add_network_ipam(
+            ipam, VnSubnetsType([IpamSubnetType(SubnetType('1.1.1.0', 28))]))
+        self._vnc_lib.virtual_network_create(vn)
+        vmi = VirtualMachineInterface('vmi-%s' % self.id(),
+                                      parent_obj=Project())
+        vmi.set_virtual_network(vn)
+        self._vnc_lib.virtual_machine_interface_create(vmi)
+        iip = InstanceIp('iip-%s' % self.id(), instance_ip_family='v4')
+        iip.set_virtual_machine_interface(vmi)
+        iip.set_virtual_network(vn)
+        self._vnc_lib.instance_ip_create(iip)
+        iip = self._vnc_lib.instance_ip_read(id=iip.uuid)
+
+        # Try to free the IIP's address with a wrong allocation ID
+        with mock.patch.object(self._api_server._addr_mgmt,
+                               '_net_ip_free_req') as mock_ip_free_req:
+            self._api_server._addr_mgmt.ip_free_req(
+                iip.get_instance_ip_address(), vn.fq_name, 'fake_alloc_id')
+        # Validate the IP address allocation free was not called
+        msg = "Deleted allocated IP address with a wrong allocation ID"
+        assert not mock_ip_free_req.called, msg
+
+        # Try to notify free the IIP's address with a wrong allocation ID
+        with mock.patch.object(self._api_server._addr_mgmt,
+                               '_net_ip_free_req') as mock_ip_free_req:
+            self._api_server._addr_mgmt.ip_free_notify(
+                iip.get_instance_ip_address(), vn.fq_name, 'fake_alloc_id')
+        # Validate the IP address allocation free was not called
+        msg = "Deleted allocated IP address with a wrong allocation ID"
+        assert not mock_ip_free_req.called, msg
 
 #end class TestIpAlloc
 

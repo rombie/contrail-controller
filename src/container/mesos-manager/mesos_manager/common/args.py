@@ -42,6 +42,9 @@ def parse_args(args_str=None):
     defaults.update(SandeshConfig.get_default_options(['DEFAULTS']))
 
     vnc_opts = {
+        'admin_user': 'admin',
+        'admin_password': 'admin',
+        'admin_tenant': 'admin',
         'rabbit_server': 'localhost',
         'rabbit_port': '5672',
         'rabbit_user': 'guest',
@@ -104,3 +107,16 @@ def parse_args(args_str=None):
         args.service_subnets = args.service_subnets.split()
     args.sandesh_config = SandeshConfig.from_parser_arguments(args)
     return args
+
+
+def rabbitmq_args(args):
+    return {
+        'servers': args.rabbit_server, 'port': args.rabbit_port,
+        'user': args.rabbit_user, 'password': args.rabbit_password,
+        'vhost': args.rabbit_vhost, 'ha_mode': args.rabbit_ha_mode,
+        'use_ssl': args.rabbit_use_ssl,
+        'ssl_version': args.kombu_ssl_version,
+        'ssl_keyfile': args.kombu_ssl_keyfile,
+        'ssl_certfile': args.kombu_ssl_certfile,
+        'ssl_ca_certs': args.kombu_ssl_ca_certs
+    }

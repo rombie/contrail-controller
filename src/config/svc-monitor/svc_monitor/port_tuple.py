@@ -28,6 +28,7 @@ class PortTupleAgent(Agent):
     def __init__(self, svc_mon, vnc_lib, object_db, config_section, logger):
         super(PortTupleAgent, self).__init__(svc_mon, vnc_lib,
             object_db, config_section)
+        self.sc_ipam_obj = None
         self.logger = logger
 
         # Register log functions to be used for port tuple logs.
@@ -37,9 +38,14 @@ class PortTupleAgent(Agent):
                         MessageID.DEBUG : sandesh.PortTupleDebugLog,
                     }
         self.logger.add_messages(**log_funcs)
+        self._get_service_chain_ipam()
 
     def handle_service_type(self):
         return 'port-tuple'
+
+    def _get_service_chain_ipam(self):
+        fq_name = ['default-domain', 'default-project', 'service-chain-flat-ipam']
+        self.sc_ipam_obj = self._vnc_lib.network_ipam_read(fq_name=fq_name)
 
     def _allocate_iip_for_family(self, iip_family, si, port, vmi):
         create_iip = True
@@ -56,14 +62,12 @@ class PortTupleAgent(Agent):
 
         if create_iip:
             iip_obj = InstanceIp(name=iip_name, instance_ip_family=iip_family)
-            vn_obj = self._vnc_lib.virtual_network_read(id=vmi.virtual_network)
-            iip_obj.add_virtual_network(vn_obj)
             iip_obj.set_service_instance_ip(True)
             iip_obj.set_instance_ip_secondary(True)
             iip_obj.set_instance_ip_mode('active-active')
+            iip_obj.add_network_ipam(self.sc_ipam_obj)
             try:
                 self._vnc_lib.instance_ip_create(iip_obj)
-                self._vnc_lib.ref_relax_for_delete(iip_obj.uuid, vn_obj.uuid)
             except RefsExistError:
                 self._vnc_lib.instance_ip_update(iip_obj)
             except Exception as e:
@@ -86,8 +90,9 @@ class PortTupleAgent(Agent):
         self._allocate_iip_for_family('v4', si, port, vmi)
         self._allocate_iip_for_family('v6', si, port, vmi)
 
-    def _allocate_health_check_iip_for_family(self, iip_family, port, vmi):
-        iip_name = vmi.uuid + '-' + port['type'] + '-' + iip_family + '-health-check'
+    def _allocate_health_check_iip_for_family(self, si, health_id, iip_family, port, vmi):
+        iip_name = si.uuid + '-' + port['type'] + '-' + \
+            iip_family + '-health-check-' + health_id
         iip_obj = InstanceIp(name=iip_name, instance_ip_family=iip_family)
         vn_obj = self._vnc_lib.virtual_network_read(id=vmi.virtual_network)
         iip_obj.add_virtual_network(vn_obj)
@@ -104,9 +109,9 @@ class PortTupleAgent(Agent):
             'virtual-machine-interface', vmi.uuid, None, 'ADD')
         vmi.update()
 
-    def _allocate_health_check_iip(self, port, vmi):
-        self._allocate_health_check_iip_for_family('v4', port, vmi)
-        self._allocate_health_check_iip_for_family('v6', port, vmi)
+    def _allocate_health_check_iip(self, si, health_id, port, vmi):
+        self._allocate_health_check_iip_for_family(si, health_id, 'v4', port, vmi)
+        self._allocate_health_check_iip_for_family(si, health_id, 'v6', port, vmi)
 
     def _delete_health_check_iip(self, iip, vmi):
         for vmi_id in iip.virtual_machine_interfaces:
@@ -135,13 +140,13 @@ class PortTupleAgent(Agent):
         hc_iip = None
         for iip_id in list(vmi.instance_ips):
             iip = InstanceIpSM.get(iip_id)
-            if not iip or not iip.service_health_check_ip:
+            if not iip or not iip.service_health_check_ip or si.uuid not in iip.name:
                 continue
             hc_iip = iip
             break
 
         if allocate_hc_iip:
-            self._allocate_health_check_iip(port, vmi)
+            self._allocate_health_check_iip(si, health_id, port, vmi)
         elif hc_iip:
             self._delete_health_check_iip(hc_iip, vmi)
 
@@ -157,9 +162,21 @@ class PortTupleAgent(Agent):
         for health_id in list(vmi.service_health_checks):
             if health_id in port['service-health-checks']:
                 continue
-            self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
-                'service-health-check', health_id, None, 'DELETE')
-            vmi.update()
+            health = ServiceHealthCheckSM.get(health_id)
+            pt_present = False
+            if health and health.service_instances:
+                for pt_id in vmi.port_tuples:
+                    si_uuid = (PortTupleSM.get(pt_id)).parent_uuid
+                    si_temp = ServiceInstanceSM.get(si_uuid)
+                    if not si_temp:
+                        continue
+                    if health.uuid in si_temp.service_health_checks:
+                        pt_present = True
+                        break
+            if pt_present == False:
+                self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
+                        'service-health-check', health.uuid, None, 'DELETE')
+                vmi.service_health_checks.remove(health_id)
 
         # update health check ip
         self.update_health_check_iip(si, port, vmi)
@@ -258,28 +275,49 @@ class PortTupleAgent(Agent):
             return
 
     def delete_old_vmi_links(self, vmi):
-        if vmi.port_tuple:
-            return
         for iip_id in list(vmi.instance_ips):
             iip = InstanceIpSM.get(iip_id)
             if iip and (iip.service_instance or iip.service_health_check_ip):
-                self._vnc_lib.ref_update('instance-ip', iip_id,
-                    'virtual-machine-interface', vmi.uuid, None, 'DELETE')
-                vmi.instance_ips.remove(iip_id)
+                pt_present = False
+                for pt_id in vmi.port_tuples:
+                    si_uuid = (PortTupleSM.get(pt_id)).parent_uuid
+                    if si_uuid in iip.name:
+                        pt_present = True
+                        break
+                if pt_present == False:
+                    self._vnc_lib.ref_update('instance-ip', iip_id,
+                        'virtual-machine-interface', vmi.uuid, None, 'DELETE')
+                    vmi.instance_ips.remove(iip_id)
 
         for irt_id in list(vmi.interface_route_tables):
             irt = InterfaceRouteTableSM.get(irt_id)
             if irt and irt.service_instances:
-                self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
-                    'interface-route-table', irt.uuid, None, 'DELETE')
-                vmi.interface_route_tables.remove(irt_id)
+                pt_present = False
+                for pt_id in vmi.port_tuples:
+                    si_uuid = (PortTupleSM.get(pt_id)).parent_uuid
+                    if si_uuid in irt.service_instances:
+                        pt_present = True
+                if pt_present == False:
+                    self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
+                        'interface-route-table', irt.uuid, None, 'DELETE')
+                    vmi.interface_route_tables.remove(irt_id)
 
         for health_id in list(vmi.service_health_checks):
             health = ServiceHealthCheckSM.get(health_id)
-            if health and health.service_instances:
-                self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
-                    'service-health-check', health.uuid, None, 'DELETE')
-                vmi.service_health_checks.remove(health_id)
+            if health and health.service_instances and vmi.service_vm == True:
+                pt_present = False
+                for pt_id in vmi.port_tuples:
+                    si_uuid = (PortTupleSM.get(pt_id)).parent_uuid
+                    si = ServiceInstanceSM.get(si_uuid)
+                    if not si:
+                        continue
+                    if health.uuid in si.service_health_checks:
+                        pt_present = True
+                        break
+                if pt_present == False:
+                    self._vnc_lib.ref_update('virtual-machine-interface', vmi.uuid,
+                        'service-health-check', health.uuid, None, 'DELETE')
+                    vmi.service_health_checks.remove(health_id)
 
     def set_port_service_chain_ip(self, si, port, vmi):
         self._allocate_shared_iip(si, port, vmi)
@@ -315,12 +353,14 @@ class PortTupleAgent(Agent):
 
         return port_config
 
-    def update_port_tuple(self, vmi=None, pt_id=None):
+    def update_vmi_port_tuples(self, vmi):
         if vmi:
             self.delete_old_vmi_links(vmi)
-            pt = PortTupleSM.get(vmi.port_tuple)
-        if pt_id:
-            pt = PortTupleSM.get(pt_id)
+            for pt_id in vmi.port_tuples:
+                self.update_port_tuple(pt_id)
+
+    def update_port_tuple(self, pt_id):
+        pt = PortTupleSM.get(pt_id)
         if not pt:
             self.logger.debug("No valid port tuple provided to update")
             return

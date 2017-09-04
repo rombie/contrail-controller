@@ -115,13 +115,19 @@ class VncCassandraClient(object):
     def __init__(self, server_list, db_prefix, rw_keyspaces, ro_keyspaces,
             logger, generate_url=None, reset_config=False, credential=None,
             walk=True, obj_cache_entries=0, obj_cache_exclude_types=None,
-            log_response_time=None):
+            log_response_time=None, pool_size=0):
         self._reset_config = reset_config
         if db_prefix:
             self._db_prefix = '%s_' % (db_prefix)
         else:
             self._db_prefix = ''
+
         self._server_list = server_list
+        if (pool_size == 0):
+            self._pool_size = 2*(len(self._server_list))
+        else:
+            self._pool_size = pool_size
+
         self._num_dbnodes = len(self._server_list)
         self._conn_state = ConnectionStatus.INIT
         self._logger = logger
@@ -141,7 +147,10 @@ class VncCassandraClient(object):
         self._cache_uuid_to_fq_name = {}
         self._obj_uuid_cf = self._cf_dict[self._OBJ_UUID_CF_NAME]
         self._obj_fq_name_cf = self._cf_dict[self._OBJ_FQ_NAME_CF_NAME]
-        self._obj_shared_cf = self._cf_dict[self._OBJ_SHARED_CF_NAME]
+        if (((self._OBJ_SHARED_CF_NAME in self._ro_keyspaces.get(self._UUID_KEYSPACE_NAME, {}))) or
+             (self._OBJ_SHARED_CF_NAME in self._rw_keyspaces.get(self._UUID_KEYSPACE_NAME, {}))):
+            self._obj_shared_cf = self._cf_dict[self._OBJ_SHARED_CF_NAME]
+
         self._obj_cache_mgr = ObjectCacheManager(
             self, max_entries=obj_cache_entries)
         self._obj_cache_exclude_types = obj_cache_exclude_types or []
@@ -358,6 +367,7 @@ class VncCassandraClient(object):
         if obj_type == ref_obj_type:
             bch.insert(ref_uuid, {'ref:%s:%s' %
                                   (obj_type, obj_uuid): json.dumps(ref_data)})
+            self.update_latest_col_ts(bch, ref_uuid)
             symmetric_ref_updates = [ref_uuid]
         else:
             bch.insert(ref_uuid, {'backref:%s:%s' %
@@ -388,6 +398,7 @@ class VncCassandraClient(object):
             if obj_type == ref_obj_type:
                 bch.remove(old_ref_uuid, columns=[
                            'ref:%s:%s' % (obj_type, obj_uuid)])
+                self.update_latest_col_ts(bch, old_ref_uuid)
                 symmetric_ref_updates = [old_ref_uuid]
             else:
                 bch.remove(old_ref_uuid, columns=[
@@ -400,6 +411,7 @@ class VncCassandraClient(object):
             if obj_type == ref_obj_type:
                 bch.insert(old_ref_uuid, {'ref:%s:%s' % (obj_type, obj_uuid):
                                           json.dumps(new_ref_data)})
+                self.update_latest_col_ts(bch, old_ref_uuid)
                 symmetric_ref_updates = [old_ref_uuid]
             else:
                 bch.insert(old_ref_uuid, {'backref:%s:%s' %
@@ -428,6 +440,7 @@ class VncCassandraClient(object):
         if obj_type == ref_obj_type:
             bch.remove(ref_uuid, columns=[
                        'ref:%s:%s' % (obj_type, obj_uuid)])
+            self.update_latest_col_ts(bch, ref_uuid)
             symmetric_ref_updates = [ref_uuid]
         else:
             bch.remove(ref_uuid, columns=[
@@ -580,7 +593,7 @@ class VncCassandraClient(object):
             keyspace = '%s%s' % (self._db_prefix, ks)
             pool = pycassa.ConnectionPool(
                 keyspace, self._server_list, max_overflow=5, use_threadlocal=True,
-                prefill=True, pool_size=20, pool_timeout=120,
+                prefill=True, pool_size=self._pool_size, pool_timeout=120,
                 max_retries=15, timeout=5, credentials=self._credential)
 
             rd_consistency = pycassa.cassandra.ttypes.ConsistencyLevel.QUORUM
@@ -588,11 +601,17 @@ class VncCassandraClient(object):
 
             for cf_name in cf_dict:
                 cf_kwargs = cf_dict[cf_name].get('cf_args', {})
-                self._cf_dict[cf_name] = ColumnFamily(
-                    pool, cf_name, read_consistency_level=rd_consistency,
-                    write_consistency_level=wr_consistency,
-                    dict_class=dict,
-                    **cf_kwargs)
+                try:
+                    self._cf_dict[cf_name] = ColumnFamily(
+                        pool, cf_name, read_consistency_level=rd_consistency,
+                        write_consistency_level=wr_consistency,
+                        dict_class=dict,
+                        **cf_kwargs)
+                except pycassa.NotFoundException:
+                    if cf_name in self._rw_keyspaces.items():
+                        raise
+                    self._cf_dict[cf_name] = {}
+                    continue
 
         ConnectionState.update(conn_type = ConnType.DATABASE,
             name = 'Cassandra', status = ConnectionStatus.UP, message = '',
@@ -1024,9 +1043,19 @@ class VncCassandraClient(object):
                         full_match = False
                         break
                     prop_value = properties[property]
-                    if not isinstance(prop_value, (basestring, bool, int)):
-                        prop_value = json.dumps(prop_value)
-                    if prop_value not in filter_values:
+                    if isinstance(prop_value, dict):
+                        for filter_value in filter_values:
+                            try:
+                                filter_dict = json.loads(filter_value)
+                            except ValueError:
+                                continue
+                            if (filter_dict.viewitems() <=
+                                    prop_value.viewitems()):
+                                break
+                        else:
+                            full_match = False
+                            break
+                    elif prop_value not in filter_values:
                         full_match = False
                         break
 
@@ -1201,7 +1230,7 @@ class VncCassandraClient(object):
         if count:
             return (True, len(children_fq_names_uuids), None)
 
-        # for anchored list with pagination, 
+        # for anchored list with pagination,
         # prune from union of anchors and last uuid is marker
         if paginate_start and anchored_op:
             children_fq_names_uuids = sorted(children_fq_names_uuids,

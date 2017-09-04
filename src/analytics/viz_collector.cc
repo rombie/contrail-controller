@@ -51,7 +51,10 @@ VizCollector::VizCollector(EventManager *evm, unsigned short listen_port,
             const DbWriteOptions &db_write_options,
             const SandeshConfig &sandesh_config,
             const std::vector<std::string> &api_server_list,
-            const VncApiConfig &api_config) :
+            const VncApiConfig &api_config,
+            bool grok_enabled,
+            const std::vector<std::string> &grok_key_list,
+            const std::vector<std::string> &grok_attrib_list) :
     db_initializer_(new DbHandlerInitializer(evm, DbGlobalName(dup),
         std::string("collector:DbIf"),
         boost::bind(&VizCollector::DbInitializeCb, this),
@@ -82,13 +85,23 @@ VizCollector::VizCollector(EventManager *evm, unsigned short listen_port,
         protobuf_collector_.reset(new ProtobufCollector(evm,
             protobuf_listen_port, db_initializer_->GetDbHandler()));
     }
+    if (grok_enabled) {
+        gp_.reset(new GrokParser());
+        gp_.get()->init();
+        gp_.get()->msg_type_add("APPTRACK_SESSION_CLOSE");
+        gp_.get()->set_key_list(grok_key_list);
+        gp_.get()->set_attrib_list(grok_attrib_list);
+    }
+    else {
+        gp_.reset();
+    }
     if (structured_syslog_collector_enabled) {
         structured_syslog_collector_.reset(new StructuredSyslogCollector(evm,
             structured_syslog_listen_port, structured_syslog_tcp_forward_dst,
             structured_syslog_kafka_broker,
             structured_syslog_kafka_topic,
             structured_syslog_kafka_partitions,
-            db_initializer_->GetDbHandler()));
+            db_initializer_->GetDbHandler(), gp_.get(), grok_enabled));
     }
 }
 
@@ -259,3 +272,4 @@ bool VizCollector::GetCqlMetrics(cass::cql::Metrics *metrics) {
     DbHandlerPtr db_handler(db_initializer_->GetDbHandler());
     return db_handler->GetCqlMetrics(metrics);
 }
+

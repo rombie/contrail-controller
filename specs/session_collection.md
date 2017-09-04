@@ -88,78 +88,71 @@ Next is the SessionEndpointData object reported by agent periodically:
     FlowLog SessionEndpoint {
         1: string vmi;
         2: string vn;
-        3: string deployment;
-        4: string tier;
-        5: string application;
-        6: string site;
-        7: set<string> labels;
-        8: string remote_deployment;
-        9: string remote_tier;
-        10: string remote_application;
-        11: string remote_site;
-        12: set<string> remote_labels;
-        13: string remote_vn;
-        /** @display_name: Whether the session endpoint is a client or server*/
-        14: bool is_client_session;
-        /** @display_name: Whether the VMI belongs to a service instance*/
-        15: bool is_si;
-        16: string remote_prefix;
-        /** @display_name: key is local session end point[sandesh keys have to be primitive values, hence the endpoint is defined as (protocol, port, ip address) and val is remote session end point*/
-        17: u16 protocol;
-        18: u16 sport;
-        19: ipaddr ip;
-        20: SessionAggInfo sess_agg_map;
+        3: optional string deployment;
+        4: optional string tier;
+        5: optional string application;
+        6: optional string site;
+        7: optional set<string> labels;
+        8: optional string remote_deployment;
+        9: optional string remote_tier;
+       10: optional string remote_application;
+       11: optional string remote_site;
+       12: optional set<string> remote_labels;
+       13: string remote_vn;
+       14: bool is_client_session;
+       15: bool is_si;
+       16: optional string remote_prefix;
+       17: ipaddr vrouter_ip;
+       /**
+        *  @display_name: key is local session end point defined as
+        *  (protocol-port, ip address) and val is remote session end point
+        */
+       18: map<SessionIpPortProtocol, SessionAggInfo> sess_agg_info;
     };
-    
-    struct SessionAggInfo {
-    	1: i64 sampled_tx_bytes;
-        2: i64 sampled_tx_pkts;
-        3: i64 sampled_rx_bytes;
-        4: i64 sampled_rx_pkts;
-        5: i64 logged_tx_bytes;
-        6: i64 logged_tx_pkts;
-        7: i64 logged_rx_bytes;
-        8: i64 logged_rx_pkts;
-        9: map<ipaddr, map<u16, RemoteSessionVal>> sessionMap;
-        10: string vrouter_ip;
-    };
-    
+
     /**
-     * @description:This structure contains a map of all the remote
-     * session end points connected to this session. key uniquely
-     * identifies the remote session end point and value is the
-     * traffic info, security info, to that end point
-     */
-    
-    struct RemoteSessionVal {
-        1: i64 sampled_tx_bytes;
-        2: i64 sampled_tx_pkts;
-        3: i64 sampled_rx_bytes;
-        4: i64 sampled_rx_pkts;
-        5: i64 logged_tx_bytes;
-        6: i64 logged_tx_pkts;
-        7: i64 logged_rx_bytes;
-        8: i64 logged_rx_pkts;
-        9: string forward_flow_uuid;
-       10: string reverse_flow_uuid;
-       11: i16 local_tcp_flags;
-       12: i16 reverse_tcp_flags;
-       13: string vm;
-       14: i64 setup_time;
-       15: i64 teardown_time;
-       16: string action; //Flow action whether allow, mirror
-       17: string reverse_action;
-       18: string sg_rule_uuid;
-       19: string reverse_sg_rule_uuid;
-       20: string nw_ace_uuid;
-       21: string reverse_nw_ace_uuid;
-       22: string reverse_vrouter_ip;
-       23: u16 underlay_proto;
-       24: u16 underlay_source_port;
-       25: u16 reverse_underlay_source_port;
-       26: string drop_reason;
-       27: string reverse_drop_reason;
+    * @description:This structure contains a map of all the remote
+    * session end points connected to this session. key uniquely
+    * identifies the remote session end point and value is the
+    * traffic info, security info, to that end point
+    */
+    struct SessionAggInfo {
+    	1: optional i64 sampled_tx_bytes;
+        2: optional i64 sampled_tx_pkts;
+        3: optional i64 sampled_rx_bytes;
+        4: optional i64 sampled_rx_pkts;
+        5: optional i64 logged_tx_bytes;
+        6: optional i64 logged_tx_pkts;
+        7: optional i64 logged_rx_bytes;
+        8: optional i64 logged_rx_pkts;
+        9: map<SessionIpPort, SessionInfo> sessionMap;
     };
+   
+    struct SessionFlowInfo {
+        1: optional i64 sampled_bytes;
+        2: optional i64 sampled_pkts;
+        3: optional i64 logged_bytes;
+        4: optional i64 logged_pkts;
+        5: optional uuid_t flow_uuid;
+        6: optional i16 tcp_flags;
+        7: optional i64 setup_time;
+        8: optional i64 teardown_time;
+        9: optional i64 teardown_bytes;
+       10: optional i64 teardown_pkts;
+       11: optional string action;
+       12: optional uuid_t sg_rule_uuid;
+       13: optional uuid_t nw_ace_uuid;
+       14: optional u16 underlay_source_port;
+       15: optional u16 drop_reason;
+    }
+
+    struct SessionInfo {
+        1: SessionFlowInfo forward_flow_info;
+        2: SessionFlowInfo reverse_flow_info;
+        3: optional string vm;
+        4: optional ipaddr other_vrouter_ip;
+        5: optional u16 underlay_proto;
+    }
 
 # 4. Implementation
 ## 4.1 Work items

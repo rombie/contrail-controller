@@ -953,7 +953,7 @@ class AnalyticsFixture(fixtures.Fixture):
         self.logger.info('exp generator list: ' + str(set(exp_genlist)))
         return set(actual_genlist) == set(exp_genlist)
 
-    @retry(delay=1, tries=10)
+    @retry(delay=2, tries=30)
     def verify_generator_uve_list(self, exp_gen_list):
         self.logger.info('verify_generator_uve_list')
         vns = VerificationOpsSrv('127.0.0.1', self.opserver_port,
@@ -963,7 +963,8 @@ class AnalyticsFixture(fixtures.Fixture):
             {'cfilt':'ModuleClientState:client_info'})
         try:
             actual_gen_list = [gen['name'] for gen in gen_list]
-            self.logger.info('generators: %s' % str(actual_gen_list))
+            self.logger.info('exp generators list: %s' % str(exp_gen_list))
+            self.logger.info('actual generators list: %s' % str(actual_gen_list))
             for gen in exp_gen_list:
                 if gen not in actual_gen_list:
                     return False
@@ -1315,6 +1316,8 @@ class AnalyticsFixture(fixtures.Fixture):
                              select_fields=['T'], dir=1, where_clause='vrouter=%s'% vrouter)
         self.logger.info(str(res))
         if len(res) != generator_obj.num_flow_samples:
+            self.logger.error("Flow samples ingress: Actual %d, expected %d" % \
+                (len(res), generator_obj.num_flow_samples))
             return False
         
         vns = VerificationOpsSrv('127.0.0.1', self.opserver_port,
@@ -1325,6 +1328,8 @@ class AnalyticsFixture(fixtures.Fixture):
                              select_fields=['T'], dir=0, where_clause='vrouter=%s'% vrouter)
         self.logger.info(str(result))
         if len(result) != generator_obj.egress_num_flow_samples:
+            self.logger.error("Flow samples egress: Actual %d, expected %d" % \
+                (len(result), generator_obj.egress_num_flow_samples))
             return False
 
         return True
@@ -2247,6 +2252,18 @@ class AnalyticsFixture(fixtures.Fixture):
         return not connected
     # end verify_opserver_redis_uve_connection
 
+    def get_ops_vns(self, opserver, token):
+        self.logger.info('get_ops_vns')
+        headers = {'X-Auth-Token' : token}
+        vops = VerificationOpsSrvIntrospect('127.0.0.1', self.opserver.rest_api_port,
+            self.admin_user, self.admin_password, headers=headers)
+        try:
+            return vops.get_ops_vns()
+        except Exception as err:
+            self.logger.error('Exception: %s' % err)
+        return []
+    #end get_uves
+
     @retry(delay=2, tries=5)
     def set_opserver_db_info(self, opserver,
                              disk_usage_percentage_in = None,
@@ -2765,6 +2782,7 @@ class AnalyticsFixture(fixtures.Fixture):
     def process_stop(self, name, instance, log_file,
                      del_log=True, is_py=False):
         if is_py:
+            self.logger.info('%s' % ((35+len(name))*'*'))
             self.logger.info('Shutting down python : %s(obj.stop)' % name)
             instance._main_obj.stop()
             instance._main_obj = None
@@ -2773,7 +2791,9 @@ class AnalyticsFixture(fixtures.Fixture):
             gevent.kill(instance)
             rcode = 0
             self.logger.info('Shutting down python : %s(done)' % name)
+            self.logger.info('%s' % ((35+len(name))*'*'))
         else:
+            self.logger.info('%s' % ((35+len(name))*'*'))
             self.logger.info('Shutting down %s' % name)
             bad_term = False
             if instance.poll() == None:
@@ -2797,7 +2817,11 @@ class AnalyticsFixture(fixtures.Fixture):
                 self.logger.info('%s terminated stdout: %s' % (name, p_out))
                 self.logger.info('%s terminated stderr: %s' % (name, p_err))
                 with open(log_file, 'r') as fin:
+                    self.logger.info('%s' % ((35+len(name))*'*'))
+                    self.logger.info('Log for %s' % (name))
+                    self.logger.info('%s' % ((35+len(name))*'*'))
                     self.logger.info(fin.read())
+                    self.logger.info('%s' % ((35+len(name))*'*'))
         subprocess.call(['rm', '-rf', log_file])
         return rcode
 

@@ -15,6 +15,7 @@
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
 #include "bgp/bgp_server.h"
+#include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/iservice_chain_mgr.h"
 #include "bgp/routing-instance/istatic_route_mgr.h"
@@ -361,6 +362,8 @@ RoutingInstance *RoutingInstanceMgr::GetRoutingInstanceLocked(
 
 void RoutingInstanceMgr::InsertRoutingInstance(RoutingInstance *rtinstance) {
     tbb::mutex::scoped_lock lock(mutex_);
+    if (rtinstance->name() == BgpConfigManager::kMasterInstance)
+        assert(count() == 0);
     int index = instances_.Insert(rtinstance->config()->name(), rtinstance);
     rtinstance->set_index(index);
 }
@@ -478,6 +481,9 @@ void RoutingInstanceMgr::SetTableStatsUve(Address::Family family,
     case Address::ERMVPN:
         instance_info->set_raw_ermvpn_stats(stats_map);
         break;
+    case Address::MVPN:
+        instance_info->set_raw_mvpn_stats(stats_map);
+        break;
     case Address::NUM_FAMILIES:
         break;
     }
@@ -536,6 +542,12 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
     InstanceTargetAdd(rtinstance);
     InstanceVnIndexAdd(rtinstance);
     rtinstance->InitAllRTargetRoutes(server_->local_autonomous_system());
+
+    // Initialize MVPN Manager.
+    MvpnTable *mvpn_table =
+        dynamic_cast<MvpnTable *>(rtinstance->GetTable(Address::MVPN));
+    if (mvpn_table)
+        mvpn_table->CreateManager();
 
     // Notify clients about routing instance create
     NotifyInstanceOp(config->name(), INSTANCE_ADD);
@@ -770,7 +782,8 @@ RoutingInstance::RoutingInstance(string name, BgpServer *server,
       virtual_network_pbb_evpn_enable_(false),
       vxlan_id_(0),
       deleter_(new DeleteActor(server, this)),
-      manager_delete_ref_(this, NULL) {
+      manager_delete_ref_(this, NULL),
+      mvpn_project_manager_network_(BgpConfigManager::kMasterInstance) {
     if (mgr) {
         tbb::mutex::scoped_lock lock(mgr->mutex());
         manager_delete_ref_.Reset(mgr->deleter());
@@ -967,13 +980,13 @@ void RoutingInstance::ProcessConfig() {
 
     // Create BGP Table
     if (name_ == BgpConfigManager::kMasterInstance) {
-        assert(mgr_->count() == 0);
         is_master_ = true;
 
         LocatePeerManager();
         VpnTableCreate(Address::INETVPN);
         VpnTableCreate(Address::INET6VPN);
         VpnTableCreate(Address::ERMVPN);
+        VpnTableCreate(Address::MVPN);
         VpnTableCreate(Address::EVPN);
         RTargetTableCreate();
 
@@ -993,6 +1006,10 @@ void RoutingInstance::ProcessConfig() {
         VrfTableCreate(Address::INET6, Address::INET6VPN);
         VrfTableCreate(Address::ERMVPN, Address::ERMVPN);
         VrfTableCreate(Address::EVPN, Address::EVPN);
+        BgpTable *table = VrfTableCreate(Address::MVPN, Address::MVPN);
+
+        // Create path-resolver in mvpn table.
+        table->LocatePathResolver();
     }
 
     ProcessServiceChainConfig();
@@ -1281,6 +1298,9 @@ void RoutingInstance::AddRouteTarget(bool import,
     BgpTable *ermvpn_table = GetTable(Address::ERMVPN);
     RoutePathReplicator *ermvpn_replicator =
         server_->replicator(Address::ERMVPN);
+    BgpTable *mvpn_table = GetTable(Address::MVPN);
+    RoutePathReplicator *mvpn_replicator =
+        server_->replicator(Address::MVPN);
     BgpTable *evpn_table = GetTable(Address::EVPN);
     RoutePathReplicator *evpn_replicator =
         server_->replicator(Address::EVPN);
@@ -1300,6 +1320,7 @@ void RoutingInstance::AddRouteTarget(bool import,
     }
 
     ermvpn_replicator->Join(ermvpn_table, *it, import);
+    mvpn_replicator->Join(mvpn_table, *it, import);
     evpn_replicator->Join(evpn_table, *it, import);
     inetvpn_replicator->Join(inet_table, *it, import);
     inet6vpn_replicator->Join(inet6_table, *it, import);
@@ -1310,6 +1331,9 @@ void RoutingInstance::DeleteRouteTarget(bool import,
     BgpTable *ermvpn_table = GetTable(Address::ERMVPN);
     RoutePathReplicator *ermvpn_replicator =
         server_->replicator(Address::ERMVPN);
+    BgpTable *mvpn_table = GetTable(Address::MVPN);
+    RoutePathReplicator *mvpn_replicator =
+        server_->replicator(Address::MVPN);
     BgpTable *evpn_table = GetTable(Address::EVPN);
     RoutePathReplicator *evpn_replicator =
         server_->replicator(Address::EVPN);
@@ -1321,6 +1345,7 @@ void RoutingInstance::DeleteRouteTarget(bool import,
         server_->replicator(Address::INET6VPN);
 
     ermvpn_replicator->Leave(ermvpn_table, *it, import);
+    mvpn_replicator->Leave(mvpn_table, *it, import);
     evpn_replicator->Leave(evpn_table, *it, import);
     inetvpn_replicator->Leave(inet_table, *it, import);
     inet6vpn_replicator->Leave(inet6_table, *it, import);
@@ -1343,6 +1368,7 @@ void RoutingInstance::ClearRouteTarget() {
     ClearFamilyRouteTarget(Address::INET, Address::INETVPN);
     ClearFamilyRouteTarget(Address::INET6, Address::INET6VPN);
     ClearFamilyRouteTarget(Address::ERMVPN, Address::ERMVPN);
+    ClearFamilyRouteTarget(Address::MVPN, Address::MVPN);
     ClearFamilyRouteTarget(Address::EVPN, Address::EVPN);
 
     import_.clear();
@@ -1463,7 +1489,7 @@ string RoutingInstance::GetVrfFromTableName(const string table) {
     static set<string> master_tables = list_of("inet.0")("inet6.0");
     static set<string> vpn_tables =
         list_of("bgp.l3vpn.0")("bgp.ermvpn.0")("bgp.evpn.0")("bgp.rtarget.0")
-                ("bgp.l3vpn-inet6.0");
+                ("bgp.l3vpn-inet6.0")("bgp.mvpn.0");
 
     if (master_tables.find(table) != master_tables.end())
         return BgpConfigManager::kMasterInstance;

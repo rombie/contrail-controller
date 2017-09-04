@@ -53,8 +53,13 @@ void Server::DeleteSession(const SessionKey &key) {
 
 void Server::DeleteSession(Event *event) {
     CHECK_CONCURRENCY("BFD");
-    sessions_.erase(event->key);
-    RemoveSessionReference(event->key);
+    int erase_size = sessions_.erase(event->key);
+    if (erase_size) {
+        RemoveSessionReference(event->key);
+    } else {
+        LOG(ERROR, __func__ <<  "Cannot find session: " <<
+            event->key.to_string());
+    }
 }
 
 void Server::DeleteClientSessions() {
@@ -184,9 +189,11 @@ ResultCode Server::ProcessControlPacketActual(const ControlPacket *packet) {
         return kResultCode_UnknownSession;
     }
     LOG(DEBUG, __func__ << " Found session: " << session->toString());
+    session->Stats().rx_count++;
     result = session->ProcessControlPacket(packet);
     if (result != kResultCode_Ok) {
         LOG(ERROR, "Unable to process session: " << result);
+        session->Stats().rx_err_count++;
         return result;
     }
     LOG(DEBUG, "Packet correctly processed");
@@ -247,12 +254,10 @@ ResultCode Server::SessionManager::ConfigureSession(const SessionKey &key,
     Session *session = SessionByKey(key);
     if (session) {
         session->UpdateConfig(config);
-        refcounts_[session]++;
 
-        LOG(INFO, __func__ << ": Reference count incremented: "
+        LOG(INFO, __func__ << ": UpdateConfig : "
                   << session->key().to_string() << "/"
-                  << session->local_discriminator() << ","
-                  << refcounts_[session] << " refs");
+                  << session->local_discriminator());
 
         return kResultCode_Ok;
     }

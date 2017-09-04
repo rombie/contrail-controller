@@ -139,6 +139,7 @@ void Agent::SetAgentTaskPolicy() {
         "Agent::Services",
         "Agent::StatsCollector",
         kTaskFlowStatsCollector,
+        kTaskSessionStatsCollector,
         "sandesh::RecvQueue",
         "Agent::Uve",
         "Agent::KSync",
@@ -265,6 +266,13 @@ void Agent::SetAgentTaskPolicy() {
     SetTaskPolicyOne(kTaskFlowStatsCollector, flow_stats_exclude_list,
                      sizeof(flow_stats_exclude_list) / sizeof(char *));
 
+    const char *session_stats_exclude_list[] = {
+        AGENT_SHUTDOWN_TASKNAME,
+        AGENT_INIT_TASKNAME
+    };
+    SetTaskPolicyOne(kTaskSessionStatsCollector, session_stats_exclude_list,
+                     sizeof(session_stats_exclude_list) / sizeof(char *));
+
     const char *metadata_exclude_list[] = {
         "xmpp::StateMachine",
         "http::RequestHandlerTask"
@@ -340,6 +348,13 @@ void Agent::SetAgentTaskPolicy() {
     };
     SetTaskPolicyOne(kEventNotifierTask, event_notify_exclude_list,
                      sizeof(event_notify_exclude_list) / sizeof(char *));
+
+    // Health Check task
+    const char *health_check_exclude_list[] = {
+        kTaskFlowMgmt
+    };
+    SetTaskPolicyOne(kTaskHealthCheck, health_check_exclude_list,
+                     sizeof(health_check_exclude_list) / sizeof(char *));
 
 }
 
@@ -491,6 +506,7 @@ void Agent::CopyConfig(AgentParam *params) {
     tsn_enabled_ = params_->isTsnAgent();
     tor_agent_enabled_ = params_->isTorAgent();
     server_gateway_mode_ = params_->isServerGatewayMode();
+    vcpe_gateway_mode_ = params_->isVcpeGatewayMode();
     flow_thread_count_ = params_->flow_thread_count();
     flow_trace_enable_ = params_->flow_trace_enable();
     flow_add_tokens_ = params_->flow_add_tokens();
@@ -632,6 +648,9 @@ void Agent::InitPeers() {
     mac_learning_peer_.reset(new Peer(Peer::MAC_LEARNING_PEER,
                                       MAC_LEARNING_PEER_NAME,
                                       false));
+    fabric_rt_export_peer_.reset(new Peer(Peer::LOCAL_VM_PEER,
+                                          FABRIC_RT_EXPORT,
+                                          true));
 }
 
 void Agent::ReconfigSignalHandler(boost::system::error_code ec, int signum) {
@@ -918,7 +937,7 @@ void Agent::ConcurrencyCheck() {
        CHECK_CONCURRENCY("db::DBTable", "Agent::KSync", AGENT_INIT_TASKNAME,
                          kTaskFlowMgmt, kTaskFlowUpdate,
                          kTaskFlowEvent, kTaskFlowDelete, kTaskFlowKSync,
-                         kTaskHealthCheck);
+                         kTaskHealthCheck, kAgentResourceRestoreTask);
     }
 }
 

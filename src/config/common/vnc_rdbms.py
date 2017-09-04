@@ -1171,7 +1171,9 @@ class VncRDBMSClient(object):
                        "id_perms": json.loads(row.id_perms)
                 }
                 for field in field_names_set:
-                    obj[field] = json.loads(getattr(row, field))
+                    _field = getattr(row, field)
+                    if _field:
+                        obj[field] = json.loads(_field)
                 objs.append(obj)
         return (True, objs, None)
     # end object_list
@@ -1425,7 +1427,8 @@ class VncRDBMSClient(object):
         return {'uuid': sqa_obj.obj_uuid,
                 'perms2': json.loads(sqa_obj.perms2),
                 'fq_name':json.loads(sqa_obj.obj_fq_name),
-                'obj_type': obj_type}
+                'type': obj_type,
+                'parent_type': sqa_obj.obj_parent_type}
 
     @use_session
     def uuid_to_obj_perms(self, id):

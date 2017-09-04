@@ -23,6 +23,7 @@
 #include "oper/config_manager.h"
 #include "oper/vrouter.h"
 #include "oper/global_qos_config.h"
+#include "oper/global_system_config.h"
 #include "oper/global_vrouter.h"
 #include "oper/bridge_domain.h"
 #include "filter/policy_set.h"
@@ -96,6 +97,7 @@ void IFMapDependencyManager::Initialize(Agent *agent) {
         "floating-ip-pool",
         "forwarding-class",
         "global-qos-config",
+        "global-system-config",
         "instance-ip",
         "logical-interface",
         "network-ipam",
@@ -126,7 +128,8 @@ void IFMapDependencyManager::Initialize(Agent *agent) {
         "interface-route-table",
         "bridge-domain",
         "virtual-machine-interface-bridge-domain",
-        "firewall-policy-firewall-rule"
+        "firewall-policy-firewall-rule",
+        "port-tuple"
     };
 
     // Link table
@@ -624,6 +627,8 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     ////////////////////////////////////////////////////////////////////////
     AddDependencyPath("routing-instance",
                       MakePath("virtual-network-routing-instance",
+                               "virtual-network", true,
+                               "virtual-network-provider-network",
                                "virtual-network", true));
     RegisterConfigHandler(this, "routing-instance",
                           agent ? agent->vrf_table() : NULL);
@@ -661,19 +666,29 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     ////////////////////////////////////////////////////////////////////////
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-virtual-network",
-                               "virtual-network", true));
+                               "virtual-network", true,
+                               "virtual-network-network-ipam",
+                               "virtual-network-network-ipam", true));
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-virtual-machine",
                                "virtual-machine", true));
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-sub-interface",
                                "virtual-machine-interface", true));
+
+    AddDependencyPath("virtual-machine-interface",
+                      MakePath("virtual-machine-interface-virtual-network",
+                               "virtual-network", true,
+                               "virtual-network-provider-network",
+                               "virtual-network", true));
+
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-routing-instance",
                                "virtual-machine-interface-routing-instance",
                                true,
                                "virtual-machine-interface-routing-instance",
                                "routing-instance", true));
+
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-security-group",
                                "security-group", true));
@@ -721,6 +736,11 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
                                "bgp-router", true,
                                "instance-bgp-router",
                                "routing-instance", true));
+    AddDependencyPath("virtual-machine-interface",
+                      MakePath("bgpaas-virtual-machine-interface",
+                               "bgp-as-a-service", true,
+                               "bgpaas-health-check",
+                               "service-health-check", false));
     AddDependencyPath("virtual-machine-interface",
                       MakePath("virtual-machine-interface-qos-config",
                           "qos-config", true));
@@ -796,6 +816,13 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
                                "application-policy-set-firewall-policy",
                                "firewall-policy", true));
 
+    /* Trigger change on virtual-machine-interface, if there is change in
+     * port-tuple configuration */
+    AddDependencyPath("virtual-machine-interface",
+                      MakePath("port-tuple-interface",
+                               "port-tuple", true,
+                               "port-tuple-interface",
+                               "virtual-machine-interface", true));
 
     RegisterConfigHandler(this, "virtual-machine-interface",
                           agent ? agent->interface_table() : NULL);
@@ -841,7 +868,22 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     ////////////////////////////////////////////////////////////////////////
     AddDependencyPath("service-health-check",
                       MakePath("service-port-health-check",
-                               "virtual-machine-interface", true));
+                               "virtual-machine-interface", true,
+                               "virtual-machine-interface-virtual-network",
+                               "virtual-network", false,
+                               "virtual-network-network-ipam",
+                               "virtual-network-network-ipam", true));
+    AddDependencyPath("service-health-check",
+                      MakePath("service-port-health-check",
+                               "virtual-machine-interface", true,
+                               "port-tuple-interface",
+                               "port-tuple", true,
+                               "port-tuple-interface",
+                               "virtual-machine-interface", true,
+                               "virtual-machine-interface-virtual-network",
+                               "virtual-network", false,
+                               "virtual-network-network-ipam",
+                               "virtual-network-network-ipam", true));
     RegisterConfigHandler(this, "service-health-check",
                           agent ? agent->health_check_table() : NULL);
 
@@ -870,6 +912,12 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     AddDependencyPath("security-logging-object",
                        MakePath("security-logging-object-security-group",
                                 "security-group", true));
+    AddDependencyPath("security-logging-object",
+                       MakePath("firewall-policy-security-logging-object",
+                                "firewall-policy", true));
+    AddDependencyPath("security-logging-object",
+                       MakePath("firewall-rule-security-logging-object",
+                                "firewall-rule", true));
     RegisterConfigHandler(this, "security-logging-object",
                           agent ? agent->slo_table() : NULL);
 
@@ -877,6 +925,8 @@ void IFMapDependencyManager::InitializeDependencyRules(Agent *agent) {
     RegisterConfigHandler(this, "virtual-router", agent->oper_db()->vrouter());
     RegisterConfigHandler(this, "global-qos-config",
                           agent->oper_db()->global_qos_config());
+    RegisterConfigHandler(this, "global-system-config",
+                          agent->oper_db()->global_system_config());
     RegisterConfigHandler(this, "network-ipam",
                           agent->oper_db()->network_ipam());
     RegisterConfigHandler(this, "virtual-DNS",

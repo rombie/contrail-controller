@@ -80,7 +80,8 @@ void AddLinkString(char *buff, int &len, const char *node_name1,
                    const char *name1, const char *node_name2, const char *name2,
                    const char *metadata = NULL);
 void DelLinkString(char *buff, int &len, const char *node_name1,
-                   const char *name1, const char *node_name2, const char *name2);
+                   const char *name1, const char *node_name2, const char *name2,
+                   const char* mdata = NULL);
 void AddNodeString(char *buff, int &len, const char *node_name, const char *name,
                    int id, const char *attr, bool admin_state = true);
 void AddNodeString(char *buff, int &len, const char *node_name,
@@ -97,7 +98,7 @@ string GetMetadata(const char *node1, const char *node2,
 void AddLink(const char *node_name1, const char *name1, const char *node_name2,
              const char *name2, const char *mdata = NULL);
 void DelLink(const char *node_name1, const char *name1, const char *node_name2,
-             const char *name2);
+             const char *name2, const char* mdata = NULL);
 void AddNode(const char *node_name, const char *name, int id);
 void AddNode(const char *node_name, const char *name, int id, const char *attr,
              bool admin_state = true);
@@ -123,7 +124,8 @@ void IntfCfgAddNoWait(int intf_id, const string &name, const string ipaddr,
 void IntfCfgAddThrift(PortInfo *input, int id);
 void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
                 int vm_id, int vn_id, const string &mac, uint16_t vlan,
-                const string ip6addr, int project_id = kProjectUuid);
+                const string ip6addr, uint8_t vhostuser_mode,
+                int project_id = kProjectUuid);
 void IntfCfgAdd(int intf_id, const string &name, const string ipaddr,
                 int vm_id, int vn_id, const string &mac, const string ip6addr);
 void IntfCfgAdd(PortInfo *input, int id);
@@ -162,6 +164,7 @@ bool VmPortV6Active(PortInfo *input, int id);
 bool VmPortPolicyEnabled(int id);
 bool VmPortPolicyEnabled(PortInfo *input, int id);
 Interface *VmPortGet(int id);
+Interface *VhostGet(const char *name);
 bool VmPortFloatingIpCount(int id, unsigned int count);
 bool VmPortAliasIpCount(int id, unsigned int count);
 bool VmPortGetStats(PortInfo *input, int id, uint32_t & bytes, uint32_t & pkts);
@@ -474,13 +477,16 @@ void DelEncapList(Agent *agent);
 
 void DelHealthCheckService(const char *name);
 void AddHealthCheckService(const char *name, int id, const char *url_path,
-                           const char *monitor_type);
+                           const char *monitor_type,
+                           const char *service_type = "end-to-end");
 
 void VxLanNetworkIdentifierMode(bool config, const char *encap1 = NULL,
                                 const char *encap2 = NULL,
                                 const char *encap3 = NULL);
 void GlobalForwardingMode(std::string mode);
 void AddFlowExportRate(int cfg_flow_export_rate);
+void AddBgpaasPortRange(const int port_start, const int port_end);
+void DelBgpaasPortRange();
 int MplsToVrfId(int label);
 const NextHop* MplsToNextHop(uint32_t label);
 void AddInterfaceRouteTable(const char *name, int id, TestIp4Prefix *addr,
@@ -498,7 +504,7 @@ void AddAap(std::string intf_name, int intf_id,
 void AddEcmpAap(std::string intf_name, int intf_id, Ip4Address ip,
                 const std::string &mac);
 void AddAap(std::string intf_name, int intf_id, Ip4Address ip,
-            const std::string &mac);
+            const std::string &mac, uint32_t plen = 32);
 void AddAapWithDisablePolicy(std::string intf_name, int intf_id,
                              std::vector<Ip4Address> aap_list,
                              bool disable_policy);

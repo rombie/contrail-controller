@@ -1,225 +1,154 @@
 #
 # Copyright (c) 2017 Juniper Networks, Inc. All rights reserved.
 #
-import mock
-import time
+
 import unittest
 import uuid
-import sys
 
-from gevent.queue import Queue
-from test_case import KMTestCase
-from kube_manager.vnc.config_db import *
-from kube_manager.vnc.loadbalancer import *
-from kube_manager.vnc.config_db import *
-from kube_manager.kube_manager import *
-from kube_manager.vnc import db
-from kube_manager import kube_manager
-from kube_manager.vnc import vnc_namespace
+from kube_manager.tests.vnc.test_case import KMTestCase
 from kube_manager.vnc import vnc_kubernetes_config as kube_config
 from kube_manager.vnc.vnc_namespace import NamespaceKM
 
-class VncNamespaceTest(KMTestCase):
-    def setUp(self):
-        super(VncNamespaceTest, self).setUp()
+class VncNamespaceTestClusterProjectDefined(KMTestCase):
+    def setUp(self, extra_config_knobs=None):
+        super(VncNamespaceTestClusterProjectDefined, self).setUp(
+            extra_config_knobs=extra_config_knobs)
     #end setUp
 
     def tearDown(self):
-        super(VncNamespaceTest, self).tearDown()
+        super(VncNamespaceTestClusterProjectDefined, self).tearDown()
     #end tearDown
 
-    def test_vnc_namespace_add_delete(self):
-        # Add Namespace
-        ns_name = "guestbook"
+    @classmethod
+    def setUpClass(cls, extra_config_knobs=None):
+        super(VncNamespaceTestClusterProjectDefined, cls).setUpClass(
+            extra_config_knobs=extra_config_knobs)
+        cls.domain = 'default-domain'
+        cls.cluster_project = 'test-project'
+        cls.ns_name = 'test-namespace'
+
+        prj_dict = {}
+        prj_dict['project'] = cls.cluster_project
+        kube_config.VncKubernetesConfig.args().cluster_project = repr(prj_dict)
+        kube_config.VncKubernetesConfig.args().cluster_network = None
+
+    def _create_and_add_namespace(self, name, spec, annotations,
+                                  locate=False):
         ns_uuid = str(uuid.uuid4())
-        ns_add_event = self.create_add_namespace_event(ns_name, ns_uuid)
+        ns_meta = {'name': name,
+                   'uid': ns_uuid}
+        if annotations:
+            ns_meta['annotations'] = annotations
+        ns_add_event = self.create_event('Namespace', spec, ns_meta, 'ADDED')
+        if locate:
+            NamespaceKM.locate(name, ns_add_event['object'])
         self.enqueue_event(ns_add_event)
-        time.sleep(2)
+        self.wait_for_all_tasks_done()
+        return ns_uuid
 
-        #verify Add
-        try:
-            proj_obj = self._vnc_lib.project_read(id=ns_uuid)
-        except NoIdError:
-            pass
-        proj_fq_name = ['default-domain', ns_name]
-        try:
-            proj_obj = self._vnc_lib.project_read(fq_name=proj_fq_name)
-        except NoIdError:
-            return None
+    def test_add_namespace(self):
+        ns_uuid = self._create_and_add_namespace(self.ns_name, {}, None)
 
-        # Delete Namespace
-        ns_del_event = self.create_delete_namespace_event(ns_name, ns_uuid)
-        self.enqueue_event(ns_del_event)
-        time.sleep(2)
-
-        #verify delete
-        try:
-            proj_obj = self._vnc_lib.project_read(id=ns_uuid)
-        except NoIdError:
-            pass
-        proj_fq_name = ['default-domain', ns_name]
-        try:
-            proj_obj = self._vnc_lib.project_read(fq_name=proj_fq_name)
-        except NoIdError:
-            pass
-
-    def test_cluster_project_is_defined(self):
-        cluster_project = "cluster"
-        kube_config.VncKubernetesConfig.args().cluster_project = "{'project':'"+cluster_project+"'}"
-
-        # Add first namespace
-        ns1_name = "ns1"
-        ns1_uuid = str(uuid.uuid4())
-        ns1_add_event = self.create_add_namespace_event(ns1_name, ns1_uuid)
-        self.enqueue_event(ns1_add_event)
-        time.sleep(2)
-
-        # Add second namespace
-        ns2_name = "ns2"
-        ns2_uuid = str(uuid.uuid4())
-        ns2_add_event = self.create_add_namespace_event(ns2_name, ns2_uuid)
-        self.enqueue_event(ns2_add_event)
-        time.sleep(2)
-
-        proj = self._vnc_lib.project_read(fq_name=["default-domain",cluster_project])
+        # Check for project
+        proj = self._vnc_lib.project_read(fq_name=["default-domain",
+                                                   self.cluster_project])
         self.assertIsNotNone(proj)
-        self.assertEquals(cluster_project, proj.name)
-        self.assertRaises(
-            NoIdError,
-            self._vnc_lib.project_read,
-            fq_name=["default-domain",ns1_name])
-        self.assertRaises(
-            NoIdError,
-            self._vnc_lib.project_read,
-            fq_name=["default-domain",ns2_name])
+        self.assertEquals(self.cluster_project, proj.name)
 
-    def test_cluster_project_is_undefined(self):
+        NamespaceKM.delete(ns_uuid)
+        NamespaceKM.delete(self.ns_name)
+
+    def test_add_namespace_with_isolation_annotation(self):
+        ns_annotations = {'opencontrail.org/isolation': "true"}
+
+        ns_uuid = self._create_and_add_namespace(self.ns_name, {}, ns_annotations, True)
+
+        proj = self._vnc_lib.project_read(fq_name=["default-domain",
+                                                   self.cluster_project])
+        self.assertIsNotNone(proj)
+        self.assertEquals(self.cluster_project, proj.name)
+
+        fqname = ['default-domain', self.cluster_project, self.ns_name+'-vn']
+        vn = self._vnc_lib.virtual_network_read(fq_name=fqname)
+        self.assertIsNotNone(vn)
+
+        NamespaceKM.delete(ns_uuid)
+        NamespaceKM.delete(self.ns_name)
+
+
+class VncNamespaceTestClusterProjectUndefined(
+        VncNamespaceTestClusterProjectDefined):
+    def setUp(self, extra_config_knobs=None):
+        super(VncNamespaceTestClusterProjectUndefined, self).setUp(
+            extra_config_knobs=extra_config_knobs)
+    #end setUp
+
+    def tearDown(self):
+        super(VncNamespaceTestClusterProjectUndefined, self).tearDown()
+    #end tearDown
+
+    @classmethod
+    def setUpClass(cls, extra_config_knobs=None):
+        super(VncNamespaceTestClusterProjectUndefined, cls).setUpClass(
+            extra_config_knobs=extra_config_knobs)
+        cls.domain = 'default-domain'
+        cls.ns_name = 'test-namespace'
+        cls.cluster_project = cls.ns_name
+
         kube_config.VncKubernetesConfig.args().cluster_project = None
-
-        # Add first namespace
-        ns1_name = "ns1"
-        ns1_uuid = str(uuid.uuid4())
-        ns1_add_event = self.create_add_namespace_event(ns1_name, ns1_uuid)
-        self.enqueue_event(ns1_add_event)
-        time.sleep(2)
-
-        # Add second namespace
-        ns2_name = "ns2"
-        ns2_uuid = str(uuid.uuid4())
-        ns2_add_event = self.create_add_namespace_event(ns2_name, ns2_uuid)
-        self.enqueue_event(ns2_add_event)
-        time.sleep(2)
-
-        proj = self._vnc_lib.project_read(fq_name=["default-domain",ns1_name])
-        self.assertIsNotNone(proj)
-        self.assertEquals(ns1_name, proj.name)
-
-        proj = self._vnc_lib.project_read(fq_name=["default-domain",ns2_name])
-        self.assertIsNotNone(proj)
-        self.assertEquals(ns2_name, proj.name)
-
-    def test_namespace_is_isolated(self):
-        annotations = {
-            'opencontrail.org/isolation': "true"
-        }
-
-        # Add first namespace
-        ns1_name = "isolated_ns1"
-        ns1_uuid = str(uuid.uuid4())
-        ns1_add_event = self.create_add_namespace_event(ns1_name, ns1_uuid)
-        ns1_add_event['object']['metadata']['annotations'] = annotations
-        NamespaceKM.locate(ns1_uuid, ns1_add_event['object'])
-        self.enqueue_event(ns1_add_event)
-        time.sleep(2)
-
-        # Add second namespace
-        ns2_name = 'isolated_ns2'
-        ns2_uuid = str(uuid.uuid4())
-        ns2_add_event = self.create_add_namespace_event(ns2_name, ns2_uuid)
-        ns2_add_event['object']['metadata']['annotations'] = annotations
-        NamespaceKM.locate(ns2_uuid, ns2_add_event['object'])
-        self.enqueue_event(ns2_add_event)
-        time.sleep(2)
-
-        fqname = ['default-domain', ns1_name, ns1_name+'-vn']
-        vn = self._vnc_lib.virtual_network_read(fq_name=fqname)
-        self.assertIsNotNone(vn)
-        self.assertEquals(ns1_name+'-vn', vn.name)
-
-        fqname = ['default-domain', ns2_name, ns2_name+'-vn']
-        vn = self._vnc_lib.virtual_network_read(fq_name=fqname)
-        self.assertIsNotNone(vn)
-        self.assertEquals(ns2_name+'-vn', vn.name)
+        kube_config.VncKubernetesConfig.args().cluster_network = None
 
 
-    def test_namespace_is_not_isolated(self):
-        annotations = {
-            'opencontrail.org/isolation': 'false'
-        }
+class VncNamespaceTestCustomNetwork(VncNamespaceTestClusterProjectDefined):
+    def setUp(self, extra_config_knobs=None):
+        super(VncNamespaceTestCustomNetwork, self).setUp(
+            extra_config_knobs=extra_config_knobs)
+    #end setUp
 
-        # Add first namespace
-        ns1_name = 'isolated_ns1'
-        ns1_uuid = str(uuid.uuid4())
-        ns1_add_event = self.create_add_namespace_event(ns1_name, ns1_uuid)
-        ns1_add_event['object']['metadata']['annotations'] = annotations
-        self.enqueue_event(ns1_add_event)
-        time.sleep(3)
+    def tearDown(self):
+        super(VncNamespaceTestCustomNetwork, self).tearDown()
+    #end tearDown
 
-        # Add second namespace
-        ns2_name = 'isolated_ns2'
-        ns2_uuid = str(uuid.uuid4())
-        ns2_add_event = self.create_add_namespace_event(ns2_name, ns2_uuid)
-        ns2_add_event['object']['metadata']['annotations'] = annotations
-        self.enqueue_event(ns2_add_event)
-        time.sleep(3)
+    @classmethod
+    def setUpClass(cls, extra_config_knobs=None):
+        super(VncNamespaceTestCustomNetwork, cls).setUpClass(
+            extra_config_knobs=extra_config_knobs)
+        cls.domain = 'default-domain'
+        cls.ns_name = 'test-namespace'
+        cls.vn_name = 'test-network'
+        cls.cluster_project = 'default'
 
-        self.assertRaises(
-            NoIdError,
-            self._vnc_lib.virtual_network_read,
-            fq_name=['default-domain','isloated_ns1',ns1_name+'-vn'])
-        self.assertRaises(
-            NoIdError,
-            self._vnc_lib.virtual_network_read,
-            fq_name=['default-domain', 'isloated_ns2',ns2_name+'-vn'])
+        kube_config.VncKubernetesConfig.args().cluster_project = None
+        kube_config.VncKubernetesConfig.args().cluster_network = None
 
-    def test_namespace_custom_network(self):
+    def test_add_namespace_with_custom_network_annotation(self):
         # Create network for Pod
-        proj_fq_name = ['default-domain', 'default']
+        proj_fq_name = [self.domain, self.cluster_project]
         proj_obj = self._vnc_lib.project_read(fq_name=proj_fq_name)
-        vn_obj = self.create_network('network1', proj_obj)
-        # Add first namespace
-        eval_vn_dict = '{"domain":"default-domain","project":"default","name":"network1"}'
-        ns1_name = 'namespace1'
-        ns1_uuid = str(uuid.uuid4())
-        ns1_add_event = self.create_add_namespace_event(ns1_name, ns1_uuid)
-        ns1_annotations = {
-            'opencontrail.org/network': eval_vn_dict
-        }
-        ns1_add_event['object']['metadata']['annotations'] = ns1_annotations
-        NamespaceKM.locate(ns1_uuid, ns1_add_event['object'])
-        self.enqueue_event(ns1_add_event)
-        time.sleep(2)
 
-        # Add second namespace
-        vn_obj = self.create_network('network2', proj_obj)
-        eval_vn_dict = '{"domain":"default-domain","project":"default","name":"network2"}'
-        ns2_name = 'isolated_ns2'
-        ns2_uuid = str(uuid.uuid4())
-        ns2_add_event = self.create_add_namespace_event(ns2_name, ns2_uuid)
-        ns2_annotations = {
-            'opencontrail.org/network': eval_vn_dict
-        }
-        ns2_add_event['object']['metadata']['annotations'] = ns2_annotations
-        NamespaceKM.locate(ns2_uuid, ns2_add_event['object'])
-        self.enqueue_event(ns2_add_event)
-        time.sleep(2)
+        self.create_network(self.vn_name, proj_obj, '10.32.0.0/12',
+                            '10.96.0.0/12')
 
-        fqname = ['default-domain', 'default', 'network1']
+        vn_dict = {'domain': self.domain,
+                   'project': self.cluster_project,
+                   'name': self.vn_name}
+        ns_annotations = {'opencontrail.org/network': repr(vn_dict)}
+
+        self._create_and_add_namespace(self.ns_name, {}, ns_annotations, True)
+
+        proj = self._vnc_lib.project_read(fq_name=["default-domain",
+                                                   self.ns_name])
+        self.assertIsNotNone(proj)
+        self.assertEquals(self.ns_name, proj.name)
+
+        fqname = [self.domain, self.cluster_project, self.vn_name]
         vn = self._vnc_lib.virtual_network_read(fq_name=fqname)
         self.assertIsNotNone(vn)
-        self.assertEquals('network1', vn.name)
 
-        fqname = ['default-domain', 'default', 'network2']
-        vn = self._vnc_lib.virtual_network_read(fq_name=fqname)
-        self.assertIsNotNone(vn)
-        self.assertEquals('network2', vn.name)
+    @unittest.skip('Skipping. Test irrelevant for class.')
+    def test_add_namespace(self):
+        pass
+
+    @unittest.skip('Skipping. Test irrelevant for class.')
+    def test_add_namespace_with_isolation_annotation(self):
+        pass

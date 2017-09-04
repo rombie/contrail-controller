@@ -16,10 +16,11 @@ import copy
 import uuid
 
 import itertools
+import socket
 import cfgm_common as common
 from netaddr import IPNetwork, IPAddress
 from cfgm_common.exceptions import NoIdError, RefsExistError, BadRequest
-from cfgm_common.exceptions import HttpError
+from cfgm_common.exceptions import HttpError, RequestSizeError
 from cfgm_common import svc_info
 from cfgm_common.vnc_db import DBBase
 from vnc_api.vnc_api import *
@@ -28,6 +29,7 @@ from pysandesh.sandesh_base import *
 from pysandesh.sandesh_logger import *
 from cfgm_common.uve.virtual_network.ttypes import *
 from schema_transformer.sandesh.st_introspect import ttypes as sandesh
+from cfgm_common.uve.config_req.ttypes import *
 try:
     # python2.7
     from collections import OrderedDict
@@ -47,6 +49,14 @@ _PROTO_STR_TO_NUM = {
 SGID_MIN_ALLOC = common.SGID_MIN_ALLOC
 
 
+def _raise_and_send_uve_to_sandesh(obj_type, err_info, sandesh):
+    config_req_err = SystemConfigReq(obj_type=obj_type,
+                                  err_info=err_info)
+    config_req_err.name = socket.gethostname()
+    config_req_trace = SystemConfigReqTrace(data=config_req_err,
+                                         sandesh=sandesh)
+    config_req_trace.send(sandesh=sandesh)
+
 def _access_control_list_update(acl_obj, name, obj, entries):
     if acl_obj is None:
         if entries is None:
@@ -59,6 +69,14 @@ def _access_control_list_update(acl_obj, name, obj, entries):
             DBBaseST._logger.error(
                 "Error while creating acl %s for %s: %s" %
                 (name, obj.get_fq_name_str(), str(e)))
+        except RequestSizeError as e:
+            # log the error and raise an alarm
+            DBBaseST._logger.error(
+                "Bottle request size error while creating acl %s for %s" %
+                (name, obj.get_fq_name_str()))
+            err_info = {'acl rule limit exceeded': True}
+            _raise_and_send_uve_to_sandesh('ACL', err_info,
+                                           DBBaseST._sandesh)
         return None
     else:
         if entries is None:
@@ -85,6 +103,14 @@ def _access_control_list_update(acl_obj, name, obj, entries):
         except NoIdError:
             DBBaseST._logger.error("NoIdError while updating acl %s for %s" %
                                    (name, obj.get_fq_name_str()))
+        except RequestSizeError as e:
+            # log the error and raise an alarm
+            DBBaseST._logger.error(
+                "Bottle request size error while creating acl %s for %s" %
+                (name, obj.get_fq_name_str()))
+            err_info = {'acl rule limit exceeded': True}
+            _raise_and_send_uve_to_sandesh('ACL', err_info,
+                                           DBBaseST._sandesh)
     return acl_obj
 # end _access_control_list_update
 
@@ -153,7 +179,7 @@ class GlobalSystemConfigST(DBBaseST):
     obj_type = 'global_system_config'
     _autonomous_system = 0
     ibgp_auto_mesh = None
-    prop_fields = ['autonomous_system', 'ibgp_auto_mesh']
+    prop_fields = ['autonomous_system', 'ibgp_auto_mesh', 'bgpaas_parameters']
 
     @classmethod
     def reinit(cls):
@@ -173,10 +199,17 @@ class GlobalSystemConfigST(DBBaseST):
 
     def update(self, obj=None):
         changed = self.update_vnc_obj(obj)
-        if 'autonomous_system' in changed :
+        if 'autonomous_system' in changed:
             self.update_autonomous_system(self.obj.autonomous_system)
+        if 'bgpaas_parameters' in changed:
+            self.update_bgpaas_parameters(self.obj.bgpaas_parameters)
         return changed
     # end update
+
+    def update_bgpaas_parameters(self, bgpaas_params):
+        new_range = {'start': bgpaas_params.port_start,
+                     'end': bgpaas_params.port_end}
+        self._object_db._bgpaas_port_allocator.reallocate([new_range])
 
     @classmethod
     def get_autonomous_system(cls):
@@ -257,6 +290,7 @@ class GlobalSystemConfigST(DBBaseST):
         for router in LogicalRouterST.values():
             router.update_autonomous_system(self._autonomous_system)
         # end for router
+        self.update_bgpaas_parameters(self.obj.bgpaas_parameters)
     # end evaluate
 # end GlobalSystemConfigST
 
@@ -323,8 +357,6 @@ class VirtualNetworkST(DBBaseST):
             nid = prop.network_id or self._object_db.alloc_vn_id(name) + 1
             self.obj.set_virtual_network_network_id(nid)
             self._vnc_lib.virtual_network_update(self.obj)
-        if self.obj.get_fq_name() == common.IP_FABRIC_VN_FQ_NAME:
-            default_ri_fq_name = common.IP_FABRIC_RI_FQ_NAME
         elif self.obj.get_fq_name() == common.LINK_LOCAL_VN_FQ_NAME:
             default_ri_fq_name = common.LINK_LOCAL_RI_FQ_NAME
         else:
@@ -944,7 +976,7 @@ class VirtualNetworkST(DBBaseST):
         vmis = vm_pt.virtual_machine_interfaces
         for vmi_name in vmis:
             vmi = VirtualMachineInterfaceST.get(vmi_name)
-            if vmi and vmi.service_interface_type == 'left':
+            if vmi and vmi.is_left():
                 vn_analyzer = vmi.virtual_network
                 ip_analyzer = vmi.get_any_instance_ip_address()
                 break
@@ -1976,8 +2008,8 @@ class RoutingInstanceST(DBBaseST):
         self.route_aggregates = set()
         self.service_chain_info = self.obj.get_service_chain_information()
         self.v6_service_chain_info = self.obj.get_ipv6_service_chain_information()
-        if self.obj.get_parent_fq_name() in [common.IP_FABRIC_VN_FQ_NAME,
-                                             common.LINK_LOCAL_VN_FQ_NAME]:
+        if self.obj.get_fq_name() in (common.IP_FABRIC_RI_FQ_NAME,
+                                      common.LINK_LOCAL_RI_FQ_NAME):
             return
         self.locate_route_target()
         for ri_ref in self.obj.get_routing_instance_refs() or []:
@@ -2645,8 +2677,7 @@ class ServiceChain(DBBaseST):
             interface = VirtualMachineInterfaceST.get(interface_name)
             if not interface:
                 continue
-            if interface.service_interface_type not in ['left',
-                                                        'right']:
+            if not (interface.is_left() or interface.is_right()):
                 continue
             v4_addr = None
             v6_addr = None
@@ -2886,7 +2917,7 @@ class ServiceChain(DBBaseST):
             direction='both', vlan_tag=vlan, service_chain_address=v4_address,
             ipv6_service_chain_address=v6_address)
 
-        if vmi.service_interface_type == 'left':
+        if vmi.is_left():
             pbf.set_src_mac('02:00:00:00:00:01')
             pbf.set_dst_mac('02:00:00:00:00:02')
         else:
@@ -3156,14 +3187,23 @@ class BgpRouterST(DBBaseST):
     def update_bgpaas_client(self, bgpaas):
         if not bgpaas:
             return -1
-        for vmi_name, router in bgpaas.bgpaas_clients.items():
-            if router == self.name:
-                break
+
+        if bgpaas.bgpaas_shared:
+            if (bgpaas.virtual_machine_interfaces and
+                self.name in bgpaas.bgpaas_clients.values()):
+                vmi_name = list(bgpaas.virtual_machine_interfaces)[0]
+            else:
+                return -1
         else:
-            return -1
-        if vmi_name not in bgpaas.virtual_machine_interfaces:
-            del bgpaas.bgpaas_clients[vmi_name]
-            return -1
+            for vmi_name, router in bgpaas.bgpaas_clients.items():
+                if router == self.name:
+                    break
+            else:
+                return -1
+            if vmi_name not in bgpaas.virtual_machine_interfaces:
+                del bgpaas.bgpaas_clients[vmi_name]
+                return -1
+
         vmi = VirtualMachineInterfaceST.get(vmi_name)
         if vmi is None or vmi.virtual_network is None:
             del bgpaas.bgpaas_clients[vmi_name]
@@ -3172,6 +3212,7 @@ class BgpRouterST(DBBaseST):
         if not vn or self.obj.get_parent_fq_name_str() != vn._default_ri_name:
             del bgpaas.bgpaas_clients[vmi_name]
             return -1
+
         update = False
         params = self.obj.get_bgp_router_parameters()
         if params.autonomous_system != int(bgpaas.autonomous_system):
@@ -3276,7 +3317,8 @@ class BgpAsAServiceST(DBBaseST):
     prop_fields = ['bgpaas_ip_address', 'autonomous_system',
                    'bgpaas_session_attributes',
                    'bgpaas_suppress_route_advertisement',
-                   'bgpaas_ipv4_mapped_ipv6_nexthop']
+                   'bgpaas_ipv4_mapped_ipv6_nexthop',
+                   'bgpaas_shared']
     ref_fields = ['virtual_machine_interface', 'bgp_router']
 
     def __init__(self, name, obj=None):
@@ -3290,17 +3332,22 @@ class BgpAsAServiceST(DBBaseST):
         self.bgpaas_suppress_route_advertisement = None
         self.bgpaas_ipv4_mapped_ipv6_nexthop = None
         self.peering_attribs = None
+        self.bgpaas_shared = False
         self.update(obj)
         self.set_bgpaas_clients()
     # end __init__
 
     def set_bgpaas_clients(self):
-        for bgp_router in self.bgp_routers:
-            bgpr = BgpRouterST.get(bgp_router)
-            for vmi in self.virtual_machine_interfaces:
-                if vmi.split(':')[-1] == bgpr.obj.name:
-                    self.bgpaas_clients[vmi] = bgpr.obj.get_fq_name_str()
-                    break
+        if (self.bgpaas_shared and self.bgp_routers):
+            bgpr = BgpRouterST.get(list(self.bgp_routers)[0])
+            self.bgpaas_clients[self.obj.name] = bgpr.obj.get_fq_name_str()
+        else:
+            for bgp_router in self.bgp_routers:
+                bgpr = BgpRouterST.get(bgp_router)
+                for vmi in self.virtual_machine_interfaces:
+                    if vmi.split(':')[-1] == bgpr.obj.name:
+                        self.bgpaas_clients[vmi] = bgpr.obj.get_fq_name_str()
+                        break
     # end set_bgp_clients
 
     def update(self, obj=None):
@@ -3316,12 +3363,27 @@ class BgpAsAServiceST(DBBaseST):
     # end update
 
     def evaluate(self):
-        for name in (self.virtual_machine_interfaces -
-                     set(self.bgpaas_clients.keys())):
-            self.create_bgp_router(name)
+        # If the BGP Service is shared, just create
+        # one BGP Router.
+        if self.obj.get_bgpaas_shared() == True:
+            if set([self.obj.name]) - set(self.bgpaas_clients.keys()):
+                self.create_bgp_router(self.name, shared=True)
+        else:
+            for name in (self.virtual_machine_interfaces -
+                        set(self.bgpaas_clients.keys())):
+                self.create_bgp_router(name)
     # end evaluate
 
-    def create_bgp_router(self, name):
+    def create_bgp_router(self, name, shared=False):
+        if shared:
+            if not self.obj.bgpaas_ip_address:
+                return
+            vmis = self.obj.get_virtual_machine_interface_refs()
+            if not vmis:
+                return
+            vmi_obj = self._vnc_lib.virtual_machine_interface_read(id=vmis[0]['uuid'])
+            name = vmi_obj.get_fq_name_str()
+
         vmi = VirtualMachineInterfaceST.get(name)
         if not vmi:
             self.virtual_machine_interfaces.discard(name)
@@ -3332,6 +3394,7 @@ class BgpAsAServiceST(DBBaseST):
         ri = vn.get_primary_routing_instance()
         if not ri:
             return
+
         server_fq_name = ri.obj.get_fq_name_str() + ':bgpaas-server'
         server_router = BgpRouterST.get(server_fq_name)
         if not server_router:
@@ -3342,13 +3405,15 @@ class BgpAsAServiceST(DBBaseST):
             BgpRouterST.locate(server_fq_name, server_router)
         else:
             server_router = server_router.obj
-        router_fq_name = ri.obj.get_fq_name_str() + ':' + vmi.obj.name
+
+        bgpr_name = self.obj.name if shared else vmi.obj.name
+        router_fq_name = ri.obj.get_fq_name_str() + ':' + bgpr_name
         bgpr = BgpRouterST.get(router_fq_name)
         create = False
         update = False
         src_port = None
         if not bgpr:
-            bgp_router = BgpRouter(vmi.obj.name, parent_obj=ri.obj)
+            bgp_router = BgpRouter(bgpr_name, parent_obj=ri.obj)
             create = True
             try:
                 src_port = self._object_db.alloc_bgpaas_port(router_fq_name)
@@ -3359,6 +3424,7 @@ class BgpAsAServiceST(DBBaseST):
         else:
             bgp_router = self._vnc_lib.bgp_router_read(id=bgpr.obj.uuid)
             src_port = bgpr.source_port
+
         ip = self.bgpaas_ip_address or vmi.get_primary_instance_ip_address()
         params = BgpRouterParams(
             autonomous_system=int(self.autonomous_system) if self.autonomous_system else None,
@@ -3379,7 +3445,10 @@ class BgpAsAServiceST(DBBaseST):
             self._vnc_lib.bgp_router_update(bgp_router)
         self.bgp_routers.add(router_fq_name)
         bgpr.bgp_as_a_service = self.name
-        self.bgpaas_clients[name] = router_fq_name
+        if shared:
+            self.bgpaas_clients[self.obj.name] = router_fq_name
+        else:
+            self.bgpaas_clients[name] = router_fq_name
     # end create_bgp_router
 
 # end class BgpAsAServiceST
@@ -3440,6 +3509,12 @@ class VirtualMachineInterfaceST(DBBaseST):
         self.process_analyzer()
         self.recreate_vrf_assign_table()
     # end evaluate
+
+    def is_left(self):
+        return (self.service_interface_type == 'left')
+
+    def is_right(self):
+        return (self.service_interface_type == 'right')
 
     def get_any_instance_ip_address(self, ip_version=0):
         for ip_name in self.instance_ips:
@@ -3531,7 +3606,7 @@ class VirtualMachineInterfaceST(DBBaseST):
     # end get_service_instance
 
     def _add_pbf_rules(self):
-        if self.service_interface_type not in ['left', 'right']:
+        if not (self.is_left() or self.is_right()):
             return
 
         vm_pt_list = self.get_virtual_machine_or_port_tuple()
@@ -3543,7 +3618,7 @@ class VirtualMachineInterfaceST(DBBaseST):
                     continue
                 if not service_chain.created:
                     continue
-                if self.service_interface_type == 'left':
+                if self.is_left():
                     vn_obj = VirtualNetworkST.locate(service_chain.left_vn)
                     vn1_obj = vn_obj
                 else:
@@ -3596,7 +3671,7 @@ class VirtualMachineInterfaceST(DBBaseST):
     # end process_analyzer
 
     def recreate_vrf_assign_table(self):
-        if self.service_interface_type not in ['left', 'right']:
+        if not (self.is_left() or self.is_right()):
             self._set_vrf_assign_table(None)
             return
         vn = VirtualNetworkST.get(self.virtual_network)
@@ -3646,21 +3721,21 @@ class VirtualMachineInterfaceST(DBBaseST):
                 vrf_table.add_vrf_assign_rule(vrf_rule)
 
             si_name = vm_pt.service_instance
-            if smode == 'in-network-nat' and self.service_interface_type == 'right':
-                vn_service_chains = []
-            else:
-                vn_service_chains = vn.service_chains.values()
-
-            for service_chain_list in vn_service_chains:
+            for service_chain_list in vn.service_chains.values():
                 for service_chain in service_chain_list:
                     if not service_chain.created:
                         continue
+                    service_list = service_chain.service_list
                     if si_name not in service_chain.service_list:
+                        continue
+                    if ((si_name == service_list[0] and self.is_left()) or
+                        (si_name == service_list[-1] and self.is_right())):
+                        # Do not generate VRF assign rules for 'book-ends'
                         continue
                     ri_name = vn.get_service_name(service_chain.name, si_name)
                     for sp in service_chain.sp_list:
                         for dp in service_chain.dp_list:
-                            if self.service_interface_type == 'left':
+                            if self.is_left():
                                 mc = MatchConditionType(src_port=dp,
                                                         dst_port=sp,
                                                         protocol=service_chain.protocol)

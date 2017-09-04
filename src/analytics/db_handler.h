@@ -120,6 +120,8 @@ public:
             const TagMap & attribs_tag,
             const AttribMap & attribs_all,
             GenDb::GenDbIf::DbAddColumnCb db_cb);
+    bool SessionTableInsert(const pugi::xml_node& parent,
+        const SandeshHeader &header, GenDb::GenDbIf::DbAddColumnCb db_cb);
     bool FlowTableInsert(const pugi::xml_node& parent,
         const SandeshHeader &header, GenDb::GenDbIf::DbAddColumnCb db_cb);
     bool UnderlayFlowSampleInsert(const UFlowData& flow_data,
@@ -222,6 +224,9 @@ private:
         uint32_t t1, const boost::uuids::uuid& unm,
         const std::string& jsonline, int ttl,
         GenDb::GenDbIf::DbAddColumnCb db_cb);
+    bool SessionSampleAdd(const pugi::xml_node& sessiondata,
+        const SandeshHeader& header,
+        GenDb::GenDbIf::DbAddColumnCb db_cb);
     bool FlowSampleAdd(const pugi::xml_node& flowdata,
         const SandeshHeader& header,
         GenDb::GenDbIf::DbAddColumnCb db_cb);
@@ -273,6 +278,7 @@ private:
     WaterMarkTuple pending_compaction_tasks_watermark_tuple_;
 
     friend class DbHandlerTest;
+    friend class DbHandlerMsgKeywordInsertTest;
 
     DISALLOW_COPY_AND_ASSIGN(DbHandler);
 };

@@ -13,6 +13,7 @@
 #include <analytics/stat_walker.h>
 #include <analytics/structured_syslog_config.h>
 #include <analytics/structured_syslog_kafka_forwarder.h>
+#include "grok_parser.h"
 
 namespace structured_syslog {
 
@@ -27,7 +28,8 @@ class StructuredSyslogServer {
         const std::string &structured_syslog_kafka_topic,
         uint16_t structured_syslog_kafka_partitions,
         boost::shared_ptr<ConfigDBConnection> cfgdb_connection,
-        StatWalker::StatTableInsertFn stat_db_cb);
+        StatWalker::StatTableInsertFn stat_db_cb,
+        GrokParser* gp, bool use_grok=false);
     virtual ~StructuredSyslogServer();
     bool Initialize();
     void Shutdown();
@@ -43,9 +45,11 @@ class  StructuredSyslogQueueEntry {
 public:
     size_t      length;
     boost::shared_ptr<std::string> data;
+    boost::shared_ptr<std::string> json_data;
     boost::shared_ptr<std::string> skey;
 
     StructuredSyslogQueueEntry(boost::shared_ptr<std::string> d, size_t len,
+                               boost::shared_ptr<std::string> jd,
                                boost::shared_ptr<std::string> key);
     virtual ~StructuredSyslogQueueEntry();
 };
@@ -86,6 +90,7 @@ public:
     virtual ~StructuredSyslogForwarder();
     void Forward(boost::shared_ptr<StructuredSyslogQueueEntry> sqe);
     void Shutdown();
+    bool kafkaForwarder();
 
 protected:
     bool PollTcpForwarder();
@@ -94,10 +99,8 @@ protected:
                const std::string &structured_syslog_kafka_broker,
                const std::string &structured_syslog_kafka_topic,
                uint16_t structured_syslog_kafka_partitions);
-    bool Client(boost::shared_ptr<StructuredSyslogQueueEntry> sqe);
 private:
     EventManager                           *evm_;
-    WorkQueue<boost::shared_ptr<StructuredSyslogQueueEntry> > work_queue_;
     std::vector<boost::shared_ptr<StructuredSyslogTcpForwarder> > tcpForwarder_;
     KafkaForwarder*                            kafkaForwarder_;
     Timer                                  *tcpForwarder_poll_timer_;

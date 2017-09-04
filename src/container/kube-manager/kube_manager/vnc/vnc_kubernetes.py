@@ -20,6 +20,7 @@ from cfgm_common.exceptions import *
 from cfgm_common.utils import cgitb_hook
 from cfgm_common.vnc_amqp import VncAmqpHandle
 from vnc_api.vnc_api import *
+import kube_manager.common.args as kube_args
 from config_db import *
 import db
 import label_cache
@@ -42,7 +43,8 @@ class VncKubernetes(VncCommon):
 
     _vnc_kubernetes = None
 
-    def __init__(self, args=None, logger=None, q=None, kube=None):
+    def __init__(self, args=None, logger=None, q=None, kube=None,
+                 vnc_kubernetes_config_dict=None):
         self._name = type(self).__name__
         self.args = args
         self.logger = logger
@@ -52,6 +54,10 @@ class VncKubernetes(VncCommon):
 
         # init vnc connection
         self.vnc_lib = self._vnc_connect()
+
+        # Cache common config.
+        self.vnc_kube_config = vnc_kube_config(logger=self.logger,
+            vnc_lib=self.vnc_lib, args=self.args, queue=self.q, kube=self.kube)
 
         # HACK ALERT.
         # Till we have an alternate means to get config objects,  we will
@@ -74,29 +80,30 @@ class VncKubernetes(VncCommon):
         if self.args.nested_mode is '1':
             DBBaseKM.set_nested(True)
 
-        # init rabbit connection
-        self.rabbit = VncAmqpHandle(self.logger, DBBaseKM,
-            REACTION_MAP, 'kube_manager', args=self.args)
-        self.rabbit.establish()
-
-        # Cache common config.
-        self.vnc_kube_config = vnc_kube_config(logger=self.logger,
-            vnc_lib=self.vnc_lib, args=self.args, queue=self.q, kube=self.kube)
-
         # sync api server db in local cache
         self._sync_km()
+
+        # init rabbit connection
+        rabbitmq_cfg = kube_args.rabbitmq_args(self.args)
+        self.rabbit = VncAmqpHandle(self.logger._sandesh, self.logger, DBBaseKM,
+            REACTION_MAP, 'kube_manager', rabbitmq_cfg)
+        self.rabbit.establish()
         self.rabbit._db_resync_done.set()
 
         # provision cluster
         self._provision_cluster()
 
+        if vnc_kubernetes_config_dict:
+            self.vnc_kube_config.update(**vnc_kubernetes_config_dict)
+        else:
+            # Update common config.
+            self.vnc_kube_config.update(
+                cluster_pod_ipam_fq_name=self._get_cluster_pod_ipam_fq_name(),
+                cluster_service_fip_pool=self._get_cluster_service_fip_pool())
+
         # handle events
         self.label_cache = label_cache.LabelCache()
-
-        # Update common config.
-        self.vnc_kube_config.update(label_cache=self.label_cache,
-            cluster_pod_ipam_fq_name=self._get_cluster_pod_ipam_fq_name(),
-            cluster_service_fip_pool=self._get_cluster_service_fip_pool())
+        self.vnc_kube_config.update(label_cache=self.label_cache)
 
         self.network_policy_mgr = importutils.import_object(
             'kube_manager.vnc.vnc_network_policy.VncNetworkPolicy')
@@ -413,6 +420,3 @@ class VncKubernetes(VncCommon):
         DBBase.clear()
         inst._db = None
         VncKubernetes._vnc_kubernetes = None
-
-
-
