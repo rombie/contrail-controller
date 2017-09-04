@@ -304,13 +304,6 @@ private:
     RoutesSet spmsi_routes_received_;
     RoutesMap leafad_routes_received_;
     StatesMap *states_;
-
-#if 0  // In future phases.
-    RoutesSet t4_leaf_ad_received_rt_;
-    RoutesSet t5_source_active_rt_received_;
-    RoutesSet t5_source_active_rt_originated_;
-#endif
-
     tbb::atomic<int> refcount_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnState);
