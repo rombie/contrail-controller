@@ -15,7 +15,7 @@ using std::copy;
 using std::string;
 using std::vector;
 
-MvpnPrefix::MvpnPrefix() : type_(MvpnPrefix::Unspecified), ip_prefixlen_(0), 
+MvpnPrefix::MvpnPrefix() : type_(MvpnPrefix::Unspecified), ip_prefixlen_(0),
         asn_(0) {
 }
 
