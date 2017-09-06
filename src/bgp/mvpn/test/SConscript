@@ -136,7 +136,7 @@ mvpn_prefix_test = env.UnitTest('mvpn_prefix_test',
 env.Alias('src/bgp/mvpn:mvpn_prefix_test', mvpn_prefix_test)
 
 mvpn_table_test = env.UnitTest('mvpn_table_test',
-                                  ['mvpn_table_test.cc'])
+                               ['mvpn_table_test.cc'])
 env.Alias('src/bgp/mvpn:mvpn_table_test', mvpn_table_test)
 
 test_suite = [

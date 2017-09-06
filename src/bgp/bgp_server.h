@@ -179,6 +179,7 @@ public:
     as_t autonomous_system() const { return autonomous_system_; }
     as_t local_autonomous_system() const { return local_autonomous_system_; }
     uint32_t bgp_identifier() const { return bgp_identifier_.to_ulong(); }
+    void set_bgp_identifier(const Ip4Address &addr) { bgp_identifier_ = addr; }
     std::string bgp_identifier_string() const {
         return bgp_identifier_.to_string();
     }

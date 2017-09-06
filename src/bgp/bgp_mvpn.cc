@@ -196,6 +196,27 @@ bool MvpnManager::MvpnNeighborCompare::operator()(const MvpnNeighbor &l,
 
 bool MvpnManager::FindNeighbor(MvpnNeighbor *nbr, const IpAddress &address,
                                uint16_t vrf_id, bool exact) const {
+    tbb::reader_writer_lock::scoped_lock_read lock(neighbors_mutex_);
+
+    NeighborsSet::const_iterator iter = neighbors_.find(MvpnNeighbor(address,
+                                                                     vrf_id));
+    if (iter != neighbors_.end()) {
+        *nbr = *iter;
+        return true;
+    }
+
+    if (exact)
+        return false;
+
+    // Do a lower-bound search just based on the address.
+    for (iter = neighbors_.lower_bound(MvpnNeighbor(address));
+            iter != neighbors_.end(); iter++) {
+        if (iter->address() == address) {
+            *nbr = *iter;
+            return true;
+        }
+        break;
+    }
     return false;
 }
 
@@ -361,6 +382,22 @@ PathResolver *MvpnManager::path_resolver() const {
 }
 
 void MvpnManager::Terminate() {
+    MvpnRoute *type1_route = table_->FindType1ADRoute();
+    if (type1_route) {
+        BgpPath *path = type1_route->FindPath(BgpPath::Local, 0);
+        if (path)
+            type1_route->DeletePath(path);
+        type1_route->NotifyOrDelete();
+    }
+
+    MvpnRoute *type2_route = table_->FindType2ADRoute();
+    if (type2_route) {
+        BgpPath *path = type2_route->FindPath(BgpPath::Local, 0);
+        if (path)
+            type2_route->DeletePath(path);
+        type2_route->NotifyOrDelete();
+    }
+
     table_->Unregister(listener_id_);
     FreePartitions();
 }
@@ -525,6 +562,22 @@ void MvpnManager::Initialize() {
     listener_id_ = table_->Register(
         boost::bind(&MvpnManager::RouteListener, this, _1, _2),
         "MvpnManager");
+
+    if (!IsEnabled())
+        return;
+
+    // Originate Type1 Intra AS Auto-Discovery path.
+    BgpServer *server = table()->server();
+    MvpnRoute *route = table_->LocateType1ADRoute();
+    BgpAttrSpec attr_spec;
+    BgpAttrNextHop nexthop(server->bgp_identifier());
+    attr_spec.push_back(&nexthop);
+    BgpAttrPtr attr = server->attr_db()->Locate(attr_spec);
+    BgpPath *path = new BgpPath(NULL, 0, BgpPath::Local, attr, 0, 0, 0);
+    route->InsertPath(path);
+    route->Notify();
+
+    // TODO(Ananth) Originate Type2 Inter AS Auto-Discovery Route.
 }
 
 // MvpnTable route listener callback function.
@@ -570,6 +623,45 @@ void MvpnManager::RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry) {
 // Protect access to neighbors_ map with a mutex as the same be 'read' off other
 // DB tasks in parallel. (Type-1 and Type-2 do not carrry any <S,G> information.
 void MvpnManager::UpdateNeighbor(MvpnRoute *route) {
+    RouteDistinguisher rd = route->GetPrefix().route_distinguisher();
+    IpAddress address = Ip4Address(rd.GetAddress());
+
+    // Check if an entry is already present.
+    MvpnNeighbor old_neighbor;
+    bool found = FindNeighbor(&old_neighbor, address, rd.GetVrfId(), true);
+
+    if (!route->IsUsable()) {
+        if (!found)
+            return;
+        {
+            tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
+            neighbors_.erase(old_neighbor);
+        }
+        path_resolver()->UpdateAllResolverNexthops();
+        return;
+    }
+
+    // Ignore primary paths.
+    if (!route->BestPath()->IsSecondary())
+        return;
+
+
+    MvpnNeighbor neighbor(address, rd.GetVrfId(), route->GetPrefix().asn(),
+        route->GetPrefix().type() == MvpnPrefix::InterASPMSIADRoute);
+
+    // Ignore if there is no change.
+    if (found && old_neighbor == neighbor)
+        return;
+
+    {
+        tbb::reader_writer_lock::scoped_lock lock(neighbors_mutex_);
+        if (found)
+            neighbors_.erase(old_neighbor);
+        neighbors_.insert(neighbor);
+    }
+
+    // TODO(Ananth) Only need to re-evaluate all type-7 join routes.
+    path_resolver()->UpdateAllResolverNexthops();
 }
 
 // ErmVpnTable route listener callback function.

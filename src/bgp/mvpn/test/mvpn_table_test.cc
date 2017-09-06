@@ -8,6 +8,7 @@
 #include "base/task_annotations.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_multicast.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/origin-vn/origin_vn.h"
 #include "bgp/test/bgp_server_test_util.h"
 #include "control-node/control_node.h"
@@ -16,6 +17,27 @@ using namespace std;
 using namespace boost;
 
 static const int kRouteCount = 8;
+
+class MvpnProjectManagerMock : public MvpnProjectManager {
+public:
+    MvpnProjectManagerMock(ErmVpnTable *table) : MvpnProjectManager(table) { }
+
+private:
+    void Initialize() { }
+    void Terminate() { }
+};
+
+class MvpnManagerMock : public MvpnManager {
+public:
+    MvpnManagerMock(MvpnTable *table) : MvpnManager(table) { }
+    virtual void UpdateSecondaryTablesForReplication(MvpnRoute *rt,
+            BgpTable::TableSet *secondary_tables) const {
+    }
+
+private:
+    void Initialize() { }
+    void Terminate() { }
+};
 
 class MvpnTableTest : public ::testing::Test {
 protected:
@@ -43,9 +65,11 @@ protected:
 
         blue_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("blue.mvpn.0"));
+        blue_->set_force_replication(true);
         TASK_UTIL_EXPECT_EQ(Address::MVPN, blue_->family());
         master_ = static_cast<MvpnTable *>(
             server_.database()->FindTable("bgp.mvpn.0"));
+        master_->set_force_replication(true);
         TASK_UTIL_EXPECT_EQ(Address::MVPN, master_->family());
 
         tid_ = blue_->Register(
@@ -470,10 +494,6 @@ protected:
     scoped_ptr<BgpInstanceConfig> pink_cfg_;
 };
 
-//
-// Blue VRF route doesn't get leaked to pink VRF even though pink has an
-// an import RT which is the same as the blue export RT.
-//
 TEST_F(MvpnNoLeakTest, AddDeleteSingleRoute) {
     ostringstream repr;
     repr << "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
@@ -483,8 +503,8 @@ TEST_F(MvpnNoLeakTest, AddDeleteSingleRoute) {
     TASK_UTIL_EXPECT_EQ(adc_notification_, 1);
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
     TASK_UTIL_EXPECT_EQ(1, master_->Size());
-    VerifyRouteNoExists(pink_, repr.str());
-    TASK_UTIL_EXPECT_EQ(0, pink_->Size());
+    VerifyRouteExists(pink_, repr.str());
+    TASK_UTIL_EXPECT_EQ(1, pink_->Size());
 
     DelRoute(blue_, repr.str());
     task_util::WaitForIdle();
@@ -500,6 +520,10 @@ int main(int argc, char **argv) {
     bgp_log_test::init();
     ::testing::InitGoogleTest(&argc, argv);
     ControlNode::SetDefaultSchedulingPolicy();
+    BgpObjectFactory::Register<MvpnManager>(
+        boost::factory<MvpnManagerMock *>());
+    BgpObjectFactory::Register<MvpnProjectManager>(
+        boost::factory<MvpnProjectManagerMock *>());
     int result = RUN_ALL_TESTS();
     TaskScheduler::GetInstance()->Terminate();
     return result;

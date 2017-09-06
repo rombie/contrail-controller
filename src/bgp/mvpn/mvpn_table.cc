@@ -37,7 +37,7 @@ size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
 }
 
 MvpnTable::MvpnTable(DB *db, const string &name)
-    : BgpTable(db, name), manager_(NULL) {
+    : BgpTable(db, name), manager_(NULL), force_replication_(false) {
 }
 
 PathResolver *MvpnTable::CreatePathResolver() {
@@ -255,51 +255,40 @@ const MvpnRoute *MvpnTable::FindType5SourceActiveADRoute(MvpnRoute *rt) const {
 }
 
 BgpRoute *MvpnTable::RouteReplicate(BgpServer *server,
-        BgpTable *src_table, BgpRoute *src_rt, const BgpPath *src_path,
+        BgpTable *table, BgpRoute *rt, const BgpPath *src_path,
         ExtCommunityPtr community) {
+    CHECK_CONCURRENCY("db::DBTable");
+    MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
+    MvpnTable *src_table = dynamic_cast<MvpnTable *>(table);
+    return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
+                         src_path, community);
+}
+
+BgpRoute *MvpnTable::ReplicatePath(BgpServer *server, const MvpnPrefix &prefix,
+        MvpnTable *src_table, MvpnRoute *src_rt, const BgpPath *src_path,
+        ExtCommunityPtr comm, BgpAttrPtr new_attr) {
+    MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(src_rt);
+    assert(mvpn_rt);
+    MvpnPrefix mvpn_prefix(mvpn_rt->GetPrefix());
+    BgpAttrDB *attr_db = server->attr_db();
     assert(src_table->family() == Address::MVPN);
 
-    MvpnRoute *mroute = dynamic_cast<MvpnRoute *>(src_rt);
-    assert(mroute);
-
-    if (!IsMaster()) {
-        // Don't replicate to a VRF from other VRF tables.
-        MvpnTable *src_mvpn_table = dynamic_cast<MvpnTable *>(src_table);
-        if (!src_mvpn_table->IsMaster())
-            return NULL;
-
-        // Don't replicate to VRF from the VPN table if OriginVn doesn't match.
-        OriginVn origin_vn(server->autonomous_system(),
-            routing_instance()->virtual_network_index());
-        if (!community->ContainsOriginVn(origin_vn.GetExtCommunity()))
-            return NULL;
-    }
-
-    // RD is always zero in the VRF.  When replicating to the VPN table, we
-    // pick up the RD from the SourceRD attribute. The SourceRD is always set
-    // for Local and Global routes that the multicast code adds to a VRF.
-    MvpnPrefix mprefix(mroute->GetPrefix());
-    if (IsMaster()) {
-        mprefix.set_route_distinguisher(src_path->GetAttr()->source_rd());
-    } else {
-        mprefix.set_route_distinguisher(RouteDistinguisher::kZeroRd);
-    }
-    MvpnRoute rt_key(mprefix);
+    if (!new_attr)
+        new_attr = BgpAttrPtr(src_path->GetAttr());
 
     // Find or create the route.
-    DBTablePartition *rtp =
-        static_cast<DBTablePartition *>(GetTablePartition(&rt_key));
+    MvpnRoute rt_key(prefix);
+    DBTablePartition *rtp = static_cast<DBTablePartition *>(
+        GetTablePartition(&rt_key));
     BgpRoute *dest_route = static_cast<BgpRoute *>(rtp->Find(&rt_key));
     if (dest_route == NULL) {
-        dest_route = new MvpnRoute(mprefix);
+        dest_route = new MvpnRoute(mvpn_prefix);
         rtp->Add(dest_route);
     } else {
         dest_route->ClearDelete();
     }
 
-    BgpAttrPtr new_attr =
-        server->attr_db()->ReplaceExtCommunityAndLocate(src_path->GetAttr(),
-                                                        community);
+    new_attr = attr_db->ReplaceExtCommunityAndLocate(new_attr.get(), comm);
 
     // Check whether peer already has a path.
     BgpPath *dest_path = dest_route->FindSecondaryPath(src_rt,
@@ -324,8 +313,9 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server,
                              src_path->GetFlags(), src_path->GetLabel());
     replicated_path->SetReplicateInfo(src_table, src_rt);
     dest_route->InsertPath(replicated_path);
-    rtp->Notify(dest_route);
 
+    // Always trigger notification.
+    dest_route->Notify();
     return dest_route;
 }
 
