@@ -29,6 +29,13 @@ uint16_t VrfRouteImport::GetNumber() const {
     return get_value(&data_[6], 2);
 }
 
+VrfRouteImport::VrfRouteImport(const uint32_t bgp_id, const uint32_t ri_index) {
+    data_[0] = BgpExtendedCommunityType::IPv4Address;
+    data_[1] = BgpExtendedCommunitySubType::VrfRouteImport;
+    put_value(&data_[2], 4, bgp_id);
+    put_value(&data_[6], VrfRouteImport::kSize - 6, ri_index);
+}
+
 string VrfRouteImport::ToString() const {
     uint8_t data[VrfRouteImport::kSize];
     copy(data_.begin(), data_.end(), &data[0]);
