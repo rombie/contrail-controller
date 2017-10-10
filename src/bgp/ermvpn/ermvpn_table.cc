@@ -210,13 +210,12 @@ const McastTreeManager *ErmVpnTable::GetTreeManager() const {
 void ErmVpnTable::set_routing_instance(RoutingInstance *rtinstance) {
     BgpTable::set_routing_instance(rtinstance);
     CreateTreeManager();
-
-    // TODO(Ananth) Only the project manager table needs this.
-    if (IsMaster())
-        CreateMvpnProjectManager();
+    CreateMvpnProjectManager();
 }
 
 void ErmVpnTable::CreateMvpnProjectManager() {
+    if (!MvpnManager::IsEnabled())
+        return;
     assert(!mvpn_project_manager_);
     mvpn_project_manager_ = BgpObjectFactory::Create<MvpnProjectManager>(this);
     mvpn_project_manager_->Initialize();

@@ -14,6 +14,7 @@
 #include "bgp/bgp_config.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_log.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/bgp_server.h"
 #include "bgp/mvpn/mvpn_table.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
@@ -84,6 +85,7 @@ RoutingInstanceMgr::RoutingInstanceMgr(BgpServer *server) :
 }
 
 RoutingInstanceMgr::~RoutingInstanceMgr() {
+    assert(mvpn_project_managers_.empty());
     assert(virtual_networks_.empty());
     assert(deleted_count_ == 0);
     server_->UnregisterASNUpdateCallback(asn_listener_id_);
@@ -556,12 +558,6 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
     InstanceVnIndexAdd(rtinstance);
     rtinstance->InitAllRTargetRoutes(server_->local_autonomous_system());
 
-    // Initialize MVPN Manager.
-    MvpnTable *mvpn_table =
-        dynamic_cast<MvpnTable *>(rtinstance->GetTable(Address::MVPN));
-    if (mvpn_table)
-        mvpn_table->CreateManager();
-
     // Notify clients about routing instance create
     NotifyInstanceOp(config->name(), INSTANCE_ADD);
 
@@ -579,6 +575,11 @@ RoutingInstance *RoutingInstanceMgr::CreateRoutingInstance(
     //  Update instance to virtual-network mapping structures.
     CreateVirtualNetworkMapping(rtinstance->GetVirtualNetworkName(),
                                 rtinstance->name());
+
+    // Create MvpnManager for all children mvpn networks.
+    MvpnTable *mvpn_table =
+        dynamic_cast<MvpnTable *>(rtinstance->GetTable(Address::MVPN));
+    mvpn_table->CreateMvpnManagers();
     return rtinstance;
 }
 
@@ -803,7 +804,7 @@ RoutingInstance::RoutingInstance(string name, BgpServer *server,
       vxlan_id_(0),
       deleter_(new DeleteActor(server, this)),
       manager_delete_ref_(this, NULL),
-      mvpn_project_manager_network_(BgpConfigManager::kMasterInstance) {
+      mvpn_project_manager_network_(BgpConfigManager::kFabricInstance) {
     if (mgr) {
         tbb::mutex::scoped_lock lock(mgr->mutex());
         manager_delete_ref_.Reset(mgr->deleter());
@@ -1692,4 +1693,8 @@ PeerManager *RoutingInstance::LocatePeerManager() {
     if (!peer_manager_)
         peer_manager_.reset(BgpObjectFactory::Create<PeerManager>(this));
     return peer_manager_.get();
+}
+
+bool RoutingInstance::IsFabricRoutingInstance() const {
+    return name_ == BgpConfigManager::kFabricInstance;
 }

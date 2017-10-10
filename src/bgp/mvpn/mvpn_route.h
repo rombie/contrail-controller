@@ -5,11 +5,12 @@
 #ifndef SRC_BGP_MVPN_MVPN_ROUTE_H_
 #define SRC_BGP_MVPN_MVPN_ROUTE_H_
 
-#include <boost/system/error_code.hpp>
 
 #include <set>
 #include <string>
 #include <vector>
+
+#include <boost/system/error_code.hpp>
 
 #include "base/util.h"
 #include "bgp/bgp_attr.h"
@@ -105,7 +106,7 @@ public:
                                   uint32_t label = 0,
                                   uint32_t l3_label = 0) const;
     virtual void BuildBgpProtoNextHop(std::vector<uint8_t> &nh,
-                                      IpAddress nexthop) const;
+                                      const IpAddress &nexthop) const;
 
     virtual bool IsLess(const DBEntry &genrhs) const {
         const MvpnRoute &rhs = static_cast<const MvpnRoute &>(genrhs);
@@ -124,4 +125,4 @@ private:
     DISALLOW_COPY_AND_ASSIGN(MvpnRoute);
 };
 
-#endif  // SRC_BGP_MVPN_ERMVPN_ROUTE_H_
+#endif  // SRC_BGP_MVPN_MVPN_ROUTE_H_

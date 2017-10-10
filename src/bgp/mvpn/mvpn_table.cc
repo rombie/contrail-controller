@@ -4,6 +4,7 @@
 
 #include "bgp/mvpn/mvpn_table.h"
 
+#include <utility>
 #include <boost/foreach.hpp>
 
 #include "base/task_annotations.h"
@@ -21,7 +22,9 @@
 #include "bgp/routing-instance/routing_instance.h"
 
 using std::auto_ptr;
+using std::pair;
 using std::string;
+using std::set;
 
 size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
     if ((prefix.type() == MvpnPrefix::IntraASPMSIADRoute) ||
@@ -37,7 +40,7 @@ size_t MvpnTable::HashFunction(const MvpnPrefix &prefix) const {
 }
 
 MvpnTable::MvpnTable(DB *db, const string &name)
-    : BgpTable(db, name), manager_(NULL), force_replication_(false) {
+    : BgpTable(db, name), manager_(NULL) {
 }
 
 PathResolver *MvpnTable::CreatePathResolver() {
@@ -86,19 +89,83 @@ DBTableBase *MvpnTable::CreateTable(DB *db, const string &name) {
 }
 
 void MvpnTable::CreateManager() {
-    // Don't create the MvpnManager for the VPN table.
-    if (IsMaster())
+    if (manager_)
         return;
-    assert(!manager_);
-    manager_ = BgpObjectFactory::Create<MvpnManager>(this);
+
+    // Don't create the MvpnManager if ProjectManager is not present.
+    MvpnProjectManager *pm = GetProjectManager();
+    if (!pm)
+        return;
+    manager_ = BgpObjectFactory::Create<MvpnManager>(this, pm->table());
     manager_->Initialize();
+
+    // Notify all routes in the table for further evaluation.
+    NotifyAllEntries();
+
+    // TODO(Ananth): Should we also notify routes in the bgp.mvpn.0 table ?
 }
 
 void MvpnTable::DestroyManager() {
-    assert(manager_);
+    if (!manager_)
+        return;
+    DeleteMvpnManager();
     manager_->Terminate();
     delete manager_;
     manager_ = NULL;
+}
+
+void MvpnTable::CreateMvpnManagers() {
+    if (!MvpnManager::IsEnabled())
+        return;
+    RoutingInstance *rtinstance = routing_instance();
+    tbb::mutex::scoped_lock lock(rtinstance->manager()->mvpn_mutex());
+
+    // Don't create the MvpnManager for the VPN table.
+    if (!rtinstance->IsMasterRoutingInstance() &&
+            !rtinstance->IsFabricRoutingInstance() &&
+            !rtinstance->mvpn_project_manager_network().empty()) {
+        pair<MvpnProjectManagerNetworks::iterator, bool> ret =
+            rtinstance->manager()->mvpn_project_managers().insert(make_pair(
+                rtinstance->mvpn_project_manager_network(), set<string>()));
+        ret.first->second.insert(rtinstance->name());
+
+        // Initialize MVPN Manager.
+        CreateManager();
+    }
+
+    MvpnProjectManagerNetworks::iterator iter =
+        rtinstance->manager()->mvpn_project_managers().find(
+            rtinstance->name());
+    if (iter == rtinstance->manager()->mvpn_project_managers().end())
+        return;
+
+    BOOST_FOREACH(const string &mvpn_network, iter->second) {
+        RoutingInstance *rti =
+            rtinstance->manager()->GetRoutingInstance(mvpn_network);
+        if (!rti || rti->deleted())
+            continue;
+        MvpnTable *table =
+            dynamic_cast<MvpnTable *>(rti->GetTable(Address::MVPN));
+        if (!table || table->IsDeleted())
+            continue;
+        table->CreateManager();
+    }
+}
+
+void MvpnTable::DeleteMvpnManager() {
+    if (!MvpnManager::IsEnabled())
+        return;
+    if (routing_instance()->mvpn_project_manager_network().empty())
+        return;
+    tbb::mutex::scoped_lock lock(routing_instance()->manager()->mvpn_mutex());
+    MvpnProjectManagerNetworks::iterator iter =
+        routing_instance()->manager()->mvpn_project_managers().find(
+            routing_instance()->mvpn_project_manager_network());
+    if (iter != routing_instance()->manager()->mvpn_project_managers().end()) {
+        iter->second.erase(routing_instance()->name());
+        if (iter->second.empty())
+            routing_instance()->manager()->mvpn_project_managers().erase(iter);
+    }
 }
 
 // Call the const version to avoid code duplication.
@@ -118,8 +185,7 @@ MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
 // with a parent project maanger network via configuration. MvpnProjectManager
 // is retrieved from this parent network RoutingInstance's ErmVpnTable.
 const MvpnProjectManager *MvpnTable::GetProjectManager() const {
-    std::string pm_network =
-        routing_instance()->mvpn_project_manager_network();
+    std::string pm_network = routing_instance()->mvpn_project_manager_network();
     if (pm_network.empty())
         return NULL;
     const RoutingInstance *rtinstance =
@@ -153,6 +219,8 @@ const MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
 // the MvpnProjectManagerPartition object.
 void MvpnTable::UpdateSecondaryTablesForReplication(BgpRoute *rt,
         TableSet *secondary_tables) {
+    if (!manager())
+        return;
     if (IsMaster())
         return;
     MvpnRoute *mvpn_rt = dynamic_cast<MvpnRoute *>(rt);
@@ -181,7 +249,7 @@ const MvpnRoute *MvpnTable::FindRoute(const MvpnPrefix &prefix) const {
 }
 
 // Find or create the route.
-MvpnRoute *MvpnTable::LocateRoute(MvpnPrefix &prefix) {
+MvpnRoute *MvpnTable::LocateRoute(const MvpnPrefix &prefix) {
     MvpnRoute rt_key(prefix);
     DBTablePartition *rtp = static_cast<DBTablePartition *>(
         GetTablePartition(&rt_key));
@@ -309,7 +377,7 @@ BgpRoute *MvpnTable::RouteReplicate(BgpServer *server, BgpTable *stable,
     MvpnRoute *src_rt = dynamic_cast<MvpnRoute *>(rt);
     assert(src_rt);
 
-    if (force_replication()) {
+    if (!MvpnManager::IsEnabled()) {
         return ReplicatePath(server, src_rt->GetPrefix(), src_table, src_rt,
                              src_path, community);
     }
@@ -348,7 +416,7 @@ BgpRoute *MvpnTable::ReplicateType7SourceTreeJoin(BgpServer *server,
     // created route target (vit).
     if (!IsMaster()) {
         RouteTarget vit(Ip4Address(server->bgp_identifier()),
-                        routing_instance()->index());
+                                   routing_instance()->index());
         bool vit_found = false;
         BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
                       ext_community->communities()) {

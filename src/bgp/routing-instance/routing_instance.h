@@ -113,6 +113,7 @@ public:
     bool IsMasterRoutingInstance() const {
         return is_master_;
     }
+    bool IsFabricRoutingInstance() const;
 
     const std::string &name() const { return name_; }
     const std::string GetVirtualNetworkName() const;
@@ -276,6 +277,9 @@ public:
 
     typedef boost::function<void(std::string, int)> RoutingInstanceCb;
     typedef std::vector<RoutingInstanceCb> InstanceOpListenersList;
+    typedef std::set<std::string> MvpnManagerNetworks;
+    typedef std::map<std::string, MvpnManagerNetworks>
+        MvpnProjectManagerNetworks;
 
     enum Operation {
         INSTANCE_ADD = 1,
@@ -349,6 +353,13 @@ public:
     bool DeleteVirtualNetworkMapping(const std::string &virtual_network,
                                      const std::string &instance_name);
     uint32_t SendTableStatsUve();
+    const MvpnProjectManagerNetworks &mvpn_project_managers() const {
+        return mvpn_project_managers_;
+    }
+    MvpnProjectManagerNetworks &mvpn_project_managers() {
+        return mvpn_project_managers_;
+    }
+    tbb::mutex &mvpn_mutex() { return mvpn_mutex_; }
 
 private:
     friend class BgpConfigTest;
@@ -398,6 +409,9 @@ private:
     // Map of virtual-network names to routing-instance names.
     typedef std::map<std::string, std::set<std::string> > VirtualNetworksMap;
     VirtualNetworksMap virtual_networks_;
+
+    mutable tbb::mutex mvpn_mutex_;
+    MvpnProjectManagerNetworks mvpn_project_managers_;
 };
 
 #endif  // SRC_BGP_ROUTING_INSTANCE_ROUTING_INSTANCE_H_

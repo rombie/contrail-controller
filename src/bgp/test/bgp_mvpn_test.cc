@@ -95,6 +95,9 @@ protected:
 "       <address>127.0.0.1</address>"
 "       <autonomous-system>1</autonomous-system>"
 "   </bgp-router>"
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>"
+"       <vrf-target>target:127.0.0.1:9999</vrf-target>"
+"   </routing-instance>"
 "   <routing-instance name='red'>"
 "       <vrf-target>target:127.0.0.1:1001</vrf-target>"
 "   </routing-instance>"
@@ -144,7 +147,9 @@ protected:
         green_ = static_cast<MvpnTable *>(
             server_->database()->FindTable("green.mvpn.0"));
         fabric_ermvpn_ = static_cast<ErmVpnTable *>(
-            server_->database()->FindTable("bgp.ermvpn.0"));
+            server_->database()->FindTable(
+                red_->routing_instance()->mvpn_project_manager_network() +
+                ".ermvpn.0"));
     }
 
     void UpdateBgpIdentifier(const string &address) {

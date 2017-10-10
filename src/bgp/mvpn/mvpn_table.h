@@ -5,6 +5,8 @@
 #ifndef SRC_BGP_MVPN_MVPN_TABLE_H_
 #define SRC_BGP_MVPN_MVPN_TABLE_H_
 
+#include <map>
+#include <set>
 #include <string>
 
 #include "bgp/bgp_attr.h"
@@ -89,15 +91,18 @@ public:
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
     MvpnRoute *FindRoute(const MvpnPrefix &prefix);
     const MvpnRoute *FindRoute(const MvpnPrefix &prefix) const;
-    bool force_replication() const { return force_replication_; }
-    void set_force_replication(bool flag) { force_replication_ = flag; }
+    void CreateMvpnManagers();
 
 private:
     friend class BgpMulticastTest;
+    typedef std::set<std::string> MvpnManagerNetworks;
+    typedef std::map<std::string, MvpnManagerNetworks>
+        MvpnProjectManagerNetworks;
 
+    void DeleteMvpnManager();
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
-    MvpnRoute *LocateRoute(MvpnPrefix &prefix);
+    MvpnRoute *LocateRoute(const MvpnPrefix &prefix);
     UpdateInfo *GetMvpnUpdateInfo(RibOut *ribout, MvpnRoute *route,
                                   const RibPeerSet &peerset);
     BgpRoute *ReplicateType7SourceTreeJoin(BgpServer *server,
@@ -108,7 +113,6 @@ private:
         ExtCommunityPtr comm);
 
     MvpnManager *manager_;
-    bool force_replication_;
 
     DISALLOW_COPY_AND_ASSIGN(MvpnTable);
 };
