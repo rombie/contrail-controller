@@ -214,7 +214,8 @@ void ErmVpnTable::set_routing_instance(RoutingInstance *rtinstance) {
 }
 
 void ErmVpnTable::CreateMvpnProjectManager() {
-    if (!MvpnManager::IsEnabled())
+    // Don't create the MvpnProjectManager for the master table.
+    if (!MvpnManager::IsEnabled() || IsMaster())
         return;
     assert(!mvpn_project_manager_);
     mvpn_project_manager_ = BgpObjectFactory::Create<MvpnProjectManager>(this);

@@ -4,6 +4,7 @@
 
 #include <boost/foreach.hpp>
 
+#include "bgp/bgp_config.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_multicast.h"
 #include "bgp/bgp_mvpn.h"
@@ -103,7 +104,7 @@ public:
     int CheckGlobalRouteOListSize(boost::shared_ptr<const NetworkAgentMock> agent,
         const string &prefix) {
         const NetworkAgentMock::McastRouteEntry *ermvpn_rt =
-            agent->McastRouteLookup("default-domain:default-project:ip-fabric:ip-fabric", prefix);
+            agent->McastRouteLookup(BgpConfigManager::kFabricInstance, prefix);
         if (ermvpn_rt == NULL)
             return false;
         const OlistType &olist = ermvpn_rt->entry.olist;
@@ -123,14 +124,14 @@ public:
             return false;
 
         const NetworkAgentMock::McastRouteEntry *ermvpn_rt =
-            other_agent->McastRouteLookup("default-domain:default-project:ip-fabric:ip-fabric", prefix);
+            other_agent->McastRouteLookup(BgpConfigManager::kFabricInstance, prefix);
         if (ermvpn_rt == NULL)
             return false;
         const MvpnOlistType &olist = mvpn_rt->entry.olist;
         if (olist.next_hop.size() != olist_size)
             return false;
 
-        int label = GetLabel(other_agent, "default-domain:default-project:ip-fabric:ip-fabric", prefix);
+        int label = GetLabel(other_agent, BgpConfigManager::kFabricInstance, prefix);
         if (label == 0)
             return false;
 
@@ -181,6 +182,7 @@ public:
     MvpnTable *red_;
     MvpnTable *blue_;
     MvpnTable *green_;
+    MvpnTable *fabric_mvpn_;
     InetTable *red_inet_;
     InetTable *green_inet_;
 
@@ -205,18 +207,16 @@ static const char *config_tmpl1 = "\
     <virtual-network name='red'>\
         <network-id>1</network-id>\
     </virtual-network>\
-    <virtual-network name='default-domain:default-project:ip-fabric:ip-fabric'>\
+    <virtual-network name='default-domain:default-project:ip-fabric'>\
         <network-id>1000</network-id>\
     </virtual-network>\
     <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>\
+        <virtual-network>default-domain:default-project:ip-fabric</virtual-network>\
         <vrf-target>target:127.0.0.1:1005</vrf-target>\
     </routing-instance>\
     <routing-instance name='red'>\
+        <virtual-network>red</virtual-network>\
         <vrf-target>target:127.0.0.1:1001</vrf-target>\
-        <vrf-target>\
-            target:127.0.0.1:1003\
-            <import-export>import</import-export>\
-        </vrf-target>\
     </routing-instance>\
     <routing-instance name='blue'>\
         <virtual-network>blue</virtual-network>\
@@ -254,8 +254,12 @@ public:
             bs_x_->database()->FindTable("blue.mvpn.0"));
         green_ = static_cast<MvpnTable *>(
             bs_x_->database()->FindTable("green.mvpn.0"));
+        fabric_mvpn_ = static_cast<MvpnTable *>(
+            bs_x_->database()->FindTable(
+                string(BgpConfigManager::kFabricInstance) + ".mvpn.0"));
         fabric_ermvpn_ = static_cast<ErmVpnTable *>(
-            bs_x_->database()->FindTable("default-domain:default-project:ip-fabric:ip-fabric.ermvpn.0"));
+            bs_x_->database()->FindTable(
+                string(BgpConfigManager::kFabricInstance) + ".ermvpn.0"));
         red_inet_ = static_cast<InetTable *>(
             bs_x_->database()->FindTable("red.inet.0"));
         green_inet_ = static_cast<InetTable *>(
@@ -272,7 +276,7 @@ public:
 };
 
 TEST_F(BgpMvpnOneControllerTest, Basic) {
-    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 type1 from red and 1 from green
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 type1 from red and 1 from green
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
 
@@ -284,14 +288,20 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
 
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         green_->FindType1ADRoute());
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // red, blue, gree, default-domain:default-project:ip-fabric:ip-fabric
+
+    TASK_UTIL_EXPECT_EQ(0, fabric_mvpn_->Size());
+    TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                        fabric_mvpn_->FindType1ADRoute());
+
+    // red, blue and green
+    TASK_UTIL_EXPECT_EQ(3, master_->Size());
 
     const char *mroute = "224.1.2.3,192.168.1.1";
 
     // Register agent a and add a source active mvpn route
     Subscribe("red", 1);
     Subscribe("green", 2);
-    Subscribe("default-domain:default-project:ip-fabric:ip-fabric", 1000);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
     string tunnel;
     RouteAttributes attr;
     NextHop nexthop_red("192.168.0.101", 11, tunnel, "red");
@@ -301,9 +311,9 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     task_util::WaitForIdle();
 
     // Verify that the route gets added
-    TASK_UTIL_EXPECT_EQ(3, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
-    TASK_UTIL_EXPECT_EQ(5, master_->Size());
+    TASK_UTIL_EXPECT_EQ(4, master_->Size());
     TASK_UTIL_EXPECT_EQ(4, green_->Size()); 
     TASK_UTIL_EXPECT_EQ(1, red_inet_->Size()); 
     TASK_UTIL_EXPECT_EQ(1, green_inet_->Size()); 
@@ -326,7 +336,8 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     TASK_UTIL_EXPECT_EQ(0, CheckGlobalRouteOListSize(agent_xb_, mroute));
 
     // Add a receiver in red
-    agent_xa_->AddMcastRoute("default-domain:default-project:ip-fabric:ip-fabric", mroute, "10.1.1.3", "50-60");
+    agent_xa_->AddMcastRoute(BgpConfigManager::kFabricInstance, mroute,
+            "10.1.1.3", "50-60");
     // ermvpn route olist size will increment
     TASK_UTIL_EXPECT_EQ(1, CheckGlobalRouteOListSize(agent_xb_, mroute));
     // No change in mvpn route olist
@@ -386,7 +397,7 @@ static const char *config_tmpl2 = "\
     <virtual-network name='red'>\
         <network-id>1</network-id>\
     </virtual-network>\
-    <virtual-network name='default-domain:default-project:ip-fabric:ip-fabric'>\
+    <virtual-network name='default-domain:default-project:ip-fabric'>\
         <network-id>1000</network-id>\
     </virtual-network>\
     <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>\
@@ -455,7 +466,8 @@ protected:
         green_ = static_cast<MvpnTable *>(
             bs_x_->database()->FindTable("green.mvpn.0"));
         fabric_ermvpn_ = static_cast<ErmVpnTable *>(
-            bs_y_->database()->FindTable("default-domain:default-project:ip-fabric:ip-fabric.ermvpn.0"));
+            bs_y_->database()->FindTable(
+                string(BgpConfigManager::kFabricInstance) + ".ermvpn.0"));
         red_inet_ = static_cast<InetTable *>(
             bs_x_->database()->FindTable("red.inet.0"));
         green_inet_ = static_cast<InetTable *>(
@@ -533,13 +545,13 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
 
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         green_->FindType1ADRoute());
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // red, blue, gree, default-domain:default-project:ip-fabric:ip-fabric
-    TASK_UTIL_EXPECT_EQ(4, master_y_->Size()); // red, blue, gree, default-domain:default-project:ip-fabric:ip-fabric
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // red, blue, green
+    TASK_UTIL_EXPECT_EQ(3, master_y_->Size()); // red, blue, green
 
     // Register agents and add a source active mvpn route
     Subscribe("red", 1);
     Subscribe("green", 2);
-    Subscribe("default-domain:default-project:ip-fabric:ip-fabric", 1000);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
     task_util::WaitForIdle();
     string tunnel;
     RouteAttributes attr;

@@ -13,6 +13,7 @@
 #include "base/util.h"
 #include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
+#include "bgp/bgp_config.h"
 #include "bgp/extended-community/load_balance.h"
 #include "bgp/ipeer.h"
 #include "bgp/bgp_xmpp_channel.h"
@@ -1274,7 +1275,8 @@ void NetworkAgentMock::AddMvpnRoute(const string &network_name,
     peer->SendDocument(xdoc);
     mvpn_route_mgr_->AddOriginated(network_name, sg);
     if (rt_type == 7)
-        AddMcastRoute("mvpn_fabric", sg, nexthop, label_range, encap);
+        AddMcastRoute(BgpConfigManager::kFabricInstance, sg, nexthop,
+                      label_range, encap);
 }
 
 void NetworkAgentMock::DeleteMvpnRoute(const string &network_name,
