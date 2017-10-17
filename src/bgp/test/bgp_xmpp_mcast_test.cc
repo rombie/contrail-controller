@@ -884,7 +884,7 @@ TEST_F(BgpXmppMcastMultiAgentTest, ValidateShowRoute) {
     Sandesh::set_client_context(&sandesh_context);
 
     // First get all tables - blue.ermvpn.0, bgp.ermvpn.0 and bgp.rtarget.0.
-    std::vector<size_t> result = list_of(5)(2)(2);
+    std::vector<size_t> result = list_of(5)(2)(3);
     Sandesh::set_response_callback(
         boost::bind(ValidateShowRouteResponse, _1, result));
     ShowRouteReq *show_req = new ShowRouteReq;
@@ -1455,8 +1455,8 @@ TEST_F(BgpXmppMcast2ServerTest, SingleAgent) {
     task_util::WaitForIdle();
 
     // Verify number of routes on all agents.
-    TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
-    TASK_UTIL_EXPECT_EQ(0, agent_ya_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_xa_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_ya_->McastRouteCount());
 
     // Delete mcast route for agent xa.
     agent_xa_->DeleteMcastRoute("blue", mroute);
@@ -1488,7 +1488,7 @@ TEST_F(BgpXmppMcast2ServerTest, SingleAgentXmppSessionDown) {
 
     // Verify number of routes on all agents.
     TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
-    TASK_UTIL_EXPECT_EQ(0, agent_ya_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_ya_->McastRouteCount());
 
     // Delete mcast route for agent ya.
     agent_ya_->DeleteMcastRoute("blue", mroute);
@@ -2043,8 +2043,8 @@ TEST_F(BgpXmppMcast2ServerTest2, BgpConnectLater_SingleAgent) {
     task_util::WaitForIdle();
 
     // Verify number of routes on all agents.
-    TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
-    TASK_UTIL_EXPECT_EQ(0, agent_ya_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_xa_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_ya_->McastRouteCount());
 
     // Now bring up the bgp session.
     Configure(config_tmpl22);
@@ -2131,8 +2131,8 @@ TEST_F(BgpXmppMcast2ServerTest2, BgpSessionBounce_SingleAgent) {
         Configure(config_tmpl22_bad);
 
         // Verify number of routes on all agents.
-        TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
-        TASK_UTIL_EXPECT_EQ(0, agent_ya_->McastRouteCount());
+        TASK_UTIL_EXPECT_EQ(1, agent_xa_->McastRouteCount());
+        TASK_UTIL_EXPECT_EQ(1, agent_ya_->McastRouteCount());
     }
 
     // Delete mcast route for all agents.

@@ -1097,8 +1097,7 @@ void BgpIfmapInstanceConfig::InsertVitInImportList(
 	    bgp_identifier = master_protocol->protocol_config()->identifier();
     }
     if (bgp_identifier > 0) {
-        import_list.insert("target:" +
-		 GetVitFromId(ntohl(bgp_identifier)));
+        import_list.insert("target:" + GetVitFromId(ntohl(bgp_identifier)));
     }
 }
 

@@ -217,7 +217,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType5) {
 TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
     const char *mroute = "225.0.0.1,20.1.1.10";
 
-    // Register agent a to the multicast table and add a mvpn route of type 5
+    // Register agent a to the multicast table and add a mvpn route of type 7
     // without waiting for the subscription to be processed.
     int rt_type = MvpnPrefix::SourceTreeJoinRoute;
     agent_xa_->MvpnSubscribe("blue", 1);
@@ -263,6 +263,8 @@ TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
     agent_xb_->MvpnSubscribe("blue", 1);
     task_util::WaitForIdle();
     agent_xb_->AddMvpnRoute("blue", mroute);
+    MvpnTable *blue_table_ = static_cast<MvpnTable *>(
+        bs_x_->database()->FindTable("blue.mvpn.0"));
 
     // Register agent a to the multicast table and add a mvpn route
     // without waiting for the subscription to be processed. Then go
@@ -274,15 +276,13 @@ TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
     agent_xa_->MvpnSubscribe("blue", 2);
     agent_xa_->AddMvpnRoute("blue", mroute);
 
-    // Verify number of routes on all agents.
+    // Verify number of routes in blue table.
     WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
 
     // Verify that agent a mvpn route was added.
     const char *route = "7-0:0,0,10.1.1.10,225.0.0.1";
     MvpnPrefix prefix(MvpnPrefix::FromString(route));
     MvpnTable::RequestKey key(prefix, NULL);
-    MvpnTable *blue_table_ = static_cast<MvpnTable *>(
-        bs_x_->database()->FindTable("blue.mvpn.0"));
     TASK_UTIL_EXPECT_TRUE(
         dynamic_cast<MvpnRoute *>(blue_table_->Find(&key)) != NULL);
 

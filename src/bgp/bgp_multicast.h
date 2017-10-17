@@ -14,6 +14,7 @@
 #include "base/label_block.h"
 #include "base/lifetime.h"
 #include "base/queue_task.h"
+#include "bgp/bgp_ribout.h"
 #include "db/db_entry.h"
 #include "net/address.h"
 #include "net/rd.h"
@@ -118,6 +119,7 @@ private:
 
     void AddLocalOListElems(BgpOListSpec *olist_spec);
     void AddGlobalOListElems(BgpOListSpec *olist_spec);
+    void AddMvpnSourceAddress(ErmVpnTable *table, RibOutAttr &attr);
 
     McastSGEntry *sg_entry_;
     ErmVpnRoute *route_;

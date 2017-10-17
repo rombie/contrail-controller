@@ -172,7 +172,7 @@ TEST_F(MvpnTableTest, AddDeleteSingleRoute) {
     MvpnRoute *rt = FindRoute(blue_, repr.str());
     TASK_UTIL_EXPECT_EQ(BgpAf::IPv4, rt->Afi());
     TASK_UTIL_EXPECT_EQ(BgpAf::MVpn, rt->Safi());
-    TASK_UTIL_EXPECT_EQ(BgpAf::Mcast, rt->XmppSafi());
+    TASK_UTIL_EXPECT_EQ(BgpAf::MVpn, rt->XmppSafi());
 
     DelRoute(blue_, repr.str());
     task_util::WaitForIdle();

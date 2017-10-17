@@ -5,13 +5,15 @@
 #include "bgp/bgp_multicast.h"
 
 #include <boost/bind.hpp>
+#include <boost/foreach.hpp>
 
 #include "base/string_util.h"
 #include "base/task_annotations.h"
-#include "bgp/bgp_attr.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/ermvpn/ermvpn_table.h"
+#include "bgp/mvpn/mvpn_route.h"
 #include "bgp/routing-instance/routing_instance.h"
 
 using std::string;
@@ -276,6 +278,27 @@ void McastForwarder::DeleteGlobalTreeRoute() {
 }
 
 //
+// Append mvpn source address from the mvpn state to the attr list if
+// this is a forest node
+//
+void McastForwarder::AddMvpnSourceAddress(ErmVpnTable *tbl,
+        RibOutAttr &attr) {
+    ErmVpnRoute *global_rt = tbl->tree_manager()->GetGlobalTreeRootRoute(
+        route()->GetPrefix().source(), route()->GetPrefix().group());
+    if (global_rt && (sg_entry_->IsForestNode(this))) {
+        MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
+        global_rt->GetState(tbl, tbl->mvpn_project_manager()->listener_id()));
+        if (mvpn_dbstate) {
+            MvpnStatePtr mvpn_state = mvpn_dbstate->state();
+	    if (mvpn_state && mvpn_state->spmsi_routes_received().size()) {
+	        attr.set_source_address((*(mvpn_state->spmsi_routes_received().
+				begin()))->GetPrefix().originator());
+	    }
+        }
+    }
+}
+
+//
 // Append list of BgpOListElems from the Local tree to the BgpOListSpec. The
 // list is built based on the tree links in this McastForwarder.
 //
@@ -350,6 +373,7 @@ UpdateInfo *McastForwarder::GetUpdateInfo(ErmVpnTable *table) {
 
     UpdateInfo *uinfo = new UpdateInfo;
     uinfo->roattr = RibOutAttr(table, route_, attr.get(), label_, true, true);
+    AddMvpnSourceAddress(table, uinfo->roattr);
     return uinfo;
 }
 
