@@ -281,8 +281,7 @@ void McastForwarder::DeleteGlobalTreeRoute() {
 // Append mvpn source address from the mvpn state to the attr list if
 // this is a forest node
 //
-void McastForwarder::AddMvpnSourceAddress(ErmVpnTable *tbl,
-        RibOutAttr &attr) {
+void McastForwarder::AddMvpnSourceAddress(ErmVpnTable *tbl, RibOutAttr &attr) {
     ErmVpnRoute *global_rt = tbl->tree_manager()->GetGlobalTreeRootRoute(
         route()->GetPrefix().source(), route()->GetPrefix().group());
     if (global_rt && (sg_entry_->IsForestNode(this))) {
@@ -373,7 +372,10 @@ UpdateInfo *McastForwarder::GetUpdateInfo(ErmVpnTable *table) {
 
     UpdateInfo *uinfo = new UpdateInfo;
     uinfo->roattr = RibOutAttr(table, route_, attr.get(), label_, true, true);
-    AddMvpnSourceAddress(table, uinfo->roattr);
+    if (route_ && sg_entry_->IsForestNode(this) &&
+            sg_entry_->IsTreeBuilder(McastTreeManager::LevelLocal)) {
+        table->GetMvpnSourceAddress(route_, uinfo->roattr.source_address());
+    }
     return uinfo;
 }
 

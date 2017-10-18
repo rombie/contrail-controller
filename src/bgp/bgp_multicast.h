@@ -239,6 +239,7 @@ public:
     ErmVpnRoute *GetGlobalTreeRootRoute() const;
     bool GetForestNodePMSI(uint32_t *label, Ip4Address *address,
                            std::vector<std::string> *encap) const;
+    bool IsTreeBuilder(uint8_t level) const;
 
 private:
     friend class BgpMulticastTest;
@@ -246,7 +247,6 @@ private:
 
     typedef std::set<McastForwarder *, McastForwarderCompare> ForwarderSet;
 
-    bool IsTreeBuilder(uint8_t level) const;
     void UpdateTree(uint8_t level);
     void UpdateRoutes(uint8_t level);
 

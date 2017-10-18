@@ -119,6 +119,7 @@ public:
         return nexthop_list_.empty() ? l3_label_ : nexthop_list_[0].l3_label();
     }
     const Ip4Address &source_address() const { return source_address_; }
+    Ip4Address *source_address() { return &source_address_; }
     bool is_xmpp() const { return is_xmpp_; }
     bool vrf_originated() const { return vrf_originated_; }
     const std::string &repr() const { return repr_; }

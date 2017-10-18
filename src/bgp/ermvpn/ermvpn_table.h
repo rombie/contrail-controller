@@ -69,6 +69,8 @@ public:
     const MvpnProjectManager *mvpn_project_manager() const {
         return mvpn_project_manager_;
     }
+    void GetMvpnSourceAddress(ErmVpnRoute *ermvpn_route,
+                              Ip4Address *address) const;
 
 private:
     friend class BgpMulticastTest;

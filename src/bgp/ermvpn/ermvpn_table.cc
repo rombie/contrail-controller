@@ -246,6 +246,12 @@ const ErmVpnRoute *ErmVpnTable::FindRoute(const ErmVpnPrefix &prefix) const {
         static_cast<const ErmVpnTable *>(this)->FindRoute(prefix));
 }
 
+void ErmVpnTable::GetMvpnSourceAddress(ErmVpnRoute *ermvpn_rt,
+                                       Ip4Address *address) const {
+    if (mvpn_project_manager_)
+        mvpn_project_manager_->GetMvpnSourceAddress(ermvpn_rt, address);
+}
+
 static void RegisterFactory() {
     DB::RegisterFactory("ermvpn.0", &ErmVpnTable::CreateTable);
 }

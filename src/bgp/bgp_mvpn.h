@@ -449,11 +449,15 @@ public:
     virtual void Initialize();
     MvpnStatePtr GetState(MvpnRoute *route) const;
     MvpnStatePtr GetState(MvpnRoute *route);
+    MvpnStatePtr GetState(ErmVpnRoute *route) const;
+    MvpnStatePtr GetState(ErmVpnRoute *route);
     UpdateInfo *GetUpdateInfo(MvpnRoute *route);
     const PartitionList &partitions() const { return partitions_; }
     bool MayDelete() const;
     LifetimeActor *deleter();
     const LifetimeActor *deleter() const;
+    void GetMvpnSourceAddress(ErmVpnRoute *ermvpn_route,
+                              Ip4Address *address) const;
 
 private:
     void AllocPartitions();

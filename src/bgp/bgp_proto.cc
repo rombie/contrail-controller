@@ -1410,8 +1410,7 @@ public:
 class BgpMvpnNlriType : public ProtoElement<BgpMvpnNlriType> {
 public:
     static const int kSize = 1;
-    typedef Accessor<BgpProtoPrefix, uint8_t,
-            &BgpProtoPrefix::type> Setter;
+    typedef Accessor<BgpProtoPrefix, uint8_t, &BgpProtoPrefix::type> Setter;
 };
 
 class BgpMvpnNlriLen : public ProtoElement<BgpMvpnNlriLen> {

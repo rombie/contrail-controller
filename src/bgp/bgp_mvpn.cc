@@ -145,12 +145,21 @@ void MvpnProjectManager::ManagedDelete() {
 }
 
 MvpnStatePtr MvpnProjectManager::GetState(MvpnRoute *route) const {
-    return static_cast<const MvpnProjectManager *>(this)->GetState(route);
+    MvpnState::SG sg(route->GetPrefix().source(), route->GetPrefix().group());
+    return GetPartition(route->get_table_partition()->index())->GetState(sg);
 }
 
 MvpnStatePtr MvpnProjectManager::GetState(MvpnRoute *route) {
+    return static_cast<const MvpnProjectManager *>(this)->GetState(route);
+}
+
+MvpnStatePtr MvpnProjectManager::GetState(ErmVpnRoute *route) const {
     MvpnState::SG sg(route->GetPrefix().source(), route->GetPrefix().group());
     return GetPartition(route->get_table_partition()->index())->GetState(sg);
+}
+
+MvpnStatePtr MvpnProjectManager::GetState(ErmVpnRoute *route) {
+    return static_cast<const MvpnProjectManager *>(this)->GetState(route);
 }
 
 MvpnProjectManagerPartition::MvpnProjectManagerPartition(
@@ -435,19 +444,6 @@ void MvpnManager::Terminate() {
     table_->Unregister(listener_id_);
     listener_id_ = DBTable::kInvalidId;
     FreePartitions();
-
-    // MvpnManager is deleted when ever wither parent MvpnTable is deleted or
-    // the parent ProjectManager's ErmVpnTable is deleted. In either case,
-    // reset the lifetime reference from the other table which is not deleted.
-    if (!table_->IsDeleted()) {
-        assert(ermvpn_table_->IsDeleted());
-        table_delete_ref_.Reset();
-    }
-
-    if (!ermvpn_table_->IsDeleted()) {
-        assert(table_->IsDeleted());
-        ermvpn_table_delete_ref_.Reset();
-    }
 }
 
 LifetimeActor *MvpnManager::deleter() {
@@ -905,6 +901,8 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
 
     // Originate Type-3 S-PMSI route to send towards the receivers.
     MvpnRoute *spmsi_rt = table()->LocateType3SPMSIRoute(join_rt);
+    assert(spmsi_rt);
+    state->set_spmsi_rt(spmsi_rt);
     if (!mvpn_dbstate->route()) {
         mvpn_dbstate->set_route(spmsi_rt);
     } else {
@@ -955,6 +953,8 @@ void MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         manager_->SetDBState(join_rt, mvpn_dbstate);
     }
 
+    // A join has been received or updated at the sender. Re-evaluate the
+    // type5 source active, if one such route is present.
     if (state->source_active_rt())
         state->source_active_rt()->Notify();
 }
@@ -962,12 +962,16 @@ void MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
 void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
         leaf_ad->GetState(table(), listener_id()));
+    // Process route change as delete if ProjectManager is not set.
     bool is_usable = leaf_ad->IsUsable() && GetProjectManagerPartition();
     if (!is_usable) {
         if (!mvpn_dbstate)
             return;
         assert(mvpn_dbstate->state()->leafad_routes_received().erase(leaf_ad));
         MvpnRoute *sa_active_rt = mvpn_dbstate->state()->source_active_rt();
+
+        // Re-evaluate type5 route as secondary type4 leafad route is deleted.
+        // olist needs to be updated and sent to the sender route agent.
         if (sa_active_rt && sa_active_rt->IsUsable())
             sa_active_rt->Notify();
         manager_->ClearDBState(leaf_ad);
@@ -979,6 +983,7 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     if (!path->IsSecondary())
         return;
 
+    // Secondary leaft-ad path has been imported.
     MvpnStatePtr state = LocateState(leaf_ad);
     if (!mvpn_dbstate) {
         mvpn_dbstate = new MvpnDBState(state);
@@ -997,6 +1002,7 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
         result.first->second = leaf_ad->BestPath()->GetAttr();
     }
 
+    // Update the sender source-active route to update the olist.
     MvpnRoute *sa_active_rt = mvpn_dbstate->state()->source_active_rt();
     if (sa_active_rt && sa_active_rt->IsUsable())
         sa_active_rt->Notify();
@@ -1010,6 +1016,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         spmsi_rt->GetState(table(), listener_id()));
 
     MvpnRoute *leaf_ad_route = NULL;
+    // Process route change as delete if ProjectManager is not set.
     bool is_usable = spmsi_rt->IsUsable() && GetProjectManagerPartition();
     if (!is_usable) {
         if (!mvpn_dbstate)
@@ -1032,6 +1039,9 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
         delete mvpn_dbstate;
         if (leaf_ad_route) {
             leaf_ad_route->NotifyOrDelete();
+
+            // Forest node route needs to be updated to delete the source
+            // address if advertised before.
             NotifyForestNode(spmsi_rt->GetPrefix().source(),
                              spmsi_rt->GetPrefix().group());
         }
@@ -1148,8 +1158,7 @@ void MvpnManager::UpdateSecondaryTablesForReplication(MvpnRoute *mvpn_rt,
     if (!state || !state->spmsi_rt() || !state->spmsi_rt()->IsUsable())
         return;
 
-    // Matching Type-3 S-PMSI route was found. Return the table that holds this
-    // route, if it is usable.
+    // Matching Type-3 S-PMSI route was found. Return its table.
     BgpTable *table = dynamic_cast<BgpTable *>(
         state->spmsi_rt()->get_table_partition()->parent());
     assert(table);
@@ -1161,11 +1170,44 @@ void MvpnManager::UpdateSecondaryTablesForReplication(MvpnRoute *mvpn_rt,
     secondary_tables->insert(table);
 }
 
+// Return source_address of the type-3 s-pmsi route used for rpf check in the
+// forest node.
+void MvpnProjectManager::GetMvpnSourceAddress(ErmVpnRoute *ermvpn_route,
+                                              Ip4Address *address) const {
+    // Bail if project manager is deleted.
+    if (deleter_->IsDeleted())
+        return;
+
+    // Bail if there is no state for this <S,G>.
+    MvpnStatePtr state = GetState(ermvpn_route);
+    if (!state)
+        return;
+
+    // Bail if there is no usable global_ermvpn_tree_rt.
+    if (!state->global_ermvpn_tree_rt() ||
+            !state->global_ermvpn_tree_rt()->IsUsable()) {
+        return;
+    }
+
+    // Bail if there is no s-pmsi route received (no active sender)
+    if (state->spmsi_routes_received().empty())
+        return;
+
+    // Use mvpn type3 spmsi route originator address as the source address.
+    *address =
+        (*(state->spmsi_routes_received().begin()))->GetPrefix().originator();
+}
+
 UpdateInfo *MvpnProjectManager::GetUpdateInfo(MvpnRoute *route) {
+    assert(route->GetPrefix().type() == MvpnPrefix::SourceActiveADRoute);
     MvpnStatePtr state = GetState(route);
+
+    // If there is no imported leaf-ad route, then essentially there is no
+    // olist that can be formed. Route can be withdrawn if already advertised.
     if (!state || state->leafad_routes_received().empty())
         return NULL;
 
+    // Retrieve olist element from each of the imported type-4 leaf-ad route.
     BgpOListSpec olist_spec(BgpAttribute::OList);
     BOOST_FOREACH(MvpnState::RoutesMap::value_type &iter,
                   state->leafad_routes_received()) {
