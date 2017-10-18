@@ -937,7 +937,7 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
         return ext_community;
 
     ExtCommunity::ExtCommunityList rtarget;
-    ExtCommunity::ExtCommunityList source_as;
+    ExtCommunity::ExtCommunityValue source_as;
     ExtCommunity::ExtCommunityList sgid_list;
     ExtCommunity::ExtCommunityList encap_list;
     ExtCommunity::ExtCommunityValue lb;
@@ -953,7 +953,7 @@ static ExtCommunityPtr UpdateExtendedCommunity(ExtCommunityDB *extcomm_db,
             rtarget.push_back(RouteTarget(vit.GetIPv4Address(),
                                           vit.GetNumber()).GetExtCommunity());
         } else if (ExtCommunity::is_source_as(value)) {
-            source_as.push_back(value);
+            source_as = value;
         } else if (ExtCommunity::is_load_balance(value) && !lb_is_valid) {
             lb_is_valid = true;
             lb = value;

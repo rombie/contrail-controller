@@ -31,6 +31,7 @@ uint32_t SourceAs::GetAsn() const {
     }
 
     return 0;
+}
 
 SourceAs::SourceAs(const uint32_t asn, const uint32_t ri_index) {
     data_[0] = BgpExtendedCommunityType::TwoOctetAS;
