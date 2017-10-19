@@ -697,8 +697,7 @@ bool PeerCloseManager::MembershipPathCallback(DBTablePartBase *root,
         case STALE:
 
             // We do not support GR for multicast routes (yet).
-            if ((table->family() == Address::ERMVPN) ||
-                    (table->family() == Address::MVPN)) {
+            if (table->family() == Address::ERMVPN) {
                 oper = DBRequest::DB_ENTRY_DELETE;
                 attrs = NULL;
                 stats_.route_stats[table->family()].deleted++;

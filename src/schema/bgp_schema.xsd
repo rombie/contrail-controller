@@ -299,7 +299,6 @@
         <xsd:enumeration value="erm-vpn"/>
         <xsd:enumeration value="route-target"/>
         <xsd:enumeration value="inet6"/>
-        <xsd:enumeration value="inet-mvpn"/>
         <xsd:enumeration value="inet6-vpn"/>
     </xsd:restriction>
 </xsd:simpleType>

@@ -96,7 +96,6 @@ public:
 private:
     friend class RibOutUpdatesTest;
     friend class XmppMessageBuilderTest;
-    friend class XmppMvpnMessageBuilderTest;
 
     Message *GetMessage() const;
     bool DequeueCommon(UpdateQueue *queue, UpdateMarker *marker,

@@ -15,13 +15,11 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/ermvpn/ermvpn_route.h"
 #include "bgp/evpn/evpn_route.h"
-#include "bgp/mvpn/mvpn_route.h"
 #include "bgp/routing-instance/routing_instance.h"
 #include "bgp/security_group/security_group.h"
 #include "db/db.h"
 #include "net/community_type.h"
 #include "schema/xmpp_multicast_types.h"
-#include "schema/xmpp_mvpn_types.h"
 #include "schema/xmpp_enet_types.h"
 #include "xmpp/xmpp_init.h"
 
@@ -55,9 +53,6 @@ static inline const char *XmppSafiName(uint8_t safi) {
     switch (safi) {
     case BgpAf::Unicast:
         return "1";
-        break;
-    case BgpAf::MVpn:
-        return "5";
         break;
     case BgpAf::Mcast:
         return "241";
@@ -128,8 +123,6 @@ bool BgpXmppMessage::Start(const RibOut *ribout, bool cache_routes,
         AddEnetRoute(route, roattr);
     } else if (table_->family() == Address::INET6) {
         AddInet6Route(route, roattr);
-    } else if (table_->family() == Address::MVPN) {
-        AddMvpnRoute(route, roattr);
     } else {
         AddInetRoute(route, roattr);
     }
@@ -158,8 +151,6 @@ bool BgpXmppMessage::AddRoute(const BgpRoute *route, const RibOutAttr *roattr) {
         return AddEnetRoute(route, roattr);
     } else if (table_->family() == Address::INET6) {
         return AddInet6Route(route, roattr);
-    } else if (table_->family() == Address::MVPN) {
-        return AddMvpnRoute(route, roattr);
     } else {
         return AddInetRoute(route, roattr);
     }
@@ -453,55 +444,6 @@ bool BgpXmppMessage::AddMcastRoute(const BgpRoute *route,
     } else {
         num_unreach_route_++;
         AddMcastUnreach(route);
-    }
-    return true;
-}
-
-void BgpXmppMessage::AddMvpnReach(const BgpRoute *route,
-                                   const RibOutAttr *roattr) {
-    autogen::MvpnItemType item;
-    item.entry.nlri.af = route->Afi();
-    item.entry.nlri.safi = route->XmppSafi();
-
-    MvpnRoute *mvpn_route =
-        static_cast<MvpnRoute *>(const_cast<BgpRoute *>(route));
-    item.entry.nlri.group = mvpn_route->GetPrefix().group().to_string();
-    item.entry.nlri.source =  mvpn_route->GetPrefix().source().to_string();
-    item.entry.nlri.route_type = mvpn_route->GetPrefix().type();
-    assert(item.entry.nlri.route_type == MvpnPrefix::SourceActiveADRoute);
-
-     const BgpOList *olist = roattr->attr()->olist().get();
-     assert(olist->olist().subcode == BgpAttribute::OList);
-     BOOST_FOREACH(const BgpOListElem *elem, olist->elements()) {
-        autogen::MvpnNextHopType nh;
-	nh.af = BgpAf::IPv4;
-	nh.address = elem->address.to_string();
-	nh.label = elem->label;
-	nh.tunnel_encapsulation_list.tunnel_encapsulation = elem->encap;
-	item.entry.olist.next_hop.push_back(nh);
-    }
-
-    // Using remove_child instead of reset allows memory pages allocated for
-    // the xml_document to be reused during the lifetime of the xml_document.
-    xml_node node = doc_.append_child("item");
-    node.append_attribute("id") = route->ToXmppIdString().c_str();
-    item.Encode(&node);
-    doc_.print(writer_, "\t", pugi::format_default, pugi::encoding_auto, 3);
-    doc_.remove_child(node);
-}
-
-void BgpXmppMessage::AddMvpnUnreach(const BgpRoute *route) {
-    repr_ += "\t\t\t<retract id=\"" + route->ToXmppIdString() + "\" />\n";
-}
-
-bool BgpXmppMessage::AddMvpnRoute(const BgpRoute *route,
-                                   const RibOutAttr *roattr) {
-    if (is_reachable_) {
-        num_reach_route_++;
-        AddMvpnReach(route, roattr);
-    } else {
-        num_unreach_route_++;
-        AddMvpnUnreach(route);
     }
     return true;
 }

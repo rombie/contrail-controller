@@ -9,7 +9,6 @@
 #include "bgp/bgp_sandesh.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/inet/inet_table.h"
-#include "bgp/mvpn/mvpn_table.h"
 #include "bgp/test/bgp_server_test_util.h"
 #include "control-node/control_node.h"
 #include "io/test/event_manager_test.h"
@@ -2054,8 +2053,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation1) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2093,8 +2090,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation2) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2110,7 +2105,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation3) {
     families_b.push_back("inet-vpn");
     families_b.push_back("e-vpn");
     families_b.push_back("erm-vpn");
-    families_b.push_back("inet-mvpn");
 
     BgpPeerTest::verbose_name(true);
     SetupPeers(peer_count, a_->session_manager()->GetPort(),
@@ -2134,8 +2128,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation3) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_FALSE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_FALSE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2149,11 +2141,9 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation4) {
     families_a.push_back("inet-vpn");
     families_a.push_back("e-vpn");
     families_a.push_back("erm-vpn");
-    families_a.push_back("inet-mvpn");
     families_b.push_back("inet-vpn");
     families_b.push_back("e-vpn");
     families_b.push_back("erm-vpn");
-    families_b.push_back("inet-mvpn");
 
     BgpPeerTest::verbose_name(true);
     SetupPeers(peer_count, a_->session_manager()->GetPort(),
@@ -2177,8 +2167,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation4) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2193,11 +2181,9 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation5) {
     families_a.push_back("inet-vpn");
     families_a.push_back("e-vpn");
     families_a.push_back("erm-vpn");
-    families_a.push_back("inet-mvpn");
     families_b.push_back("inet-vpn");
     families_b.push_back("e-vpn");
     families_b.push_back("erm-vpn");
-    families_b.push_back("inet-mvpn");
 
     BgpPeerTest::verbose_name(true);
     SetupPeers(peer_count, a_->session_manager()->GetPort(),
@@ -2221,8 +2207,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation5) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2238,13 +2222,11 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation6) {
     families_a.push_back("inet-vpn");
     families_a.push_back("e-vpn");
     families_a.push_back("erm-vpn");
-    families_a.push_back("inet-mvpn");
     families_b.push_back("inet");
     families_b.push_back("inet6");
     families_b.push_back("inet-vpn");
     families_b.push_back("e-vpn");
     families_b.push_back("erm-vpn");
-    families_b.push_back("inet-mvpn");
 
     BgpPeerTest::verbose_name(true);
     SetupPeers(peer_count, a_->session_manager()->GetPort(),
@@ -2270,8 +2252,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation6) {
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::INETVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::ERMVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::ERMVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::MVPN));
-        TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::MVPN));
         TASK_UTIL_EXPECT_TRUE(peer_a->IsFamilyNegotiated(Address::EVPN));
         TASK_UTIL_EXPECT_TRUE(peer_b->IsFamilyNegotiated(Address::EVPN));
     }
@@ -2316,7 +2296,6 @@ TEST_F(BgpServerUnitTest, AddressFamilyNegotiation8) {
     families_b.push_back("inet-vpn");
     families_b.push_back("e-vpn");
     families_b.push_back("erm-vpn");
-    families_b.push_back("inet-mvpn");
 
     BgpPeerTest::verbose_name(true);
     SetupPeers(peer_count, a_->session_manager()->GetPort(),
@@ -3596,117 +3575,6 @@ TEST_F(BgpServerUnitTest, BasicAdvertiseWithdraw) {
     table_a->Enqueue(&req);
     req.oper = DBRequest::DB_ENTRY_DELETE;
     req.key.reset(new InetTable::RequestKey(prefix2, NULL));
-    table_a->Enqueue(&req);
-    task_util::WaitForIdle();
-
-    BGP_VERIFY_ROUTE_COUNT(table_a, 0);
-    BGP_VERIFY_ROUTE_COUNT(table_b, 0);
-    BGP_VERIFY_ROUTE_ABSENCE(table_a, &key1);
-    BGP_VERIFY_ROUTE_ABSENCE(table_a, &key2);
-    BGP_VERIFY_ROUTE_ABSENCE(table_a, &key3);
-    BGP_VERIFY_ROUTE_ABSENCE(table_b, &key1);
-    BGP_VERIFY_ROUTE_ABSENCE(table_b, &key2);
-    BGP_VERIFY_ROUTE_ABSENCE(table_b, &key3);
-}
-
-TEST_F(BgpServerUnitTest, BasicMvpnAdvertiseWithdraw) {
-    vector<string> families_a;
-    vector<string> families_b;
-    families_a.push_back("inet-mvpn");
-    families_b.push_back("inet-mvpn");
-    SetupPeers(1, a_->session_manager()->GetPort(),
-               b_->session_manager()->GetPort(), false,
-               BgpConfigManager::kDefaultAutonomousSystem,
-               BgpConfigManager::kDefaultAutonomousSystem,
-               "127.0.0.1", "127.0.0.1",
-               "192.168.0.10", "192.168.0.11",
-               families_a, families_b);
-    VerifyPeers(1);
-
-    // Find the mvpn.0 table in A and B.
-    DB *db_a = a_.get()->database();
-    MvpnTable *table_a = static_cast<MvpnTable *>(db_a->FindTable("bgp.mvpn.0"));
-    assert(table_a);
-    DB *db_b = b_.get()->database();
-    MvpnTable *table_b = static_cast<MvpnTable *>(db_b->FindTable("bgp.mvpn.0"));
-    assert(table_b);
-
-    BgpAttrSpec attrs;
-    BgpAttrPtr attr_ptr = a_.get()->attr_db()->Locate(attrs);
-
-    // Create 3 Mvpnprefixes and the corresponding keys.
-    const MvpnPrefix prefix1(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.1"));
-    const MvpnPrefix prefix2(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.2"));
-    const MvpnPrefix prefix3(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.3"));
-
-    const MvpnTable::RequestKey key1(prefix1, NULL);
-    const MvpnTable::RequestKey key2(prefix2, NULL);
-    const MvpnTable::RequestKey key3(prefix3, NULL);
-
-    DBRequest req;
-
-    // Add prefix1 to A and make sure it shows up at B.
-    req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-    req.key.reset(new MvpnTable::RequestKey(prefix1, NULL));
-    req.data.reset(new MvpnTable::RequestData(attr_ptr, 0, 0));
-    table_a->Enqueue(&req);
-    task_util::WaitForIdle();
-
-    BGP_VERIFY_ROUTE_PRESENCE(table_a, &key1);
-    BGP_VERIFY_ROUTE_PRESENCE(table_b, &key1);
-
-    // Add prefix2 to A and make sure it shows up at B.
-    req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-    req.key.reset(new MvpnTable::RequestKey(prefix2, NULL));
-    req.data.reset(new MvpnTable::RequestData(attr_ptr, 0, 0));
-    table_a->Enqueue(&req);
-    task_util::WaitForIdle();
-
-    BGP_VERIFY_ROUTE_COUNT(table_a, 2);
-    BGP_VERIFY_ROUTE_COUNT(table_b, 2);
-    BGP_VERIFY_ROUTE_PRESENCE(table_a, &key2);
-    BGP_VERIFY_ROUTE_PRESENCE(table_b, &key2);
-
-    // Delete prefix1 from A and make sure it's gone from B.
-    req.oper = DBRequest::DB_ENTRY_DELETE;
-    req.key.reset(new MvpnTable::RequestKey(prefix1, NULL));
-    table_a->Enqueue(&req);
-    task_util::WaitForIdle();
-
-    BGP_VERIFY_ROUTE_COUNT(table_a, 1);
-    BGP_VERIFY_ROUTE_COUNT(table_b, 1);
-    BGP_VERIFY_ROUTE_ABSENCE(table_a, &key1);
-    BGP_VERIFY_ROUTE_ABSENCE(table_b, &key1);
-
-    // Add prefix1 and prefix3 to A and make sure they show up at B.
-    req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-    req.key.reset(new MvpnTable::RequestKey(prefix1, NULL));
-    req.data.reset(new MvpnTable::RequestData(attr_ptr, 0, 0));
-    table_a->Enqueue(&req);
-    req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-    req.key.reset(new MvpnTable::RequestKey(prefix3, NULL));
-    req.data.reset(new MvpnTable::RequestData(attr_ptr, 0, 0));
-    table_a->Enqueue(&req);
-    task_util::WaitForIdle();
-
-    BGP_VERIFY_ROUTE_COUNT(table_a, 3);
-    BGP_VERIFY_ROUTE_COUNT(table_b, 3);
-    BGP_VERIFY_ROUTE_PRESENCE(table_a, &key1);
-    BGP_VERIFY_ROUTE_PRESENCE(table_a, &key2);
-    BGP_VERIFY_ROUTE_PRESENCE(table_a, &key3);
-    BGP_VERIFY_ROUTE_PRESENCE(table_b, &key1);
-    BGP_VERIFY_ROUTE_PRESENCE(table_b, &key2);
-    BGP_VERIFY_ROUTE_PRESENCE(table_b, &key3);
-
-    // Delete all the prefixes from A and make sure they are gone from B.
-    req.oper = DBRequest::DB_ENTRY_DELETE;
-    req.key.reset(new MvpnTable::RequestKey(prefix3, NULL));
-    table_a->Enqueue(&req);
-    req.oper = DBRequest::DB_ENTRY_DELETE;
-    req.key.reset(new MvpnTable::RequestKey(prefix1, NULL));
-    table_a->Enqueue(&req);
-    req.oper = DBRequest::DB_ENTRY_DELETE;
-    req.key.reset(new MvpnTable::RequestKey(prefix2, NULL));
     table_a->Enqueue(&req);
     task_util::WaitForIdle();
 
