@@ -572,8 +572,8 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedReceiverInDifferentControlNodes) {
     std::cout << red_rt->ToString() << std::endl;
     std::cout << red_y_rt->ToString() << std::endl;
 
-    // TASK_UTIL_EXPECT_EQ(6, master_->Size()); // red, blue, green
-    // TASK_UTIL_EXPECT_EQ(6, master_y_->Size()); // red, blue, green
+    TASK_UTIL_EXPECT_EQ(6, master_->Size()); // red, blue, green
+    TASK_UTIL_EXPECT_EQ(6, master_y_->Size()); // red, blue, green
 
     // Register agents and add a source active mvpn route
     Subscribe("red", 1);
@@ -590,37 +590,37 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedReceiverInDifferentControlNodes) {
     agent_xa_->AddMvpnRoute("red", mroute, MvpnPrefix::SourceActiveADRoute);
 
     // Verify that the route gets added
-    // TASK_UTIL_EXPECT_EQ(2, red_->Size());
-    // TASK_UTIL_EXPECT_EQ(1, red_y_->Size());
-    // TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_EQ(1, red_y_->Size());
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
 
     // 3 p-type-1, 1 p-type-5
-    // TASK_UTIL_EXPECT_EQ(7, master_->Size());
+    TASK_UTIL_EXPECT_EQ(7, master_->Size());
 
     // 3 p-type-1, 1 s-type-5
-    // TASK_UTIL_EXPECT_EQ(7, master_y_->Size());
-    // TASK_UTIL_EXPECT_EQ(1, green_->Size());
+    TASK_UTIL_EXPECT_EQ(7, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(1, green_->Size());
 
 
     task_util::WaitForIdle();
     agent_yb_->AddMvpnRoute("red", mroute, MvpnPrefix::SourceTreeJoinRoute,
             "10.1.2.2", "30-40");
     task_util::WaitForIdle();
-    // TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
+    TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
 
     // 1 p-type1, 1 s-type5, 1 s-type7, 1 p-type3, 1 s-type4
-    // TASK_UTIL_EXPECT_EQ(5, red_y_->Size());
+    TASK_UTIL_EXPECT_EQ(5, red_y_->Size());
 
-    // TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
-    // TASK_UTIL_EXPECT_EQ(11, master_->Size());
-    // TASK_UTIL_EXPECT_EQ(1, blue_->Size());
-    // TASK_UTIL_EXPECT_EQ(6, red_->Size());
+    TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(11, master_->Size());
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(6, red_->Size());
     // Verify that sender should have received a route
-    // TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
-    // TASK_UTIL_EXPECT_EQ(1, agent_yb_->McastRouteCount());
-    // TASK_UTIL_EXPECT_EQ(1, agent_xa_->MvpnRouteCount());
-    // TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
-    // VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2", agent_yb_);
+    TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_yb_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_xa_->MvpnRouteCount());
+    TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2", agent_yb_);
 }
 
 class TestEnvironment : public ::testing::Environment {
