@@ -9,14 +9,17 @@ import kazoo.exceptions
 import kazoo.handlers.gevent
 import kazoo.recipe.election
 from kazoo.client import KazooState
-from kazoo.retry import KazooRetry
+from kazoo.retry import KazooRetry, ForceRetryError
+from kazoo.recipe.counter import Counter
 
 from bitarray import bitarray
-from cfgm_common.exceptions import ResourceExhaustionError, ResourceExistsError
+from cfgm_common.exceptions import ResourceExhaustionError,\
+     ResourceExistsError, OverQuota
 from gevent.lock import BoundedSemaphore
 
 import datetime
 import uuid
+import sys
 
 LOG_DIR = '/var/log/contrail/'
 
@@ -71,11 +74,10 @@ class IndexAllocator(object):
         return size
 
     def _has_ranges_shrunk(self, old_list, new_list):
-        if len(old_list) != len(new_list):
+        if len(old_list) > len(new_list):
             return True
 
-        for i, new_pool in enumerate(new_list):
-            old_pool = old_list[i]
+        for old_pool, new_pool in zip(old_list, new_list):
             if (new_pool['start'] > old_pool['start'] or
                 new_pool['end'] < old_pool['end']):
                 return True
@@ -95,7 +97,7 @@ class IndexAllocator(object):
         sorted_alloc_list = sorted(new_alloc_list,
                                    key=lambda k: k['start'])
 
-        if not self._has_ranges_shrunk(self._alloc_list, sorted_alloc_list):
+        if self._has_ranges_shrunk(self._alloc_list, sorted_alloc_list):
             raise Exception('Indexes allocated cannot be shrunk: %s' %
                             (self._alloc_list))
 
@@ -329,6 +331,24 @@ class IndexAllocator(object):
 
 #end class IndexAllocator
 
+class ZookeeperCounter(Counter):
+
+    def __init__(self, client, path, max_count=sys.maxint, default=0):
+
+        super(ZookeeperCounter, self).__init__(client, path, default)
+
+        self.max_count = max_count
+
+    def _inner_change(self, value):
+        data, version = self._value()
+        data = repr(data + value).encode('ascii')
+        if int(data) > self.max_count:
+            raise OverQuota()
+        try:
+            self.client.set(self.path, data, version=version)
+        except kazoo.exceptions.BadVersionError:  # pragma: nocover
+            raise ForceRetryError()
+# end class ZookeeperCounter
 
 class ZookeeperClient(object):
 
@@ -478,6 +498,9 @@ class ZookeeperClient(object):
         self._election = self._zk_client.Election(path, identifier)
         self._election.run(func, *args, **kwargs)
     # end master_election
+
+    def quota_counter(self, path, max_count=sys.maxint, default=0):
+        return ZookeeperCounter(self._zk_client, path, max_count, default=default)
 
     def create_node(self, path, value=None):
         try:

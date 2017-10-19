@@ -86,6 +86,8 @@ class KafkaProcessor::KafkaWorker {
 
             } else if (message->err() ==  RdKafka::ERR__TIMED_OUT) {
                 LOG(DEBUG, "Consuming Timeout");
+            } else if (message->err() ==  RdKafka::ERR__PARTITION_EOF) {
+                LOG(DEBUG, "Reached end of partition :" << message->errstr());
             } else {
                 LOG(ERROR, "Message consume failed : " << message->errstr());
             }
@@ -485,6 +487,7 @@ KafkaProcessor::StartKafka(void) {
     conf->set("metadata.broker.list", brokers_, errstr);
     conf->set("event_cb", &k_event_cb, errstr);
     conf->set("dr_cb", &k_dr_cb, errstr);
+    conf->set("api.version.request", "false", errstr);
     producer_.reset(RdKafka::Producer::create(conf, errstr));
     LOG(ERROR, "Kafka new Prod " << errstr);
     delete conf;

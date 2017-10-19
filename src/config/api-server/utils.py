@@ -105,7 +105,9 @@ def parse_args(args_str):
         'insecure': True,
         'cafile': '',
         'certfile': '',
-        'keyfile': ''
+        'keyfile': '',
+        'auth_type': 'password',
+        'auth_url': '',
     }
     # cassandra options
     cassandraopts = {
@@ -182,7 +184,7 @@ def parse_args(args_str):
         "--redis_server_port",
         help="Port of redis server")
     parser.add_argument(
-        "--auth", choices=['keystone'],
+        "--auth", choices=['keystone', 'no-auth'],
         help="Type of authentication for user-requests")
     parser.add_argument(
         "--reset_config", action="store_true",
