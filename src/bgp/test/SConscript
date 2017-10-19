@@ -592,7 +592,7 @@ yaml_test_env.Alias('bgp:bgp_yaml_config_manager_test',
 test_suite = [
     bgp_attr_test,
     bgp_authentication_test,
-    #bgp_bgpaas_test,
+    bgp_bgpaas_test,
     bgp_condition_listener_test,
     bgp_config_listener_test,
     bgp_ifmap_config_manager_test,
@@ -690,20 +690,19 @@ test_suite = [
     xmpp_sess_toggle_test,
 ]
 
-test_suite = [bgp_mvpn_test, bgp_mvpn_integration_test]
 test = env.TestSuite('bgp-test', test_suite)
 
 env.Alias('controller/src/bgp:test', [
     test,
-#   'controller/src/bgp/ermvpn:test',
-#   'controller/src/bgp/mvpn:test',
-#   'controller/src/bgp/evpn:test',
-#   'controller/src/bgp/inet6:test',
-#   'controller/src/bgp/inet6vpn:test',
-#   'controller/src/bgp/l3vpn:test',
-#   'controller/src/bgp/origin-vn:test',
-#   'controller/src/bgp/rtarget:test',
-#   'controller/src/bgp/tunnel_encap:test',
+    'controller/src/bgp/ermvpn:test',
+    'controller/src/bgp/mvpn:test',
+    'controller/src/bgp/evpn:test',
+    'controller/src/bgp/inet6:test',
+    'controller/src/bgp/inet6vpn:test',
+    'controller/src/bgp/l3vpn:test',
+    'controller/src/bgp/origin-vn:test',
+    'controller/src/bgp/rtarget:test',
+    'controller/src/bgp/tunnel_encap:test',
 ])
 
 flaky_test_suite = [
