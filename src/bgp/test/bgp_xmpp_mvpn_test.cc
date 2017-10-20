@@ -194,24 +194,24 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType5) {
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
 
     // Verify that the route gets added
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Add the route again, there should still be only 1 route
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Add another route, there should be 2 routes
     const char *mroute2 = "225.0.0.1,20.1.1.20";
     agent_xa_->AddMvpnRoute("blue", mroute2, rt_type);
-    WAIT_FOR(1000, 100, 2 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(2, GetVrfTableSize(bs_x_, "blue"));
 
     // Delete one mvpn route, there should still be a route
     agent_xa_->DeleteMvpnRoute("blue", mroute2, rt_type);
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Delete second route, it should get deleted
     agent_xa_->DeleteMvpnRoute("blue", mroute, rt_type);
-    WAIT_FOR(1000, 100, 0 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(0, GetVrfTableSize(bs_x_, "blue"));
 }
 
 TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
@@ -224,21 +224,20 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
 
     // Verify that the route gets added
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Add the route again, there should still be only 1 route
     agent_xb_->MvpnSubscribe("blue", 1);
     agent_xb_->AddMvpnRoute("blue", mroute, rt_type);
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Delete mvpn route from one agent, there should still be a route
     agent_xa_->DeleteMvpnRoute("blue", mroute, rt_type);
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Delete route from second agent, it should get deleted
-    agent_xb_->DeleteMvpnRoute("blue", mroute, rt_type);
-    WAIT_FOR(1000, 100, 0 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(0, GetVrfTableSize(bs_x_, "blue"));
 }
 
 TEST_F(BgpXmppMvpnSubscriptionTest, PendingUnsubscribe) {
@@ -252,7 +251,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingUnsubscribe) {
     agent_xa_->MvpnUnsubscribe("blue");
 
     // Verify number of routes.
-    WAIT_FOR(1000, 100, 0 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(0, GetVrfTableSize(bs_x_, "blue"));
 }
 
 TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
@@ -277,7 +276,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
     agent_xa_->AddMvpnRoute("blue", mroute);
 
     // Verify number of routes in blue table.
-    WAIT_FOR(1000, 100, 1 == GetVrfTableSize(bs_x_, "blue"));
+    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
     // Verify that agent a mvpn route was added.
     const char *route = "7-0:0,0,10.1.1.10,225.0.0.1";
@@ -326,8 +325,8 @@ TEST_F(BgpXmppMvpnMultiAgentTest, MultipleRoutes) {
     }
 
     // Verify that all routes are added once.
-    WAIT_FOR(1000, 100, GetVrfTableSize(bs_x_, "blue") == sizeof(mroute_list) /
-            sizeof(mroute_list[0]));
+    TASK_UTIL_EXPECT_EQ(sizeof(mroute_list)/sizeof(mroute_list[0]),
+                        GetVrfTableSize(bs_x_, "blue"));
 
     // Delete mvpn route for all agents.
     BOOST_FOREACH(const char *mroute, mroute_list) {
