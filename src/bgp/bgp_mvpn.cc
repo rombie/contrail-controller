@@ -855,15 +855,14 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
             return;
 
         // Delete any associated type-3 s-pmsi route.
-        MvpnRoute *spmsi_rt = mvpn_dbstate->route();
-        if (spmsi_rt) {
+        MvpnRoute *spmsi_rt =
+            mvpn_dbstate->state() ? mvpn_dbstate->state()->spmsi_rt() : NULL;
+        if (spmsi_rt && spmsi_rt->IsUsable()) {
             BgpPath *path = spmsi_rt->FindPath(BgpPath::Local, 0);
-            assert(path);
-            spmsi_rt->DeletePath(path);
+            if (path)
+                spmsi_rt->DeletePath(path);
         }
 
-        assert(!mvpn_dbstate->state()->spmsi_rt() ||
-               mvpn_dbstate->state()->spmsi_rt() == spmsi_rt);
         mvpn_dbstate->set_route(NULL);
         mvpn_dbstate->state()->set_source_active_rt(NULL);
         mvpn_dbstate->state()->set_spmsi_rt(NULL);
@@ -889,15 +888,25 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
     }
 
     // Check if there is any receiver interested. If not, do not originate
-    // type-3 spmsi route.
+    // type-3 spmsi route. Also, we originate Type3 S-PMSI route only if there
+    // is an imported secondary path for the join route (i.e when the join
+    // route reached the sender)
     const MvpnRoute *join_rt = table()->FindType7SourceTreeJoinRoute(rt);
-    if (!join_rt || !join_rt->IsUsable())
-        return;
+    if (!join_rt || !join_rt->IsUsable() ||
+            !join_rt->BestPath()->IsSecondary()) {
 
-    // We originate Type3 S-PMSI route only if there is an imported secondary
-    // path for the join route (i.e when the join route reached the sender)
-    if (!join_rt->BestPath()->IsSecondary())
+        // Remove any type-3 spmsi path originated before.
+        MvpnRoute *spmsi_rt = mvpn_dbstate->route();
+        if (spmsi_rt) {
+            assert(spmsi_rt == state->spmsi_rt());
+            state->set_spmsi_rt(NULL);
+            BgpPath *path = spmsi_rt->FindPath(BgpPath::Local, 0);
+            assert(path);
+            spmsi_rt->DeletePath(path);
+            spmsi_rt->NotifyOrDelete();
+        }
         return;
+    }
 
     // Originate Type-3 S-PMSI route to send towards the receivers.
     MvpnRoute *spmsi_rt = table()->LocateType3SPMSIRoute(join_rt);

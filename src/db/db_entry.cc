@@ -122,5 +122,6 @@ void DBEntryBase::Notify() {
 }
 
 void DBEntryBase::Delete() {
-    tpart_->Delete(this);
+    if (!IsDeleted())
+        tpart_->Delete(this);
 }

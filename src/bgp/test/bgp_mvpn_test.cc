@@ -750,9 +750,9 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     TASK_UTIL_EXPECT_EQ(3, green_->Size());
 }
 
-// Receive Type-4 leaf ad route and ensure that Type-5 source-active route is
-// updated with olist correctly.
-TEST_F(BgpMvpnTest, Type4_LeafAD_Receive_1) {
+// Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
+// Type-5 route comes in first followed by Type-7 join
+TEST_F(BgpMvpnTest, Type3_SPMSI_1) {
     const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
     AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
     TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
@@ -770,7 +770,7 @@ TEST_F(BgpMvpnTest, Type4_LeafAD_Receive_1) {
     // Route should go only into red_ which has the source-active route. This
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green but no type-4 will get generated as there is no
-    // active receiver joined yet.
+    // active receiver agent joined yet.
     TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 join +
                                              // 1 spmsi
     TASK_UTIL_EXPECT_EQ(4, red_->Size()); // 1 local + 1 remote(red) + 1 join +
@@ -790,6 +790,201 @@ TEST_F(BgpMvpnTest, Type4_LeafAD_Receive_1) {
 
     // Remove join route.
     DeleteMvpnRoute(master_, t7_prefix);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+}
+
+// Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
+// Type-7 join comes in first followed by Type-5 source-active
+TEST_F(BgpMvpnTest, Type3_SPMSI_2) {
+    // Inject type-7 receiver route with red RI vit. There is no source-active
+    // route yet, hence no type-3 s-pmsi should be generated.
+    const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
+        integerToString(red_->routing_instance()->index()));
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local type1 ad + 1 remote join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local type1 ad
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+
+    // Now inject a remote type7 join.
+    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+
+    // Route should go only into red_ which has the source-active route. This
+    // should cause a Type3 S-PMSI route to be originated. This route will get
+    // imported into green but no type-4 will get generated as there is no
+    // active receiver agent joined yet. (to form the ermvpn tree)
+    TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 join +
+                                             // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(4, red_->Size()); // 1 local + 1 remote(red) + 1 join +
+                                          // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(blue) + 1 spmsi(red)
+    TASK_UTIL_EXPECT_EQ(5, green_->Size());
+
+    DeleteMvpnRoute(red_, t5_prefix);
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+
+    // Remove join route.
+    DeleteMvpnRoute(master_, t7_prefix);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+}
+
+// Receive Type-5 source-active followed by type-7 join.
+// Type-7 join route gets deleted first, afterwards.
+TEST_F(BgpMvpnTest, Type3_SPMSI_3) {
+    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+
+    // Inject type-7 receiver route with red RI vit.
+    const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
+        integerToString(red_->routing_instance()->index()));
+
+    // Route should go only into red_ which has the source-active route. This
+    // should cause a Type3 S-PMSI route to be originated. This route will get
+    // imported into green but no type-4 will get generated as there is no
+    // active receiver agent joined yet.
+    TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 join +
+                                             // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(4, red_->Size()); // 1 local + 1 remote(red) + 1 join +
+                                          // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(blue) + 1 spmsi(red)
+    TASK_UTIL_EXPECT_EQ(5, green_->Size());
+
+    // Remove type7 join route. Type-3 should go away.
+    DeleteMvpnRoute(master_, t7_prefix);
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+
+    // Remove type-5 source-active route.
+    DeleteMvpnRoute(red_, t5_prefix);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+}
+
+// Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
+// Type-7 join comes in first followed by Type-5 source-active
+// Type-7 join route gets deleted first, afterwards.
+TEST_F(BgpMvpnTest, Type3_SPMSI_4) {
+    // Inject type-7 receiver route with red RI vit. There is no source-active
+    // route yet, hence no type-3 s-pmsi should be generated.
+    const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
+        integerToString(red_->routing_instance()->index()));
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local type1 ad + 1 remote join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local type1 ad
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+
+    // Now inject a remote type7 join.
+    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+
+    // Route should go only into red_ which has the source-active route. This
+    // should cause a Type3 S-PMSI route to be originated. This route will get
+    // imported into green but no type-4 will get generated as there is no
+    // active receiver agent joined yet. (to form the ermvpn tree)
+    TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 join +
+                                             // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(4, red_->Size()); // 1 local + 1 remote(red) + 1 join +
+                                          // 1 spmsi
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(blue) + 1 spmsi(red)
+    TASK_UTIL_EXPECT_EQ(5, green_->Size());
+
+    // Remove join route.
+    DeleteMvpnRoute(master_, t7_prefix);
+
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+
+    // Remove source-active route.
+    DeleteMvpnRoute(red_, t5_prefix);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+}
+
+// Receive Type-7 remote join, but no type-5 source-active is received at all.
+TEST_F(BgpMvpnTest, Type3_SPMSI_5) {
+    // Inject type-7 receiver route with red RI vit. There is no source-active
+    // route yet, hence no type-3 s-pmsi should be generated.
+    const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
+        integerToString(red_->routing_instance()->index()));
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote join
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local type1 ad + 1 remote join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local type1 ad
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+
+    DeleteMvpnRoute(master_, t7_prefix);
+    TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 1 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(3, green_->Size());
+}
+
+// Receive Type-5 source active, but no type-7 join is received at all.
+TEST_F(BgpMvpnTest, Type3_SPMSI_6) {
+    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
+    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+    // 1 local + 2 remote(red) + 1 remote(blue)
+    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+
+    DeleteMvpnRoute(red_, t5_prefix);
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
