@@ -189,7 +189,7 @@ public:
     bool deleted() const;
     virtual void Terminate();
     virtual void Initialize();
-    const NeighborMap &neighbors() const { return neighbors_; }
+    const NeighborMap neighbors() const;
     void ReOriginateType1Route(const Ip4Address &old_identifier);
     void OriginateType1Route();
     bool MayDelete() const;

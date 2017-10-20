@@ -236,6 +236,12 @@ bool MvpnManager::FindNeighbor(const RouteDistinguisher &rd,
     return false;
 }
 
+// Do not return a reference as the cuncurrent map access is not thread safe.
+const MvpnManager::NeighborMap MvpnManager::neighbors() const {
+    tbb::reader_writer_lock::scoped_lock_read lock(neighbors_mutex_);
+    return neighbors_;
+}
+
 MvpnState::SG::SG(const Ip4Address &source, const Ip4Address &group) :
     source(IpAddress(source)), group(IpAddress(group)) {
 }

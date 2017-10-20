@@ -39,7 +39,9 @@ public:
     std::vector<std::string> encaps;
     ErmVpnRoute **ermvpn_rt;
 };
+
 static std::map<MvpnState::SG, PMSIParams> pmsi_params;
+static tbb::mutex pmsi_params_mutex;
 
 class McastTreeManagerMock : public McastTreeManager {
 public:
@@ -50,6 +52,7 @@ public:
 
     virtual ErmVpnRoute *GetGlobalTreeRootRoute(const Ip4Address &source,
             const Ip4Address &group) const {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
         std::map<MvpnState::SG, PMSIParams>::iterator iter =
             pmsi_params.find(MvpnState::SG(source, group));
         if (iter == pmsi_params.end() || !iter->second.result)
@@ -64,6 +67,7 @@ public:
         if (!rt)
             return false;
 
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
         std::map<MvpnState::SG, PMSIParams>::iterator iter =
             pmsi_params.find(MvpnState::SG(rt->GetPrefix().source(),
                                            rt->GetPrefix().group()));
@@ -232,7 +236,7 @@ protected:
     }
 
     MvpnRoute *VerifyLeafADMvpnRoute(MvpnTable *table, const string &prefix,
-            const PMSIParams &pmsi_params) {
+            const PMSIParams &pmsi) {
         MvpnPrefix type4_prefix =
             MvpnPrefix::FromString("4-" + prefix + ",127.0.0.1");
         MvpnRoute *leaf_ad_rt = table->FindRoute(type4_prefix);
@@ -258,13 +262,13 @@ protected:
             }
         }
         TASK_UTIL_EXPECT_EQ(1, tunnel_encap);
-        TASK_UTIL_EXPECT_EQ("encapsulation:" + pmsi_params.encaps.front(),
+        TASK_UTIL_EXPECT_EQ("encapsulation:" + pmsi.encaps.front(),
                   TunnelEncap(tunnel_encap_val).ToString());
         TASK_UTIL_EXPECT_NE(static_cast<PmsiTunnel *>(NULL),
                             attr->pmsi_tunnel());
-        TASK_UTIL_EXPECT_EQ(Ip4Address::from_string(pmsi_params.address),
+        TASK_UTIL_EXPECT_EQ(Ip4Address::from_string(pmsi.address),
                   attr->pmsi_tunnel()->identifier());
-        TASK_UTIL_EXPECT_EQ(pmsi_params.label, attr->pmsi_tunnel()->label());
+        TASK_UTIL_EXPECT_EQ(pmsi.label, attr->pmsi_tunnel()->label());
         TASK_UTIL_EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
                   attr->pmsi_tunnel()->tunnel_type());
         int rtargets = 0;
@@ -478,7 +482,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi));
+    }
     ermvpn_rt = AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix,
                                "target:127.0.0.1:1100");
 
@@ -495,7 +502,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     VerifyLeafADMvpnRoute(green_, prefix, pmsi);
 
     DeleteMvpnRoute(master_, prefix);
-    pmsi_params.clear();
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.clear();
+    }
     DeleteErmVpnRoute(fabric_ermvpn_, ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
@@ -527,7 +537,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi));
+    }
     string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
     ermvpn_rt =
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1100");
@@ -544,7 +557,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     VerifyLeafADMvpnRoute(green_, prefix, pmsi);
 
     DeleteMvpnRoute(master_, prefix);
-    pmsi_params.clear();
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.clear();
+    }
     DeleteErmVpnRoute(fabric_ermvpn_, ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
@@ -576,7 +592,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi));
+    }
     string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
     ermvpn_rt =
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1100");
@@ -593,7 +612,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
     VerifyLeafADMvpnRoute(green_, prefix, pmsi);
 
     // Delete the ermvpn route and verify that leaf-ad route is also deleted.
-    pmsi_params.erase(sg);
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.erase(sg);
+    }
     DeleteErmVpnRoute(fabric_ermvpn_, ermvpn_prefix);
     TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
@@ -634,7 +656,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi));
+    }
     string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
     ermvpn_rt =
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1100");
@@ -667,8 +692,11 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
     TASK_UTIL_EXPECT_EQ(red_attr, leafad_red_rt->BestPath()->GetAttr());
     TASK_UTIL_EXPECT_EQ(green_attr, leafad_green_rt->BestPath()->GetAttr());
 
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.clear();
+    }
     DeleteMvpnRoute(master_, prefix);
-    pmsi_params.clear();
     DeleteErmVpnRoute(fabric_ermvpn_, ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
@@ -700,7 +728,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi));
+    }
     string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
     ermvpn_rt =
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1100");
@@ -721,9 +752,15 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     const BgpAttr *green_attr = green_path->GetAttr();
 
     // Update PMSI.
-    pmsi_params.erase(sg);
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.erase(sg);
+    }
     PMSIParams pmsi2(PMSIParams(true, 20, "1.2.3.5", "udp", &ermvpn_rt));
-    pmsi_params.insert(make_pair(sg, pmsi2));
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.insert(make_pair(sg, pmsi2));
+    }
 
     TASK_UTIL_EXPECT_EQ(ermvpn_rt,
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1101"));
@@ -739,7 +776,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
                                                                pmsi2));
 
     DeleteMvpnRoute(master_, prefix);
-    pmsi_params.clear();
+    {
+        tbb::mutex::scoped_lock(pmsi_params_mutex);
+        pmsi_params.clear();
+    }
     DeleteErmVpnRoute(fabric_ermvpn_, ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(3, master_->Size()); // 3 local
