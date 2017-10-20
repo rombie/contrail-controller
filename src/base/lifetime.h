@@ -79,7 +79,7 @@ public:
     // implements "ON DELETE CASCADE" semantics.
     virtual void Delete() = 0;
 
-    void Reset(LifetimeActor *actor = NULL) {
+    void Reset(LifetimeActor *actor) {
         ref_.reset(actor);
     }
 

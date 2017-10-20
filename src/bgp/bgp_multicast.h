@@ -119,7 +119,6 @@ private:
 
     void AddLocalOListElems(BgpOListSpec *olist_spec);
     void AddGlobalOListElems(BgpOListSpec *olist_spec);
-    void AddMvpnSourceAddress(ErmVpnTable *table, RibOutAttr &attr);
 
     McastSGEntry *sg_entry_;
     ErmVpnRoute *route_;

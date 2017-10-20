@@ -278,26 +278,6 @@ void McastForwarder::DeleteGlobalTreeRoute() {
 }
 
 //
-// Append mvpn source address from the mvpn state to the attr list if
-// this is a forest node
-//
-void McastForwarder::AddMvpnSourceAddress(ErmVpnTable *tbl, RibOutAttr &attr) {
-    ErmVpnRoute *global_rt = tbl->tree_manager()->GetGlobalTreeRootRoute(
-        route()->GetPrefix().source(), route()->GetPrefix().group());
-    if (global_rt && (sg_entry_->IsForestNode(this))) {
-        MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
-        global_rt->GetState(tbl, tbl->mvpn_project_manager()->listener_id()));
-        if (mvpn_dbstate) {
-            MvpnStatePtr mvpn_state = mvpn_dbstate->state();
-	    if (mvpn_state && mvpn_state->spmsi_routes_received().size()) {
-	        attr.set_source_address((*(mvpn_state->spmsi_routes_received().
-				begin()))->GetPrefix().originator());
-	    }
-        }
-    }
-}
-
-//
 // Append list of BgpOListElems from the Local tree to the BgpOListSpec. The
 // list is built based on the tree links in this McastForwarder.
 //
