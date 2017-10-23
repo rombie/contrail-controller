@@ -3627,19 +3627,24 @@ TEST_F(BgpServerUnitTest, BasicMvpnAdvertiseWithdraw) {
 
     // Find the mvpn.0 table in A and B.
     DB *db_a = a_.get()->database();
-    MvpnTable *table_a = static_cast<MvpnTable *>(db_a->FindTable("bgp.mvpn.0"));
+    MvpnTable *table_a =
+        static_cast<MvpnTable *>(db_a->FindTable("bgp.mvpn.0"));
     assert(table_a);
     DB *db_b = b_.get()->database();
-    MvpnTable *table_b = static_cast<MvpnTable *>(db_b->FindTable("bgp.mvpn.0"));
+    MvpnTable *table_b =
+        static_cast<MvpnTable *>(db_b->FindTable("bgp.mvpn.0"));
     assert(table_b);
 
     BgpAttrSpec attrs;
     BgpAttrPtr attr_ptr = a_.get()->attr_db()->Locate(attrs);
 
     // Create 3 Mvpnprefixes and the corresponding keys.
-    const MvpnPrefix prefix1(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.1"));
-    const MvpnPrefix prefix2(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.2"));
-    const MvpnPrefix prefix3(MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.3"));
+    const MvpnPrefix prefix1(
+            MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.1"));
+    const MvpnPrefix prefix2(
+            MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.2"));
+    const MvpnPrefix prefix3(
+            MvpnPrefix::FromString("1-10.1.1.1:65535,192.168.1.3"));
 
     const MvpnTable::RequestKey key1(prefix1, NULL);
     const MvpnTable::RequestKey key2(prefix2, NULL);

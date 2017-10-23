@@ -122,7 +122,6 @@ void MvpnTable::CreateMvpnManagers() {
 
     // Don't create the MvpnManager for the VPN table.
     if (!rtinstance->IsMasterRoutingInstance() &&
-            !rtinstance->IsFabricRoutingInstance() &&
             !rtinstance->mvpn_project_manager_network().empty()) {
         pair<MvpnProjectManagerNetworks::iterator, bool> ret =
             rtinstance->manager()->mvpn_project_managers().insert(make_pair(

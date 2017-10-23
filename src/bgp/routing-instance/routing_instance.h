@@ -113,7 +113,6 @@ public:
     bool IsMasterRoutingInstance() const {
         return is_master_;
     }
-    bool IsFabricRoutingInstance() const;
 
     const std::string &name() const { return name_; }
     const std::string GetVirtualNetworkName() const;

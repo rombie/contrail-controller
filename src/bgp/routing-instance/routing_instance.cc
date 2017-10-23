@@ -1723,7 +1723,3 @@ PeerManager *RoutingInstance::LocatePeerManager() {
         peer_manager_.reset(BgpObjectFactory::Create<PeerManager>(this));
     return peer_manager_.get();
 }
-
-bool RoutingInstance::IsFabricRoutingInstance() const {
-    return name_ == BgpConfigManager::kFabricInstance;
-}

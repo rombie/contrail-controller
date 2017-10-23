@@ -125,14 +125,16 @@ public:
             return false;
 
         const NetworkAgentMock::McastRouteEntry *ermvpn_rt =
-            other_agent->McastRouteLookup(BgpConfigManager::kFabricInstance, prefix);
+            other_agent->McastRouteLookup(
+                BgpConfigManager::kFabricInstance, prefix);
         if (ermvpn_rt == NULL)
             return false;
         const MvpnOlistType &olist = mvpn_rt->entry.olist;
         if (olist.next_hop.size() != olist_size)
             return false;
 
-        int label = GetLabel(other_agent, BgpConfigManager::kFabricInstance, prefix);
+        int label =
+            GetLabel(other_agent, BgpConfigManager::kFabricInstance, prefix);
         if (label == 0)
             return false;
 
@@ -291,12 +293,12 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         green_->FindType1ADRoute());
 
-    TASK_UTIL_EXPECT_EQ(0, fabric_mvpn_->Size());
-    TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+    TASK_UTIL_EXPECT_EQ(1, fabric_mvpn_->Size());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         fabric_mvpn_->FindType1ADRoute());
 
     // red, blue and green
-    TASK_UTIL_EXPECT_EQ(3, master_->Size());
+    TASK_UTIL_EXPECT_EQ(4, master_->Size());
 
     const char *mroute = "224.1.2.3,192.168.1.1";
 
@@ -315,7 +317,7 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     // Verify that the route gets added
     TASK_UTIL_EXPECT_EQ(2, red_->Size());
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
-    TASK_UTIL_EXPECT_EQ(4, master_->Size());
+    TASK_UTIL_EXPECT_EQ(5, master_->Size());
     TASK_UTIL_EXPECT_EQ(4, green_->Size());
     TASK_UTIL_EXPECT_EQ(1, red_inet_->Size());
     TASK_UTIL_EXPECT_EQ(1, green_inet_->Size());
@@ -327,7 +329,7 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
 
     TASK_UTIL_EXPECT_EQ(7, green_->Size());
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
-    TASK_UTIL_EXPECT_EQ(7, master_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_->Size());
 
     // Sender red: prm type1, prm type5, sec type7, prm type3, sec type4
     TASK_UTIL_EXPECT_EQ(5, red_->Size());
@@ -572,8 +574,8 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedReceiverInDifferentControlNodes) {
     std::cout << red_rt->ToString() << std::endl;
     std::cout << red_y_rt->ToString() << std::endl;
 
-    TASK_UTIL_EXPECT_EQ(6, master_->Size()); // red, blue, green
-    TASK_UTIL_EXPECT_EQ(6, master_y_->Size()); // red, blue, green
+    TASK_UTIL_EXPECT_EQ(8, master_->Size()); // red, blue, green
+    TASK_UTIL_EXPECT_EQ(8, master_y_->Size()); // red, blue, green
 
     // Register agents and add a source active mvpn route
     Subscribe("red", 1);
@@ -595,7 +597,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedReceiverInDifferentControlNodes) {
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
 
     // 3 p-type-1, 1 p-type-5
-    TASK_UTIL_EXPECT_EQ(7, master_->Size());
+    TASK_UTIL_EXPECT_EQ(9, master_->Size());
 
     // 3 p-type-1, 1 s-type-5
     TASK_UTIL_EXPECT_EQ(7, master_y_->Size());
@@ -611,8 +613,8 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedReceiverInDifferentControlNodes) {
     // 1 p-type1, 1 s-type5, 1 s-type7, 1 p-type3, 1 s-type4
     TASK_UTIL_EXPECT_EQ(5, red_y_->Size());
 
-    TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
-    TASK_UTIL_EXPECT_EQ(11, master_->Size());
+    TASK_UTIL_EXPECT_EQ(13, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(13, master_->Size());
     TASK_UTIL_EXPECT_EQ(1, blue_->Size());
     TASK_UTIL_EXPECT_EQ(6, red_->Size());
     // Verify that sender should have received a route
