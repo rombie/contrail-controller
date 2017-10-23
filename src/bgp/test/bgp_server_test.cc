@@ -6,6 +6,7 @@
 #include "bgp/bgp_config_parser.h"
 #include "bgp/bgp_factory.h"
 #include "bgp/bgp_membership.h"
+#include "bgp/bgp_mvpn.h"
 #include "bgp/bgp_sandesh.h"
 #include "bgp/bgp_session_manager.h"
 #include "bgp/inet/inet_table.h"
@@ -3610,6 +3611,7 @@ TEST_F(BgpServerUnitTest, BasicAdvertiseWithdraw) {
 }
 
 TEST_F(BgpServerUnitTest, BasicMvpnAdvertiseWithdraw) {
+    MvpnManager::set_enable(true);
     vector<string> families_a;
     vector<string> families_b;
     families_a.push_back("inet-mvpn");
@@ -3718,6 +3720,7 @@ TEST_F(BgpServerUnitTest, BasicMvpnAdvertiseWithdraw) {
     BGP_VERIFY_ROUTE_ABSENCE(table_b, &key1);
     BGP_VERIFY_ROUTE_ABSENCE(table_b, &key2);
     BGP_VERIFY_ROUTE_ABSENCE(table_b, &key3);
+    MvpnManager::set_enable(false);
 }
 
 class TestEnvironment : public ::testing::Environment {
