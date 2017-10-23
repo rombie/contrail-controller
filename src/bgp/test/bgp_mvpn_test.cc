@@ -86,7 +86,8 @@ public:
 private:
 };
 
-class BgpMvpnTest : public ::testing::Test {
+typedef std::tr1::tuple<bool, int> TestParams;
+class BgpMvpnTest : public ::testing::TestWithParam<TestParams> {
 protected:
     BgpMvpnTest() {
     }
@@ -99,9 +100,6 @@ protected:
 "       <address>127.0.0.1</address>"
 "       <autonomous-system>1</autonomous-system>"
 "   </bgp-router>"
-"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>"
-"       <vrf-target>target:127.0.0.1:9999</vrf-target>"
-"   </routing-instance>"
 "   <routing-instance name='red'>"
 "       <vrf-target>target:127.0.0.1:1001</vrf-target>"
 "   </routing-instance>"
@@ -119,8 +117,22 @@ protected:
 "           <import-export>import</import-export>"
 "       </vrf-target>"
 "   </routing-instance>"
-"</config>"
         ;
+    }
+
+    void CreateProjectManagerRoutingInstance() {
+        string config = "<?xml version='1.0' encoding='utf-8'?>"
+"<config>"
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>"
+"       <vrf-target>target:127.0.0.1:9999</vrf-target>"
+"   </routing-instance>"
+"</config>";
+        server_->Configure(config);
+        task_util::WaitForIdle();
+        fabric_ermvpn_ = static_cast<ErmVpnTable *>(
+            server_->database()->FindTable(
+                red_->routing_instance()->mvpn_project_manager_network() +
+                ".ermvpn.0"));
     }
 
     virtual void SetUp() {
@@ -128,7 +140,21 @@ protected:
         server_.reset(new BgpServerTest(evm_.get(), "local"));
         thread_.reset(new ServerThread(evm_.get()));
         thread_->Start();
-        server_->Configure(GetConfig());
+        pm_preconfigured_ = std::tr1::get<0>(GetParam());
+        routes_count_ = std::tr1::get<1>(GetParam());
+        string config = GetConfig();
+
+        if (pm_preconfigured_) {
+            config +=
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>"
+"       <vrf-target>target:127.0.0.1:9999</vrf-target>"
+"   </routing-instance>"
+"</config>";
+        } else {
+            config += "</config>";
+        }
+
+        server_->Configure(config);
         task_util::WaitForIdle();
 
         TASK_UTIL_EXPECT_NE(static_cast<BgpTable *>(NULL),
@@ -150,10 +176,12 @@ protected:
             server_->database()->FindTable("blue.mvpn.0"));
         green_ = static_cast<MvpnTable *>(
             server_->database()->FindTable("green.mvpn.0"));
-        fabric_ermvpn_ = static_cast<ErmVpnTable *>(
-            server_->database()->FindTable(
-                red_->routing_instance()->mvpn_project_manager_network() +
-                ".ermvpn.0"));
+        if (pm_preconfigured_) {
+            fabric_ermvpn_ = static_cast<ErmVpnTable *>(
+                server_->database()->FindTable(
+                    red_->routing_instance()->mvpn_project_manager_network() +
+                    ".ermvpn.0"));
+        }
     }
 
     void UpdateBgpIdentifier(const string &address) {
@@ -290,6 +318,64 @@ protected:
         return leaf_ad_rt;
     }
 
+    void VerifyInitialState(bool pm_configure = true,
+                            size_t redc = 0, size_t bluec = 0,
+                            size_t greenc = 0, size_t masterc = 0) {
+        if (!pm_preconfigured_) {
+            // Verify that there is no MvpnManager object created yet.
+            TASK_UTIL_EXPECT_EQ(static_cast<MvpnManager *>(NULL),
+                                red_->manager());
+            TASK_UTIL_EXPECT_EQ(static_cast<MvpnManager *>(NULL),
+                                blue_->manager());
+            TASK_UTIL_EXPECT_EQ(static_cast<MvpnManager *>(NULL),
+                                green_->manager());
+
+            TASK_UTIL_EXPECT_EQ(redc, red_->Size());
+            TASK_UTIL_EXPECT_EQ(bluec, blue_->Size());
+            // 1 green + 1 red + 1 blue
+            TASK_UTIL_EXPECT_EQ(greenc, green_->Size());
+            TASK_UTIL_EXPECT_EQ(masterc, master_->Size());
+
+            if (!pm_configure)
+                return;
+            CreateProjectManagerRoutingInstance();
+        }
+
+        TASK_UTIL_EXPECT_EQ(redc + 1, red_->Size());
+        TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                            red_->FindType1ADRoute());
+
+        TASK_UTIL_EXPECT_EQ(bluec + 1, blue_->Size());
+        TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                            blue_->FindType1ADRoute());
+
+        TASK_UTIL_EXPECT_EQ(greenc + 3, green_->Size()); // 1 green+1 red+1 blue
+        TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                            green_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(masterc + 4, master_->Size());
+
+        // Verify that only green has discovered a neighbor from red.
+        TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
+        TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
+        TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
+
+        MvpnNeighbor neighbor;
+        error_code err;
+        EXPECT_TRUE(green_->manager()->FindNeighbor(
+                        *(red_->routing_instance()->GetRD()), &neighbor));
+        EXPECT_EQ(*(red_->routing_instance()->GetRD()), neighbor.rd());
+        EXPECT_EQ(0, neighbor.source_as());
+        EXPECT_EQ(IpAddress::from_string("127.0.0.1", err),
+                  neighbor.originator());
+
+        EXPECT_TRUE(green_->manager()->FindNeighbor(
+                        *(blue_->routing_instance()->GetRD()), &neighbor));
+        EXPECT_EQ(*(blue_->routing_instance()->GetRD()), neighbor.rd());
+        EXPECT_EQ(0, neighbor.source_as());
+        EXPECT_EQ(IpAddress::from_string("127.0.0.1", err),
+                  neighbor.originator());
+    }
+
     scoped_ptr<EventManager> evm_;
     scoped_ptr<ServerThread> thread_;
     scoped_ptr<BgpServerTest> server_;
@@ -299,45 +385,34 @@ protected:
     MvpnTable *red_;
     MvpnTable *blue_;
     MvpnTable *green_;
+    bool pm_preconfigured_;
+    int routes_count_;
 };
 
 // Ensure that Type1 AD routes are created inside the mvpn table.
-TEST_F(BgpMvpnTest, Type1ADLocal) {
-    TASK_UTIL_EXPECT_EQ(1, red_->Size());
-    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
-                        red_->FindType1ADRoute());
-
-    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
-    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
-                        blue_->FindType1ADRoute());
-
-    TASK_UTIL_EXPECT_EQ(3, green_->Size()); // 1 green + 1 red + 1 blue
-    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
-                        green_->FindType1ADRoute());
-    TASK_UTIL_EXPECT_EQ(4, master_->Size());
-
-    // Verify that only green has discovered a neighbor from red.
-    TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
-    TASK_UTIL_EXPECT_EQ(2, green_->manager()->neighbors().size());
-
-    MvpnNeighbor neighbor;
-    error_code err;
-    EXPECT_TRUE(green_->manager()->FindNeighbor(
-                    *(red_->routing_instance()->GetRD()), &neighbor));
-    EXPECT_EQ(*(red_->routing_instance()->GetRD()), neighbor.rd());
-    EXPECT_EQ(0, neighbor.source_as());
-    EXPECT_EQ(IpAddress::from_string("127.0.0.1", err), neighbor.originator());
-
-    EXPECT_TRUE(green_->manager()->FindNeighbor(
-                    *(blue_->routing_instance()->GetRD()), &neighbor));
-    EXPECT_EQ(*(blue_->routing_instance()->GetRD()), neighbor.rd());
-    EXPECT_EQ(0, neighbor.source_as());
-    EXPECT_EQ(IpAddress::from_string("127.0.0.1", err), neighbor.originator());
+TEST_P(BgpMvpnTest, Type1ADLocal) {
+    if (!pm_preconfigured_) {
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            red_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            blue_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            green_->FindType1ADRoute());
+    }
+    VerifyInitialState();
 }
 
 // Change Identifier and ensure that routes have updated originator id.
-TEST_F(BgpMvpnTest, Type1ADLocalWithIdentifierChanged) {
+TEST_P(BgpMvpnTest, Type1ADLocalWithIdentifierChanged) {
+    if (!pm_preconfigured_) {
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            red_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            blue_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            green_->FindType1ADRoute());
+    }
+    VerifyInitialState();
     error_code err;
     UpdateBgpIdentifier("127.0.0.2");
     TASK_UTIL_EXPECT_EQ(4, master_->Size());
@@ -373,7 +448,16 @@ TEST_F(BgpMvpnTest, Type1ADLocalWithIdentifierChanged) {
 }
 
 // Reset BGP Identifier and ensure that Type1 route is no longer generated.
-TEST_F(BgpMvpnTest, Type1ADLocalWithIdentifierRemoved) {
+TEST_P(BgpMvpnTest, Type1ADLocalWithIdentifierRemoved) {
+    if (!pm_preconfigured_) {
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            red_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            blue_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            green_->FindType1ADRoute());
+    }
+    VerifyInitialState();
     error_code err;
     UpdateBgpIdentifier("0.0.0.0");
     TASK_UTIL_EXPECT_EQ(0, master_->Size());
@@ -396,7 +480,16 @@ TEST_F(BgpMvpnTest, Type1ADLocalWithIdentifierRemoved) {
 }
 
 // Add Type1AD route from a mock bgp peer into bgp.mvpn.0 table.
-TEST_F(BgpMvpnTest, Type1AD_Remote) {
+TEST_P(BgpMvpnTest, Type1AD_Remote) {
+    if (!pm_preconfigured_) {
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            red_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            blue_->FindType1ADRoute());
+        TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
+                            green_->FindType1ADRoute());
+    }
+    VerifyInitialState();
     // Verify that only green has discovered a neighbor from red.
     TASK_UTIL_EXPECT_EQ(0, red_->manager()->neighbors().size());
     TASK_UTIL_EXPECT_EQ(0, blue_->manager()->neighbors().size());
@@ -446,11 +539,21 @@ TEST_F(BgpMvpnTest, Type1AD_Remote) {
 
 // Add Type3 S-PMSI route and verify that Type4 Leaf-AD is not originated if
 // PMSI information is not available for forwarding.
-TEST_F(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
-    // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
-    // target. This route should go into red and green table.
+TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
+    VerifyInitialState(pm_preconfigured_);
+
+    // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red
+    // route target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
     AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    if (!pm_preconfigured_) {
+        TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
+        TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 remote(red)
+        TASK_UTIL_EXPECT_EQ(0, blue_->Size());
+        TASK_UTIL_EXPECT_EQ(1, green_->Size()); // 1 remote
+        VerifyInitialState(true, 1, 0, 1, 1);
+    }
+
     TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
     TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
@@ -470,7 +573,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
 
 // Add Type3 S-PMSI route and verify that Type4 Leaf-AD gets originated with the
 // right set of path attributes.
-TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
+    VerifyInitialState();
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
@@ -519,17 +623,23 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
 
 // Add Type3 S-PMSI route and verify that Type4 Leaf-AD gets originated with the
 // right set of path attributes, but only after ermvpn route becomes available.
-TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
+    VerifyInitialState(pm_preconfigured_);
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
     AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
-    TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
-    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
-    TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
 
-    // 1 local + 2 remote(red) + 1 remote(green)
-    TASK_UTIL_EXPECT_EQ(4, green_->Size());
+    if (!pm_preconfigured_) {
+        VerifyInitialState(false, 1, 0, 1, 1);
+    } else {
+        TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
+        TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 local + 1 remote(red)
+        TASK_UTIL_EXPECT_EQ(1, blue_->Size()); // 1 local
+
+        // 1 local + 2 remote(red) + 1 remote(green)
+        TASK_UTIL_EXPECT_EQ(4, green_->Size());
+    }
 
     // Make ermvpn route available now and verifiy that leaf-ad is originated.
     // Add a ermvpn route into the table.
@@ -542,6 +652,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
         tbb::mutex::scoped_lock(pmsi_params_mutex);
         pmsi_params.insert(make_pair(sg, pmsi));
     }
+
+    if (!pm_preconfigured_)
+        VerifyInitialState(true, 1, 0, 1, 1);
+
     string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
     ermvpn_rt =
         AddErmVpnRoute(fabric_ermvpn_, ermvpn_prefix, "target:127.0.0.1:1100");
@@ -574,7 +688,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
 
 // Verify that if ermvpn route is deleted, then any type 4 route if originated
 // already is withdrawn.
-TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
+    VerifyInitialState();
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
@@ -638,7 +753,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
 // right set of path attributes, but only after ermvpn route becomes available.
 // Add spurious notify on ermvpn route and ensure that type-4 leafad path and
 // its attributes do not change.
-TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
+    VerifyInitialState();
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
@@ -710,7 +826,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
 
 // Similar to previous test, but this time, do change some of the PMSI attrs.
 // Leaf4 ad path already generated must be updated with the PMSI information.
-TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
+    VerifyInitialState();
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red route
     // target. This route should go into red and green table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
@@ -799,7 +916,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
 
 // Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
 // Type-5 route comes in first followed by Type-7 join
-TEST_F(BgpMvpnTest, Type3_SPMSI_1) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
+    VerifyInitialState();
     const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
     AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
     TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
@@ -847,7 +965,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_1) {
 
 // Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
 // Type-7 join comes in first followed by Type-5 source-active
-TEST_F(BgpMvpnTest, Type3_SPMSI_2) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
+    VerifyInitialState();
     // Inject type-7 receiver route with red RI vit. There is no source-active
     // route yet, hence no type-3 s-pmsi should be generated.
     const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
@@ -897,7 +1016,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_2) {
 
 // Receive Type-5 source-active followed by type-7 join.
 // Type-7 join route gets deleted first, afterwards.
-TEST_F(BgpMvpnTest, Type3_SPMSI_3) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_3) {
+    VerifyInitialState();
     const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
     AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
     TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
@@ -947,7 +1067,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_3) {
 // Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
 // Type-7 join comes in first followed by Type-5 source-active
 // Type-7 join route gets deleted first, afterwards.
-TEST_F(BgpMvpnTest, Type3_SPMSI_4) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
+    VerifyInitialState();
     // Inject type-7 receiver route with red RI vit. There is no source-active
     // route yet, hence no type-3 s-pmsi should be generated.
     const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
@@ -998,7 +1119,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_4) {
 }
 
 // Receive Type-7 remote join, but no type-5 source-active is received at all.
-TEST_F(BgpMvpnTest, Type3_SPMSI_5) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
+    VerifyInitialState();
     // Inject type-7 receiver route with red RI vit. There is no source-active
     // route yet, hence no type-3 s-pmsi should be generated.
     const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
@@ -1021,7 +1143,8 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_5) {
 }
 
 // Receive Type-5 source active, but no type-7 join is received at all.
-TEST_F(BgpMvpnTest, Type3_SPMSI_6) {
+TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
+    VerifyInitialState();
     const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
     AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
     TASK_UTIL_EXPECT_EQ(5, master_->Size()); // 3 local + 1 remote
@@ -1039,6 +1162,10 @@ TEST_F(BgpMvpnTest, Type3_SPMSI_6) {
     // 1 local + 1 remote(red) + 1 remote(blue)
     TASK_UTIL_EXPECT_EQ(3, green_->Size());
 }
+
+INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
+                        ::testing::Combine(::testing::Bool(),
+                                           ::testing::Values(1)));
 
 static void SetUp() {
     bgp_log_test::init();

@@ -690,6 +690,8 @@ test_suite = [
     xmpp_sess_toggle_test,
 ]
 
+test_suite = [ bgp_mvpn_test ]
+
 test = env.TestSuite('bgp-test', test_suite)
 
 env.Alias('controller/src/bgp:test', [
