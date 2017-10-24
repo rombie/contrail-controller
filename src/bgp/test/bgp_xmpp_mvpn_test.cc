@@ -81,6 +81,9 @@ protected:
         agent_xa_->MvpnSubscribe(net, id);
         agent_xb_->MvpnSubscribe(net, id);
         agent_xc_->MvpnSubscribe(net, id);
+        agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
+        agent_xb_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
+        agent_xc_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
         task_util::WaitForIdle();
     }
 
@@ -121,6 +124,13 @@ static const char *config_tmpl1 = "\
         <address>127.0.0.101</address>\
         <port>%d</port>\
     </bgp-router>\
+    <virtual-network name='default-domain:default-project:ip-fabric'>\
+        <network-id>1000</network-id>\
+    </virtual-network>\
+    <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>\
+        <virtual-network>blue</virtual-network>\
+        <vrf-target>target:1:1</vrf-target>\
+    </routing-instance>\
     <virtual-network name='blue'>\
         <network-id>1</network-id>\
     </virtual-network>\
@@ -141,6 +151,7 @@ protected:
 
         BgpXmppMvpnTest::SessionUp();
         BgpXmppMvpnTest::Subscribe("blue", 1);
+        BgpXmppMvpnTest::Subscribe(BgpConfigManager::kFabricInstance, 1000);
         task_util::WaitForIdle();
     }
 
@@ -191,6 +202,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType5) {
     // without waiting for the subscription to be processed.
     int rt_type = MvpnPrefix::SourceActiveADRoute;
     agent_xa_->MvpnSubscribe("blue", 1);
+    agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
 
     // Verify that the route gets added
@@ -221,6 +233,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
     // without waiting for the subscription to be processed.
     int rt_type = MvpnPrefix::SourceTreeJoinRoute;
     agent_xa_->MvpnSubscribe("blue", 1);
+    agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
 
     // Verify that the route gets added
@@ -228,6 +241,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
 
     // Add the route again, there should still be only 1 route
     agent_xb_->MvpnSubscribe("blue", 1);
+    agent_xb_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xb_->AddMvpnRoute("blue", mroute, rt_type);
     agent_xa_->AddMvpnRoute("blue", mroute, rt_type);
     TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
@@ -236,6 +250,8 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingSubscribeType7) {
     agent_xa_->DeleteMvpnRoute("blue", mroute, rt_type);
     TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
 
+    // Delete route from second agent, it should get deleted
+    agent_xb_->DeleteMvpnRoute("blue", mroute, rt_type);
     // Delete route from second agent, it should get deleted
     TASK_UTIL_EXPECT_EQ(0, GetVrfTableSize(bs_x_, "blue"));
 }
@@ -247,8 +263,10 @@ TEST_F(BgpXmppMvpnSubscriptionTest, PendingUnsubscribe) {
     // without waiting for the subscription to be processed. Then go
     // ahead and unsubscribe right away.
     agent_xa_->MvpnSubscribe("blue", 1);
+    agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xa_->AddMvpnRoute("blue", mroute);
     agent_xa_->MvpnUnsubscribe("blue");
+    agent_xa_->MvpnUnsubscribe(BgpConfigManager::kFabricInstance);
 
     // Verify number of routes.
     TASK_UTIL_EXPECT_EQ(0, GetVrfTableSize(bs_x_, "blue"));
@@ -260,6 +278,7 @@ TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
     // Register agent b to the multicast table and add a mvpn route
     // after waiting for the subscription to be processed.
     agent_xb_->MvpnSubscribe("blue", 1);
+    agent_xb_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     task_util::WaitForIdle();
     agent_xb_->AddMvpnRoute("blue", mroute);
     MvpnTable *blue_table_ = static_cast<MvpnTable *>(
@@ -270,9 +289,12 @@ TEST_F(BgpXmppMvpnSubscriptionTest, SubsequentSubscribeUnsubscribe) {
     // ahead and unsubscribe right away. Then subscribe again with a
     // different id and add the route again.
     agent_xa_->MvpnSubscribe("blue", 1);
+    agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xa_->AddMvpnRoute("blue", mroute);
     agent_xa_->MvpnUnsubscribe("blue");
+    agent_xa_->MvpnUnsubscribe(BgpConfigManager::kFabricInstance);
     agent_xa_->MvpnSubscribe("blue", 2);
+    agent_xa_->MvpnSubscribe(BgpConfigManager::kFabricInstance, 1000);
     agent_xa_->AddMvpnRoute("blue", mroute);
 
     // Verify number of routes in blue table.

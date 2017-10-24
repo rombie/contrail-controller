@@ -837,7 +837,7 @@ void MvpnRoute::BuildProtoPrefix(BgpProtoPrefix *prefix,
 }
 
 void MvpnRoute::BuildBgpProtoNextHop(
-    vector<uint8_t> &nh, const IpAddress &nexthop) const {
+    vector<uint8_t> &nh, IpAddress nexthop) const {
     nh.resize(4);
     const Ip4Address::bytes_type &addr_bytes = nexthop.to_v4().to_bytes();
     copy(addr_bytes.begin(), addr_bytes.end(), nh.begin());

@@ -125,7 +125,7 @@ public:
                                   uint32_t label = 0,
                                   uint32_t l3_label = 0) const;
     virtual void BuildBgpProtoNextHop(std::vector<uint8_t> &nh,
-                                      const IpAddress &nexthop) const;
+                                      IpAddress nexthop) const;
 
     virtual bool IsLess(const DBEntry &genrhs) const {
         const MvpnRoute &rhs = static_cast<const MvpnRoute &>(genrhs);

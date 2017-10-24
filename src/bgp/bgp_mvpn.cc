@@ -904,12 +904,14 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
         // Remove any type-3 spmsi path originated before.
         MvpnRoute *spmsi_rt = mvpn_dbstate->route();
         if (spmsi_rt) {
-            assert(spmsi_rt == state->spmsi_rt());
+            assert(!state->spmsi_rt() || spmsi_rt == state->spmsi_rt());
             state->set_spmsi_rt(NULL);
+            mvpn_dbstate->set_route(NULL);
             BgpPath *path = spmsi_rt->FindPath(BgpPath::Local, 0);
-            assert(path);
-            spmsi_rt->DeletePath(path);
-            spmsi_rt->NotifyOrDelete();
+            if (path) {
+                spmsi_rt->DeletePath(path);
+                spmsi_rt->NotifyOrDelete();
+            }
         }
         return;
     }
