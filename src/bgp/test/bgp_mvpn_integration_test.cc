@@ -597,7 +597,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     // Verify that the route gets added
     TASK_UTIL_EXPECT_EQ(3, red_->Size());
     TASK_UTIL_EXPECT_EQ(2, blue_->Size());
-    TASK_UTIL_EXPECT_EQ(8, master_->Size());
+    TASK_UTIL_EXPECT_EQ(9, master_->Size());
     TASK_UTIL_EXPECT_EQ(2, green_->Size());
 
 
