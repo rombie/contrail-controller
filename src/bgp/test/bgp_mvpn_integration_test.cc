@@ -562,18 +562,18 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     Subscribe(BgpConfigManager::kFabricInstance, 1000);
     task_util::WaitForIdle();
 
-    TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 type1 from red
-    TASK_UTIL_EXPECT_EQ(1, red_y_->Size()); // 1 type1 from red
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 type1 from red
+    TASK_UTIL_EXPECT_EQ(2, red_y_->Size()); // 1 type1 from red
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_->FindType1ADRoute());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red_y_->FindType1ADRoute());
 
-    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         blue_->FindType1ADRoute());
 
-    TASK_UTIL_EXPECT_EQ(1, green_->Size()); // 1 type1 from red, blue and green
+    TASK_UTIL_EXPECT_EQ(2, green_->Size()); // 1 type1 from red, blue and green
 
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         green_->FindType1ADRoute());
