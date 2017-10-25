@@ -556,6 +556,12 @@ protected:
 };
 
 TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
+    // Register agents and add a source active mvpn route
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+    task_util::WaitForIdle();
+
     TASK_UTIL_EXPECT_EQ(1, red_->Size()); // 1 type1 from red
     TASK_UTIL_EXPECT_EQ(1, red_y_->Size()); // 1 type1 from red
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
@@ -574,15 +580,10 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     TASK_UTIL_EXPECT_TRUE(peer_x_->IsReady());
     TASK_UTIL_EXPECT_TRUE(peer_y_->IsReady());
     // red, blue, green, BgpConfigManager::kFabricInstance
-    TASK_UTIL_EXPECT_EQ(4, master_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_->Size());
     // red, blue, green, BgpConfigManager::kFabricInstance
-    TASK_UTIL_EXPECT_EQ(4, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_y_->Size());
 
-    // Register agents and add a source active mvpn route
-    Subscribe("red", 1);
-    Subscribe("green", 2);
-    Subscribe(BgpConfigManager::kFabricInstance, 1000);
-    task_util::WaitForIdle();
     string tunnel;
     RouteAttributes attr;
     NextHop nexthop_red("192.168.0.101", 11, tunnel, "red");
