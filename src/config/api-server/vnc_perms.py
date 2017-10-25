@@ -5,11 +5,13 @@ import sys
 import cfgm_common
 from cfgm_common import has_role
 from cfgm_common import jsonutils as json
+from context import is_internal_request
 import string
 import uuid
 from provision_defaults import *
 from cfgm_common.exceptions import *
 from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
+
 
 class VncPermissions(object):
 
@@ -239,11 +241,17 @@ class VncPermissions(object):
 
         if self._rbac:
             # delete only allowed for owner
-            (ok, obj_dict) = self._server_mgr._db_conn.dbe_read(obj_type,
-                             obj_uuid, obj_fields=['perms2'])
-            obj_owner=obj_dict['perms2']['owner']
+            try:
+                ok, result = self._server_mgr._db_conn.dbe_read(
+                    obj_type, obj_uuid, obj_fields=['perms2'])
+            except NoIdError as e:
+                return False, (404, str(e))
+            if not ok:
+                return False, (500, result)
+            obj_dict = result
+            obj_owner = obj_dict['perms2']['owner']
             return self.validate_perms_rbac(request, parent_uuid, PERMS_W,
-                                            obj_owner_for_delete = obj_owner)
+                                            obj_owner_for_delete=obj_owner)
         elif self._auth_needed:
             return self.validate_perms(request, parent_uuid, PERMS_W)
         else:
@@ -252,6 +260,9 @@ class VncPermissions(object):
 
     # This API sends perms instead of error code & message
     def obj_perms(self, request, id):
+        if is_internal_request():
+            return 'RWX'
+
         app = request.environ['bottle.app']
         if app.config.local_auth or self._server_mgr.is_auth_disabled():
             return 'RWX'

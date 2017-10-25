@@ -5079,7 +5079,7 @@ void DeleteTags(TestTag *tag, uint32_t count) {
 
 void AddGlobalPolicySet(const std::string &name, uint32_t id) {
     std::stringstream str;
-    str << "<is-global>true</is-global>";
+    str << "<all-applications>true</all-applications>";
     AddNode("application-policy-set", name.c_str(), id, str.str().c_str());
 }
 
@@ -5100,7 +5100,7 @@ void AddLocalVmRoute(Agent *agent, const std::string &vrf_name,
                          TagList(), CommunityList(),
                          PathPreference(), Ip4Address(0),
                          EcmpLoadBalance(), false, false,
-                         peer->sequence_number(), false);
+                         peer->sequence_number(), false, false);
     InetUnicastAgentRouteTable *rt_table =
         agent->vrf_table()->GetInet4UnicastRouteTable(vrf_name);
 
