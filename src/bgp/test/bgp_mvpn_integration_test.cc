@@ -596,7 +596,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
 
     // Verify that the route gets added
     TASK_UTIL_EXPECT_EQ(3, red_->Size());
-    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
     TASK_UTIL_EXPECT_EQ(8, master_->Size());
     TASK_UTIL_EXPECT_EQ(2, green_->Size());
 
@@ -609,7 +609,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
     TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
     TASK_UTIL_EXPECT_EQ(11, master_->Size());
-    TASK_UTIL_EXPECT_EQ(1, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
     TASK_UTIL_EXPECT_EQ(6, red_->Size());
     // Verify that sender should have received a route
     TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
