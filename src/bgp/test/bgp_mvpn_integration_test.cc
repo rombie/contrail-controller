@@ -607,8 +607,8 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     task_util::WaitForIdle();
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
-    TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
-    TASK_UTIL_EXPECT_EQ(11, master_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_->Size());
     TASK_UTIL_EXPECT_EQ(2, blue_->Size());
     TASK_UTIL_EXPECT_EQ(6, red_->Size());
     // Verify that sender should have received a route
