@@ -559,6 +559,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     // Register agents and add a source active mvpn route
     Subscribe("red", 1);
     Subscribe("green", 2);
+    Subscribe("blue", 3);
     Subscribe(BgpConfigManager::kFabricInstance, 1000);
     task_util::WaitForIdle();
 
