@@ -108,7 +108,8 @@ void MvpnTable::CreateManager() {
 void MvpnTable::DestroyManager() {
     if (!manager_)
         return;
-    DeleteMvpnManager();
+    if (IsDeleted())
+        DeleteMvpnManager();
     manager_->Terminate();
     delete manager_;
     manager_ = NULL;
@@ -189,13 +190,33 @@ const MvpnProjectManager *MvpnTable::GetProjectManager() const {
         return NULL;
     const RoutingInstance *rtinstance =
         routing_instance()->manager()->GetRoutingInstance(pm_network);
-    if (!rtinstance || rtinstance->deleted())
+    if (!rtinstance) // || rtinstance->deleted())
         return NULL;
     const ErmVpnTable *table = dynamic_cast<const ErmVpnTable *>(
         rtinstance->GetTable(Address::ERMVPN));
-    if (!table || table->IsDeleted())
+    if (!table) // || table->IsDeleted())
         return NULL;
     return table->mvpn_project_manager();
+}
+
+bool MvpnTable::IsProjectManagerUsable() const {
+    std::string pm_network = routing_instance()->mvpn_project_manager_network();
+    if (pm_network.empty())
+        return false;
+    const RoutingInstance *rtinstance =
+        routing_instance()->manager()->GetRoutingInstance(pm_network);
+    if (!rtinstance || rtinstance->deleted())
+        return false;
+    const ErmVpnTable *table = dynamic_cast<const ErmVpnTable *>(
+        rtinstance->GetTable(Address::ERMVPN));
+    if (!table || table->IsDeleted())
+        return false;
+
+    if (!table->mvpn_project_manager() ||
+            table->mvpn_project_manager()->deleter()->IsDeleted()) {
+        return false;
+    }
+    return true;
 }
 
 // Return the MvpnProjectManagerPartition for this route using the same DB

@@ -259,8 +259,16 @@ MvpnState::SG::SG(const IpAddress &source, const IpAddress &group) :
     source(source), group(group) {
 }
 
-bool MvpnState::SG::operator<(const SG &other)  const {
-    return (source < other.source) ?  true : (group < other.group);
+bool MvpnState::SG::operator<(const SG &other) const {
+    if (source < other.source)
+        return true;
+    if (source > other.source)
+        return false;
+    if (group < other.group)
+        return true;
+    if (group > other.group)
+        return false;
+    return false;
 }
 
 const MvpnState::SG &MvpnState::sg() const {
@@ -375,8 +383,9 @@ public:
     }
 
     virtual void Shutdown() {
-        if (!manager_->table()->IsDeleted())
-            manager_->NotifyAllRoutes();
+        if (manager_->table()->IsDeleted())
+            return;
+        manager_->table()->NotifyAllEntries();
     }
 
     virtual void Destroy() {
@@ -486,10 +495,6 @@ MvpnManagerPartition *MvpnManager::GetPartition(int part_id) {
 
 const MvpnManagerPartition *MvpnManager::GetPartition(int part_id) const {
     return GetPartition(part_id);
-}
-
-void MvpnManager::NotifyAllRoutes() {
-    table_->NotifyAllEntries();
 }
 
 // MvpnManager can be deleted only after all associated DB States are cleared.
@@ -855,7 +860,7 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
                                     table(), listener_id()));
 
     // Process route change as delete if ProjectManager is not set.
-    bool is_usable = rt->IsUsable() && GetProjectManagerPartition();
+    bool is_usable = rt->IsUsable() && table()->IsProjectManagerUsable();
     if (!is_usable) {
         if (!mvpn_dbstate)
             return;
@@ -945,7 +950,7 @@ void MvpnManagerPartition::ProcessType7SourceTreeJoinRoute(MvpnRoute *join_rt) {
         join_rt->GetState(table(), listener_id()));
 
     // Process route change as delete if ProjectManager is not set.
-    bool is_usable = join_rt->IsUsable() && GetProjectManagerPartition();
+    bool is_usable = join_rt->IsUsable() && table()->IsProjectManagerUsable();
     if (!is_usable) {
         if (!mvpn_dbstate)
             return;
@@ -980,7 +985,7 @@ void MvpnManagerPartition::ProcessType4LeafADRoute(MvpnRoute *leaf_ad) {
     MvpnDBState *mvpn_dbstate = dynamic_cast<MvpnDBState *>(
         leaf_ad->GetState(table(), listener_id()));
     // Process route change as delete if ProjectManager is not set.
-    bool is_usable = leaf_ad->IsUsable() && GetProjectManagerPartition();
+    bool is_usable = leaf_ad->IsUsable() && table()->IsProjectManagerUsable();
     if (!is_usable) {
         if (!mvpn_dbstate)
             return;
@@ -1034,7 +1039,7 @@ void MvpnManagerPartition::ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt) {
 
     MvpnRoute *leaf_ad_route = NULL;
     // Process route change as delete if ProjectManager is not set.
-    bool is_usable = spmsi_rt->IsUsable() && GetProjectManagerPartition();
+    bool is_usable = spmsi_rt->IsUsable() && table()->IsProjectManagerUsable();
     if (!is_usable) {
         if (!mvpn_dbstate)
             return;

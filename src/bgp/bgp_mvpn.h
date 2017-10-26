@@ -162,10 +162,6 @@ class MvpnManager {
 public:
     typedef std::vector<MvpnManagerPartition *> PartitionList;
     typedef PartitionList::const_iterator const_iterator;
-
-    struct MvpnNeighborCompare {
-        bool operator()(const MvpnNeighbor &lhs, const MvpnNeighbor &rhs) const;
-    };
     typedef std::map<RouteDistinguisher, MvpnNeighbor> NeighborMap;
 
     MvpnManager(MvpnTable *table, ErmVpnTable *ermvpn_table);
@@ -206,7 +202,6 @@ private:
     void FreePartitions();
     void UpdateNeighbor(MvpnRoute *route);
     void RouteListener(DBTablePartBase *tpart, DBEntryBase *db_entry);
-    void NotifyAllRoutes();
     bool FindResolvedNeighbor(const BgpPath *path,
                               MvpnNeighbor *neighbor) const;
     void SetDBState(MvpnRoute *route, MvpnDBState *mvpn_dbstate);

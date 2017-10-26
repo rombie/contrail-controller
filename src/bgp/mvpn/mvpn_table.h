@@ -92,6 +92,7 @@ public:
     MvpnRoute *FindRoute(const MvpnPrefix &prefix);
     const MvpnRoute *FindRoute(const MvpnPrefix &prefix) const;
     void CreateMvpnManagers();
+    bool IsProjectManagerUsable() const;
 
 private:
     friend class BgpMulticastTest;
