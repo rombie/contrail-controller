@@ -586,7 +586,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
 
     string tunnel;
     RouteAttributes attr;
-    NextHop nexthop_red("192.168.0.101", 11, tunnel, "red");
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
     agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
     task_util::WaitForIdle();
 
@@ -600,8 +600,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(2, green_->Size());
 
     task_util::WaitForIdle();
-    agent_xb_->AddType7MvpnRoute("red", mroute, "10.1.1.2", "30-40");
-    task_util::WaitForIdle();
+    agent_yb_->AddType7MvpnRoute("red", mroute, "10.1.2.2", "30-40");
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
 

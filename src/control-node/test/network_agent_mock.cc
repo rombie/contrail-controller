@@ -329,7 +329,7 @@ pugi::xml_document *XmppDocumentMock::RouteEnetDeleteXmlDoc(
 
 pugi::xml_document *XmppDocumentMock::RouteMvpnAddXmlDoc(
         const std::string &network, const std::string &sg,
-        const string &nh, int rt_type) {
+        int rt_type, const string &nh) {
     return RouteMvpnAddDeleteXmlDoc(network, sg, true, rt_type, nh);
 }
 
@@ -1276,7 +1276,7 @@ void NetworkAgentMock::AddType5MvpnRoute(const string &network_name,
                                          const string &mvpn_nexthop) {
     AgentPeer *peer = GetAgent();
     xml_document *xdoc;
-    xdoc = impl_->RouteMvpnAddXmlDoc(network_name, sg, mvpn_nexthop, 5);
+    xdoc = impl_->RouteMvpnAddXmlDoc(network_name, sg, 5, mvpn_nexthop);
     peer->SendDocument(xdoc);
     mvpn_route_mgr_->AddOriginated(network_name, sg);
 }
@@ -1287,8 +1287,7 @@ void NetworkAgentMock::AddType7MvpnRoute(const string &network_name,
                                          const string &label_range,
                                          const string &encap) {
     AgentPeer *peer = GetAgent();
-    xml_document *xdoc;
-    xdoc = impl_->RouteMvpnAddXmlDoc(network_name, sg, "", 7);
+    xml_document *xdoc = impl_->RouteMvpnAddXmlDoc(network_name, sg, 7);
     peer->SendDocument(xdoc);
     mvpn_route_mgr_->AddOriginated(network_name, sg);
     AddMcastRoute(BgpConfigManager::kFabricInstance, sg, nexthop,
