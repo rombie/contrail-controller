@@ -79,7 +79,6 @@ public:
     MvpnPrefix CreateType7SourceTreeJoinRoutePrefix(MvpnRoute *rt) const;
     MvpnRoute *FindType1ADRoute(const Ip4Address &originator_ip);
     MvpnRoute *FindType1ADRoute();
-    MvpnRoute *FindType2ADRoute();
     const MvpnRoute *FindType7SourceTreeJoinRoute(MvpnRoute *rt) const;
     MvpnRoute *LocateType1ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(const MvpnRoute *type7_join_rt);

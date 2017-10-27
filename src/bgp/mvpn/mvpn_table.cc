@@ -353,11 +353,6 @@ MvpnRoute *MvpnTable::FindType1ADRoute() {
     return FindType1ADRoute(Ip4Address(server()->bgp_identifier()));
 }
 
-MvpnRoute *MvpnTable::FindType2ADRoute() {
-    MvpnPrefix prefix = CreateType2ADRoutePrefix();
-    return FindRoute(prefix);
-}
-
 const MvpnRoute *MvpnTable::FindType7SourceTreeJoinRoute(MvpnRoute *rt) const {
     MvpnPrefix prefix = CreateType7SourceTreeJoinRoutePrefix(rt);
     return FindRoute(prefix);
