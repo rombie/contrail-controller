@@ -56,6 +56,7 @@ using autogen::McastNextHopsType;
 using autogen::McastTunnelEncapsulationListType;
 
 using autogen::MvpnItemType;
+using autogen::MvpnNextHopType;
 using autogen::MvpnTunnelEncapsulationListType;
 
 using autogen::ItemType;
@@ -948,8 +949,8 @@ bool BgpXmppChannel::ProcessMcastItem(string vrf_name,
 
 void BgpXmppChannel::CreateType5MvpnRouteRequest(IpAddress grp_address,
         IpAddress src_address, bool add_change, uint64_t subscription_gen_id,
-        int instance_id, DBRequest& req) {
-    RouteDistinguisher mc_rd(bgp_server_->bgp_identifier(), instance_id);
+        int instance_id, DBRequest& req, const MvpnNextHopType &nexthop) {
+    RouteDistinguisher mc_rd =  RouteDistinguisher::kZeroRd;
     MvpnPrefix mc_prefix(MvpnPrefix::SourceActiveADRoute, mc_rd,
             grp_address.to_v4(), src_address.to_v4());
     uint32_t flags = 0;
@@ -961,6 +962,15 @@ void BgpXmppChannel::CreateType5MvpnRouteRequest(IpAddress grp_address,
         req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
 
         BgpAttrSpec attrs;
+        // Next-hop ip address
+        IpAddress nh_address;
+        if (!XmppDecodeAddress(nexthop.af, nexthop.address, &nh_address)) {
+            return;
+        }
+
+        BgpAttrSourceRd source_rd(
+                RouteDistinguisher(nh_address.to_v4().to_ulong(), instance_id));
+        attrs.push_back(&source_rd);
         BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);
         req.data.reset(new MvpnTable::RequestData(
             attr, flags, 0, 0, subscription_gen_id));
@@ -1073,7 +1083,7 @@ bool BgpXmppChannel::ProcessMvpnItem(string vrf_name,
                 subscription_gen_id, req);
     } else if (rt_type == MvpnPrefix::SourceActiveADRoute) {
         CreateType5MvpnRouteRequest(grp_address, src_address, add_change,
-                subscription_gen_id, instance_id, req);
+                subscription_gen_id, instance_id, req, item.entry.next_hop);
     } else {
         BGP_LOG_PEER_INSTANCE_WARNING(Peer(), vrf_name, BGP_LOG_FLAG_ALL,
             "Unsupported route type " << item.entry.nlri.route_type);

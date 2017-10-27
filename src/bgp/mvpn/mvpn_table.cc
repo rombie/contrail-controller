@@ -298,11 +298,11 @@ MvpnRoute *MvpnTable::LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt) {
 
 MvpnPrefix MvpnTable::CreateType3SPMSIRoutePrefix(const MvpnRoute *type7_rt) {
     assert(type7_rt->GetPrefix().type() == MvpnPrefix::SourceTreeJoinRoute);
-    const RouteDistinguisher *rd = routing_instance()->GetRD();
+    const RouteDistinguisher rd = type7_rt->GetPrefix().route_distinguisher();
     Ip4Address source = type7_rt->GetPrefix().source();
     Ip4Address group = type7_rt->GetPrefix().group();
     const Ip4Address originator_ip(server()->bgp_identifier());
-    MvpnPrefix prefix(MvpnPrefix::SPMSIADRoute, *rd, originator_ip,
+    MvpnPrefix prefix(MvpnPrefix::SPMSIADRoute, rd, originator_ip,
             group, source);
     return prefix;
 }
@@ -318,7 +318,11 @@ MvpnPrefix MvpnTable::CreateType5SourceActiveRoutePrefix(MvpnRoute *rt) const {
 
 MvpnPrefix MvpnTable::CreateType7SourceTreeJoinRoutePrefix(
         MvpnRoute *rt) const {
-    const RouteDistinguisher rd = rt->GetPrefix().route_distinguisher();
+    // get the source-rd from attributes as we store type-5 route with zero-rd
+    const BgpAttr *attr = rt->BestPath()->GetAttr();
+    assert(attr);
+    assert(!attr->source_rd().IsZero());
+    const RouteDistinguisher rd =  attr->source_rd();
     Ip4Address source = rt->GetPrefix().source();
     Ip4Address group = rt->GetPrefix().group();
     MvpnPrefix prefix(MvpnPrefix::SourceTreeJoinRoute, rd,

@@ -312,10 +312,10 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     Subscribe(BgpConfigManager::kFabricInstance, 1000);
     string tunnel;
     RouteAttributes attr;
-    NextHop nexthop_red("192.168.0.101", 11, tunnel, "red");
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
     agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
     task_util::WaitForIdle();
-    agent_xa_->AddMvpnRoute("red", mroute, MvpnPrefix::SourceActiveADRoute);
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
     task_util::WaitForIdle();
 
     // Verify that the route gets added
@@ -326,8 +326,7 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     TASK_UTIL_EXPECT_EQ(1, red_inet_->Size());
     TASK_UTIL_EXPECT_EQ(1, green_inet_->Size());
 
-    agent_xb_->AddMvpnRoute("green", mroute, MvpnPrefix::SourceTreeJoinRoute,
-            "10.1.1.2", "30-40");
+    agent_xb_->AddType7MvpnRoute("green", mroute, "10.1.1.2", "30-40");
     TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());
 
     TASK_UTIL_EXPECT_EQ(7, green_->Size());
@@ -592,7 +591,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     task_util::WaitForIdle();
 
     const char *mroute = "224.1.2.3,192.168.1.1";
-    agent_xa_->AddMvpnRoute("red", mroute, MvpnPrefix::SourceActiveADRoute);
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
 
     // Verify that the type5 route gets added to red and master only
     TASK_UTIL_EXPECT_EQ(3, red_->Size());
@@ -600,10 +599,8 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(9, master_->Size());
     TASK_UTIL_EXPECT_EQ(2, green_->Size());
 
-
     task_util::WaitForIdle();
-    agent_yb_->AddMvpnRoute("red", mroute, MvpnPrefix::SourceTreeJoinRoute,
-            "10.1.2.2", "30-40");
+    agent_xb_->AddType7MvpnRoute("red", mroute, "10.1.1.2", "30-40");
     task_util::WaitForIdle();
     task_util::WaitForIdle();
     TASK_UTIL_EXPECT_EQ(3, fabric_ermvpn_->Size());

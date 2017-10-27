@@ -253,6 +253,32 @@ protected:
         return table->FindRoute(ErmVpnPrefix::FromString(prefix_str));
     }
 
+    void AddType5MvpnRoute(BgpTable *table, const string &prefix_str,
+                      const string &target, const string &source) {
+        error_code e;
+        IpAddress nh_address = IpAddress::from_string(source, e);
+        BgpAttrSourceRd source_rd(
+                RouteDistinguisher(nh_address.to_v4().to_ulong(), 65535));
+        MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
+        DBRequest add_req;
+        add_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
+
+        BgpAttrSpec attr_spec;
+        ExtCommunitySpec *commspec(new ExtCommunitySpec());
+        RouteTarget tgt = RouteTarget::FromString(target);
+        commspec->communities.push_back(tgt.GetExtCommunityValue());
+        attr_spec.push_back(commspec);
+        attr_spec.push_back(&source_rd);
+
+        BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
+        attr_spec.pop_back();
+        STLDeleteValues(&attr_spec);
+        add_req.data.reset(new MvpnTable::RequestData(attr, 0, 20));
+        add_req.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+        table->Enqueue(&add_req);
+        task_util::WaitForIdle();
+    }
+
     void AddMvpnRoute(BgpTable *table, const string &prefix_str,
                       const string &target) {
         MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
@@ -992,8 +1018,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
 // Type-5 route comes in first followed by Type-7 join
 TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     VerifyInitialState(pm_preconfigured_);
-    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
+    AddType5MvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
 
     if (!pm_preconfigured_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1068,8 +1094,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
     }
 
     // Now inject a remote type7 join.
-    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
+    AddType5MvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
 
     if (!pm_preconfigured_) {
         VerifyInitialState(false, 2, 0, 1, 2, 2, 0, 1, 2);
@@ -1111,8 +1137,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
 // Type-7 join route gets deleted first, afterwards.
 TEST_P(BgpMvpnTest, Type3_SPMSI_3) {
     VerifyInitialState(pm_preconfigured_);
-    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
+    AddType5MvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
 
     if (!pm_preconfigured_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1185,8 +1211,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
     TASK_UTIL_EXPECT_EQ(3, green_->Size());
 
     // Now inject a remote type7 join.
-    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
+    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
+    AddType5MvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
 
     // Route should go only into red_ which has the source-active route. This
     // should cause a Type3 S-PMSI route to be originated. This route will get
@@ -1254,9 +1280,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
 // Receive Type-5 source active, but no type-7 join is received at all.
 TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     VerifyInitialState(pm_preconfigured_);
-    const string t5_prefix = "5-10.1.1.1:65535,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001");
-
+    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
+    AddType5MvpnRoute(red_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
     if (!pm_preconfigured_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
         VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
