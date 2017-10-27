@@ -174,13 +174,6 @@ MvpnProjectManager *MvpnTable::GetProjectManager() {
         static_cast<const MvpnTable *>(this)->GetProjectManager());
 }
 
-// Call the const version to avoid code duplication.
-MvpnProjectManagerPartition *MvpnTable::GetProjectManagerPartition(
-        BgpRoute *rt) {
-    return const_cast<MvpnProjectManagerPartition *>(
-        static_cast<const MvpnTable *>(this)->GetProjectManagerPartition(rt));
-}
-
 // Get MvpnProjectManager object for this Mvpn. Each MVPN network is associated
 // with a parent project maanger network via configuration. MvpnProjectManager
 // is retrieved from this parent network RoutingInstance's ErmVpnTable.
@@ -307,15 +300,6 @@ MvpnPrefix MvpnTable::CreateType3SPMSIRoutePrefix(const MvpnRoute *type7_rt) {
     return prefix;
 }
 
-MvpnPrefix MvpnTable::CreateType5SourceActiveRoutePrefix(MvpnRoute *rt) const {
-    const RouteDistinguisher rd = rt->GetPrefix().route_distinguisher();
-    Ip4Address source = rt->GetPrefix().source();
-    Ip4Address group = rt->GetPrefix().group();
-    const Ip4Address originator_ip(server()->bgp_identifier());
-    MvpnPrefix prefix(MvpnPrefix::SourceActiveADRoute, rd, group, source);
-    return prefix;
-}
-
 MvpnPrefix MvpnTable::CreateType7SourceTreeJoinRoutePrefix(
         MvpnRoute *rt) const {
     // get the source-rd from attributes as we store type-5 route with zero-rd
@@ -340,11 +324,6 @@ MvpnPrefix MvpnTable::CreateType2ADRoutePrefix() {
     MvpnPrefix prefix(MvpnPrefix::InterASPMSIADRoute, *rd,
             server()->autonomous_system());
     return prefix;
-}
-
-MvpnRoute *MvpnTable::LocateType2ADRoute() {
-    MvpnPrefix prefix = CreateType2ADRoutePrefix();
-    return LocateRoute(prefix);
 }
 
 MvpnPrefix MvpnTable::CreateType1ADRoutePrefix(
@@ -376,16 +355,6 @@ MvpnRoute *MvpnTable::FindType1ADRoute() {
 
 MvpnRoute *MvpnTable::FindType2ADRoute() {
     MvpnPrefix prefix = CreateType2ADRoutePrefix();
-    return FindRoute(prefix);
-}
-
-MvpnRoute *MvpnTable::FindType5SourceActiveADRoute(MvpnRoute *rt) {
-    MvpnPrefix prefix = CreateType5SourceActiveRoutePrefix(rt);
-    return FindRoute(prefix);
-}
-
-const MvpnRoute *MvpnTable::FindType5SourceActiveADRoute(MvpnRoute *rt) const {
-    MvpnPrefix prefix = CreateType5SourceActiveRoutePrefix(rt);
     return FindRoute(prefix);
 }
 

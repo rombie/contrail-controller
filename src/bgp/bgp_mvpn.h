@@ -56,7 +56,6 @@ struct MvpnNeighbor {
 public:
     MvpnNeighbor();
     MvpnNeighbor(const RouteDistinguisher &rd, const IpAddress &originator);
-    MvpnNeighbor(const RouteDistinguisher &rd, uint32_t asn);
     std::string ToString() const;
     const RouteDistinguisher &rd() const;
     const IpAddress &originator() const;
@@ -114,7 +113,6 @@ private:
     friend class MvpnManager;
 
     MvpnTable *table();
-    const MvpnTable *table() const;
     int listener_id() const;
 
     void ProcessType3SPMSIRoute(MvpnRoute *spmsi_rt);
@@ -124,8 +122,6 @@ private:
 
     MvpnStatePtr GetState(MvpnRoute *route);
     MvpnStatePtr GetState(MvpnRoute *route) const;
-    MvpnStatePtr GetState(ErmVpnRoute *route) const;
-    MvpnStatePtr GetState(ErmVpnRoute *route);
     MvpnStatePtr LocateState(MvpnRoute *route);
     void NotifyForestNode(const Ip4Address &source, const Ip4Address &group);
     bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
@@ -168,20 +164,13 @@ public:
     virtual ~MvpnManager();
     bool FindNeighbor(const RouteDistinguisher &rd, MvpnNeighbor *nbr) const;
     MvpnProjectManager *GetProjectManager();
-    const MvpnProjectManager *GetProjectManager() const;
     void ManagedDelete();
     BgpRoute *RouteReplicate(BgpServer *server, BgpTable *src_table,
         BgpRoute *source_rt, const BgpPath *src_path, ExtCommunityPtr comm);
     void ResolvePath(RoutingInstance *rtinstance, BgpRoute *rt, BgpPath *path);
-    MvpnManagerPartition *GetPartition(int part_id);
-    const MvpnManagerPartition *GetPartition(int part_id) const;
     MvpnTable *table();
     const MvpnTable *table() const;
     int listener_id() const;
-    PathResolver *path_resolver();
-    PathResolver *path_resolver() const;
-    LifetimeActor *deleter();
-    const LifetimeActor *deleter() const;
     bool deleted() const;
     virtual void Terminate();
     virtual void Initialize();
@@ -293,18 +282,14 @@ public:
     virtual ~MvpnState();
     const SG &sg() const;
     ErmVpnRoute *global_ermvpn_tree_rt();
-    const ErmVpnRoute *global_ermvpn_tree_rt() const;
     MvpnRoute *spmsi_rt();
-    const MvpnRoute *spmsi_rt() const;
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
     void set_spmsi_rt(MvpnRoute *spmsi_rt);
-    const RoutesSet &spmsi_routes_received() const;
     RoutesSet &spmsi_routes_received();
     const RoutesMap &leafad_routes_received() const;
     RoutesMap &leafad_routes_received();
     const StatesMap *states() const { return states_; }
     StatesMap *states() { return states_; }
-    const MvpnRoute *source_active_rt() const;
     MvpnRoute *source_active_rt();
     void set_source_active_rt(MvpnRoute *source_active_rt);
     MvpnProjectManager *project_manager() { return project_manager_; }
@@ -340,15 +325,10 @@ private:
 // is refcounted is also deleted only when there is no MvpnDBState that refers
 // to it.
 struct MvpnDBState : public DBState {
-    MvpnDBState();
-    MvpnDBState(MvpnStatePtr state, MvpnRoute *route);
-    ~MvpnDBState();
     explicit MvpnDBState(MvpnStatePtr state);
-    explicit MvpnDBState(MvpnRoute *route);
+    ~MvpnDBState();
     MvpnStatePtr state();
-    const MvpnStatePtr state() const;
     MvpnRoute *route();
-    const MvpnRoute *route() const;
     void set_state(MvpnStatePtr state);
     void set_route(MvpnRoute *route);
 
@@ -439,18 +419,16 @@ public:
     void ManagedDelete();
     virtual void Terminate();
     ErmVpnTable *table();
-    const ErmVpnTable *table() const;
     int listener_id() const;
+    const LifetimeActor *deleter() const;
     virtual void Initialize();
     MvpnStatePtr GetState(MvpnRoute *route) const;
     MvpnStatePtr GetState(MvpnRoute *route);
     MvpnStatePtr GetState(ErmVpnRoute *route) const;
-    MvpnStatePtr GetState(ErmVpnRoute *route);
     UpdateInfo *GetUpdateInfo(MvpnRoute *route);
     const PartitionList &partitions() const { return partitions_; }
     bool MayDelete() const;
     LifetimeActor *deleter();
-    const LifetimeActor *deleter() const;
     void GetMvpnSourceAddress(ErmVpnRoute *ermvpn_route,
                               Ip4Address *address) const;
 

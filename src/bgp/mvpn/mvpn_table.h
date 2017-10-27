@@ -69,7 +69,6 @@ public:
     MvpnProjectManager *GetProjectManager();
     const MvpnProjectManagerPartition *GetProjectManagerPartition(
             BgpRoute *route) const;
-    MvpnProjectManagerPartition *GetProjectManagerPartition(BgpRoute *rt);
     void UpdateSecondaryTablesForReplication(BgpRoute *rt,
         TableSet *secondary_tables);
     MvpnPrefix CreateType4LeafADRoutePrefix(const MvpnRoute *type3_rt);
@@ -77,16 +76,12 @@ public:
     MvpnPrefix CreateType2ADRoutePrefix();
     MvpnPrefix CreateType1ADRoutePrefix(const Ip4Address &originator_ip);
     MvpnPrefix CreateType1ADRoutePrefix();
-    MvpnPrefix CreateType5SourceActiveRoutePrefix(MvpnRoute *rt) const;
     MvpnPrefix CreateType7SourceTreeJoinRoutePrefix(MvpnRoute *rt) const;
     MvpnRoute *FindType1ADRoute(const Ip4Address &originator_ip);
     MvpnRoute *FindType1ADRoute();
     MvpnRoute *FindType2ADRoute();
     const MvpnRoute *FindType7SourceTreeJoinRoute(MvpnRoute *rt) const;
-    MvpnRoute *FindType5SourceActiveADRoute(MvpnRoute *rt);
-    const MvpnRoute *FindType5SourceActiveADRoute(MvpnRoute *rt) const;
     MvpnRoute *LocateType1ADRoute();
-    MvpnRoute *LocateType2ADRoute();
     MvpnRoute *LocateType3SPMSIRoute(const MvpnRoute *type7_join_rt);
     MvpnRoute *LocateType4LeafADRoute(const MvpnRoute *type3_spmsi_rt);
     MvpnRoute *FindRoute(const MvpnPrefix &prefix);

@@ -158,10 +158,6 @@ MvpnStatePtr MvpnProjectManager::GetState(ErmVpnRoute *route) const {
     return GetPartition(route->get_table_partition()->index())->GetState(sg);
 }
 
-MvpnStatePtr MvpnProjectManager::GetState(ErmVpnRoute *route) {
-    return static_cast<const MvpnProjectManager *>(this)->GetState(route);
-}
-
 MvpnProjectManagerPartition::MvpnProjectManagerPartition(
         MvpnProjectManager *manager, int part_id)
     : manager_(manager), part_id_(part_id) {
@@ -202,10 +198,6 @@ MvpnNeighbor::MvpnNeighbor() : source_as_(0) {
 MvpnNeighbor::MvpnNeighbor(const RouteDistinguisher &rd,
                            const IpAddress &originator) :
         rd_(rd), originator_(originator), source_as_(0) {
-}
-
-MvpnNeighbor::MvpnNeighbor(const RouteDistinguisher &rd, uint32_t source_as) :
-        rd_(rd), source_as_(source_as) {
 }
 
 const RouteDistinguisher &MvpnNeighbor::rd() const {
@@ -279,20 +271,8 @@ ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() {
     return global_ermvpn_tree_rt_;
 }
 
-const ErmVpnRoute *MvpnState::global_ermvpn_tree_rt() const {
-    return global_ermvpn_tree_rt_;
-}
-
 MvpnRoute *MvpnState::spmsi_rt() {
     return spmsi_rt_;
-}
-
-const MvpnRoute *MvpnState::spmsi_rt() const {
-    return spmsi_rt_;
-}
-
-const MvpnState::RoutesSet &MvpnState::spmsi_routes_received() const {
-    return spmsi_routes_received_;
 }
 
 MvpnState::RoutesSet &MvpnState::spmsi_routes_received() {
@@ -315,10 +295,6 @@ void MvpnState::set_spmsi_rt(MvpnRoute *spmsi_rt) {
     spmsi_rt_ = spmsi_rt;
 }
 
-const MvpnRoute *MvpnState::source_active_rt() const {
-    return source_active_rt_;
-}
-
 MvpnRoute *MvpnState::source_active_rt() {
     return source_active_rt_;
 }
@@ -327,17 +303,7 @@ void MvpnState::set_source_active_rt(MvpnRoute *source_active_rt) {
     source_active_rt_ = source_active_rt;
 }
 
-MvpnDBState::MvpnDBState() : state_(NULL), route_(NULL) {
-}
-
 MvpnDBState::MvpnDBState(MvpnStatePtr state) : state_(state) , route_(NULL) {
-}
-
-MvpnDBState::MvpnDBState(MvpnRoute *route) : state_(NULL) , route_(route) {
-}
-
-MvpnDBState::MvpnDBState(MvpnStatePtr state, MvpnRoute *route) :
-        state_(state) , route_(route) {
 }
 
 MvpnDBState::~MvpnDBState() {
@@ -348,15 +314,7 @@ MvpnStatePtr MvpnDBState::state() {
     return state_;
 }
 
-const MvpnStatePtr MvpnDBState::state() const {
-    return state_;
-}
-
 MvpnRoute *MvpnDBState::route() {
-    return route_;
-}
-
-const MvpnRoute *MvpnDBState::route() const {
     return route_;
 }
 
@@ -422,14 +380,6 @@ int MvpnManager::listener_id() const {
     return listener_id_;
 }
 
-PathResolver *MvpnManager::path_resolver() {
-    return table_->path_resolver();
-}
-
-PathResolver *MvpnManager::path_resolver() const {
-    return table_->path_resolver();
-}
-
 void MvpnManager::Terminate() {
     CHECK_CONCURRENCY("bgp::Config");
 
@@ -461,14 +411,6 @@ void MvpnManager::Terminate() {
     FreePartitions();
 }
 
-LifetimeActor *MvpnManager::deleter() {
-    return deleter_.get();
-}
-
-const LifetimeActor *MvpnManager::deleter() const {
-    return deleter_.get();
-}
-
 void MvpnManager::ManagedDelete() {
     deleter_->Delete();
 }
@@ -487,14 +429,6 @@ void MvpnManager::FreePartitions() {
         delete partitions_[part_id];
     }
     partitions_.clear();
-}
-
-MvpnManagerPartition *MvpnManager::GetPartition(int part_id) {
-    return partitions_[part_id];
-}
-
-const MvpnManagerPartition *MvpnManager::GetPartition(int part_id) const {
-    return GetPartition(part_id);
 }
 
 // MvpnManager can be deleted only after all associated DB States are cleared.
@@ -524,10 +458,6 @@ MvpnTable *MvpnManagerPartition::table() {
     return manager_->table();
 }
 
-const MvpnTable *MvpnManagerPartition::table() const {
-    return manager_->table();
-}
-
 int MvpnManagerPartition::listener_id() const {
     return manager_->listener_id();
 }
@@ -552,10 +482,6 @@ MvpnManagerPartition::GetProjectManagerPartition() const {
 }
 
 MvpnProjectManager *MvpnManager::GetProjectManager() {
-    return table_->GetProjectManager();
-}
-
-const MvpnProjectManager *MvpnManager::GetProjectManager() const {
     return table_->GetProjectManager();
 }
 
@@ -590,25 +516,7 @@ MvpnStatePtr MvpnManagerPartition::GetState(MvpnRoute *rt) {
     return static_cast<const MvpnManagerPartition *>(this)->GetState(rt);
 }
 
-MvpnStatePtr MvpnManagerPartition::GetState(ErmVpnRoute *rt) const {
-    const MvpnProjectManagerPartition *project_manager_partition =
-        GetProjectManagerPartition();
-    if (!project_manager_partition)
-        return NULL;
-    MvpnState::SG sg = MvpnState::SG(rt->GetPrefix().source(),
-                                     rt->GetPrefix().group());
-    return project_manager_partition->GetState(sg);
-}
-
-MvpnStatePtr MvpnManagerPartition::GetState(ErmVpnRoute *rt) {
-    return static_cast<const MvpnManagerPartition *>(this)->GetState(rt);
-}
-
 ErmVpnTable *MvpnProjectManager::table() {
-    return table_;
-}
-
-const ErmVpnTable *MvpnProjectManager::table() const {
     return table_;
 }
 
