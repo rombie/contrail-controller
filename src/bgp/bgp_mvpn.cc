@@ -279,10 +279,6 @@ MvpnState::RoutesSet &MvpnState::spmsi_routes_received() {
     return spmsi_routes_received_;
 }
 
-const MvpnState::RoutesMap &MvpnState::leafad_routes_received() const {
-    return leafad_routes_received_;
-}
-
 MvpnState::RoutesMap &MvpnState::leafad_routes_received() {
     return leafad_routes_received_;
 }
@@ -392,15 +388,6 @@ void MvpnManager::Terminate() {
         type1_route->NotifyOrDelete();
     }
 
-    // Delete locally originated type-1 route.
-    MvpnRoute *type2_route = table_->FindType2ADRoute();
-    if (type2_route) {
-        BgpPath *path = type2_route->FindPath(BgpPath::Local, 0);
-        if (path)
-            type2_route->DeletePath(path);
-        type2_route->NotifyOrDelete();
-    }
-
     if (identifier_listener_id_ != -1) {
         table_->server()->UnregisterIdentifierUpdateCallback(
             identifier_listener_id_);
@@ -413,10 +400,6 @@ void MvpnManager::Terminate() {
 
 void MvpnManager::ManagedDelete() {
     deleter_->Delete();
-}
-
-bool MvpnManager::deleted() const {
-    return deleter_->IsDeleted();
 }
 
 void MvpnManager::AllocPartitions() {
@@ -813,7 +796,6 @@ void MvpnManagerPartition::ProcessType5SourceActiveRoute(MvpnRoute *rt) {
     const MvpnRoute *join_rt = table()->FindType7SourceTreeJoinRoute(rt);
     if (!join_rt || !join_rt->IsUsable() ||
             !join_rt->BestPath()->IsSecondary()) {
-
         // Remove any type-3 spmsi path originated before.
         MvpnRoute *spmsi_rt = mvpn_dbstate->route();
         if (spmsi_rt) {

@@ -171,7 +171,6 @@ public:
     MvpnTable *table();
     const MvpnTable *table() const;
     int listener_id() const;
-    bool deleted() const;
     virtual void Terminate();
     virtual void Initialize();
     const NeighborMap neighbors() const;
@@ -286,7 +285,6 @@ public:
     void set_global_ermvpn_tree_rt(ErmVpnRoute *global_ermvpn_tree_rt);
     void set_spmsi_rt(MvpnRoute *spmsi_rt);
     RoutesSet &spmsi_routes_received();
-    const RoutesMap &leafad_routes_received() const;
     RoutesMap &leafad_routes_received();
     const StatesMap *states() const { return states_; }
     StatesMap *states() { return states_; }

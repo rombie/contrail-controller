@@ -183,11 +183,11 @@ const MvpnProjectManager *MvpnTable::GetProjectManager() const {
         return NULL;
     const RoutingInstance *rtinstance =
         routing_instance()->manager()->GetRoutingInstance(pm_network);
-    if (!rtinstance) // || rtinstance->deleted())
+    if (!rtinstance)
         return NULL;
     const ErmVpnTable *table = dynamic_cast<const ErmVpnTable *>(
         rtinstance->GetTable(Address::ERMVPN));
-    if (!table) // || table->IsDeleted())
+    if (!table)
         return NULL;
     return table->mvpn_project_manager();
 }

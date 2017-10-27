@@ -11,6 +11,8 @@
 #include "base/string_util.h"
 #include "bgp/mvpn/mvpn_table.h"
 
+using boost::system::errc::invalid_argument;
+using boost::system::error_code;
 using std::copy;
 using std::string;
 using std::vector;
@@ -76,8 +78,8 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         size_t rd_offset = 0;
         prefix->rd_ = RouteDistinguisher(&proto_prefix.prefix[rd_offset]);
         size_t originator_offset = rd_offset + rd_size;
-        prefix->originator_ = Ip4Address(get_value
-                (&proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
+        prefix->originator_ = Ip4Address(get_value(
+            &proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
         break;
     }
     case InterASPMSIADRoute: {
@@ -103,17 +105,17 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         size_t source_offset = rd_offset + rd_size + 1;
         if (proto_prefix.prefix[source_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->source_ = Ip4Address(
-            get_value(&proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
+        prefix->source_ = Ip4Address(get_value(
+            &proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
 
         size_t group_offset = source_offset + Address::kMaxV4Bytes + 1;
         if (proto_prefix.prefix[group_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->group_ = Ip4Address(
-            get_value(&proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
+        prefix->group_ = Ip4Address(get_value(
+            &proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
         size_t originator_offset = group_offset + Address::kMaxV4Bytes;
-        prefix->originator_ = Ip4Address(get_value
-                (&proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
+        prefix->originator_ = Ip4Address(get_value(
+            &proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
         break;
     }
     case LeafADRoute: {
@@ -123,18 +125,18 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         if (nlri_size != expected_nlri_size)
             return -1;
         size_t source_offset = 1 + rd_size;
-        prefix->source_ = Ip4Address(
-                get_value(&proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
+        prefix->source_ = Ip4Address(get_value(
+            &proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
 
         size_t group_offset = source_offset + Address::kMaxV4Bytes;
-        prefix->group_ = Ip4Address(
-                get_value(&proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
+        prefix->group_ = Ip4Address(get_value(
+            &proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
         size_t originator_offset = nlri_size - Address::kMaxV4Bytes;
         prefix->rt_key_.resize(originator_offset);
         copy(proto_prefix.prefix.begin(), proto_prefix.prefix.begin() +
                 originator_offset, prefix->rt_key_.begin());
-        prefix->originator_ = Ip4Address(get_value
-                (&proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
+        prefix->originator_ = Ip4Address(get_value(
+            &proto_prefix.prefix[originator_offset], Address::kMaxV4Bytes));
         break;
     }
     case SourceActiveADRoute: {
@@ -146,14 +148,14 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         size_t source_offset = rd_offset + rd_size + 1;
         if (proto_prefix.prefix[source_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->source_ = Ip4Address(
-            get_value(&proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
+        prefix->source_ = Ip4Address(get_value(
+            &proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
 
         size_t group_offset = source_offset + Address::kMaxV4Bytes + 1;
         if (proto_prefix.prefix[group_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->group_ = Ip4Address(
-            get_value(&proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
+        prefix->group_ = Ip4Address(get_value(
+            &proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
         break;
     }
     case SourceTreeJoinRoute:
@@ -172,14 +174,14 @@ int MvpnPrefix::FromProtoPrefix(const BgpProtoPrefix &proto_prefix,
         size_t source_offset = asn_offset + asn_size + 1;
         if (proto_prefix.prefix[source_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->source_ = Ip4Address(
-            get_value(&proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
+        prefix->source_ = Ip4Address(get_value(
+            &proto_prefix.prefix[source_offset], Address::kMaxV4Bytes));
 
         size_t group_offset = source_offset + Address::kMaxV4Bytes + 1;
         if (proto_prefix.prefix[group_offset - 1] != Address::kMaxV4PrefixLen)
             return -1;
-        prefix->group_ = Ip4Address(
-            get_value(&proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
+        prefix->group_ = Ip4Address(get_value(
+            &proto_prefix.prefix[group_offset], Address::kMaxV4Bytes));
         break;
     }
     default: {
@@ -335,38 +337,38 @@ void MvpnPrefix::BuildProtoPrefix(BgpProtoPrefix *proto_prefix) const {
     }
 }
 
-bool MvpnPrefix::GetTypeFromString(MvpnPrefix& prefix, const string &str,
-    boost::system::error_code *errorp, size_t& pos1) {
-    pos1 = str.find('-');
-    if (pos1 == string::npos) {
+bool MvpnPrefix::GetTypeFromString(MvpnPrefix *prefix, const string &str,
+    error_code *errorp, size_t *pos1) {
+    *pos1 = str.find('-');
+    if (*pos1 == string::npos) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
-    string temp_str = str.substr(0, pos1);
-    stringToInteger(temp_str, prefix.type_);
-    if (!IsValid(prefix.type_)) {
+    string temp_str = str.substr(0, *pos1);
+    stringToInteger(temp_str, prefix->type_);
+    if (!IsValid(prefix->type_)) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
     return true;
 }
 
-bool MvpnPrefix::GetRDFromString(MvpnPrefix& prefix, const string &str,
-        size_t pos1, size_t& pos2, boost::system::error_code *errorp) {
-    pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
+bool MvpnPrefix::GetRDFromString(MvpnPrefix *prefix, const string &str,
+        size_t pos1, size_t *pos2, error_code *errorp) {
+    *pos2 = str.find(',', pos1 + 1);
+    if (*pos2 == string::npos) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
-    string temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code rd_err;
-    prefix.rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
+    string temp_str = str.substr(pos1 + 1, *pos2 - pos1 - 1);
+    error_code rd_err;
+    prefix->rd_ = RouteDistinguisher::FromString(temp_str, &rd_err);
     if (rd_err != 0) {
         if (errorp != NULL) {
             *errorp = rd_err;
@@ -376,12 +378,11 @@ bool MvpnPrefix::GetRDFromString(MvpnPrefix& prefix, const string &str,
     return true;
 }
 
-bool MvpnPrefix::GetOriginatorFromString(MvpnPrefix& prefix, const string &str,
-        size_t pos1,
-        boost::system::error_code *errorp) {
+bool MvpnPrefix::GetOriginatorFromString(MvpnPrefix *prefix,
+        const string &str, size_t pos1, error_code *errorp) {
     string temp_str = str.substr(pos1 + 1, string::npos);
-    boost::system::error_code originator_err;
-    prefix.originator_ = Ip4Address::from_string(temp_str, originator_err);
+    error_code originator_err;
+    prefix->originator_ = Ip4Address::from_string(temp_str, originator_err);
     if (originator_err != 0) {
         if (errorp != NULL) {
             *errorp = originator_err;
@@ -391,18 +392,18 @@ bool MvpnPrefix::GetOriginatorFromString(MvpnPrefix& prefix, const string &str,
     return true;
 }
 
-bool MvpnPrefix::GetSourceFromString(MvpnPrefix& prefix, const string &str,
-        size_t pos1, size_t& pos2, boost::system::error_code *errorp) {
-    pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
+bool MvpnPrefix::GetSourceFromString(MvpnPrefix *prefix, const string &str,
+        size_t pos1, size_t *pos2, error_code *errorp) {
+    *pos2 = str.find(',', pos1 + 1);
+    if (*pos2 == string::npos) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
-    string temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code source_err;
-    prefix.source_ = Ip4Address::from_string(temp_str, source_err);
+    string temp_str = str.substr(pos1 + 1, *pos2 - pos1 - 1);
+    error_code source_err;
+    prefix->source_ = Ip4Address::from_string(temp_str, source_err);
     if (source_err != 0) {
         if (errorp != NULL) {
             *errorp = source_err;
@@ -412,13 +413,13 @@ bool MvpnPrefix::GetSourceFromString(MvpnPrefix& prefix, const string &str,
     return true;
 }
 
-bool MvpnPrefix::GetGroupFromString(MvpnPrefix& prefix, const string &str,
-        size_t pos1, size_t& pos2, boost::system::error_code *errorp,
+bool MvpnPrefix::GetGroupFromString(MvpnPrefix *prefix, const string &str,
+        size_t pos1, size_t *pos2, error_code *errorp,
         bool last) {
-    pos2 = str.find(',', pos1 + 1);
-    if (!last && pos2 == string::npos) {
+    *pos2 = str.find(',', pos1 + 1);
+    if (!last && *pos2 == string::npos) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
@@ -426,9 +427,9 @@ bool MvpnPrefix::GetGroupFromString(MvpnPrefix& prefix, const string &str,
     if (last)
         temp_str = str.substr(pos1 + 1, string::npos);
     else
-        temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    boost::system::error_code group_err;
-    prefix.group_ = Ip4Address::from_string(temp_str, group_err);
+        temp_str = str.substr(pos1 + 1, *pos2 - pos1 - 1);
+    error_code group_err;
+    prefix->group_ = Ip4Address::from_string(temp_str, group_err);
     if (group_err != 0) {
         if (errorp != NULL) {
             *errorp = group_err;
@@ -438,47 +439,47 @@ bool MvpnPrefix::GetGroupFromString(MvpnPrefix& prefix, const string &str,
     return true;
 }
 
-bool MvpnPrefix::GetAsnFromString(MvpnPrefix& prefix, const string &str,
-        size_t pos1, size_t& pos2, boost::system::error_code *errorp) {
-    pos2 = str.find(',', pos1 + 1);
-    if (pos2 == string::npos) {
+bool MvpnPrefix::GetAsnFromString(MvpnPrefix *prefix, const string &str,
+        size_t pos1, size_t *pos2, error_code *errorp) {
+    *pos2 = str.find(',', pos1 + 1);
+    if (*pos2 == string::npos) {
         if (errorp != NULL) {
-            *errorp = make_error_code(boost::system::errc::invalid_argument);
+            *errorp = make_error_code(invalid_argument);
         }
         return false;
     }
-    string temp_str = str.substr(pos1 + 1, pos2 - pos1 - 1);
-    if (!stringToInteger(temp_str, prefix.asn_)) {
+    string temp_str = str.substr(pos1 + 1, *pos2 - pos1 - 1);
+    if (!stringToInteger(temp_str, prefix->asn_)) {
         return false;
     }
     return true;
 }
 
 MvpnPrefix MvpnPrefix::FromString(const string &str,
-    boost::system::error_code *errorp) {
+    error_code *errorp) {
     MvpnPrefix prefix, null_prefix;
     string temp_str;
 
     // Look for Type.
     size_t pos1;
-    if (!GetTypeFromString(prefix, str, errorp, pos1))
+    if (!GetTypeFromString(&prefix, str, errorp, &pos1))
         return null_prefix;
 
     switch (prefix.type_) {
     case IntraASPMSIADRoute: {
         // Look for RD.
         size_t pos2;
-        if (!GetRDFromString(prefix, str, pos1, pos2, errorp))
+        if (!GetRDFromString(&prefix, str, pos1, &pos2, errorp))
             return null_prefix;
         // rest is originator
-        if (!GetOriginatorFromString(prefix, str, pos2, errorp))
+        if (!GetOriginatorFromString(&prefix, str, pos2, errorp))
             return null_prefix;
         break;
     }
     case InterASPMSIADRoute: {
         // Look for RD.
         size_t pos2;
-        if (!GetRDFromString(prefix, str, pos1, pos2, errorp))
+        if (!GetRDFromString(&prefix, str, pos1, &pos2, errorp))
             return null_prefix;
         // rest is asn
         temp_str = str.substr(pos2 + 1, string::npos);
@@ -490,20 +491,20 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
     case SPMSIADRoute: {
         // Look for RD.
         size_t pos2;
-        if (!GetRDFromString(prefix, str, pos1, pos2, errorp))
+        if (!GetRDFromString(&prefix, str, pos1, &pos2, errorp))
             return null_prefix;
         // Look for source.
         size_t pos3;
-        if (!GetSourceFromString(prefix, str, pos2, pos3, errorp))
+        if (!GetSourceFromString(&prefix, str, pos2, &pos3, errorp))
             return null_prefix;
 
         // Look for group.
         size_t pos4;
-        if (!GetGroupFromString(prefix, str, pos3, pos4, errorp))
+        if (!GetGroupFromString(&prefix, str, pos3, &pos4, errorp))
             return null_prefix;
 
         // rest is originator
-        if (!GetOriginatorFromString(prefix, str, pos4, errorp))
+        if (!GetOriginatorFromString(&prefix, str, pos4, errorp))
             return null_prefix;
         break;
     }
@@ -512,16 +513,16 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
         size_t pos_last = str.find_last_of(',');
         if (pos_last == string::npos) {
             if (errorp != NULL) {
-                *errorp = make_error_code(boost::system::errc::invalid_argument);
+                *errorp = make_error_code(invalid_argument);
             }
             return null_prefix;
         }
-        if (!GetOriginatorFromString(prefix, str, pos_last, errorp))
+        if (!GetOriginatorFromString(&prefix, str, pos_last, errorp))
             return null_prefix;
         temp_str = str.substr(pos1 + 1, string::npos);
         // Look for type.
         size_t pos2;
-        if (!GetTypeFromString(prefix, temp_str, errorp, pos2))
+        if (!GetTypeFromString(&prefix, temp_str, errorp, &pos2))
             return null_prefix;
         uint8_t src_rt_type = prefix.type_;
         prefix.type_ = LeafADRoute;
@@ -538,7 +539,7 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
         // Look for RD.
         size_t pos3;
         pos2 = pos1 + 1 + pos2;
-        if (!GetRDFromString(prefix, str, pos2, pos3, errorp))
+        if (!GetRDFromString(&prefix, str, pos2, &pos3, errorp))
             return null_prefix;
         copy(prefix.rd_.GetData(), prefix.rd_.GetData() + rd_size,
                 prefix.rt_key_.begin() + key_size);
@@ -547,13 +548,13 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
         size_t pos4;
         if (src_rt_type == MvpnPrefix::InterASPMSIADRoute) {
             // check for asn
-            if (!GetAsnFromString(prefix, str, pos3, pos4, errorp))
+            if (!GetAsnFromString(&prefix, str, pos3, &pos4, errorp))
                 return null_prefix;
             size_t asn_size = sizeof(prefix.asn_);
             put_value(&prefix.rt_key_[key_size], asn_size, prefix.asn_);
             break;
         }
-        if (!GetSourceFromString(prefix, str, pos3, pos4, errorp))
+        if (!GetSourceFromString(&prefix, str, pos3, &pos4, errorp))
             return null_prefix;
         const Ip4Address::bytes_type &source_bytes = prefix.source_.to_bytes();
         copy(source_bytes.begin(), source_bytes.begin() +
@@ -562,7 +563,7 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
 
         // Look for group.
         size_t pos5;
-        if (!GetGroupFromString(prefix, str, pos4, pos5, errorp))
+        if (!GetGroupFromString(&prefix, str, pos4, &pos5, errorp))
             return null_prefix;
         const Ip4Address::bytes_type &group_bytes = prefix.group_.to_bytes();
         copy(group_bytes.begin(), group_bytes.begin() +
@@ -573,12 +574,12 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
         size_t pos6 = str.find(',', pos5 + 1);
         if (pos6 == string::npos) {
             if (errorp != NULL) {
-                *errorp = make_error_code(boost::system::errc::invalid_argument);
+                *errorp = make_error_code(invalid_argument);
             }
             return null_prefix;
         }
         temp_str = str.substr(pos5 + 1, pos6 - pos5 - 1);
-        boost::system::error_code originator_err;
+        error_code originator_err;
         Ip4Address ip = Ip4Address::from_string(temp_str, originator_err);
         if (originator_err != 0) {
             if (errorp != NULL) {
@@ -594,16 +595,16 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
     case SourceActiveADRoute: {
         // Look for RD.
         size_t pos2;
-        if (!GetRDFromString(prefix, str, pos1, pos2, errorp))
+        if (!GetRDFromString(&prefix, str, pos1, &pos2, errorp))
             return null_prefix;
         // Look for source.
         size_t pos3;
-        if (!GetSourceFromString(prefix, str, pos2, pos3, errorp))
+        if (!GetSourceFromString(&prefix, str, pos2, &pos3, errorp))
             return null_prefix;
 
         // rest is group.
         size_t pos4;
-        if (!GetGroupFromString(prefix, str, pos3, pos4, errorp, true))
+        if (!GetGroupFromString(&prefix, str, pos3, &pos4, errorp, true))
             return null_prefix;
         break;
     }
@@ -611,20 +612,20 @@ MvpnPrefix MvpnPrefix::FromString(const string &str,
     case SourceTreeJoinRoute: {
         // Look for RD.
         size_t pos2;
-        if (!GetRDFromString(prefix, str, pos1, pos2, errorp))
+        if (!GetRDFromString(&prefix, str, pos1, &pos2, errorp))
             return null_prefix;
         // Look for asn
         size_t pos3;
-        if (!GetAsnFromString(prefix, str, pos2, pos3, errorp))
+        if (!GetAsnFromString(&prefix, str, pos2, &pos3, errorp))
             return null_prefix;
         // Look for source.
         size_t pos4;
-        if (!GetSourceFromString(prefix, str, pos3, pos4, errorp))
+        if (!GetSourceFromString(&prefix, str, pos3, &pos4, errorp))
             return null_prefix;
 
         // rest is group.
         size_t pos5;
-        if (!GetGroupFromString(prefix, str, pos4, pos5, errorp, true))
+        if (!GetGroupFromString(&prefix, str, pos4, &pos5, errorp, true))
             return null_prefix;
         break;
     }
