@@ -316,8 +316,9 @@ public:
     pugi::xml_document *RouteMcastDeleteXmlDoc(const std::string &network,
                                                const std::string &sg);
     pugi::xml_document *RouteMvpnAddXmlDoc(const std::string &network,
-                                           const std::string &sg, int rt_type,
-                                           const std::string &nexthop = "");
+                                           const std::string &sg,
+                                           const std::string &nexthop,
+                                           int rt_type);
     pugi::xml_document *RouteMvpnDeleteXmlDoc(const std::string &network,
                                               const std::string &sg,
                                               int rt_type);

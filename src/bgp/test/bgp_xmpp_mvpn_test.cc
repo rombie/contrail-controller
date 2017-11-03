@@ -274,12 +274,18 @@ protected:
 
 TEST_F(BgpXmppMvpnErrorTest, BadGroupAddress) {
     agent_xa_->AddType7MvpnRoute("blue", "225.0.0,90.1.1.1");
-    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
+    task_util::WaitForIdle();
+    MvpnTable *blue_table_ = static_cast<MvpnTable *>(
+        bs_x_->database()->FindTable("blue.mvpn.0"));
+    EXPECT_TRUE(blue_table_->Size() == 1);
 }
 
 TEST_F(BgpXmppMvpnErrorTest, BadSourceAddress) {
     agent_xa_->AddType7MvpnRoute("blue", "225.0.0.1,90.1.1");
-    TASK_UTIL_EXPECT_EQ(1, GetVrfTableSize(bs_x_, "blue"));
+    task_util::WaitForIdle();
+    MvpnTable *blue_table_ = static_cast<MvpnTable *>(
+        bs_x_->database()->FindTable("blue.mvpn.0"));
+    EXPECT_TRUE(blue_table_->Size() == 1);
 }
 
 class BgpXmppMvpnSubscriptionTest : public BgpXmppMvpnTest {
