@@ -367,7 +367,8 @@ class DBInterface(object):
     # Encode and send an excption information to neutron. exc must be a
     # valid exception class name in neutron, kwargs must contain all
     # necessary arguments to create that exception
-    def _raise_contrail_exception(self, exc, **kwargs):
+    @classmethod
+    def _raise_contrail_exception(cls, exc, **kwargs):
         exc_info = {'exception': exc}
         exc_info.update(kwargs)
         bottle.abort(400, json.dumps(exc_info))
@@ -1857,6 +1858,11 @@ class DBInterface(object):
             fip_obj.parent_uuid = fip_pool_obj.uuid
 
             proj_obj = self._get_project_obj(fip_q)
+            perms2 = PermType2()
+            perms2.owner = proj_obj.uuid
+            perms2.owner_access = PERMS_RWX
+            fip_obj.set_perms2(perms2)
+
             fip_obj.set_project(proj_obj)
         else:  # UPDATE
             try:
@@ -3973,7 +3979,8 @@ class DBInterface(object):
         fip_objs = self._vnc_lib.floating_ips_list(obj_uuids=fip_ids,
                                                back_ref_id=backref_ids,
                                                detail=True)
-
+        if fip_objs == []:
+            return []
         # prep memo for optimization
         fip_vn_fqn = set(tuple(fip_obj.fq_name[:-2]) for fip_obj in fip_objs)
         for vn_fqn in fip_vn_fqn:

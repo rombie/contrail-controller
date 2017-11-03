@@ -24,6 +24,7 @@ import hashlib
 import logging
 import logging.config
 import signal
+import netaddr
 import os
 import re
 import random
@@ -241,6 +242,8 @@ class VncApiServer(object):
             if attr_type_vals['is_complex']:
                 attr_cls = cfgm_common.utils.str_to_class(attr_type, __name__)
                 for item in values:
+                    if attr_type == 'AllowedAddressPair':
+                        cls._validate_allowed_address_pair_prefix_len(item)
                     cls._validate_complex_type(attr_cls, item)
             else:
                 simple_type = attr_type_vals['simple_type']
@@ -249,6 +252,22 @@ class VncApiServer(object):
                                               simple_type, item,
                                               restrictions)
     # end _validate_complex_type
+
+    @classmethod
+    def _validate_allowed_address_pair_prefix_len(cls, value):
+        '''Do not allow configuration of AAP with
+           IPv4 prefix length less than 24 and 120 for IPv6.
+           LP #1720118
+        '''
+        if value['address_mode'] == 'active-standby':
+           ip_net_family = netaddr.IPNetwork(value['ip']['ip_prefix']).version
+           if ip_net_family == 6 and value['ip']['ip_prefix_len'] < 120:
+               raise ValueError('IPv6 Prefix length lesser than 120 is'
+                                ' is not acceptable')
+           if ip_net_family == 4 and value['ip']['ip_prefix_len'] < 24:
+               raise ValueError('IPv4 Prefix length lesser than 24'
+                                ' is not acceptable')
+    # end _validate_allowed_address_pair_prefix_len
 
     @classmethod
     def _validate_communityattribute_type(cls, value):
@@ -1167,7 +1186,7 @@ class VncApiServer(object):
     # end internal_request_ref_update
 
     def alloc_vn_id(self, name):
-        return self._db_conn._zk_db.alloc_vn_id(name) + 1
+        return self._db_conn._zk_db.alloc_vn_id(name)
 
     def alloc_tag_value_id(self, tag_type, name):
         return self._db_conn._zk_db.alloc_tag_value_id(tag_type, name)
@@ -2659,21 +2678,30 @@ class VncApiServer(object):
                            (obj_type, pformat(r_class.parent_types)))
                     raise cfgm_common.exceptions.HttpError(400, msg)
                 parent_type = r_class.parent_types[0].replace('-', '_')
-            parent_fq_name = obj_dict['fq_name'][:-1]
-            parent_uuid = obj_dict.get('parent_uuid')
-            try:
-                if parent_uuid is None:
-                    parent_uuid = self._db_conn.fq_name_to_uuid(
-                        parent_type, parent_fq_name)
-                ok, parent_obj_dict = self._db_conn.dbe_read(
-                    parent_type, parent_uuid, obj_fields=['perms2'])
+
+            if parent_type == 'domain':
+                if project_id:
+                    perms2['owner'] = project_id
+                else:
+                    perms2['owner'] = 'cloud-admin'
+            else:
+                parent_fq_name = obj_dict['fq_name'][:-1]
+                parent_uuid = obj_dict.get('parent_uuid')
+                try:
+                    if parent_uuid is None:
+                        parent_uuid = self._db_conn.fq_name_to_uuid(
+                            parent_type, parent_fq_name)
+                    ok, parent_obj_dict = self._db_conn.dbe_read(
+                        parent_type, parent_uuid, obj_fields=['perms2'])
+                except NoIdError as e:
+                    msg = "Parent %s cannot be found: %s" % (parent_type, str(e))
+                    raise cfgm_common.exceptions.HttpError(404, msg)
                 perms2['owner'] = parent_obj_dict['perms2']['owner']
-            except NoIdError as e:
-                msg = "Parent %s cannot be found: %s" % (parent_type, str(e))
-                raise cfgm_common.exceptions.HttpError(404, msg)
 
         elif project_id:
             perms2['owner'] = project_id
+        else:
+            perms2['owner'] = 'cloud-admin'
 
         if obj_dict.get('perms2') is None:
             # Resource creation
@@ -2990,18 +3018,7 @@ class VncApiServer(object):
                          exclude_hrefs=False, pagination=None):
         resource_type, r_class = self._validate_resource_type(obj_type)
 
-        is_admin = False
-        if 'HTTP_X_USER_TOKEN' in get_request().environ:
-            ok, result = self._auth_svc.validate_user_token()
-            if not ok:
-                code, msg = result
-                self.config_object_error(None, None, obj_type,
-                                         'list_coolection', msg)
-                raise cfgm_common.exceptions.HttpError(code, msg)
-            token_info = self.is_admin_request()
-            is_admin = True
-        else:
-            is_admin = self.is_admin_request()
+        is_admin = self.is_admin_request()
 
         if is_admin:
             field_names = req_fields
@@ -3371,6 +3388,9 @@ class VncApiServer(object):
                 prop_collection_updates=req_prop_coll_updates)
             if not ok:
                 return (ok, result)
+            attr_to_publish = None
+            if isinstance(result, dict):
+                attr_to_publish = result
 
             get_context().set_state('DBE_UPDATE')
             if api_name == 'ref-update':
@@ -3381,11 +3401,22 @@ class VncApiServer(object):
                 operation = ref_args.get('operation')
 
                 (ok, result) = db_conn.ref_update(
-                                       obj_type, obj_uuid, ref_obj_type,
-                                       ref_uuid, ref_data, operation,
-                                       db_obj_dict['id_perms'])
+                    obj_type,
+                    obj_uuid,
+                    ref_obj_type,
+                    ref_uuid,
+                    ref_data,
+                    operation,
+                    db_obj_dict['id_perms'],
+                    attr_to_publish=attr_to_publish,
+                )
             elif req_obj_dict:
-                (ok, result) = db_conn.dbe_update(obj_type, obj_uuid, req_obj_dict)
+                (ok, result) = db_conn.dbe_update(
+                    obj_type,
+                    obj_uuid,
+                    req_obj_dict,
+                    attr_to_publish=attr_to_publish,
+                )
                 # Update quota counter
                 if resource_type == 'project' and 'quota' in req_obj_dict:
                     proj_id = req_obj_dict['uuid']
@@ -3396,7 +3427,11 @@ class VncApiServer(object):
                                self.quota_counter)
             elif req_prop_coll_updates:
                 (ok, result) = db_conn.prop_collection_update(
-                    obj_type, obj_uuid, req_prop_coll_updates)
+                    obj_type,
+                    obj_uuid,
+                    req_prop_coll_updates,
+                    attr_to_publish=attr_to_publish,
+                )
             if not ok:
                 return (ok, result)
 
