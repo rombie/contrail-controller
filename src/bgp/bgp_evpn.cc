@@ -18,6 +18,7 @@
 #include "bgp/evpn/evpn_table.h"
 #include "bgp/routing-instance/routing_instance.h"
 
+using std::pair;
 using std::sort;
 using std::string;
 using std::vector;
@@ -332,13 +333,15 @@ EvpnSegment::EvpnSegment(EvpnManager *manager, const EthernetSegmentId &esi)
 //
 EvpnSegment::~EvpnSegment() {
     assert(!esi_ad_route_);
+    assert(pe_list_.empty());
 }
 
 //
 // Add the given MAC route as a dependent of this EvpnSegment.
 //
 void EvpnSegment::AddMacRoute(size_t part_id, EvpnRoute *route) {
-    route_lists_[part_id].insert(route);
+    pair<RouteList::iterator, bool> ret = route_lists_[part_id].insert(route);
+    assert(ret.second);
 }
 
 //
@@ -347,7 +350,8 @@ void EvpnSegment::AddMacRoute(size_t part_id, EvpnRoute *route) {
 // routes in the partition.
 //
 void EvpnSegment::DeleteMacRoute(size_t part_id, EvpnRoute *route) {
-    route_lists_[part_id].erase(route);
+    size_t count = route_lists_[part_id].erase(route);
+    assert(count == 1);
     if (route_lists_[part_id].empty())
         evpn_manager_->TriggerSegmentDelete(this);
 }
@@ -458,15 +462,15 @@ bool EvpnSegment::UpdatePeList() {
 
 //
 // Return true if it's safe to delete this EvpnSegment.
-// The remote PE list must be empty and the dependent route list for all
-// the partitions must be empty.
 //
 bool EvpnSegment::MayDelete() const {
     CHECK_CONCURRENCY("bgp::EvpnSegment");
 
-    if (!pe_list_.empty())
+    // Bail if we have state set on the per-ESI AD route.
+    if (esi_ad_route_)
         return false;
 
+    // Bail if the dependent route list for any partition is not empty.
     for (size_t part_id = 0; part_id < route_lists_.size(); ++part_id) {
         if (!route_lists_[part_id].empty())
             return false;
@@ -530,18 +534,19 @@ void EvpnMacState::DeleteAliasedPath(AliasedPathList::const_iterator it) {
 BgpPath *EvpnMacState::LocateAliasedPath(const BgpPath *orig_path,
     const BgpAttr *attr, uint32_t label) {
     const IPeer *peer = orig_path->GetPeer();
+    uint32_t flags = orig_path->GetFlags() | BgpPath::AliasedPath;
     for (AliasedPathList::iterator it = aliased_path_list_.begin();
         it != aliased_path_list_.end(); ++it) {
         BgpPath *path = *it;
         if (path->GetPeer() == peer &&
             path->GetAttr() == attr &&
+            path->GetFlags() == flags &&
             path->GetLabel() == label) {
             return path;
         }
     }
 
     BgpPath::PathSource src = orig_path->GetSource();
-    uint32_t flags = orig_path->GetFlags() | BgpPath::AliasedPath;
     return (new BgpPath(peer, src, attr, flags, label));
 }
 

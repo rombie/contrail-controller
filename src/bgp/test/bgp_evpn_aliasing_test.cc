@@ -746,6 +746,40 @@ TEST_F(BgpEvpnAliasingTest, AddDeleteAutoDiscovery5) {
 }
 
 //
+// Verify that an EvpnSegment is not deleted prematurely while it's on the
+// update list.
+//
+TEST_F(BgpEvpnAliasingTest, AddDeleteAutoDiscovery6a) {
+    DisableSegmentUpdateProcessing();
+    AddMacRoute(bgp_peers_[1], "aa:bb:cc:dd:ee:01", esi1_);
+    VerifySegmentExists(esi1_);
+    AddAutoDiscoveryRoute(bgp_peers_[1], esi1_, false);
+    DelMacRoute(bgp_peers_[1], "aa:bb:cc:dd:ee:01");
+    EnableSegmentUpdateProcessing();
+    VerifySegmentExists(esi1_);
+    VerifySegmentPeExists(esi1_, bgp_peers_[1], false);
+    DelAutoDiscoveryRoute(bgp_peers_[1], esi1_);
+    VerifySegmentNoExists(esi1_);
+}
+
+//
+// Verify that an EvpnSegment is not deleted prematurely while it's on the
+// update list.
+//
+TEST_F(BgpEvpnAliasingTest, AddDeleteAutoDiscovery6b) {
+    DisableSegmentUpdateProcessing();
+    AddMacRoute(bgp_peers_[1], "aa:bb:cc:dd:ee:01", esi1_);
+    VerifySegmentExists(esi1_);
+    DelMacRoute(bgp_peers_[1], "aa:bb:cc:dd:ee:01");
+    AddAutoDiscoveryRoute(bgp_peers_[1], esi1_, false);
+    EnableSegmentUpdateProcessing();
+    VerifySegmentExists(esi1_);
+    VerifySegmentPeExists(esi1_, bgp_peers_[1], false);
+    DelAutoDiscoveryRoute(bgp_peers_[1], esi1_);
+    VerifySegmentNoExists(esi1_);
+}
+
+//
 // Verify aliased path is added when MAC route is added before all the
 // AD routes.
 //
