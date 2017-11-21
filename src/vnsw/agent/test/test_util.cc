@@ -2803,10 +2803,10 @@ void DelEncapList(Agent *agent) {
 
 void AddBgpaasPortRange(const int port_start, const int port_end) {
     std::stringstream str;
-    str << "<bgp-as-service-global-config>" << endl;
+    str << "<bgpaas-parameters>" << endl;
     str << "    <port-start>" << port_start << "</port-start>";
     str << "    <port-end>" << port_end << "</port-end>";
-    str << "</bgp-as-service-global-config>";
+    str << "</bgpaas-parameters>";
 
     AddNode("global-system-config", "system-config", 1, str.str().c_str());
 }
@@ -5107,7 +5107,7 @@ void AddLocalVmRoute(Agent *agent, const std::string &vrf_name,
                          TagList(), CommunityList(),
                          PathPreference(), Ip4Address(0),
                          EcmpLoadBalance(), false, false,
-                         peer->sequence_number(), false, false);
+                         peer->sequence_number(), false, true);
     InetUnicastAgentRouteTable *rt_table =
         agent->vrf_table()->GetInet4UnicastRouteTable(vrf_name);
 

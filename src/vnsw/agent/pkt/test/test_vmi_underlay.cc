@@ -77,7 +77,8 @@ TEST_F(FlowTest, UnderlayFipToInstanceIp) {
     EXPECT_TRUE(fe->data().dest_vrf == 0);
     EXPECT_TRUE(fe->data().source_vn_list == vn_list);
     EXPECT_TRUE(fe->data().dest_vn_list == vn_list);
-    EXPECT_TRUE(fe->reverse_flow_entry()->data().dest_vrf == 2);
+    EXPECT_TRUE(fe->reverse_flow_entry()->data().dest_vrf ==
+                VrfGet("vrf5")->vrf_id());
 
     DelLink("virtual-network", "default-project:vn4", "virtual-network",
             client->agent()->fabric_vn_name().c_str());
@@ -90,6 +91,41 @@ TEST_F(FlowTest, UnderlayFipToInstanceIp) {
     DelLink("floating-ip", "fip1", "virtual-machine-interface", "flow0");
     client->WaitForIdle();
 }
+
+TEST_F(FlowTest, UnderlayInstanceIpToOverlayFip) {
+    AddLink("virtual-network", "vn5", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+    AddLink("floating-ip", "fip1", "virtual-machine-interface", "flow0");
+    client->WaitForIdle();
+
+    TxIpPacket(flow0->id(), vm1_ip, vm5_ip, 1);
+    client->WaitForIdle();
+
+    FlowEntry *fe = FlowGet(0, vm1_ip, vm5_ip, IPPROTO_ICMP, 0, 0,
+                            flow0->flow_key_nh()->id());
+    EXPECT_TRUE(fe != NULL);
+
+    EXPECT_FALSE(fe->is_flags_set(FlowEntry::FabricFlow));
+    EXPECT_FALSE(fe->IsShortFlow());
+    EXPECT_TRUE(fe->is_flags_set(FlowEntry::NatFlow));
+
+    VrfEntry *vrf = VrfGet("default-project:vn4:vn4");
+
+    VnListType vn_list;
+    vn_list.insert("default-project:vn4");
+
+    EXPECT_TRUE(fe->data().dest_vrf == vrf->vrf_id());
+    EXPECT_TRUE(fe->data().source_vn_list == vn_list);
+    EXPECT_TRUE(fe->data().dest_vn_list == vn_list);
+    EXPECT_TRUE(fe->reverse_flow_entry()->data().dest_vrf == 0);
+
+    DelLink("floating-ip", "fip1", "virtual-machine-interface", "flow0");
+    DelLink("virtual-network", "vn5", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+}
+
 
 TEST_F(FlowTest, UnderlayFipToFip) {
     FlowSetup();
@@ -137,6 +173,64 @@ TEST_F(FlowTest, UnderlayFipToFip) {
     AddLink("floating-ip", "fip1", "virtual-machine-interface", "flow0");
     AddLink("floating-ip", "fip2", "virtual-machine-interface", "flow5");
     FlowTeardown();
+}
+
+TEST_F(FlowTest, OverlayToUnderlayTransition) {
+    TxL2Packet(flow0->id(), "00:00:00:01:01:01",
+               "00:00:00:01:01:02", vm1_ip, vm2_ip, 1);
+    client->WaitForIdle();
+
+    FlowEntry *fe = FlowGet(0, vm1_ip, vm2_ip, IPPROTO_ICMP, 0, 0,
+                            flow0->flow_key_nh()->id());
+    EXPECT_TRUE(fe != NULL);
+
+    EXPECT_FALSE(fe->is_flags_set(FlowEntry::FabricFlow));
+    EXPECT_FALSE(fe->IsShortFlow());
+
+    AddLink("virtual-network", "vn5", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+
+    EXPECT_FALSE(fe->is_flags_set(FlowEntry::FabricFlow));
+    EXPECT_FALSE(fe->IsShortFlow());
+
+    DelLink("virtual-network", "vn5", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+
+    EXPECT_FALSE(fe->is_flags_set(FlowEntry::FabricFlow));
+    EXPECT_FALSE(fe->IsShortFlow());
+}
+
+TEST_F(FlowTest, OverlayIpToUnderlayIp) {
+    AddLink("virtual-network", "vn5", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+
+    CreateLocalRoute("vrf5", vm4_ip, flow3, 19);
+    CreateLocalRoute("vrf3", vm1_ip, flow0, 16);
+    client->WaitForIdle();
+
+    TxIpPacket(flow3->id(), vm4_ip, vm1_ip, 1);
+    client->WaitForIdle();
+
+    FlowEntry *fe = FlowGet(0, vm4_ip, vm1_ip, IPPROTO_ICMP, 0, 0,
+                            flow3->flow_key_nh()->id());
+    EXPECT_TRUE(fe != NULL);
+
+    EXPECT_FALSE(fe->is_flags_set(FlowEntry::FabricFlow));
+    EXPECT_FALSE(fe->IsShortFlow());
+    EXPECT_TRUE(fe->data().dest_vrf == 0);
+    EXPECT_TRUE(fe->reverse_flow_entry()->data().dest_vrf ==
+                flow3->vrf()->vrf_id());
+
+    DelLink("virtual-network", "default-project:vn4", "virtual-network",
+            client->agent()->fabric_vn_name().c_str());
+    client->WaitForIdle();
+    DeleteRoute("vrf5", vm4_ip);
+    DeleteRoute("vrf3", vm1_ip);
+    client->WaitForIdle();
+
 }
 
 int main(int argc, char *argv[]) {

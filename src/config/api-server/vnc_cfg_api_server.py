@@ -501,6 +501,13 @@ class VncApiServer(object):
             result = 'Bad reference in create: ' + result
             raise cfgm_common.exceptions.HttpError(400, result)
 
+        get_context().set_state('PRE_DBE_ALLOC')
+        # type-specific hook
+        (ok, result) = r_class.pre_dbe_alloc(obj_type, obj_dict)
+        if not ok:
+            code, msg = result
+            raise cfgm_common.exceptions.HttpError(code, msg)
+
         # common handling for all resource create
         (ok, result) = self._post_common(obj_type, obj_dict)
         if not ok:
@@ -556,12 +563,6 @@ class VncApiServer(object):
         quota_counter = []
 
         def stateful_create():
-            get_context().set_state('PRE_DBE_ALLOC')
-            # type-specific hook
-            (ok, result) = r_class.pre_dbe_alloc(obj_type, obj_dict)
-            if not ok:
-                return (ok, result)
-
             get_context().set_state('DBE_ALLOC')
             # Alloc and Store id-mappings before creating entry on pubsub store.
             # Else a subscriber can ask for an id mapping before we have stored it
@@ -3741,6 +3742,7 @@ class VncApiServer(object):
         req_dict = get_request().json
         obj_type = req_dict.pop('obj_type')
         obj_uuid = req_dict.pop('obj_uuid')
+        need_update = False
 
         if obj_type is None or obj_uuid is None:
             msg = "Object type and UUID must be specified"
@@ -3781,7 +3783,8 @@ class VncApiServer(object):
             # If the body of a Tag type is None, all references to that Tag
             # type are remove on the resource
             if attrs is None:
-                for ref in refs_per_type[tag_type]:
+                for ref in refs_per_type.get(tag_type, []):
+                    need_update = True
                     obj_dict['tag_refs'].remove(ref)
                 refs_per_type[tag_type] = []
                 continue
@@ -3823,6 +3826,7 @@ class VncApiServer(object):
                     continue
 
                 for ref in refs_per_values.values():
+                    need_update = True
                     # object already have a reference to that tag type with a
                     # different value, remove it
                     obj_dict['tag_refs'].remove(ref)
@@ -3834,11 +3838,13 @@ class VncApiServer(object):
                     'to': tag_fq_name,
                     'attr': None,
                 })
+                need_update = True
             else:
                 # Add 'value' attribut to 'add_values' list if not null
                 if value is not None:
                     add_values.add(value)
                 for add_value in add_values - set(refs_per_values.keys()):
+                    need_update = True
                     tag_fq_name, tag_uuid = _locate_tag(tag_type, add_value,
                                                         is_global)
                     obj_dict.setdefault('tag_refs', []).append({
@@ -3847,9 +3853,12 @@ class VncApiServer(object):
                         'attr': None,
                     })
                 for del_value in delete_values & set(refs_per_values.keys()):
+                    need_update = True
                     obj_dict['tag_refs'].remove(refs_per_values[del_value])
 
-        self._db_conn.dbe_update(obj_type, obj_uuid, obj_dict)
+        if need_update:
+            self._db_conn.dbe_update(obj_type, obj_uuid, obj_dict)
+
         return {}
 # end class VncApiServer
 

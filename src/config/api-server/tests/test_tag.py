@@ -123,6 +123,16 @@ class TestTagType(TestTagBase):
 
 
 class TestTag(TestTagBase):
+    STALE_LOCK_SECS = '0.2'
+
+    @classmethod
+    def setUpClass(cls):
+        super(TestTag, cls).setUpClass(
+            extra_config_knobs=[
+                ('DEFAULTS', 'stale_lock_seconds', cls.STALE_LOCK_SECS),
+            ]
+        )
+
     def test_tag_name_is_composed_with_type_and_value(self):
         name = 'fake-name-%s' % self.id()
         type = 'fake_type-%s' % self.id()
@@ -138,6 +148,26 @@ class TestTag(TestTagBase):
         self.assertEqual(tag.display_name, '%s=%s' % (type, value))
         self.assertEqual(tag.tag_type_name, type)
         self.assertEqual(tag.tag_value, value)
+
+    def test_tag_is_unique(self):
+        project = Project('project-%s' % self.id())
+        self.api.project_create(project)
+        type = 'fake_type-%s' % self.id()
+        value = 'fake_value-%s' % self.id()
+        tag1 = Tag(tag_type_name=type, tag_value=value)
+        self.api.tag_create(tag1)
+        scoped_tag1 = Tag(tag_type_name=type, tag_value=value,
+                          parent_obj=project)
+        self.api.tag_create(scoped_tag1)
+        gevent.sleep(float(self.STALE_LOCK_SECS))
+
+        tag2 = Tag(tag_type_name=type, tag_value=value)
+        with ExpectedException(exceptions.RefsExistError):
+            self.api.tag_create(tag2)
+        scoped_tag2 = Tag(tag_type_name=type, tag_value=value,
+                          parent_obj=project)
+        with ExpectedException(exceptions.RefsExistError):
+            self.api.tag_create(scoped_tag2)
 
     def test_tag_type_is_mandatory(self):
         value = 'fake_value-%s' % self.id()
@@ -301,15 +331,6 @@ class TestTag(TestTagBase):
                                    return_value=True):
                 tag_type = self.api.tag_type_read(id=tag_type_uuid)
             self.assertEqual(tag_type_uuid, tag_type.uuid)
-
-    def test_tag_is_unique_in_same_scope(self):
-        type = 'fake_type-%s' % self.id()
-        value = 'fake_value-%s' % self.id()
-        tag = Tag(tag_type_name=type, tag_value=value)
-        self.api.tag_create(tag)
-        with ExpectedException(exceptions.RefsExistError):
-            new_tag = Tag(tag_type_name=type, tag_value=value)
-            self.api.tag_create(new_tag)
 
     def test_tag_type_is_allocated(self):
         type = 'fake_type-%s' % self.id()
@@ -672,3 +693,76 @@ class TestTag(TestTagBase):
 
         vn = self._vnc_lib.virtual_network_read(id=vn_uuid)
         self.assertIsNone(vn.get_tag_refs())
+
+    def test_resource_not_updated_if_no_tag_references_modified(self):
+        project = Project('project-%s' % self.id())
+        self.api.project_create(project)
+        vn = VirtualNetwork('vn-%s' % self.id(), parent_obj=project)
+        self.api.virtual_network_create(vn)
+        type = 'fake_type-%s' % self.id()
+        value = 'fake_value-%s' % self.id()
+        tag = Tag(tag_type_name=type, tag_value=value, parent_obj=project)
+        self.api.tag_create(tag)
+        original_resource_update = self._api_server._db_conn.dbe_update
+
+        def update_resource(*args, **kwargs):
+            original_resource_update(*args, **kwargs)
+
+        with mock.patch.object(self._api_server._db_conn, 'dbe_update',
+                               side_effect=update_resource) as mock_db_update:
+            self.api.unset_tag(vn, type)
+            mock_db_update.assert_not_called()
+
+            mock_db_update.reset_mock()
+            self.api.set_tag(vn, type, value)
+            mock_db_update.assert_called()
+
+            mock_db_update.reset_mock()
+            self.api.set_tag(vn, type, value)
+            mock_db_update.assert_not_called()
+
+            mock_db_update.reset_mock()
+            self.api.unset_tag(vn, type)
+            mock_db_update.assert_called()
+
+            type = 'label'
+            value1 = '%s-label1' % self.id()
+            label_tag1 = Tag(tag_type_name=type, tag_value=value1,
+                             parent_obj=project)
+            self.api.tag_create(label_tag1)
+            value2 = '%s-label2' % self.id()
+            label_tag2 = Tag(tag_type_name=type, tag_value=value2,
+                             parent_obj=project)
+            self.api.tag_create(label_tag2)
+
+            tags_dict = {
+                type: {
+                    'delete_values': [value1, value2],
+                },
+            }
+            mock_db_update.reset_mock()
+            self.api.set_tags(vn, tags_dict)
+            mock_db_update.assert_not_called()
+
+            tags_dict = {
+                type: {
+                    'add_values': [value1, value2],
+                },
+            }
+            mock_db_update.reset_mock()
+            self.api.set_tags(vn, tags_dict)
+            mock_db_update.assert_called()
+
+            mock_db_update.reset_mock()
+            self.api.set_tag(vn, type, value1)
+            self.api.set_tags(vn, tags_dict)
+            mock_db_update.assert_not_called()
+
+            tags_dict = {
+                type: {
+                    'delete_values': [value1, value2],
+                },
+            }
+            mock_db_update.reset_mock()
+            self.api.set_tags(vn, tags_dict)
+            mock_db_update.assert_called()

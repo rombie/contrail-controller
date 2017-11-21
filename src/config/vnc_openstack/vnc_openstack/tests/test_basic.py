@@ -13,7 +13,7 @@ from cfgm_common.exceptions import NoIdError
 from cfgm_common import PERMS_RWX, PERMS_NONE, PERMS_RX
 from test_utils import *
 import test_common
-
+import requests
 import test_case
 
 _IFACE_ROUTE_TABLE_NAME_PREFIX = 'NEUTRON_IFACE_RT'
@@ -277,6 +277,9 @@ class TestBasic(test_case.NeutronBackendTestCase):
                 [vnc_api.IpamSubnetType(
                          vnc_api.SubnetType('1.1.1.0', 24))]))
         self._vnc_lib.virtual_network_create(vn_obj)
+
+        vr_obj = vnc_api.VirtualRouter("somehost")
+        vr_obj = self._vnc_lib.virtual_router_create(vr_obj)
 
         sg_obj = vnc_api.SecurityGroup('default')
         try:
@@ -1295,6 +1298,203 @@ class TestBasic(test_case.NeutronBackendTestCase):
         self.delete_resource('network', proj_id, pvt_net_q['id'])
     # end test_update_any_other_fields_in_fip_doesnt_disassociate
 
+    def test_dpdk_compute_port_bindings(self):
+        vn_obj = vnc_api.VirtualNetwork(self.id())
+        vn_obj.add_network_ipam(vnc_api.NetworkIpam(),
+            vnc_api.VnSubnetsType(
+                [vnc_api.IpamSubnetType(
+                         vnc_api.SubnetType('192.168.10.0', 24))]))
+        self._vnc_lib.virtual_network_create(vn_obj)
+
+        vr_obj = vnc_api.VirtualRouter("dpdk-host")
+        vr_obj.set_virtual_router_dpdk_enabled(True)
+        vnc_vr_obj = self._vnc_lib.virtual_router_create(vr_obj)
+
+        sg_obj = vnc_api.SecurityGroup('default')
+        try:
+            self._vnc_lib.security_group_create(sg_obj)
+        except vnc_api.RefsExistError:
+            pass
+
+        proj_uuid = self._vnc_lib.fq_name_to_id('project',
+            fq_name=['default-domain', 'default-project'])
+
+        context = {'operation': 'CREATE',
+                   'user_id': '',
+                   'is_admin': True,
+                   'roles': ''}
+        data = {'resource':{'network_id': vn_obj.uuid,
+                            'tenant_id': proj_uuid,
+                            'binding:host_id': 'dpdk-host'}}
+        body = {'context': context, 'data': data}
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict = json.loads(resp.text)
+        self.assertNotEqual(
+            port_dict['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            True)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_mode'),
+            "client")
+        self.assertEqual(
+            port_dict['binding:vif_type'], 'vhostuser')
+
+        # disable dpdk on compute and we should observe the vif
+        # details deleted from port bindings
+
+        vr_obj.set_virtual_router_dpdk_enabled(False)
+        vnc_vr_obj = self._vnc_lib.virtual_router_update(vr_obj)
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict1 = json.loads(resp.text)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_mode'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_type'], 'vrouter')
+
+        self.assertNotEqual(port_dict, port_dict1)
+    # end test_dpdk_compute_port_bindings
+
+    def test_non_dpdk_compute_port_bindings(self):
+        vn_obj = vnc_api.VirtualNetwork(self.id())
+        vn_obj.add_network_ipam(vnc_api.NetworkIpam(),
+            vnc_api.VnSubnetsType(
+                [vnc_api.IpamSubnetType(
+                         vnc_api.SubnetType('192.168.11.0', 24))]))
+        self._vnc_lib.virtual_network_create(vn_obj)
+
+        vr_obj = vnc_api.VirtualRouter("non-dpdk-host")
+        vnc_vr_obj = self._vnc_lib.virtual_router_create(vr_obj)
+
+        sg_obj = vnc_api.SecurityGroup('default')
+        try:
+            self._vnc_lib.security_group_create(sg_obj)
+        except vnc_api.RefsExistError:
+            pass
+
+        proj_uuid = self._vnc_lib.fq_name_to_id('project',
+            fq_name=['default-domain', 'default-project'])
+
+        context = {'operation': 'CREATE',
+                   'user_id': '',
+                   'is_admin': True,
+                   'roles': ''}
+        data = {'resource':{'network_id': vn_obj.uuid,
+                            'tenant_id': proj_uuid,
+                            'binding:host_id': 'non-dpdk-host'}}
+        body = {'context': context, 'data': data}
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict = json.loads(resp.text)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            None)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_mode'),
+            None)
+        self.assertEqual(
+            port_dict['binding:vif_type'], 'vrouter')
+
+        # Enable dpdk on compute and we should observe the vif
+        # details deleted from port bindings
+
+        vr_obj.set_virtual_router_dpdk_enabled(True)
+        vnc_vr_obj = self._vnc_lib.virtual_router_update(vr_obj)
+
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict1 = json.loads(resp.text)
+        self.assertNotEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            True)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_mode'),
+            "client")
+        self.assertEqual(
+            port_dict1['binding:vif_type'], 'vhostuser')
+
+
+        self.assertNotEqual(port_dict, port_dict1)
+    # end test_non_dpdk_compute_port_bindings
+
+    def test_dpdk_compute_port_bindings_with_split_hostid(self):
+        vn_obj = vnc_api.VirtualNetwork(self.id())
+        vn_obj.add_network_ipam(vnc_api.NetworkIpam(),
+            vnc_api.VnSubnetsType(
+                [vnc_api.IpamSubnetType(
+                         vnc_api.SubnetType('192.168.10.0', 24))]))
+        self._vnc_lib.virtual_network_create(vn_obj)
+
+        vr_obj = vnc_api.VirtualRouter("dpdk-host.foo")
+        vr_obj.set_virtual_router_dpdk_enabled(True)
+        vnc_vr_obj = self._vnc_lib.virtual_router_create(vr_obj)
+
+        sg_obj = vnc_api.SecurityGroup('default')
+        try:
+            self._vnc_lib.security_group_create(sg_obj)
+        except vnc_api.RefsExistError:
+            pass
+
+        proj_uuid = self._vnc_lib.fq_name_to_id('project',
+            fq_name=['default-domain', 'default-project'])
+
+        context = {'operation': 'CREATE',
+                   'user_id': '',
+                   'is_admin': True,
+                   'roles': ''}
+        data = {'resource':{'network_id': vn_obj.uuid,
+                            'tenant_id': proj_uuid,
+                            'binding:host_id': 'dpdk-host.foo'}}
+        body = {'context': context, 'data': data}
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict = json.loads(resp.text)
+        self.assertNotEqual(
+            port_dict['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            True)
+        self.assertEqual(
+            port_dict['binding:vif_details'].get('vhostuser_mode'),
+            "client")
+        self.assertEqual(
+            port_dict['binding:vif_type'], 'vhostuser')
+
+        # disable dpdk on compute and we should observe the vif
+        # details deleted from port bindings
+
+        vr_obj.set_virtual_router_dpdk_enabled(False)
+        vnc_vr_obj = self._vnc_lib.virtual_router_update(vr_obj)
+
+        resp = self._api_svr_app.post_json('/neutron/port', body)
+        port_dict1 = json.loads(resp.text)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_socket'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_vrouter_plug'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_details'].get('vhostuser_mode'),
+            None)
+        self.assertEqual(
+            port_dict1['binding:vif_type'], 'vrouter')
+
+        self.assertNotEqual(port_dict, port_dict1)
+    # end test_dpdk_compute_port_bindings_with_split_hostid
+
 # end class TestBasic
 
 class TestExtraFieldsPresenceByKnob(test_case.NeutronBackendTestCase):
@@ -1687,3 +1887,61 @@ class TestAuthenticatedAccess(test_case.NeutronBackendTestCase):
         self.assertEqual(self.test_failures, [])
     # end test_post_neutron_checks_auth_token
 # end class TestAuthenticatedAccess
+
+class TestKeystoneCallCount(test_case.NeutronBackendTestCase):
+    test_obj_uuid = None
+    test_failures = []
+    expected_auth_token = ''
+    _api_session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter()
+    _api_session.mount("http://", adapter)
+    _call_count = 0
+    @classmethod
+    def setUpClass(cls):
+        from keystonemiddleware import auth_token
+        class FakeAuthProtocol(object):
+            _test_cls = cls
+            def __init__(self, app, *args, **kwargs):
+                self._app = app
+
+            # end __init__
+            def __call__(self, env, start_response):
+                #Count number of calls made
+                if env.get('HTTP_X_AUTH_TOKEN') == 'abc123':
+                    self._test_cls._call_count = self._test_cls._call_count + 1
+                env['HTTP_X_ROLE'] = 'admin'
+                return self._app(env, start_response)
+            # end __call__
+        # end class FakeAuthProtocol
+        super(TestKeystoneCallCount, cls).setUpClass(
+            extra_config_knobs=[
+                ('DEFAULTS', 'auth', 'keystone'),
+                ('DEFAULTS', 'aaa_mode', 'cloud-admin'),
+                ('KEYSTONE', 'admin_user', 'foo'),
+                ('KEYSTONE', 'admin_password', 'bar'),
+                ('KEYSTONE', 'admin_tenant_name', 'baz'),],
+            extra_mocks=[
+                (auth_token, 'AuthProtocol', FakeAuthProtocol),
+                ])
+    # end setupClass
+
+    def test_keystone_call_count(self):
+        test_obj = self._create_test_object()
+        context = {'operation': 'READ',
+                   'user_id': '',
+                   'roles': ''}
+        data = {'fields': None,
+                'id': test_obj.uuid}
+        body = {'context': context, 'data': data}
+        uri = '/neutron/network'
+        url = "http://%s:%s%s" \
+              % (self._vnc_lib._web_host, self._vnc_lib._web_port, uri)
+        headers=self._vnc_lib._headers
+        headers['X_AUTH_TOKEN'] = 'abc123'
+        header = json.dumps(headers)
+        body = json.dumps(body)
+        # currently OP_GET goes through LocalVncApi.
+        TestKeystoneCallCount._api_session.post(url, data=body, headers=headers, verify=False)
+        self.assertEqual(TestKeystoneCallCount._call_count, 1)
+    # end test_keystone_call_count
+# end class TestKeystoneCallCount
