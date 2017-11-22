@@ -78,7 +78,10 @@ public:
                            uint32_t source_port,
                            bool health_check_configured,
                            const boost::uuids::uuid &health_check_uuid,
-                           bool is_shared);
+                           bool is_shared,
+                           uint64_t hc_delay_usecs,
+                           uint64_t hc_timeout_usecs,
+                           uint32_t hc_retries);
         ~BgpAsAServiceEntry();
         bool operator == (const BgpAsAServiceEntry &rhs) const;
         bool operator() (const BgpAsAServiceEntry &lhs,
@@ -95,6 +98,9 @@ public:
         mutable bool new_health_check_add_;
         mutable bool old_health_check_delete_;
         mutable boost::uuids::uuid old_health_check_uuid_;
+        mutable uint64_t hc_delay_usecs_;
+        mutable uint64_t hc_timeout_usecs_;
+        mutable uint32_t hc_retries_;
         bool is_shared_;
     };
     typedef std::set<BgpAsAServiceEntry, BgpAsAServiceEntry> BgpAsAServiceEntryList;
@@ -131,9 +137,9 @@ public:
                                         const IpAddress &source,
                                         const IpAddress &dest,
                                         IpAddress *nat_server,
-                                        uint32_t *sport,
-                                        bool *health_check_configured,
-                                        boost::uuids::uuid *health_check_uuid) const;
+                                        uint32_t *sport) const;
+    bool GetBgpHealthCheck(const VmInterface *vm_intf,
+                           boost::uuids::uuid *health_check_uuid) const;
     size_t AllocateBgpVmiServicePortIndex(const uint32_t sport,
                                           const boost::uuids::uuid vm_uuid);
     void FreeBgpVmiServicePortIndex(const uint32_t sport);

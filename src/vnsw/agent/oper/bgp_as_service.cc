@@ -102,6 +102,17 @@ void BgpAsAService::BgpAsAServiceList::Insert(const BgpAsAServiceEntry *rhs) {
 
 void BgpAsAService::BgpAsAServiceList::Update(const BgpAsAServiceEntry *lhs,
                                               const BgpAsAServiceEntry *rhs) {
+    if (rhs->health_check_configured_) {
+        if (lhs->hc_delay_usecs_ != rhs->hc_delay_usecs_ ||
+            lhs->hc_timeout_usecs_ != rhs->hc_timeout_usecs_ ||
+            lhs->hc_retries_ != rhs->hc_retries_) {
+            // if HC properties change, trigger update
+            lhs->new_health_check_add_ = true;
+            lhs->hc_delay_usecs_ = rhs->hc_delay_usecs_;
+            lhs->hc_timeout_usecs_ = rhs->hc_timeout_usecs_;
+            lhs->hc_retries_ = rhs->hc_retries_;
+        }
+    }
     if (lhs->health_check_configured_ != rhs->health_check_configured_) {
         lhs->health_check_configured_ = rhs->health_check_configured_;
         if (lhs->health_check_configured_) {
@@ -177,6 +188,9 @@ void BgpAsAService::BuildBgpAsAServiceInfo(IFMapNode *bgp_as_a_service_node,
     uint32_t source_port = 0;
     bool health_check_configured = false;
     boost::uuids::uuid health_check_uuid = nil_uuid();
+    uint64_t hc_delay_usecs = 0;
+    uint64_t hc_timeout_usecs = 0;
+    uint32_t hc_retries = 0;
 
     // Find the health check config first
     for (DBGraphVertex::adjacency_iterator it = bgp_as_a_service_node->begin(table->GetGraph());
@@ -197,6 +211,11 @@ void BgpAsAService::BuildBgpAsAServiceInfo(IFMapNode *bgp_as_a_service_node,
             autogen::IdPermsType id_perms = hc->id_perms();
             CfgUuidSet(id_perms.uuid.uuid_mslong, id_perms.uuid.uuid_lslong,
                        health_check_uuid);
+            hc_delay_usecs = hc->properties().delay * 1000000 +
+                             hc->properties().delayUsecs;
+            hc_timeout_usecs = hc->properties().timeout * 1000000 +
+                               hc->properties().timeoutUsecs;
+            hc_retries = hc->properties().max_retries;
         }
     }
 
@@ -247,7 +266,10 @@ void BgpAsAService::BuildBgpAsAServiceInfo(IFMapNode *bgp_as_a_service_node,
                                         bgp_router->parameters().source_port,
                                         health_check_configured,
                                         health_check_uuid,
-                                        bgp_as_a_service->bgpaas_shared()));
+                                        bgp_as_a_service->bgpaas_shared(),
+                                        hc_delay_usecs,
+                                        hc_timeout_usecs,
+                                        hc_retries));
                 /*
                  * if it is same session then retain original source port
                  */
@@ -269,7 +291,10 @@ void BgpAsAService::BuildBgpAsAServiceInfo(IFMapNode *bgp_as_a_service_node,
                 new_list.insert(BgpAsAServiceEntry(peer_ip, source_port,
                                                    health_check_configured,
                                                    health_check_uuid,
-                                                   bgp_as_a_service->bgpaas_shared()));
+                                                   bgp_as_a_service->bgpaas_shared(),
+                                                   hc_delay_usecs,
+                                                   hc_timeout_usecs,
+                                                   hc_retries));
             }
         }
     }
@@ -305,9 +330,9 @@ void BgpAsAService::ProcessConfig(const std::string &vrf_name,
              new_bgp_as_a_service_entry_list.begin(),
              new_bgp_as_a_service_entry_list.end());
     } else if (new_bgp_as_a_service_entry_list.size() != 0) {
+        StartHealthCheck(vm_uuid, new_bgp_as_a_service_entry_list);
         bgp_as_a_service_entry_map_[vm_uuid] =
             new BgpAsAServiceList(new_bgp_as_a_service_entry_list);
-        StartHealthCheck(vm_uuid, new_bgp_as_a_service_entry_list);
     }
 
     if (changed && !service_delete_cb_list_.empty()) {
@@ -463,8 +488,7 @@ uint32_t BgpAsAService::AddBgpVmiServicePortIndex(const uint32_t source_port,
 bool BgpAsAService::GetBgpRouterServiceDestination(
                     const VmInterface *vm_intf, const IpAddress &source_ip,
                     const IpAddress &dest, IpAddress *nat_server,
-                    uint32_t *sport, bool *health_check_configured,
-                    boost::uuids::uuid *health_check_uuid) const {
+                    uint32_t *sport) const {
     const VnEntry *vn = vm_intf->vn();
     if (vn == NULL) return false;
 
@@ -493,8 +517,6 @@ bool BgpAsAService::GetBgpRouterServiceDestination(
                 return false;
             }
             *sport = it->source_port_;
-            *health_check_configured = it->health_check_configured_;
-            *health_check_uuid = it->health_check_uuid_;
             return true;
         }
         if (dest == dns) {
@@ -511,12 +533,31 @@ bool BgpAsAService::GetBgpRouterServiceDestination(
                 return false;
             }
             *sport = it->source_port_;
-            *health_check_configured = it->health_check_configured_;
-            *health_check_uuid = it->health_check_uuid_;
             return true;
         }
         it++;
     }
+    return false;
+}
+
+bool BgpAsAService::GetBgpHealthCheck(const VmInterface *vm_intf,
+                    boost::uuids::uuid *health_check_uuid) const {
+    BgpAsAServiceEntryMapConstIterator iter =
+       bgp_as_a_service_entry_map_.find(vm_intf->GetUuid());
+
+    while (iter != bgp_as_a_service_entry_map_.end()) {
+        BgpAsAService::BgpAsAServiceEntryListIterator it =
+            iter->second->list_.begin();
+        while (it != iter->second->list_.end()) {
+            if (it->health_check_configured_) {
+                *health_check_uuid = it->health_check_uuid_;
+                return true;
+            }
+            it++;
+        }
+        iter++;
+    }
+
     return false;
 }
 
@@ -528,6 +569,7 @@ BgpAsAService::BgpAsAServiceEntry::BgpAsAServiceEntry() :
     local_peer_ip_(), source_port_(0), health_check_configured_(false),
     health_check_uuid_(), new_health_check_add_(false),
     old_health_check_delete_(false), old_health_check_uuid_(),
+    hc_delay_usecs_(0), hc_timeout_usecs_(0), hc_retries_(0),
     is_shared_(false) {
 }
 
@@ -542,13 +584,17 @@ BgpAsAService::BgpAsAServiceEntry::BgpAsAServiceEntry
     new_health_check_add_(rhs.new_health_check_add_),
     old_health_check_delete_(rhs.old_health_check_delete_),
     old_health_check_uuid_(rhs.old_health_check_uuid_),
+    hc_delay_usecs_(rhs.hc_delay_usecs_),
+    hc_timeout_usecs_(rhs.hc_timeout_usecs_),
+    hc_retries_(rhs.hc_retries_),
     is_shared_(rhs.is_shared_) {
 }
 
 BgpAsAService::BgpAsAServiceEntry::BgpAsAServiceEntry
 (const IpAddress &local_peer_ip, uint32_t source_port,
  bool health_check_configured, const boost::uuids::uuid &health_check_uuid,
- bool is_shared) :
+ bool is_shared, uint64_t hc_delay_usecs, uint64_t hc_timeout_usecs,
+ uint32_t hc_retries) :
     VmInterface::ListEntry(),
     installed_(false),
     local_peer_ip_(local_peer_ip),
@@ -557,7 +603,8 @@ BgpAsAService::BgpAsAServiceEntry::BgpAsAServiceEntry
     health_check_uuid_(health_check_uuid),
     new_health_check_add_(health_check_configured),
     old_health_check_delete_(false), old_health_check_uuid_(),
-    is_shared_(is_shared) {
+    hc_delay_usecs_(hc_delay_usecs), hc_timeout_usecs_(hc_timeout_usecs),
+    hc_retries_(hc_retries), is_shared_(is_shared) {
 }
 
 BgpAsAService::BgpAsAServiceEntry::~BgpAsAServiceEntry() {
@@ -605,6 +652,9 @@ void BgpAsAServiceSandeshReq::HandleRequest() const {
            entry.set_vmi_uuid(UuidToString(map_it->first));
            entry.set_health_check_configured((*it).health_check_configured_);
            entry.set_health_check_uuid(UuidToString((*it).health_check_uuid_));
+           entry.set_health_check_delay_usecs((*it).hc_delay_usecs_);
+           entry.set_health_check_timeout_usecs((*it).hc_timeout_usecs_);
+           entry.set_health_check_retries((*it).hc_retries_);
            entry.set_is_shared((*it).is_shared_);
            bgpaas_map.push_back(entry);
            it++;

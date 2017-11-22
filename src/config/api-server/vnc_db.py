@@ -751,6 +751,13 @@ class VncDbClient(object):
             "service_chain" : ("ServiceChain", False),
             "physical_router" : ("ObjectPRouter", True),
             "bgp_router": ("ObjectBgpRouter", True),
+            "tag" : ("ObjectTagTable", False),
+            "project" : ("ObjectProjectTable", False),
+            "firewall_policy" : ("ObjectFirewallPolicyTable", False),
+            "firewall_rule" : ("ObjectFirewallRuleTable", False),
+            "address_group" : ("ObjectAddressGroupTable", False),
+            "service_group" : ("ObjectServiceGroupTable", False),
+            "application_policy_set" : ("ObjectApplicationPolicySetTable", False),
         }
 
         self._db_resync_done = gevent.event.Event()
@@ -1256,8 +1263,8 @@ class VncDbClient(object):
                 if not new_perms2:
                     return (ok, result)
 
-                share_perms = new_perms2['share']
-                global_access = new_perms2['global_access']
+                share_perms = new_perms2.get('share', cur_perms2['share'])
+                global_access = new_perms2.get('global_access', cur_perms2['global_access'])
 
                 # msg = 'RBAC: BSL perms new %s, cur %s' % (new_perms2, cur_perms2)
                 # self.config_log(msg, level=SandeshLevel.SYS_NOTICE)
@@ -1271,7 +1278,7 @@ class VncDbClient(object):
 
                 # change in shared list? Construct temporary sets to compare
                 cur_shared_list = set(item['tenant']+':'+str(item['tenant_access']) for item in cur_perms2['share'])
-                new_shared_list = set(item['tenant']+':'+str(item['tenant_access']) for item in new_perms2['share'])
+                new_shared_list = set(item['tenant']+':'+str(item['tenant_access']) for item in share_perms)
                 if cur_shared_list == new_shared_list:
                     return (ok, result)
 
