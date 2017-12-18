@@ -121,6 +121,13 @@ def _access_control_list_update(acl_obj, name, obj, entries):
     return acl_obj
 # end _access_control_list_update
 
+def _pp_json_object(obj):
+    parsed = json.loads(jsonpickle.encode(obj, unpicklable=False))
+    return  json.dumps(parsed, indent=4)
+
+def _create_pprinted_prop_list(name, value):
+    return sandesh.PropList(name, _pp_json_object(value))
+
 
 class DBBaseST(DBBase):
     obj_type = __name__
@@ -161,9 +168,11 @@ class DBBaseST(DBBase):
             if self._get_sandesh_ref_list(field):
                 st_obj.obj_refs.append(self._get_sandesh_ref_list(field))
 
-        st_obj.properties = [sandesh.PropList(field, str(getattr(self, field)))
-                             for field in self.prop_fields
-                             if hasattr(self, field)]
+        st_obj.properties = [
+            sandesh.PropList(field,
+                             _pp_json_object(getattr(self, field)))
+            for field in self.prop_fields
+            if hasattr(self, field)]
         return st_obj
 
     def _get_sandesh_ref_list(self, ref_type):
@@ -1337,6 +1346,34 @@ class VirtualNetworkST(DBBaseST):
                         acl_list.append(acl)
                 # end for rule
 
+                # Add provider-network to any vn deny
+                if self.obj.get_is_provider_network():
+                    provider_to_any_acl = self.add_acl_rule(
+                        AddressType(virtual_network=self.name),
+                        PortType(),
+                        AddressType(virtual_network="any"),
+                        PortType(),
+                        "any",
+                        RULE_IMPLICIT_DENY_UUID,
+                        ActionListType("deny"),
+                        '<>')
+                    acl_list.append(provider_to_any_acl)
+                else:
+                    linked_vns = self.obj.get_virtual_network_refs() or []
+                    for linked_vn in linked_vns:
+                        provider_vn = ':'.join(linked_vn['to'])
+                        # add this vn to provider-network deny
+                        this_vn_to_provider_acl = self.add_acl_rule(
+                            AddressType(virtual_network=self.name),
+                            PortType(),
+                            AddressType(virtual_network=provider_vn),
+                            PortType(),
+                            "any",
+                            RULE_IMPLICIT_DENY_UUID,
+                            ActionListType("deny"),
+                            '<>')
+                        acl_list.append(this_vn_to_provider_acl)
+
                 # Create any-vn to any-vn allow
                 match = MatchConditionType(
                     "any", AddressType(virtual_network="any"), PortType(),
@@ -1682,7 +1719,7 @@ class NetworkPolicyST(DBBaseST):
             sandesh.RefList('referred_policy', self.referred_policies)
         ]
         resp.properties = [
-            sandesh.PropList('rule', str(rule)) for rule in self.rules
+            _create_pprinted_prop_list('rule', rule) for rule in self.rules
         ]
         return resp
     # end handle_st_object_req
@@ -1759,7 +1796,8 @@ class RouteTableST(DBBaseST):
             self._get_sandesh_ref_list('logical_router'),
         ]
         resp.properties = [
-            sandesh.PropList('route', str(route)) for route in self.routes
+            _create_pprinted_prop_list('route', route)
+            for route in self.routes
         ]
         return resp
     # end handle_st_object_req
@@ -1966,7 +2004,7 @@ class SecurityGroupST(DBBaseST):
         ]
         resp.properties.extend([
             sandesh.PropList('sg_id', str(self.sg_id)),
-        ] + [sandesh.PropList('rule', str(rule))
+        ] + [_create_pprinted_prop_list('rule', rule)
              for rule in self.security_group_entries.get_policy_rule() or []])
         return resp
     # end handle_st_object_req
@@ -3997,6 +4035,10 @@ class LogicalRouterST(DBBaseST):
         self.bgpvpn_import_rt_list = set()
         self.bgpvpn_export_rt_list = set()
         self.update_vnc_obj()
+        proj_obj = self.read_vnc_obj(self.obj.parent_uuid,
+                                     obj_type='project',
+                                     fields=['vxlan_routing'])
+        self.vxlan_routing = proj_obj.get_vxlan_routing()
 
         rt_ref = self.obj.get_route_target_refs()
         old_rt_key = None
@@ -4046,6 +4088,11 @@ class LogicalRouterST(DBBaseST):
     # end update_virtual_networks
 
     def set_virtual_networks(self, vn_set):
+        # do not add RT assigned to LR to the VN
+        # when vxlan_routing is enabled
+        if self.vxlan_routing:
+            self.virtual_networks = vn_set
+            return
         for vn in self.virtual_networks - vn_set:
             vn_obj = VirtualNetworkST.get(vn)
             if vn_obj is not None:
@@ -4139,6 +4186,10 @@ class LogicalRouterST(DBBaseST):
             return
 
         for vn in self.virtual_networks:
+            # do not add RT assigned to LR to the VN
+            # when vxlan_routing is enabled
+            if self.vxlan_routing:
+                continue
             vn_obj = VirtualNetworkST.get(vn)
             if vn_obj is not None:
                 ri_obj = vn_obj.get_primary_routing_instance()
@@ -4386,7 +4437,7 @@ class ServiceInstanceST(DBBaseST):
         resp.properties.extend([
             sandesh.PropList('left_network', self.left_vn_str),
             sandesh.PropList('right_network', self.right_vn_str),
-            sandesh.PropList('auto_policy', str(self.auto_policy)),
+            _create_pprinted_prop_list('auto_policy', self.auto_policy),
             sandesh.PropList('service_mode', self.get_service_mode()),
             sandesh.PropList('virtualization_type',
                              self.get_virtualization_type()),
@@ -4718,7 +4769,8 @@ class SecurityLoggingObjectST(DBBaseST):
     def handle_st_object_req(self):
         resp = super(SecurityLoggingObjectST, self).handle_st_object_req()
         resp.properties = [
-            sandesh.PropList('rule', str(rule)) for rule in self.security_logging_object_rules
+            _create_pprinted_prop_list('rule', rule)
+            for rule in self.security_logging_object_rules
         ]
         return resp
 # end SecurityLoggingObjectST

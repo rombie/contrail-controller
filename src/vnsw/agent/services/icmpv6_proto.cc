@@ -142,14 +142,14 @@ void Icmpv6Proto::VrfNotify(DBTablePartBase *part, DBEntryBase *entry) {
 }
 
 void Icmpv6Proto::InterfaceNotify(DBEntryBase *entry) {
-    Interface *interface = static_cast<Interface *>(entry);
-    if (interface->type() != Interface::VM_INTERFACE)
+    Interface *intrface = static_cast<Interface *>(entry);
+    if (intrface->type() != Interface::VM_INTERFACE)
         return;
 
     Icmpv6Stats stats;
     VmInterface *vm_interface = static_cast<VmInterface *>(entry);
     VmInterfaceMap::iterator it = vm_interfaces_.find(vm_interface);
-    if (interface->IsDeleted()) {
+    if (intrface->IsDeleted()) {
         if (it != vm_interfaces_.end()) {
             vm_interfaces_.erase(it);
         }
@@ -211,7 +211,8 @@ void Icmpv6VrfState::RouteUpdate(DBTablePartBase *part, DBEntryBase *entry) {
 
     //Check if there is a local VM path, if yes send a
     //Neighbor Solicit request, to trigger route preference state machine
-    if (state && route->vrf()->GetName() != agent_->fabric_vrf_name()) {
+    if (state && route->GetTableType() == Agent::INET6_UNICAST &&
+        route->vrf()->GetName() != agent_->fabric_vrf_name()) {
         state->SendNeighborSolicitForAllIntf(route);
     }
 }
@@ -386,8 +387,10 @@ bool Icmpv6PathPreferenceState::SendNeighborSolicit(WaitForTrafficIntfMap
         if (inserted == false) {
             continue;
         }
-        handler.SendNeighborSolicit(gw_ip_.to_v6(), vm_ip_.to_v6(), vm_intf,
-                                    vrf_id_);
+        Ip6Address src_addr;
+        if (gw_ip_.is_unspecified() == false && gw_ip_.is_v6())
+            src_addr = gw_ip_.to_v6();
+        handler.SendNeighborSolicit(src_addr, vm_ip_.to_v6(), vm_intf, vrf_id_);
         vrf_state_->icmp_proto()->IncrementStatsNeighborSolicit(vm_intf);
         ret = true;
     }
@@ -475,8 +478,10 @@ void Icmpv6PathPreferenceState::SendNeighborSolicitForAllIntf
                 continue;
             }
             if (dynamic_cast<const InetUnicastRouteEntry *>(route)) {
-                if (path->subnet_service_ip().is_v6()) {
-                    gw_ip_ = path->subnet_service_ip();
+                const VmInterface *vm_intf =
+                    static_cast<const VmInterface *>(intf);
+                if (vm_intf->primary_ip6_addr().is_unspecified() == false) {
+                    gw_ip_ = vm_intf->GetGatewayIp(vm_intf->primary_ip6_addr());
                 }
             }
 

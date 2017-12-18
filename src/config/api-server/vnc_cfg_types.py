@@ -206,6 +206,46 @@ class Resource(ResourceDbMixin):
         except cfgm_common.exceptions.NoIdError as e:
             return False, (404, str(e))
         return cls.db_conn.dbe_read(cls.object_type, obj_id=uuid)
+
+    @classmethod
+    def check_associated_firewall_resource_in_same_scope(cls, id, fq_name,
+                                                         obj_dict,
+                                                         object_type):
+        ref_name = '%s_refs' % object_type
+        if ref_name not in obj_dict:
+            return True, ''
+
+        if 'parent_type' not in obj_dict:
+            ok, result = cls.dbe_read(cls.db_conn, cls.object_type, id,
+                                      obj_fields=['parent_type'])
+            if not ok:
+                return ok, result
+            parent_type = result['parent_type']
+        else:
+            parent_type = obj_dict['parent_type']
+
+        # Scoped firewall resource can reference global or scoped resources
+        if parent_type == ProjectServer.resource_type:
+            return True, ''
+
+        for r_ref in obj_dict.get(ref_name, []):
+            ok, result = cls.dbe_read(cls.db_conn, object_type, r_ref['uuid'],
+                                      obj_fields=['parent_type'])
+            if not ok:
+                continue
+            r_parent_type = result['parent_type']
+            # Global firewall resource can reference global firewall resources
+            if r_parent_type != ProjectServer.resource_type:
+                continue
+            # Global firewall resource cannot reference scoped resources
+            msg = ("Global %s (%s, %s) cannot reference a scoped %s (%s, %s)" %
+                   (cls.object_type.replace('_', ' ').title(),
+                    ':'.join(fq_name), id,
+                    object_type.replace('_', ' ').title(),
+                    ':'.join(r_ref['to']), r_ref['uuid']))
+            return False, (400, msg)
+
+        return True, ''
 # end class Resource
 
 class GlobalSystemConfigServer(Resource, GlobalSystemConfig):
@@ -1238,13 +1278,13 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
                     vrouter_fq_name = ['default-global-system-config',host_id.split('.')[0]]
                     vrouter_id = db_conn.fq_name_to_uuid('virtual_router', vrouter_fq_name)
                 except cfgm_common.exceptions.NoIdError:
-                    msg = 'Internal error : virtual router ' + \
-                          ":".join(vrouter_fq_name) + ' not found'
-                    return (False, (400, msg))
+                    # dropping the NoIdError as its equivalent to VirtualRouterNotFound
+                    # its treated as False, non dpdk case, hack for vcenter plugin
+                    return (True, False)
             else:
-                msg = 'Internal error : virtual router ' + \
-                      ":".join(vrouter_fq_name) + ' not found'
-                return (False, (400, msg))
+                # dropping the NoIdError as its equivalent to VirtualRouterNotFound
+                # its treated as False, non dpdk case, hack for vcenter plugin
+                return (True, False)
 
         (ok, result) = cls.dbe_read(db_conn, 'virtual_router', vrouter_id)
         if not ok:
@@ -1256,33 +1296,41 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
     # end of _is_dpdk_enabled
 
     @classmethod
-    def _kvps_update(cls, kvps, vif_type, vif_details):
+    def _kvps_update(cls, kvps, kvp):
+        key = kvp['key']
+        value = kvp['value']
         kvp_dict = cls._kvp_to_dict(kvps)
-        if 'vif_details' not in kvp_dict.keys():
-            kvps.append(vif_details)
+        if key not in kvp_dict.keys():
+            if value:
+                kvps.append(kvp)
         else:
             for i in range(len(kvps)):
                 kvps_dict = dict(kvps[i])
-                if 'vif_details' == kvps_dict.get('key'):
-                    kvps[i] = vif_details
-        if 'vif_type' not in kvp_dict.keys():
-            kvps.append(vif_type)
-        else:
-            for i in range(len(kvps)):
-                kvps_dict = dict(kvps[i])
-                if 'vif_type' == kvps_dict.get('key'):
-                    kvps[i] = vif_type
+                if key == kvps_dict.get('key'):
+                    if value:
+                        kvps[i]['value'] = value
+                        break
+                    else:
+                        del kvps[i]
+                        break
     # end of _kvps_update
 
     @classmethod
-    def _kvps_prop_update(cls, obj_dict, kvps, prop_collection_updates, vif_type, vif_details):
+    def _kvps_prop_update(cls, obj_dict, kvps, prop_collection_updates, vif_type, vif_details, prop_set):
         if obj_dict:
-            cls._kvps_update(kvps, vif_type, vif_details)
+            cls._kvps_update(kvps, vif_type)
+            cls._kvps_update(kvps, vif_details)
         else:
-            vif_type_prop = {'field': 'virtual_machine_interface_bindings',
-                             'operation': 'set', 'value': vif_type, 'position': 'vif_type'}
-            vif_details_prop = {'field': 'virtual_machine_interface_bindings',
-                                'operation': 'set', 'value': vif_details, 'position': 'vif_details'}
+            if prop_set:
+                vif_type_prop = {'field': 'virtual_machine_interface_bindings',
+                                 'operation': 'set', 'value': vif_type, 'position': 'vif_type'}
+                vif_details_prop = {'field': 'virtual_machine_interface_bindings',
+                                    'operation': 'set', 'value': vif_details, 'position': 'vif_details'}
+            else:
+                vif_type_prop = {'field': 'virtual_machine_interface_bindings',
+                                 'operation': 'delete', 'value': vif_type, 'position': 'vif_type'}
+                vif_details_prop = {'field': 'virtual_machine_interface_bindings',
+                                    'operation': 'delete', 'value': vif_details, 'position': 'vif_details'}
             prop_collection_updates.append(vif_details_prop)
             prop_collection_updates.append(vif_type_prop)
     # end of _kvps_prop_update
@@ -1387,6 +1435,11 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
                 vif_details = {'key': 'vif_details', 'value': json.dumps(vif_params)}
                 kvps.append(vif_details)
 
+            if 'vif_type' not in kvp_dict:
+                vif_type = {'key': 'vif_type',
+                            'value': cls.portbindings['VIF_TYPE_VROUTER']}
+                kvps.append(vif_type)
+
             if 'vnic_type' not in kvp_dict:
                 vnic_type = {'key': 'vnic_type',
                              'value': cls.portbindings['VNIC_TYPE_NORMAL']}
@@ -1407,17 +1460,11 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
                                   cls.portbindings['VHOST_USER_VROUTER_PLUG']: True
                                  }
                     vif_details = {'key': 'vif_details', 'value': json.dumps(vif_params)}
-                    cls._kvps_update(kvps, vif_type, vif_details)
+                    cls._kvps_update(kvps, vif_type)
+                    cls._kvps_update(kvps, vif_details)
                 else:
-                    vif_type = {'key': 'vif_type',
-                                'value': cls.portbindings['VIF_TYPE_VROUTER']}
-                    if 'vif_type' in kvp_dict:
-                        for i in range(len(kvps)):
-                            kvps_dict = dict(kvps[i])
-                            if 'vif_type' in kvps_dict.get('key'):
-                                kvps[i] = vif_type
-                    else:
-                        kvps.append(vif_type)
+                    vif_type = {'key': 'vif_type', 'value': None}
+                    cls._kvps_update(kvps, vif_type)
 
         (ok, result) = cls._check_port_security_and_address_pairs(obj_dict)
 
@@ -1535,7 +1582,8 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
             kvps_port = bindings_port.get('key_value_pair') or []
             kvp_dict_port = cls._kvp_to_dict(kvps_port)
             kvp_dict = cls._kvp_to_dict(kvps)
-            if (kvp_dict_port.get('vnic_type') == cls.portbindings['VNIC_TYPE_NORMAL'] and
+            if ((kvp_dict_port.get('vnic_type') == cls.portbindings['VNIC_TYPE_NORMAL'] or
+                    kvp_dict_port.get('vnic_type')  is None) and
                     kvp_dict.get('host_id') != 'null'):
                 (ok, result) = cls._is_dpdk_enabled(obj_dict, db_conn, kvp_dict.get('host_id'))
                 if not ok:
@@ -1550,23 +1598,23 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
                                   cls.portbindings['VHOST_USER_VROUTER_PLUG']: True
                                  }
                     vif_details = {'key': 'vif_details', 'value': json.dumps(vif_params)}
-                    cls._kvps_prop_update(obj_dict, kvps, prop_collection_updates, vif_type, vif_details)
+                    cls._kvps_prop_update(obj_dict, kvps, prop_collection_updates, vif_type, vif_details, True)
                 else:
-                    vif_type = {'key': 'vif_type',
-                                'value': cls.portbindings['VIF_TYPE_VROUTER']}
-                    vif_details = {'key': 'vif_details', 'value': {}}
-                    cls._kvps_prop_update(obj_dict, kvps, prop_collection_updates, vif_type, vif_details)
+                    vif_type = {'key': 'vif_type', 'value': None}
+                    vif_details = {'key': 'vif_details', 'value': None}
+                    cls._kvps_prop_update(obj_dict, kvps, prop_collection_updates, vif_type, vif_details, False)
             else:
                 vif_type = {'key': 'vif_type',
-                            'value': cls.portbindings['VIF_TYPE_VROUTER']}
-                vif_details = {'key': 'vif_details', 'value': {}}
+                            'value': None}
+                vif_details = {'key': 'vif_details', 'value': None}
                 if obj_dict and 'vif_details' in kvp_dict_port:
-                    cls._kvps_update(kvps, vif_type, vif_details)
+                    cls._kvps_update(kvps, vif_type)
+                    cls._kvps_update(kvps, vif_details)
                 elif kvp_dict.get('host_id') == 'null':
                     vif_details_prop = {'field': 'virtual_machine_interface_bindings',
-                                        'operation': 'set', 'value': vif_details, 'position': 'vif_details'}
+                                        'operation': 'delete', 'value': vif_details, 'position': 'vif_details'}
                     vif_type_prop = {'field': 'virtual_machine_interface_bindings',
-                                     'operation': 'set', 'value': vif_type, 'position': 'vif_type'}
+                                     'operation': 'delete', 'value': vif_type, 'position': 'vif_type'}
                     prop_collection_updates.append(vif_details_prop)
                     prop_collection_updates.append(vif_type_prop)
 
@@ -2001,6 +2049,32 @@ class FirewallRuleServer(Resource, FirewallRule):
 
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            obj_dict['uuid'],
+            obj_dict['fq_name'],
+            obj_dict,
+            AddressGroup.object_type,
+        )
+        if not ok:
+            return False, result
+
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            obj_dict['uuid'],
+            obj_dict['fq_name'],
+            obj_dict,
+            ServiceGroupServer.object_type,
+        )
+        if not ok:
+            return False, result
+
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            obj_dict['uuid'],
+            obj_dict['fq_name'],
+            obj_dict,
+            VirtualNetworkServer.object_type,
+        )
+        if not ok:
+            return False, result
 
         obj_dict['tag_refs'] = []
         obj_dict['address_group_refs'] = []
@@ -2041,6 +2115,21 @@ class FirewallRuleServer(Resource, FirewallRule):
 
     @classmethod
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            id, fq_name, obj_dict, AddressGroup.object_type)
+        if not ok:
+            return False, result
+
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            id, fq_name, obj_dict, ServiceGroupServer.object_type)
+        if not ok:
+            return False, result
+
+        ok, result = cls.check_associated_firewall_resource_in_same_scope(
+            id, fq_name, obj_dict, VirtualNetworkServer.object_type)
+        if not ok:
+            return False, result
+
         ok, read_result = cls.dbe_read(db_conn, 'firewall_rule', id)
         if not ok:
             return ok, read_result
@@ -2080,6 +2169,22 @@ class FirewallRuleServer(Resource, FirewallRule):
 # end class FirewallRuleServer
 
 
+class FirewallPolicyServer(Resource, FirewallPolicy):
+    @classmethod
+    def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
+        return cls.check_associated_firewall_resource_in_same_scope(
+            obj_dict['uuid'],
+            obj_dict['fq_name'],
+            obj_dict,
+            FirewallRuleServer.object_type,
+        )
+
+    @classmethod
+    def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
+        return cls.check_associated_firewall_resource_in_same_scope(
+            id, fq_name, obj_dict, FirewallRuleServer.object_type)
+
+
 class ApplicationPolicySetServer(Resource, ApplicationPolicySet):
     @staticmethod
     def _check_all_applications_flag(obj_dict):
@@ -2091,11 +2196,25 @@ class ApplicationPolicySetServer(Resource, ApplicationPolicySet):
 
     @classmethod
     def pre_dbe_create(cls, tenant_name, obj_dict, db_conn):
-        return cls._check_all_applications_flag(obj_dict)
+        ok, result = cls._check_all_applications_flag(obj_dict)
+        if not ok:
+            return False, result
+
+        return cls.check_associated_firewall_resource_in_same_scope(
+            obj_dict['uuid'],
+            obj_dict['fq_name'],
+            obj_dict,
+            FirewallPolicyServer.object_type,
+        )
 
     @classmethod
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
-        return cls._check_all_applications_flag(obj_dict)
+        ok, result = cls._check_all_applications_flag(obj_dict)
+        if not ok:
+            return False, result
+
+        return cls.check_associated_firewall_resource_in_same_scope(
+            id, fq_name, obj_dict, FirewallPolicyServer.object_type)
 
     @classmethod
     def pre_dbe_delete(cls, id, obj_dict, db_conn):
@@ -2321,6 +2440,76 @@ class VirtualRouterServer(Resource, VirtualRouter):
 
 
 class VirtualNetworkServer(Resource, VirtualNetwork):
+
+    @classmethod
+    def _check_is_provider_network_property(cls, obj_dict, db_conn,
+                                            vn_ref=None):
+        # no further checks if is_provider_network is not set
+        if 'is_provider_network' not in obj_dict:
+            return (True, '')
+        if not vn_ref:
+            # must be set as False for non provider VN
+            if obj_dict.get('is_provider_network'):
+                return (False,
+                        'Non provider VN (%s) can not be '
+                        'configured with is_provider_network = True' % (
+                            obj_dict.get('uuid')))
+        else:
+            # compare obj_dict with db and fail
+            # if not same as this is a read-only property
+            if obj_dict.get('is_provider_network') != \
+               vn_ref.get('is_provider_network', False):
+                return (False,
+                        'Update is_provider_network property of VN (%s) '
+                        'is not allowed' % obj_dict.get('uuid'))
+        return (True, '')
+    # end _check_is_provider_network_property
+
+    @classmethod
+    def _check_provider_network(cls, obj_dict, db_conn, vn_ref=None):
+        # no further checks if not linked
+        # to a provider network
+        if not obj_dict.get('virtual_network_refs'):
+            return (True, '')
+        # retrieve this VN
+        if not vn_ref:
+            vn_ref = {'uuid': obj_dict['uuid'],
+                      'is_provider_network': obj_dict.get(
+                          'is_provider_network')}
+        uuids = [vn['uuid'] for vn in obj_dict.get('virtual_network_refs')]
+
+        # if not a provider_vn, not more
+        # than one virtual_network_refs is allowed
+        if not vn_ref.get('is_provider_network') and \
+           len(obj_dict.get('virtual_network_refs')) != 1:
+            return(False,
+                   'Non Provider VN (%s) can connect to one provider VN but '
+                   'trying to connect to VN (%s)' % (vn_ref['uuid'], uuids))
+
+        # retrieve vn_refs of linked VNs
+        (ok, provider_vns, _) = db_conn.dbe_list('virtual_network',
+                                                 obj_uuids=uuids,
+                                                 field_names=[
+                                                     'is_provider_network'],
+                                                 filters={
+                                                     'is_provider_network': [
+                                                         True]})
+        if not ok:
+            return (ok, 'Error reading VN refs (%s)' % uuids)
+        if vn_ref.get('is_provider_network'):
+            # this is a provider-VN, no linked provider_vns is expected
+            if provider_vns:
+                return (False,
+                        'Provider VN (%s) can not connect to another '
+                        'provider VN (%s)' % (vn_ref.get('uuid'), uuids))
+        else:
+            # this is a non-provider VN, only one provider vn is expected
+            if len(provider_vns) != 1:
+                return (False,
+                        'Non Provider VN (%s) can connect only to one '
+                        'provider VN but not (%s)' % (
+                            vn_ref.get('uuid'), uuids))
+        return (True, '')
 
     @classmethod
     def _check_route_targets(cls, obj_dict, db_conn):
@@ -2588,6 +2777,15 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
         if not ok:
             return (False, (400, error))
 
+        (ok, error) = cls._check_is_provider_network_property(obj_dict,
+            db_conn)
+        if not ok:
+            return (False, (400, error))
+
+        (ok, error) = cls._check_provider_network(obj_dict, db_conn)
+        if not ok:
+            return (False, (400, error))
+
         # Check if network forwarding mode support BGP VPN types
         ok, result = BgpvpnServer.check_network_supports_vpn_type(
             db_conn, obj_dict)
@@ -2653,9 +2851,7 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
 
     @classmethod
     def pre_dbe_update(cls, id, fq_name, obj_dict, db_conn, **kwargs):
-        if ((fq_name == cfgm_common.IP_FABRIC_VN_FQ_NAME) or
-                (fq_name == cfgm_common.LINK_LOCAL_VN_FQ_NAME)):
-            # Ignore ip-fabric subnet updates
+        if ((fq_name == cfgm_common.LINK_LOCAL_VN_FQ_NAME)):
             return True,  ""
 
         # neutron <-> vnc sharing
@@ -2696,6 +2892,16 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
         if (new_vn_id is not None and
                 new_vn_id != read_result.get('virtual_network_network_id')):
             return (False, (403, "Cannot update the virtual network ID"))
+
+        (ok, error) = cls._check_is_provider_network_property(obj_dict,
+            db_conn, vn_ref=read_result)
+        if not ok:
+            return (False, (400, error))
+
+        (ok, error) = cls._check_provider_network(obj_dict,
+            db_conn, vn_ref=read_result)
+        if not ok:
+            return (False, (400, error))
 
         (ok, response) = cls._is_multi_policy_service_chain_supported(obj_dict,
                                                                       read_result)

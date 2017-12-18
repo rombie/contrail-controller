@@ -2921,6 +2921,8 @@ struct BgpAsAServiceSandeshList {
  * @cli_name: read oper bgp service list
  */
 request sandesh BgpAsAServiceSandeshReq {
+    /** Uuid of vmi */
+    1: string vmi_uuid;
 }
 
 /**
@@ -3338,4 +3340,42 @@ response sandesh VrouterInfoResp {
  * @cli_name: read oper vrouter object
  */
 request sandesh VrouterInfoReq {
+}
+
+/**
+ * Sandesh definition for Bgp As A Service parameters
+ */
+struct BGPaaSSandeshData {
+    /** Starting port number for BGPaaS */
+    1: u16 port_start;
+    /** End port number for BGPaaS */
+    2: u16 end_port;
+}
+
+/**
+ * Sandesh definition for Graceful Restart Parameters
+ */
+struct GracefulRestartSandeshData {
+    /** Enable graceful restart flag */
+    1: bool enable;
+    /** End of rib time */
+    2: u64 end_of_rib_time;
+    /** Enable xmpp helper */
+    3: bool xmpp_helper_enable;
+    /** Config seen flag */
+    4: bool config_seen;
+}
+
+response sandesh GlobalSystemConfigResp {
+    /** BgpaaS parameters */
+    1: BGPaaSSandeshData bgp_parameters;
+    /** Graceful Restart parameters */
+    2: GracefulRestartSandeshData llgr_parameters;
+}
+
+/**
+ * @description: Request message for Global System Config
+ * @cli_name: read global system config
+ */
+request sandesh GlobalSystemConfigReq {
 }

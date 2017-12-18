@@ -18,6 +18,9 @@
 #include <vrouter/flow_stats/flow_stats_collector.h>
 #include <vrouter/flow_stats/flow_stats_types.h>
 
+SandeshTraceBufferPtr SessionStatsTraceBuf(SandeshTraceBufferCreate(
+    "SessionStats", 4000));
+
 bool session_debug_ = false;
 SessionStatsCollector::SessionStatsCollector(boost::asio::io_service &io,
                                        AgentUveBase *uve,
@@ -510,6 +513,36 @@ void SessionStatsCollector::UpdateSessionStatsInfo(FlowEntry* fe,
     UpdateSessionFlowStatsInfo(rfe, &session->rev_flow);
 }
 
+static void BuildTraceTagList(const TagList &slist, vector<string> *dlist) {
+    TagList::const_iterator it = slist.begin();
+    while (it != slist.end()) {
+        dlist->push_back(integerToString(*it));
+        ++it;
+    }
+}
+
+static void TraceSession(const string &op, const SessionEndpointKey &ep,
+                         const SessionAggKey &agg, const SessionKey &session,
+                         bool rev_flow_params) {
+    SessionTraceInfo info;
+    info.vmi = ep.vmi_cfg_name;
+    info.local_vn = ep.local_vn;
+    info.remote_vn = ep.remote_vn;
+    BuildTraceTagList(ep.local_tagset, &info.local_tagset);
+    BuildTraceTagList(ep.remote_tagset, &info.remote_tagset);
+    info.remote_prefix = ep.remote_prefix;
+    info.match_policy = ep.match_policy;
+    info.is_si = ep.is_si;
+    info.is_client = ep.is_client_session;
+    info.local_ip = agg.local_ip.to_string();
+    info.server_port = agg.server_port;
+    info.protocol = agg.proto;
+    info.remote_ip = session.remote_ip.to_string();
+    info.client_port = session.client_port;
+    info.flow_uuid = to_string(session.uuid);
+    SESSION_STATS_TRACE(Trace, op, info, rev_flow_params);
+}
+
 void SessionStatsCollector::AddSession(FlowEntry* fe, uint64_t setup_time) {
     SessionAggKey session_agg_key;
     SessionEndpointInfo::SessionAggMap::iterator session_agg_map_iter;
@@ -560,6 +593,8 @@ void SessionStatsCollector::AddSession(FlowEntry* fe, uint64_t setup_time) {
         }
     }
 
+    TraceSession("Add", session_endpoint_key, session_agg_key, session_key,
+                 false);
     UpdateSessionStatsInfo(fe_fwd, setup_time, &session);
 
     session_endpoint_map_iter = session_endpoint_map_.find(
@@ -647,7 +682,17 @@ void SessionStatsCollector::DeleteSession(FlowEntry* fe,
     } else {
         return;
     }
+    if (params && params->action_info_.action == 0) {
+        params = NULL;
+    }
 
+    bool params_valid = true;
+    if (params == NULL) {
+        params_valid = false;
+    }
+
+    TraceSession("Del", session_endpoint_key, session_agg_key, session_key,
+                 params_valid);
     session_endpoint_map_iter = session_endpoint_map_.find(
                                             session_endpoint_key);
     if (session_endpoint_map_iter != session_endpoint_map_.end()) {
@@ -915,12 +960,34 @@ void SessionStatsCollector::AddSloList(const UuidList &slo_list,
         sit++;
     }
 }
+
+void SessionStatsCollector::MakeSloList(const FlowEntry *fe,
+                                        SessionSloRuleMap *vmi_session_slo_rule_map,
+                                        SessionSloRuleMap *vn_session_slo_rule_map) {
+    if (fe == NULL) {
+        return;
+    }
+    const Interface *itf = fe->intf_entry();
+    if (!itf) {
+        return;
+    }
+    if (itf->type() != Interface::VM_INTERFACE) {
+        return;
+    }
+    const VmInterface *vmi = static_cast<const VmInterface *>(itf);
+    AddSloList(vmi->slo_list(), vmi_session_slo_rule_map);
+    if (vmi->vn()) {
+        AddSloList(vmi->vn()->slo_list(), vn_session_slo_rule_map);
+    }
+    return;
+}
+
 void SessionStatsCollector::BuildSloList(
-                                const SessionFlowStatsInfo &session_flow,
+                                const SessionStatsInfo    &stats_info,
+                                const FlowEntry *fe,
                                 SessionSloRuleMap *global_session_slo_rule_map,
                                 SessionSloRuleMap *vmi_session_slo_rule_map,
                                 SessionSloRuleMap *vn_session_slo_rule_map) {
-    const FlowEntry *fe = session_flow.flow.get();
 
     vmi_session_slo_rule_map->clear();
     vn_session_slo_rule_map->clear();
@@ -933,22 +1000,11 @@ void SessionStatsCollector::BuildSloList(
                 global_session_slo_rule_map);
     }
 
-    if (!fe) {
-        return;
-    }
-    const Interface *itf = fe->intf_entry();
-    if (!itf) {
-        return;
-    }
-
-    if (itf->type() != Interface::VM_INTERFACE) {
-        return;
-    }
-
-    const VmInterface *vmi = static_cast<const VmInterface *>(itf);
-    AddSloList(vmi->slo_list(), vmi_session_slo_rule_map);
-    if (vmi->vn()) {
-        AddSloList(vmi->vn()->slo_list(), vn_session_slo_rule_map);
+    if (stats_info.deleted) {
+        AddSloList(stats_info.export_info.vmi_slo_list, vmi_session_slo_rule_map);
+        AddSloList(stats_info.export_info.vn_slo_list, vn_session_slo_rule_map);
+    } else {
+        MakeSloList(fe, vmi_session_slo_rule_map, vn_session_slo_rule_map);
     }
 }
 
@@ -970,20 +1026,42 @@ bool SessionStatsCollector::UpdateSloMatchRuleEntry(
     return false;
 }
 
-bool SessionStatsCollector::FindSloMatchRule(const SessionSloRuleMap &map,
-                                             const std::string &match_uuid) {
+bool SessionStatsCollector::CheckPolicyMatch(const SessionSloRuleMap &map,
+                                             const std::string &policy_uuid) {
     SessionSloRuleMap::const_iterator it;
-    bool is_logged = false;
-    it = map.find(match_uuid);
-    if (it != map.end()) {
-        is_logged = UpdateSloMatchRuleEntry(it->second.slo_uuid, match_uuid);
+    if (!policy_uuid.empty()) {
+        it = map.find(policy_uuid);
+        if (it != map.end()) {
+            return UpdateSloMatchRuleEntry(it->second.slo_uuid, policy_uuid);
+        }
     }
-    return is_logged;
+    return false;
 }
 
-bool SessionStatsCollector::MatchSloForSession(
-        const SessionFlowStatsInfo &session_flow,
-        const std::string &match_uuid) {
+bool SessionStatsCollector::FindSloMatchRule(const SessionSloRuleMap &map,
+                                             const std::string &fw_policy_uuid,
+                                             const std::string &nw_policy_uuid,
+                                             const std::string &sg_policy_uuid) {
+    SessionSloRuleMap::const_iterator it;
+    bool fw_logged = false, nw_logged = false, sg_logged = false;
+
+    fw_logged = CheckPolicyMatch(map, fw_policy_uuid);
+    nw_logged = CheckPolicyMatch(map, nw_policy_uuid);
+    sg_logged = CheckPolicyMatch(map, sg_policy_uuid);
+
+    if (fw_logged || nw_logged || sg_logged) {
+        return true;
+    }
+    return false;
+}
+
+bool SessionStatsCollector::MatchSloForFlow(
+                            const SessionStatsInfo    &stats_info,
+                            const FlowEntry *fe,
+                            const std::string &fw_policy_uuid,
+                            const std::string &nw_policy_uuid,
+                            const std::string &sg_policy_uuid) {
+
     bool is_vmi_slo_logged, is_vn_slo_logged, is_global_slo_logged;
     SessionSloRuleMap vmi_session_slo_rule_map;
     SessionSloRuleMap vn_session_slo_rule_map;
@@ -992,20 +1070,122 @@ bool SessionStatsCollector::MatchSloForSession(
     /*
      * Get the list of slos need to be matched for the given flow
      */
-    BuildSloList(session_flow,
+    BuildSloList(stats_info, fe,
                  &global_session_slo_rule_map,
                  &vmi_session_slo_rule_map,
                  &vn_session_slo_rule_map);
     /*
-     * Match the policy_match for the given flow against the slo list
+     * Match each type of policy for the given flow against the slo list
      */
-    is_vmi_slo_logged = FindSloMatchRule(vmi_session_slo_rule_map, match_uuid);
-    is_vn_slo_logged = FindSloMatchRule(vn_session_slo_rule_map, match_uuid);
+
+    is_vmi_slo_logged = FindSloMatchRule(vmi_session_slo_rule_map, 
+                                         fw_policy_uuid,
+                                         nw_policy_uuid,
+                                         sg_policy_uuid);
+
+    is_vn_slo_logged = FindSloMatchRule(vn_session_slo_rule_map,
+                                        fw_policy_uuid,
+                                        nw_policy_uuid,
+                                        sg_policy_uuid);
+
     is_global_slo_logged = FindSloMatchRule(global_session_slo_rule_map,
-                                             match_uuid);
+                                            fw_policy_uuid,
+                                            nw_policy_uuid,
+                                            sg_policy_uuid);
     if ((is_vmi_slo_logged) ||
         (is_vn_slo_logged) ||
         (is_global_slo_logged)) {
+        return true;
+    }
+    return false;
+}
+
+void SessionStatsCollector::GetPolicyIdFromDeletedFlow(
+                            const SessionFlowExportInfo &flow_info,
+                            std::string &fw_policy_uuid,
+                            std::string &nw_policy_uuid,
+                            std::string &sg_policy_uuid) {
+    fw_policy_uuid = flow_info.aps_rule_uuid;
+    sg_policy_uuid = flow_info.sg_rule_uuid;
+    nw_policy_uuid = flow_info.nw_ace_uuid;
+    return;
+}
+
+void SessionStatsCollector::GetPolicyIdFromFlow(
+                            const FlowEntry *fe,
+                            std::string &fw_policy_uuid,
+                            std::string &nw_policy_uuid,
+                            std::string &sg_policy_uuid) {
+    fw_policy_uuid = fe->fw_policy_uuid();
+    sg_policy_uuid = fe->sg_rule_uuid();
+    nw_policy_uuid = fe->nw_ace_uuid();
+    return;
+}
+
+bool SessionStatsCollector::FlowLogging(
+                            const SessionStatsInfo    &stats_info,
+                            const FlowEntry *fe) {
+
+    bool logged = false;
+    std::string fw_policy_uuid = "", nw_policy_uuid = "", sg_policy_uuid = "";
+
+    GetPolicyIdFromFlow(fe,
+                        fw_policy_uuid,
+                        nw_policy_uuid,
+                        sg_policy_uuid);
+
+    logged = MatchSloForFlow(stats_info,
+                             fe,
+                             fw_policy_uuid,
+                             nw_policy_uuid,
+                             sg_policy_uuid);
+
+    return logged;
+}
+
+bool SessionStatsCollector::DeletedFlowLogging(
+                            const SessionStatsInfo    &stats_info,
+                            const SessionFlowExportInfo &flow_info) {
+
+    bool logged = false;
+    std::string fw_policy_uuid = "", nw_policy_uuid = "", sg_policy_uuid = "";
+
+    GetPolicyIdFromDeletedFlow(flow_info,
+                               fw_policy_uuid,
+                               nw_policy_uuid,
+                               sg_policy_uuid);
+
+    logged = MatchSloForFlow(stats_info,
+                             NULL,
+                             fw_policy_uuid,
+                             nw_policy_uuid,
+                             sg_policy_uuid);
+
+    return logged;
+}
+
+bool SessionStatsCollector::CheckSessionLogging(
+                            const SessionStatsInfo    &stats_info) {
+
+    bool fwd_logged = false, rev_logged = false;
+    const SessionExportInfo &info = stats_info.export_info;
+
+    if (stats_info.deleted) {
+        fwd_logged = DeletedFlowLogging(stats_info,
+                            info.fwd_flow);
+
+        rev_logged = DeletedFlowLogging(stats_info,
+                            info.rev_flow);
+    }
+    else {
+        fwd_logged = FlowLogging(stats_info,
+                                 stats_info.fwd_flow.flow.get());
+
+        rev_logged = FlowLogging(stats_info,
+                                 stats_info.rev_flow.flow.get());
+    }
+
+    if (fwd_logged || rev_logged) {
         return true;
     }
     return false;
@@ -1033,7 +1213,11 @@ uint64_t SessionStatsCollector::GetUpdatedSessionFlowPackets(
 }
 
 void SessionStatsCollector::CopyFlowInfoInternal(SessionFlowExportInfo *info,
+                                                 const boost::uuids::uuid &u,
                                                  FlowEntry *fe) const {
+    if (fe->uuid() != u) {
+        return;
+    }
     FlowTable::GetFlowSandeshActionParams(fe->data().match_p.action_info,
                                           info->action);
     info->sg_rule_uuid = fe->sg_rule_uuid();
@@ -1050,6 +1234,18 @@ void SessionStatsCollector::CopyFlowInfo(SessionStatsInfo &session,
     FlowEntry *fe = session.fwd_flow.flow.get();
     FlowEntry *rfe = session.rev_flow.flow.get();
     info.valid = true;
+
+    const Interface *itf = fe->intf_entry();
+    if ((itf !=  NULL) && (itf->type() == Interface::VM_INTERFACE)) {
+        const VmInterface *vmi = static_cast<const VmInterface *>(itf);
+        if (vmi != NULL) {
+            info.vmi_slo_list = vmi->slo_list();
+            if (vmi->vn()) {
+                info.vn_slo_list = vmi->vn()->slo_list();
+            }
+        }
+    }
+
     if (fe->IsIngressFlow()) {
         info.vm_cfg_name = fe->data().vm_cfg_name;
     } else if (rfe) {
@@ -1064,7 +1260,7 @@ void SessionStatsCollector::CopyFlowInfo(SessionStatsInfo &session,
         info.other_vrouter = fe->peer_vrouter();
     }
     info.underlay_proto = fe->tunnel_type().GetType();
-    CopyFlowInfoInternal(&info.fwd_flow, fe);
+    CopyFlowInfoInternal(&info.fwd_flow, session.fwd_flow.uuid, fe);
     if (params) {
         FlowTable::GetFlowSandeshActionParams(params->action_info_,
                                               info.rev_flow.action);
@@ -1075,7 +1271,7 @@ void SessionStatsCollector::CopyFlowInfo(SessionStatsInfo &session,
                                                                  drop_reason_);
         }
     } else if (rfe) {
-        CopyFlowInfoInternal(&info.rev_flow, rfe);
+        CopyFlowInfoInternal(&info.rev_flow, session.rev_flow.uuid, rfe);
     }
 }
 
@@ -1180,6 +1376,15 @@ bool SessionStatsCollector::FetchFlowStats
                                              info->flow_handle,
                                              info->gen_id, &k_stats, &kinfo);
     if (!k_flow) {
+        SandeshFlowKey skey;
+        skey.set_nh(info->flow->key().nh);
+        skey.set_sip(info->flow->key().src_addr.to_string());
+        skey.set_dip(info->flow->key().dst_addr.to_string());
+        skey.set_src_port(info->flow->key().src_port);
+        skey.set_dst_port(info->flow->key().dst_port);
+        skey.set_protocol(info->flow->key().protocol);
+        SESSION_STATS_TRACE(Err, "Fetching stats failed", info->flow_handle,
+                            info->gen_id, skey);
         return false;
     }
 
@@ -1357,8 +1562,8 @@ void SessionStatsCollector::FillSessionAggInfo
     /*
      * Fill the session agg key
      */
-    key->set_ip(it->first.local_ip);
-    key->set_port(it->first.server_port);
+    key->set_local_ip(it->first.local_ip);
+    key->set_service_port(it->first.server_port);
     key->set_protocol(it->first.proto);
 }
 
@@ -1464,42 +1669,11 @@ bool SessionStatsCollector::ProcessSessionEndpoint
                 }
             }
 
-            std::string match_policy_uuid = "";
-            if (session_map_iter->second.fwd_flow.flow.get()) {
-                match_policy_uuid = session_map_iter->
-                    second.fwd_flow.flow.get()->fw_policy_uuid();
-            } else if (session_map_iter->second.deleted) {
-                match_policy_uuid = session_map_iter->second.export_info.
-                    fwd_flow.aps_rule_uuid;
-            }
-            bool is_fwd_logged = false;
-
-            if (!match_policy_uuid.empty()) {
-                is_fwd_logged = MatchSloForSession(
-                                    session_map_iter->second.fwd_flow,
-                                    match_policy_uuid);
-            }
-            match_policy_uuid = "";
-            if (session_map_iter->second.rev_flow.flow.get()) {
-                match_policy_uuid = session_map_iter->
-                    second.rev_flow.flow.get()->fw_policy_uuid();
-            } else if (session_map_iter->second.deleted) {
-                match_policy_uuid = session_map_iter->second.export_info.
-                    rev_flow.aps_rule_uuid;
-            }
-            bool is_rev_logged = false;
-
-            if (!match_policy_uuid.empty()) {
-                is_rev_logged = MatchSloForSession(
-                                    session_map_iter->second.rev_flow,
-                                    match_policy_uuid);
-            }
-
-            bool is_logging = is_fwd_logged || is_rev_logged;
             bool is_sampling = true;
             if (IsSamplingEnabled()) {
                 is_sampling = SampleSession(session_map_iter, &params);
             }
+            bool is_logging = CheckSessionLogging(session_map_iter->second);
 
             /* Ignore session export if sampling & logging drop the session */
             if (!is_sampling && !is_logging) {
@@ -1888,6 +2062,7 @@ bool SessionSloState::UpdateSessionSloStateRuleRefCount(
         it->second.ref_count++;
         if (it->second.ref_count == it->second.rate) {
             is_logged = true;
+            it->second.ref_count = 0;
         }
     }
     return is_logged;

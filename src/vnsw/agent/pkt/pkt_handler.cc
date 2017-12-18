@@ -110,7 +110,8 @@ void PktHandler::CalculatePort(PktInfo *pkt) {
     }
 
     uint16_t sport = pkt->sport;
-    if (pkt->ip_proto == IPPROTO_ICMP) {
+    if (pkt->ip_proto == IPPROTO_ICMP ||
+        pkt->ip_proto == IPPROTO_IGMP) {
         sport = 0;
     }
     if (pkt->sport < pkt->dport) {
@@ -138,13 +139,13 @@ void PktHandler::CalculatePort(PktInfo *pkt) {
 }
 
 bool PktHandler::IsBFDHealthCheckPacket(const PktInfo *pkt_info,
-                                        const Interface *interface) {
-    if (interface->type() == Interface::VM_INTERFACE &&
+                                        const Interface *intrface) {
+    if (intrface->type() == Interface::VM_INTERFACE &&
         pkt_info->ip_proto == IPPROTO_UDP &&
         (pkt_info->dport == BFD_SINGLEHOP_CONTROL_PORT ||
          pkt_info->dport == BFD_MULTIHOP_CONTROL_PORT ||
          pkt_info->dport == BFD_ECHO_PORT)) {
-        const VmInterface *vm_intf = static_cast<const VmInterface *>(interface);
+        const VmInterface *vm_intf = static_cast<const VmInterface *>(intrface);
         if (vm_intf->IsHealthCheckEnabled()) {
             return true;
         }
@@ -154,8 +155,8 @@ bool PktHandler::IsBFDHealthCheckPacket(const PktInfo *pkt_info,
 }
 
 bool PktHandler::IsSegmentHealthCheckPacket(const PktInfo *pkt_info,
-                                        const Interface *interface) {
-    if (interface->type() == Interface::VM_INTERFACE &&
+                                        const Interface *intrface) {
+    if (intrface->type() == Interface::VM_INTERFACE &&
         pkt_info->ip_proto == IPPROTO_ICMP) {
         if (pkt_info->icmp_chksum == 0xffff) {
             return true;
@@ -266,6 +267,10 @@ PktHandler::PktModuleName PktHandler::ParsePacket(const AgentHdr &hdr,
             return ICMPV6_ERROR;
         }
         return ICMPV6;
+    }
+
+    if (pkt_type == PktType::IGMP) {
+        return IGMP;
     }
 
     if(pkt_info->ip6 && hdr.cmd == AgentHdr::TRAP_HANDLE_DF) {
@@ -524,6 +529,16 @@ int PktHandler::ParseIpPacket(PktInfo *pkt_info, PktType::Type &pkt_type,
         } else {
             pkt_info->sport = 0;
         }
+        break;
+    }
+
+    case IPPROTO_IGMP: {
+        pkt_info->transp.igmp = (struct igmp *) (pkt + len);
+        pkt_type = PktType::IGMP;
+
+        pkt_info->dport = 0;
+        pkt_info->sport = 0;
+        pkt_info->data = (pkt + len);
         break;
     }
 
@@ -1016,7 +1031,7 @@ bool PktHandler::IsGwPacket(const Interface *intf, const IpAddress &dst_ip) {
     return false;
 }
 
-bool PktHandler::IsValidInterface(uint32_t ifindex, Interface **interface) {
+bool PktHandler::IsValidInterface(uint32_t ifindex, Interface **intrface) {
     Interface *intf = agent_->interface_table()->FindInterface(ifindex);
     if (intf == NULL) {
         PKT_TRACE(Err, "Invalid interface index <" << ifindex << ">");
@@ -1024,7 +1039,7 @@ bool PktHandler::IsValidInterface(uint32_t ifindex, Interface **interface) {
         return false;
     }
 
-    *interface = intf;
+    *intrface = intf;
     return true;
 }
 

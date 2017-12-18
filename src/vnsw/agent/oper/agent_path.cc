@@ -318,14 +318,14 @@ bool AgentPath::Sync(AgentRoute *sync_route) {
     } else if (rt->GetActiveNextHop()->GetType() == NextHop::RESOLVE) {
         const ResolveNH *nh =
             static_cast<const ResolveNH *>(rt->GetActiveNextHop());
-        std::string nexthop_vrf = nh->interface()->vrf()->GetName();
-        if (nh->interface()->vrf()->forwarding_vrf()) {
-            nexthop_vrf = nh->interface()->vrf()->forwarding_vrf()->GetName();
+        std::string nexthop_vrf = nh->get_interface()->vrf()->GetName();
+        if (nh->get_interface()->vrf()->forwarding_vrf()) {
+            nexthop_vrf = nh->get_interface()->vrf()->forwarding_vrf()->GetName();
         }
 
         assert(gw_ip_.is_v4());
         table->AddArpReq(vrf_name_, gw_ip_.to_v4(), nexthop_vrf,
-                         nh->interface(), nh->PolicyEnabled(), dest_vn_list_,
+                         nh->get_interface(), nh->PolicyEnabled(), dest_vn_list_,
                          sg_list_, tag_list_);
         unresolved = true;
     } else {
@@ -1042,8 +1042,26 @@ MulticastRoutePath::MulticastRoutePath(const Peer *peer) :
 
 bool MulticastRoutePath::PostChangeNH(Agent *agent, NextHop *nh) {
     bool ret = false;
+    if (!peer())
+        return false;
+
+    if (peer()->GetType() != Peer::MULTICAST_PEER)
+        return false;
+
+    //Bake for label in path
     if (RebakeLabel(agent->mpls_table(), label(), nh))
         ret = true;
+
+    //If path label is not same as evpn label, then rebake evpn label
+    if ((label() != evpn_label_) &&
+        RebakeLabel(agent->mpls_table(), evpn_label_, nh))
+        ret = true;
+
+    //If path label is not same as fmg label, then rebake fmg label
+    if ((label() != fabric_label_) &&
+        RebakeLabel(agent->mpls_table(), fabric_label_, nh))
+        ret = true;
+
     return ret;
 }
 

@@ -75,12 +75,12 @@ int ProtoHandler::EthHdr(const MacAddress &src, const MacAddress &dest,
                   dest, proto, VmInterface::kInvalidVlanId);
 }
 
-int ProtoHandler::EthHdr(char *buff, uint16_t len, const Interface *interface,
+int ProtoHandler::EthHdr(char *buff, uint16_t len, const Interface *intrface,
                          const MacAddress &src, const MacAddress &dest,
                          const uint16_t proto) {
     uint16_t vlan_id = VmInterface::kInvalidVlanId;
-    if (interface && interface->type() == Interface::VM_INTERFACE) {
-        vlan_id = static_cast<const VmInterface *>(interface)->tx_vlan_id();
+    if (intrface && intrface->type() == Interface::VM_INTERFACE) {
+        vlan_id = static_cast<const VmInterface *>(intrface)->tx_vlan_id();
     }
 
     return EthHdr(buff, len, src, dest, proto, vlan_id);
@@ -192,6 +192,11 @@ uint16_t ProtoHandler::IcmpHdr(char *buff, uint16_t buf_len, uint8_t type,
 void ProtoHandler::IcmpChecksum(char *buff, uint16_t buf_len) {
     struct icmp *hdr = ((struct icmp *)buff);
     hdr->icmp_cksum = Csum((uint16_t *)buff, buf_len, 0);
+}
+
+void ProtoHandler::IgmpChecksum(char *buff, uint16_t buf_len) {
+    struct igmp *hdr = ((struct igmp *)buff);
+    hdr->igmp_cksum = Csum((uint16_t *)buff, buf_len, 0);
 }
 
 void ProtoHandler::UdpHdr(udphdr *udp ,uint16_t len, const uint8_t *src,
