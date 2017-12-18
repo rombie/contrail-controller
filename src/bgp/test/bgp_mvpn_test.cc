@@ -1141,7 +1141,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
     // active receiver agent joined yet.
-    TASK_UTIL_EXPECT_EQ(7, master_->Size()); // 3 local + 1 remote + 1 join +
+    TASK_UTIL_EXPECT_EQ(7+1, master_->Size()); // 3 local + 1 remote + 1 join +
                                              // 1 spmsi
     TASK_UTIL_EXPECT_EQ(4, red1_->Size()); // 1 local + 1 remote(red1)+1 join +
                                            // 1 spmsi
@@ -1201,7 +1201,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
     // active receiver agent joined yet. (to form the ermvpn tree)
-    TASK_UTIL_EXPECT_EQ(7, master_->Size()); // 3 local + 1 remote + 1 join +
+    TASK_UTIL_EXPECT_EQ(7+1, master_->Size()); // 3 local + 1 remote + 1 join +
                                              // 1 spmsi
     TASK_UTIL_EXPECT_EQ(4, red1_->Size()); // 1 local + 1 remote(red1)+1 join +
                                            // 1 spmsi
@@ -1260,7 +1260,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_3) {
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
     // active receiver agent joined yet.
-    TASK_UTIL_EXPECT_EQ(7, master_->Size()); // 3 local + 1 remote + 1 join +
+    TASK_UTIL_EXPECT_EQ(7+1, master_->Size()); // 3 local + 1 remote + 1 join +
                                              // 1 spmsi
     TASK_UTIL_EXPECT_EQ(4, red1_->Size()); // 1 local + 1 remote(red1)+1 join +
                                            // 1 spmsi
@@ -1313,7 +1313,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
     // active receiver agent joined yet. (to form the ermvpn tree)
-    TASK_UTIL_EXPECT_EQ(7, master_->Size()); // 3 local + 1 remote + 1 join +
+    TASK_UTIL_EXPECT_EQ(7+1, master_->Size()); // 3 local + 1 remote + 1 join +
                                              // 1 spmsi
     TASK_UTIL_EXPECT_EQ(4, red1_->Size()); // 1 local + 1 remote(red1)+1 join +
                                            // 1 spmsi
