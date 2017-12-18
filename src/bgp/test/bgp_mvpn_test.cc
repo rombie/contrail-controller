@@ -802,7 +802,9 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         pmsi_params.insert(make_pair(sg, pmsi));
     }
 
-    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
+    for (int i = 1; i <= instances_set_count_; i++)
+        AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
+
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
         for (int i = 1; i <= instances_set_count_; i++) {
@@ -813,21 +815,21 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
     }
 
-    ermvpn_rt = AddErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix,
-                               "target:127.0.0.1:1100");
     TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 leaf-ad
 
     for (int i = 1; i <= instances_set_count_; i++) {
+        ermvpn_rt = AddErmVpnRoute(fabric_ermvpn_[i], ermvpn_prefix,
+                                   "target:127.0.0.1:1100");
         // 1 local+1 remote(red1)+1 leaf-ad
         TASK_UTIL_EXPECT_EQ(3, red_[i]->Size());
         TASK_UTIL_EXPECT_EQ(1, blue_[i]->Size()); // 1 local
         // 1 local + 2 remote(red1) + 1 remote(green1) + 1 leaf-ad
         TASK_UTIL_EXPECT_EQ(5, green_[i]->Size());
-    }
 
-    // Lookup the actual leaf-ad route and verify its attributes.
-    VerifyLeafADMvpnRoute(red1_, prefix, pmsi);
-    VerifyLeafADMvpnRoute(green1_, prefix, pmsi);
+        // Lookup the actual leaf-ad route and verify its attributes.
+        VerifyLeafADMvpnRoute(red_[i], prefix, pmsi);
+        VerifyLeafADMvpnRoute(green_[i], prefix, pmsi);
+    }
 
     DeleteMvpnRoute(master_, prefix);
     {
