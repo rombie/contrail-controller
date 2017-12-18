@@ -122,7 +122,9 @@ protected:
     }
 
     string getRouteTarget (int i, string suffix) const {
-        return "target:127.0.0.1:1" << format("%|03|")%i << suffix;
+        ostringstream os;
+        os << "target:127.0.0.1:1" << format("%|03|")%i << suffix;
+        return os.str();
     }
 
     const string GetConfig() const {
