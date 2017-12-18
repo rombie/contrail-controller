@@ -483,7 +483,7 @@ protected:
         TASK_UTIL_EXPECT_EQ(green1c + 3, green1_->Size());
         TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                             green1_->FindType1ADRoute());
-        TASK_UTIL_EXPECT_EQ(masterc + 4, master_->Size());
+        TASK_UTIL_EXPECT_EQ(masterc + 4 + 1, master_->Size());
 
         // Verify that only green1 has discovered a neighbor from red1.
         TASK_UTIL_EXPECT_EQ(0, red1_->manager()->neighbors_count());
@@ -572,7 +572,7 @@ TEST_P(BgpMvpnTest, Type1ADLocalWithIdentifierChanged) {
     VerifyInitialState();
     error_code err;
     UpdateBgpIdentifier("127.0.0.2");
-    TASK_UTIL_EXPECT_EQ(4, master_->Size());
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size());
     TASK_UTIL_EXPECT_EQ(1, red1_->Size());
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         red1_->FindType1ADRoute());
@@ -685,7 +685,7 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
     DeleteMvpnRoute(master_, prefix);
 
     // Verify that neighbor is deleted.
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(3, green1_->Size()); // 1 local + 1 red1 + 1 blue1
@@ -720,7 +720,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
 
     DeleteMvpnRoute(master_, prefix);
 
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -778,7 +778,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     }
     DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -843,7 +843,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     }
     DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -914,7 +914,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
     TASK_UTIL_EXPECT_EQ(4, green1_->Size());
 
     DeleteMvpnRoute(master_, prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -998,7 +998,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
     DeleteMvpnRoute(master_, prefix);
     DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1097,7 +1097,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     }
     DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1156,7 +1156,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
 
     // Remove join route.
     DeleteMvpnRoute(master_, t7_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1216,7 +1216,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
 
     // Remove join route.
     DeleteMvpnRoute(master_, t7_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1276,7 +1276,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_3) {
 
     // Remove type-5 source-active route.
     DeleteMvpnRoute(red1_, t5_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1330,7 +1330,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
 
     // Remove source-active route.
     DeleteMvpnRoute(red1_, t5_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1360,7 +1360,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
     TASK_UTIL_EXPECT_EQ(3, green1_->Size());
 
     DeleteMvpnRoute(master_, t7_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
@@ -1386,7 +1386,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     TASK_UTIL_EXPECT_EQ(4, green1_->Size());
 
     DeleteMvpnRoute(red1_, t5_prefix);
-    TASK_UTIL_EXPECT_EQ(4, master_->Size()); // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
     TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
     TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
