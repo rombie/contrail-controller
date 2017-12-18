@@ -121,6 +121,10 @@ protected:
     BgpMvpnTest() {
     }
 
+    string getRouteTarget (int i, string suffix) const {
+        return "target:127.0.0.1:1" << format("%|03|")%i << suffix;
+    }
+
     const string GetConfig() const {
         ostringstream os;
             os <<
@@ -142,20 +146,18 @@ protected:
         for (int i = 1; i <= instances_set_count_; i++) {
             os <<
 "   <routing-instance name='red" << i << "'>"
-"       <vrf-target>target:127.0.0.1:1" << format("%|03|")%i << "1</vrf-target>"
+"       <vrf-target>" << getRouteTarget(i, "1") << "</vrf-target>"
 "   </routing-instance>"
 "   <routing-instance name='blue" << i << "'>"
-"       <vrf-target>target:127.0.0.1:1" << format("%|03|")%i << "2</vrf-target>"
+"       <vrf-target>" << getRouteTarget(i, "2") << "</vrf-target>"
 "   </routing-instance>"
 "   <routing-instance name='green" << i << "'>"
-"       <vrf-target>target:127.0.0.1:1" << format("%|03|")%i << "3</vrf-target>"
+"       <vrf-target>" << getRouteTarget(i, "3") << "</vrf-target>"
 "       <vrf-target>"
-"           target:127.0.0.1:1" << format("%|03|")%i << "1"
-"           <import-export>import</import-export>"
+"           <import-export>import</import-export>" << getRouteTarget(i, "1") <<
 "       </vrf-target>"
 "       <vrf-target>"
-"           target:127.0.0.1:1" << format("%|03|")%i << "2"
-"           <import-export>import</import-export>"
+"           <import-export>import</import-export>" << getRouteTarget(i, "2") <<
 "       </vrf-target>"
 "   </routing-instance>"
             ;
@@ -655,7 +657,7 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red1
     // route-target.
     string prefix = "1-10.1.1.1:65535,9.8.7.6";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
     TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
     TASK_UTIL_EXPECT_EQ(2, red1_->Size()); // 1 local + 1 remote(red1)
@@ -702,7 +704,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
         TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 remote(red1)
@@ -749,7 +751,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         pmsi_params.insert(make_pair(sg, pmsi));
     }
 
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
         TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 remote(red1)
@@ -793,7 +795,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -859,7 +861,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
     } else {
@@ -932,7 +934,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1014,7 +1016,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
     string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, "target:127.0.0.1:1001");
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1110,7 +1112,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
 TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     VerifyInitialState(preconfigure_pm_);
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
+    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1186,7 +1188,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
 
     // Now inject a remote type5.
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
+    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 2, 0, 1, 2, 2, 0, 1, 2);
@@ -1229,7 +1231,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_2) {
 TEST_P(BgpMvpnTest, Type3_SPMSI_3) {
     VerifyInitialState(preconfigure_pm_);
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
+    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -1303,7 +1305,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
 
     // Now inject a remote type7 join.
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
+    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
 
     // Route should go only into red1_ which has the source-active route. This
     // should cause a Type3 S-PMSI route to be originated. This route will get
@@ -1372,7 +1374,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
 TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     VerifyInitialState(preconfigure_pm_);
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, "target:127.0.0.1:1001", "10.1.1.1");
+    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
         VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
