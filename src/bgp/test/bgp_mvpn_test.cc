@@ -131,7 +131,7 @@ protected:
 "       <autonomous-system>1</autonomous-system>"
 "   </bgp-router>"
 "  <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric'>"
-"       <vrf-target>target:127.0.0.1:99999</vrf-target>"
+"       <vrf-target>target:127.0.0.1:60000</vrf-target>"
 "   </routing-instance>"
 "";
         for (int i = 1; i <= instances_set_count_; i++) {
