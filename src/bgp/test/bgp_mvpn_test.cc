@@ -686,16 +686,16 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
     }
     VerifyInitialState();
 
+    // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red1
+    // route-target.
+    string prefix = "1-10.1.1.1:65535,9.8.7.6";
+    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
+
     for (int i = 1; i <= instances_set_count_; i++) {
         // Verify that only green1 has discovered a neighbor from red1.
         TASK_UTIL_EXPECT_EQ(0, red_[i]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(0, blue_[i]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(2, green_[i]->manager()->neighbors_count());
-
-        // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red1
-        // route-target.
-        string prefix = "1-10.1.1.1:65535,9.8.7.6";
-        AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
         TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
         TASK_UTIL_EXPECT_EQ(2, red_[i]->Size()); // 1 local + 1 remote(red1)
@@ -802,8 +802,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         pmsi_params.insert(make_pair(sg, pmsi));
     }
 
-    for (int i = 1; i <= instances_set_count_; i++)
-        AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
+    AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
 
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
@@ -1207,7 +1206,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     // Inject type-7 receiver route with red1 RI vit.
     const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
     AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
-        integerToString(red1_->routing_instance()->index()));
+                 integerToString(red1_->routing_instance()->index()));
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 2, 0, 1, 2, 2, 0, 1, 2);
