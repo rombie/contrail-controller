@@ -154,7 +154,8 @@ protected:
 
             if (pm_preconfigured1_) {
                 os <<
-"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric" << i << "'>"
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric"
+                    << i << "'>"
 "       <vrf-target>target:127.0.0.1:9" << format("%|03|")%i << "</vrf-target>"
 "   </routing-instance>";
             }
@@ -169,13 +170,14 @@ protected:
         os << "<?xml version='1.0' encoding='utf-8'?><config>";
         for (int i = 1; i <= instances_set_count_; i++) {
             os <<
-"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric" << i << "'>"
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric"
+                << i << "'>"
 "       <vrf-target>target:127.0.0.1:9" << format("%|03|")%i << "</vrf-target>"
 "   </routing-instance>";
         }
         os << "</config>";
         server_->Configure(os.str());
-        getProjectManagerNetworks();
+        getProjectManagerNetworks(true);
     }
 
     void DeleteProjectManagerRoutingInstance() {
@@ -183,25 +185,49 @@ protected:
         os << "<?xml version='1.0' encoding='utf-8'?><delete>";
         for (int i = 1; i <= instances_set_count_; i++) {
             os <<
-"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric" << i << "'>"
+"   <routing-instance name='default-domain:default-project:ip-fabric:ip-fabric"
+                << i << "'>"
 "       <vrf-target>target:127.0.0.1:9" << format("%|03|")%i << "</vrf-target>"
 "   </routing-instance>";
         }
 
         os << "</delete>";
         server_->Configure(os.str());
-        getProjectManagerNetworks();
+        getProjectManagerNetworks(false);
     }
 
-    void getProjectManagerNetworks() {
+    void getProjectManagerNetworks(bool create) {
         task_util::WaitForIdle();
         for (int i = 1; i <= instances_set_count_; i++) {
             ostringstream os;
             os << "default-domain:default-project:ip-fabric:ip-fabric" << i;
             os << ".ermvpn.0";
-            TASK_UTIL_EXPECT_EQ(static_cast<BgpTable *>(NULL),
-                server_->database()->FindTable(os.str()));
-            fabric_ermvpn_[i-1] = NULL;
+
+            ostringstream os2;
+            os2 << "default-domain:default-project:ip-fabric:ip-fabric" << i;
+            os2 << ".mvpn.0";
+
+            if (create) {
+                TASK_UTIL_EXPECT_NE(static_cast<BgpTable *>(NULL),
+                    server_->database()->FindTable(os.str()));
+                fabric_ermvpn_[i-1] = dynamic_cast<ErmVpnTable *>(
+                    server_->database()->FindTable(os.str()));
+                assert(fabric_ermvpn_[i-1]);
+
+                TASK_UTIL_EXPECT_NE(static_cast<BgpTable *>(NULL),
+                    server_->database()->FindTable(os2.str()));
+                fabric_mvpn_[i-1] = dynamic_cast<MvpnTable *>(
+                    server_->database()->FindTable(os2.str()));
+                assert(fabric_mvpn_[i-1]);
+            } else {
+                TASK_UTIL_EXPECT_EQ(static_cast<BgpTable *>(NULL),
+                    server_->database()->FindTable(os.str()));
+                fabric_ermvpn_[i-1] = NULL;
+
+                TASK_UTIL_EXPECT_EQ(static_cast<BgpTable *>(NULL),
+                    server_->database()->FindTable(os2.str()));
+                fabric_mvpn_[i-1] = NULL;
+            }
         }
     }
 
@@ -213,7 +239,7 @@ protected:
         thread_->Start();
         pm_preconfigured1_ = std::tr1::get<0>(GetParam());
         routes_count_ = std::tr1::get<1>(GetParam());
-        instances_set_count_ = 2;
+        instances_set_count_ = 1;
         string config = GetConfig();
 
         server_->Configure(config);
@@ -239,7 +265,9 @@ protected:
         green1_ = static_cast<MvpnTable *>(
             server_->database()->FindTable("green1.mvpn.0"));
         fabric_ermvpn_ = new ErmVpnTable *[instances_set_count_];
-        getProjectManagerNetworks();
+        fabric_mvpn_ = new MvpnTable *[instances_set_count_];
+        if (pm_preconfigured1_)
+            getProjectManagerNetworks(true);
     }
 
     void UpdateBgpIdentifier(const string &address) {
@@ -259,6 +287,7 @@ protected:
             thread_->Join();
         }
         delete[] fabric_ermvpn_;
+        delete[] fabric_mvpn_;
     }
 
     ErmVpnRoute *AddErmVpnRoute(ErmVpnTable *table, const string &prefix_str,
@@ -432,12 +461,13 @@ protected:
         TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                             blue1_->FindType1ADRoute());
 
-        TASK_UTIL_EXPECT_EQ(green1c + 3, green1_->Size()); // 1 green1+1 red1+1 blue1
+        // 1 green1+1 red1+1 blue1
+        TASK_UTIL_EXPECT_EQ(green1c + 3, green1_->Size());
         TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                             green1_->FindType1ADRoute());
         TASK_UTIL_EXPECT_EQ(masterc + 4, master_->Size());
 
-        // Verify that only green1 has discovered1 a neighbor from red1.
+        // Verify that only green1 has discovered a neighbor from red1.
         TASK_UTIL_EXPECT_EQ(0, red1_->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(0, blue1_->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(2, green1_->manager()->neighbors_count());
@@ -489,6 +519,7 @@ protected:
     DB db_;
     BgpTable *master_;
     ErmVpnTable **fabric_ermvpn_;
+    MvpnTable **fabric_mvpn_;
     MvpnTable *red1_;
     MvpnTable *blue1_;
     MvpnTable *green1_;
@@ -536,7 +567,7 @@ TEST_P(BgpMvpnTest, Type1ADLocalWithIdentifierChanged) {
     TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                         green1_->FindType1ADRoute());
 
-    // Verify that only green1 has discovered1 a neighbor from red1.
+    // Verify that only green1 has discovered a neighbor from red1.
     TASK_UTIL_EXPECT_EQ(0, red1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(0, blue1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(2, green1_->manager()->neighbors_count());
@@ -581,7 +612,7 @@ TEST_P(BgpMvpnTest, Type1ADLocalWithIdentifierRemoved) {
     TASK_UTIL_EXPECT_EQ(static_cast<MvpnRoute *>(NULL),
                         green1_->FindType1ADRoute());
 
-    // Verify that only green1 has discovered1 a neighbor from red1.
+    // Verify that only green1 has discovered a neighbor from red1.
     TASK_UTIL_EXPECT_EQ(0, red1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(0, blue1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(0, green1_->manager()->neighbors_count());
@@ -598,7 +629,7 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
                             green1_->FindType1ADRoute());
     }
     VerifyInitialState();
-    // Verify that only green1 has discovered1 a neighbor from red1.
+    // Verify that only green1 has discovered a neighbor from red1.
     TASK_UTIL_EXPECT_EQ(0, red1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(0, blue1_->manager()->neighbors_count());
     TASK_UTIL_EXPECT_EQ(2, green1_->manager()->neighbors_count());
