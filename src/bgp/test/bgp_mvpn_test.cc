@@ -63,10 +63,15 @@ public:
                 ostringstream os;
                 os << "default-domain:default-project:ip-fabric:ip-fabric";
                 os << match[1];
+                ri_index_ = match[1i];
                 set_mvpn_project_manager_network(os.str());
             }
         }
     }
+
+    string ri_index() const { return ri_index_; }
+private:
+    string ri_index_;
 };
 
 static std::map<MvpnState::SG, PMSIParams> pmsi_params;
@@ -359,12 +364,18 @@ protected:
         return table->FindRoute(ErmVpnPrefix::FromString(prefix_str));
     }
 
+    string ri_index(BgpTable *table) const {
+        RoutingInstnaceTest *ri =
+            dynamic_cast<RoutingInstanceTest *>(table->routing_instance());
+        return ri->ri_index();
+    }
+
     void AddType5MvpnRoute(BgpTable *table, const string &prefix_str,
-                      const string &target, const string &source) {
+                           const string &target, const string &source) {
         error_code e;
         IpAddress nh_address = IpAddress::from_string(source, e);
-        BgpAttrSourceRd source_rd(
-                RouteDistinguisher(nh_address.to_v4().to_ulong(), 65535));
+        BgpAttrSourceRd source_rd(RouteDistinguisher(
+            nh_address.to_v4().to_ulong(), ri_index(table)));
         MvpnPrefix prefix(MvpnPrefix::FromString(prefix_str));
         DBRequest add_req;
         add_req.key.reset(new MvpnTable::RequestKey(prefix, NULL));
@@ -688,10 +699,10 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
 
     // Inject a Type1 route from a mock peer into bgp.mvpn.0 table with red1
     // route-target.
-    string prefix = "1-10.1.1.1:65535,9.8.7.6";
-    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
 
     for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "1-10.1.1.1:" + ri_index(red_[i]) + ",9.8.7.6";
+        AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
         // Verify that only green1 has discovered a neighbor from red1.
         TASK_UTIL_EXPECT_EQ(0, red_[i]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(0, blue_[i]->manager()->neighbors_count());
@@ -725,7 +736,10 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
                   neighbor.originator());
     }
 
-    DeleteMvpnRoute(master_, prefix);
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "1-10.1.1.1:" + ri_index(red_[i]) + ",9.8.7.6";
+        DeleteMvpnRoute(master_, prefix);
+    }
 
     // Verify that neighbor is deleted.
     TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
@@ -746,8 +760,11 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
 
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
-    string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
+        AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
+    }
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
         for (int i = 1; i <= instances_set_count_; i++) {
@@ -768,7 +785,11 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
         TASK_UTIL_EXPECT_EQ(4, green_[i]->Size());
     }
 
-    DeleteMvpnRoute(master_, prefix);
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
+        DeleteMvpnRoute(master_, prefix);
+    }
 
     TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
 
@@ -787,10 +808,13 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     VerifyInitialState(preconfigure_pm_);
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
-    string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
 
     // Setup ermvpn route before type 3 spmsi route is added.
-    string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
+    string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
+        "-192.168.1.1,224.1.2.3,9.8.7.6";
 
     error_code e;
     ErmVpnRoute *ermvpn_rt = NULL;
