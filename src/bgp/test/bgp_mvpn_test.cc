@@ -51,30 +51,31 @@ public:
     ErmVpnRoute **ermvpn_rt;
 };
 
+
 class RoutingInstanceTest : public RoutingInstance {
 public:
     RoutingInstanceTest(string name, BgpServer *server, RoutingInstanceMgr *mgr,
                         const BgpInstanceConfig *config) :
-            RoutingInstance(name, server, mgr, config) {
-        if (!starts_with(name, "default-domain:default-project:ip-fabric:")) {
-            static regex pattern("(\\d+)$");
-            smatch match;
-            if (regex_search(name, match, pattern)) {
-                ostringstream os;
-                os << "default-domain:default-project:ip-fabric:ip-fabric";
-                os << match[1];
-                ri_index_ = match[1i];
-                set_mvpn_project_manager_network(os.str());
-            }
-        }
+            RoutingInstance(name, server, mgr, config),
+            ri_index_(GetRIIndex(name)) {
+        set_mvpn_project_manager_network(
+            "default-domain:default-project:ip-fabric:ip-fabric" + ri_index_);
     }
-
     string ri_index() const { return ri_index_; }
+
 private:
+
+    string GetRIIndex(const std::string &name) {
+        if (starts_with(name, "default-domain:default-project:ip-fabric:"))
+            return "";
+        static regex pattern("(\\d+)$");
+        smatch match;
+        return regex_search(name, match, pattern) ? match[1] : "";
+    }
     string ri_index_;
 };
 
-static std::map<MvpnState::SG, PMSIParams> pmsi_params;
+static std::map<std::pair<string, MvpnState::SG> >, PMSIParams> pmsi_params;
 static tbb::mutex pmsi_params_mutex;
 
 class McastTreeManagerMock : public McastTreeManager {
@@ -87,8 +88,11 @@ public:
     virtual ErmVpnRoute *GetGlobalTreeRootRoute(const Ip4Address &source,
             const Ip4Address &group) const {
         tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+        RoutingInstanceTest *ri = dynamic_cast<RoutingInstanceTest *>(
+                table()->RoutingInstance());
+        string ri_index = ri->ri_index();
         std::map<MvpnState::SG, PMSIParams>::iterator iter =
-            pmsi_params.find(MvpnState::SG(source, group));
+            pmsi_params.find(make_pair(ri_index, MvpnState::SG(source, group));
         if (iter == pmsi_params.end() || !iter->second.result)
             return NULL;
         TASK_UTIL_EXPECT_NE(static_cast<ErmVpnRoute *>(NULL),
@@ -103,9 +107,12 @@ public:
         if (!rt)
             return false;
 
+        RoutingInstanceTest *ri = dynamic_cast<RoutingInstanceTest *>(
+                table()->RoutingInstance());
+        string ri_index = ri->ri_index();
+        SG sg(rt->GetPrefix().source(), rt->GetPrefix().group());
         std::map<MvpnState::SG, PMSIParams>::iterator iter =
-            pmsi_params.find(MvpnState::SG(rt->GetPrefix().source(),
-                                           rt->GetPrefix().group()));
+            pmsi_params.find(make_pair(ri_index, sg));
         if (iter == pmsi_params.end() || !iter->second.result)
             return false;
 
@@ -808,25 +815,25 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     VerifyInitialState(preconfigure_pm_);
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
+    MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
+                     IpAddress::from_string("224.1.2.3", e));
     for (int i = 1; i <= instances_set_count_; i++) {
         string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
             ",9.8.7.6,224.1.2.3,192.168.1.1";
+        // Setup ermvpn route before type 3 spmsi route is added.
+        string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
+            "-192.168.1.1,224.1.2.3,9.8.7.6";
 
-    // Setup ermvpn route before type 3 spmsi route is added.
-    string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
-        "-192.168.1.1,224.1.2.3,9.8.7.6";
-
-    error_code e;
-    ErmVpnRoute *ermvpn_rt = NULL;
-    MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
-                     IpAddress::from_string("224.1.2.3", e));
-    PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    {
-        tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.insert(make_pair(sg, pmsi));
+        error_code e;
+        ErmVpnRoute *ermvpn_rt = NULL;
+        PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
+        {
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+            pmsi_params.insert(
+                make_pair(make_pair(red_[i]->ri_index(), sg), pmsi));
+        }
+        AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
     }
-
-    AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
 
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
@@ -854,12 +861,19 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         VerifyLeafADMvpnRoute(green_[i], prefix, pmsi);
     }
 
-    DeleteMvpnRoute(master_, prefix);
-    {
-        tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.clear();
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
+        // Setup ermvpn route before type 3 spmsi route is added.
+        string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
+            "-192.168.1.1,224.1.2.3,9.8.7.6";
+        DeleteMvpnRoute(master_, prefix);
+        {
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+            pmsi_params.erase(make_pair(red_[i]->ri_index(), sg));
+        }
+        DeleteErmVpnRoute(fabric_ermvpn_[i], ermvpn_prefix);
     }
-    DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     for (int i = 1; i <= instances_set_count_; i++) {
