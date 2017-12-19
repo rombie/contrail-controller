@@ -891,8 +891,12 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     VerifyInitialState(preconfigure_pm_);
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1 route
     // target. This route should go into red1 and green1 table.
-    string prefix = "3-10.1.1.1:65535,9.8.7.6,224.1.2.3,192.168.1.1";
-    AddMvpnRoute(master_, prefix, getRouteTarget(1, "1"));
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
+        // Setup ermvpn route before type 3 spmsi route is added.
+        AddMvpnRoute(master_, prefix, getRouteTarget(i, "1"));
+    }
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
@@ -914,17 +918,20 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
                      IpAddress::from_string("224.1.2.3", e));
     PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre", &ermvpn_rt));
-    {
+    for (int i = 1; i <= instances_set_count_; i++) {
         tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.insert(make_pair(sg, pmsi));
+        pmsi_params.insert(make_pair(red_->[i]->index(), make_pair(sg, pmsi)));
     }
 
     if (!preconfigure_pm_)
         VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
 
-    string ermvpn_prefix = "2-10.1.1.1:65535-192.168.1.1,224.1.2.3,9.8.7.6";
-    ermvpn_rt = AddErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix,
-                               "target:127.0.0.1:1100");
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
+                               "-192.168.1.1,224.1.2.3,9.8.7.6";
+        ermvpn_rt = AddErmVpnRoute(fabric_ermvpn_[i], ermvpn_prefix,
+                                   "target:127.0.0.1:1100");
+    }
 
     TASK_UTIL_EXPECT_EQ(6, master_->Size()); // 3 local + 1 remote + 1 leaf-ad
 
@@ -940,12 +947,16 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     VerifyLeafADMvpnRoute(red1_, prefix, pmsi);
     VerifyLeafADMvpnRoute(green1_, prefix, pmsi);
 
-    DeleteMvpnRoute(master_, prefix);
-    {
+    for (int i = 1; i <= instances_set_count_; i++) {
+        string prefix = "3-10.1.1.1:" + red_[i]->ri_index() +
+            ",9.8.7.6,224.1.2.3,192.168.1.1";
+        DeleteMvpnRoute(master_, prefix);
         tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.clear();
+        pmsi_params.erase(make_pair(red_[i]->ri_index(), sg));
+        string ermvpn_prefix = "2-10.1.1.1:" + red_[i]->ri_index() +
+                               "-192.168.1.1,224.1.2.3,9.8.7.6";
+        DeleteErmVpnRoute(fabric_ermvpn_[i], ermvpn_prefix);
     }
-    DeleteErmVpnRoute(fabric_ermvpn_[0], ermvpn_prefix);
 
     TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     for (int i = 1; i <= instances_set_count_; i++) {
