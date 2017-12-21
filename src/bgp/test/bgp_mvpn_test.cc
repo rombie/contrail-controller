@@ -601,19 +601,19 @@ protected:
 
     string prefix1(int index) const {
         ostringstream os;
-        os << "1-10.1.1.1:" + index << ",9.8.7.6";
+        os << "1-10.1.1.1:" << index << ",9.8.7.6";
         return os.str();
     }
 
     string prefix(int index) const {
         ostringstream os;
-        os << "3-10.1.1.1:" + index << ",9.8.7.6,224.1.2.3,192.168.1.1";
+        os << "3-10.1.1.1:" << index << ",9.8.7.6,224.1.2.3,192.168.1.1";
         return os.str();
     }
 
     string ermvpn_prefix(int index) const {
         ostringstream os;
-        os << "2-10.1.1.1:" + index << "-192.168.1.1,224.1.2.3,9.8.7.6";
+        os << "2-10.1.1.1:" << index << "-192.168.1.1,224.1.2.3,9.8.7.6";
         return os.str();
     }
 
@@ -759,7 +759,7 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
         TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(2, green_[i-1]->manager()->neighbors_count());
 
-        AddMvpnRoute(master_, prefix1(i), getRouteTarget(1, "1"));
+        AddMvpnRoute(master_, prefix1(i), getRouteTarget(i, "1"));
 
         TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
         TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local + 1 remote(red1)
