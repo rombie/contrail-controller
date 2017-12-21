@@ -771,22 +771,20 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
         TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(3, green_[i-1]->manager()->neighbors_count());
 
-        MvpnNeighbor neighbor;
+        MvpnNeighbor nbr;
         error_code err;
 
         EXPECT_TRUE(red_[i-1]->manager()->FindNeighbor(
-                    RouteDistinguisher::FromString("10.1.1.1:65535", &err),
-                    &neighbor));
-        EXPECT_EQ(0, neighbor.source_as());
-        EXPECT_EQ(IpAddress::from_string("9.8.7.6", err),
-                  neighbor.originator());
+                        RouteDistinguisher::FromString("10.1.1.1:65535", &err),
+                        &nbr));
+        EXPECT_EQ(0, nbr.source_as());
+        EXPECT_EQ(IpAddress::from_string("9.8.7.6", err), nbr.originator());
 
         EXPECT_TRUE(green_[i-1]->manager()->FindNeighbor(
                         RouteDistinguisher::FromString("10.1.1.1:65535", &err),
-                        &neighbor));
-        EXPECT_EQ(0, neighbor.source_as());
-        EXPECT_EQ(IpAddress::from_string("9.8.7.6", err),
-                  neighbor.originator());
+                        &nbr));
+        EXPECT_EQ(0, nbr.source_as());
+        EXPECT_EQ(IpAddress::from_string("9.8.7.6", err), nbr.originator());
     }
 
     for (int i = 1; i <= instances_set_count_; i++)
