@@ -813,13 +813,14 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
         AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
 
     if (!preconfigure_pm_) {
-        TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
+        TASK_UTIL_EXPECT_EQ(instances_set_count_, master_->Size()); // 1 remote
         for (size_t i = 1; i <= instances_set_count_; i++) {
             TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 remote(red1)
             TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->Size());
             TASK_UTIL_EXPECT_EQ(1, green_[i-1]->Size()); // 1 remote
         }
-        VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
+        VerifyInitialState(true, 1, 0, 1, instances_set_count_, 1, 0, 1,
+                           instances_set_count_);
     }
 
     TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
