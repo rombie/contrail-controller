@@ -295,8 +295,7 @@ protected:
         thread_.reset(new ServerThread(evm_.get()));
         thread_->Start();
         preconfigure_pm_ = std::tr1::get<0>(GetParam());
-        routes_count_ = std::tr1::get<1>(GetParam());
-        instances_set_count_ = 1;
+        instances_set_count_ = std::tr1::get<1>(GetParam());
         fabric_ermvpn_ = new ErmVpnTable *[instances_set_count_];
         fabric_mvpn_ = new MvpnTable *[instances_set_count_];
         red_ = new MvpnTable *[instances_set_count_];
@@ -535,6 +534,8 @@ protected:
     void VerifyWithProjectManager(
             size_t red1c = 0, size_t blue1c = 0, size_t green1c = 0,
             size_t masterc = 0) const {
+        TASK_UTIL_EXPECT_EQ(masterc + 4*instances_set_count_ + 1,
+                            master_->Size());
         for (int i = 1; i <= instances_set_count_; i++) {
             TASK_UTIL_EXPECT_EQ(red1c + 1, red_[i-1]->Size());
             TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
@@ -548,28 +549,27 @@ protected:
             TASK_UTIL_EXPECT_EQ(green1c + 3, green_[i-1]->Size());
             TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
                                 green_[i-1]->FindType1ADRoute());
-            TASK_UTIL_EXPECT_EQ(masterc + 4 + 1, master_->Size());
 
             // Verify that only green1 has discovered a neighbor from red1.
             TASK_UTIL_EXPECT_EQ(0, red_[i-1]->manager()->neighbors_count());
             TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->manager()->neighbors_count());
             TASK_UTIL_EXPECT_EQ(2, green_[i-1]->manager()->neighbors_count());
 
-            MvpnNeighbor neighbor;
+            MvpnNeighbor nbr;
             error_code err;
             EXPECT_TRUE(green_[i-1]->manager()->FindNeighbor(
-                        *(red_[i-1]->routing_instance()->GetRD()), &neighbor));
-            EXPECT_EQ(*(red_[i-1]->routing_instance()->GetRD()), neighbor.rd());
-            EXPECT_EQ(0, neighbor.source_as());
+                        *(red_[i-1]->routing_instance()->GetRD()), &nbr));
+            EXPECT_EQ(*(red_[i-1]->routing_instance()->GetRD()), nbr.rd());
+            EXPECT_EQ(0, nbr.source_as());
             EXPECT_EQ(IpAddress::from_string("127.0.0.1", err),
-                      neighbor.originator());
+                      nbr.originator());
 
             EXPECT_TRUE(green_[i-1]->manager()->FindNeighbor(
-                        *(blue_[i-1]->routing_instance()->GetRD()), &neighbor));
-            EXPECT_EQ(*(blue_[i-1]->routing_instance()->GetRD()), neighbor.rd());
-            EXPECT_EQ(0, neighbor.source_as());
+                        *(blue_[i-1]->routing_instance()->GetRD()), &nbr));
+            EXPECT_EQ(*(blue_[i-1]->routing_instance()->GetRD()), nbr.rd());
+            EXPECT_EQ(0, nbr.source_as());
             EXPECT_EQ(IpAddress::from_string("127.0.0.1", err),
-                      neighbor.originator());
+                      nbr.originator());
         }
     }
 
@@ -626,7 +626,6 @@ protected:
     MvpnTable **blue_;
     MvpnTable **green_;
     bool preconfigure_pm_;
-    int routes_count_;
     int instances_set_count_;
 };
 
@@ -1581,7 +1580,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
 
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
                         ::testing::Combine(::testing::Bool(),
-                                           ::testing::Values(1)));
+                                           ::testing::Values(2)));
 
 static void SetUp() {
     bgp_log_test::init();
