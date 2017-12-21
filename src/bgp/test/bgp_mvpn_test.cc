@@ -599,6 +599,12 @@ protected:
         }
     }
 
+    string prefix1(int index) const {
+        ostringstream os;
+        os << "1-10.1.1.1:" + index << ",9.8.7.6";
+        return os.str();
+    }
+
     string prefix(int index) const {
         ostringstream os;
         os << "3-10.1.1.1:" + index << ",9.8.7.6,224.1.2.3,192.168.1.1";
@@ -748,11 +754,12 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
     // route-target.
 
     for (int i = 1; i <= instances_set_count_; i++) {
-        AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
         // Verify that only green1 has discovered a neighbor from red1.
         TASK_UTIL_EXPECT_EQ(0, red_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(2, green_[i-1]->manager()->neighbors_count());
+
+        AddMvpnRoute(master_, prefix1(i), getRouteTarget(1, "1"));
 
         TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
         TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local + 1 remote(red1)
@@ -782,16 +789,15 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
                   neighbor.originator());
     }
 
-    for (int i = 1; i <= instances_set_count_; i++) {
-        DeleteMvpnRoute(master_, prefix(i));
-    }
+    for (int i = 1; i <= instances_set_count_; i++)
+        DeleteMvpnRoute(master_, prefix1(i));
 
     // Verify that neighbor is deleted.
     TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
     for (int i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
-        TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size()); // 1 local + 1 red1 + 1 blue1
+        TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size()); // 1 local+1 red1+1 blue1
         TASK_UTIL_EXPECT_EQ(0, red_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->manager()->neighbors_count());
         TASK_UTIL_EXPECT_EQ(2, green_[i-1]->manager()->neighbors_count());
@@ -806,7 +812,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
     for (int i = 1; i <= instances_set_count_; i++) {
-        AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
+        AddMvpnRoute(master_, prefix1(i), getRouteTarget(1, "1"));
     }
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
