@@ -1582,7 +1582,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
 
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
                         ::testing::Combine(::testing::Bool(),
-                                           ::testing::Values(1, 2, 3)));
+                                           ::testing::Values(1, 2, 99)));
 
 static void SetUp() {
     bgp_log_test::init();
