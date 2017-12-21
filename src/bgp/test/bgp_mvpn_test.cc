@@ -810,7 +810,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
     for (size_t i = 1; i <= instances_set_count_; i++)
-        AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
+        AddMvpnRoute(master_, prefix(i), getRouteTarget(i, "1"));
 
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(instances_set_count_, master_->Size()); // 1 remote
