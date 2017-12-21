@@ -90,8 +90,6 @@ public:
 private:
 
     string GetRIIndex(const std::string &name) {
-        if (starts_with(name, "default-domain:default-project:ip-fabric:"))
-            return "";
         static regex pattern("(\\d+)$");
         smatch match;
         if (regex_search(name, match, pattern))
@@ -863,8 +861,10 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
         ermvpn_rt[i-1] = NULL;
         PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
                         &ermvpn_rt[i-1]));
-        tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.insert(make_pair(SG(i, sg), pmsi));
+        {
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+            pmsi_params.insert(make_pair(SG(i, sg), pmsi));
+        }
         AddMvpnRoute(master_, prefix(i), getRouteTarget(i, "1"));
     }
 
@@ -897,8 +897,10 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     for (int i = 1; i <= instances_set_count_; i++) {
         // Setup ermvpn route before type 3 spmsi route is added.
         DeleteMvpnRoute(master_, prefix(i));
-        tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-        pmsi_params.erase(SG(i, sg));
+        {
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+            pmsi_params.erase(SG(i, sg));
+        }
         DeleteErmVpnRoute(fabric_ermvpn_[i-1], ermvpn_prefix(i));
     }
 
