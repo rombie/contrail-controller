@@ -773,15 +773,18 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
 
         MvpnNeighbor nbr;
         error_code err;
+        ostringstream os;
+        os << i;
+        string is = os.str();
 
         EXPECT_TRUE(red_[i-1]->manager()->FindNeighbor(
-                        RouteDistinguisher::FromString("10.1.1.1:65535", &err),
+                        RouteDistinguisher::FromString("10.1.1.1:"+is, &err),
                         &nbr));
         EXPECT_EQ(0, nbr.source_as());
         EXPECT_EQ(IpAddress::from_string("9.8.7.6", err), nbr.originator());
 
         EXPECT_TRUE(green_[i-1]->manager()->FindNeighbor(
-                        RouteDistinguisher::FromString("10.1.1.1:65535", &err),
+                        RouteDistinguisher::FromString("10.1.1.1:"+is, &err),
                         &nbr));
         EXPECT_EQ(0, nbr.source_as());
         EXPECT_EQ(IpAddress::from_string("9.8.7.6", err), nbr.originator());
@@ -810,7 +813,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
     for (int i = 1; i <= instances_set_count_; i++) {
-        AddMvpnRoute(master_, prefix1(i), getRouteTarget(1, "1"));
+        AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
     }
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
