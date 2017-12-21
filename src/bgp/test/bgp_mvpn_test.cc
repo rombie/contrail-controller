@@ -882,7 +882,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
 
     for (int i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = AddErmVpnRoute(fabric_ermvpn_[i-1], ermvpn_prefix(i),
-                                      "target:127.0.0.1:1100");
+                                        "target:127.0.0.1:1100");
         // 1 local+1 remote(red1)+1 leaf-ad
         TASK_UTIL_EXPECT_EQ(3, red_[i-1]->Size());
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
