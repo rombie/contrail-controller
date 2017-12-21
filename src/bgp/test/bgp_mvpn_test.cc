@@ -758,7 +758,6 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
 
         AddMvpnRoute(master_, prefix1(i), getRouteTarget(i, "1"));
 
-        TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
         TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local + 1 remote(red1)
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
         TASK_UTIL_EXPECT_EQ(4, green_[i-1]->Size()); // 1 local + 1 remote(red1)
@@ -787,11 +786,12 @@ TEST_P(BgpMvpnTest, Type1AD_Remote) {
         EXPECT_EQ(IpAddress::from_string("9.8.7.6", err), nbr.originator());
     }
 
+    TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
     for (size_t i = 1; i <= instances_set_count_; i++)
         DeleteMvpnRoute(master_, prefix1(i));
 
     // Verify that neighbor is deleted.
-    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_ + 1, master_->Size());
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
@@ -809,9 +809,9 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
 
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
-    for (size_t i = 1; i <= instances_set_count_; i++) {
+    for (size_t i = 1; i <= instances_set_count_; i++)
         AddMvpnRoute(master_, prefix(i), getRouteTarget(1, "1"));
-    }
+
     if (!preconfigure_pm_) {
         TASK_UTIL_EXPECT_EQ(1, master_->Size()); // 1 remote
         for (size_t i = 1; i <= instances_set_count_; i++) {
@@ -822,7 +822,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
         VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
     }
 
-    TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
+    TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local + 1 remote(red1)
@@ -835,7 +835,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     for (size_t i = 1; i <= instances_set_count_; i++)
         DeleteMvpnRoute(master_, prefix(i));
 
-    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_ + 1, master_->Size()); // 3 local
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local
