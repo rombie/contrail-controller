@@ -609,6 +609,12 @@ protected:
         return os.str();
     }
 
+    string prefix5(int index) const {
+        ostringstream os;
+        os << "5-0.0.0.0:" << index << ",224.1.2.3,9.8.7.6";
+        return os.str();
+    }
+
     string ermvpn_prefix(int index) const {
         ostringstream os;
         os << "2-10.1.1.1:" << index << "-192.168.1.1,224.1.2.3,9.8.7.6";
@@ -1307,24 +1313,29 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     }
 }
 
-#if 0
-
 // Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
 // Type-5 route comes in first followed by Type-7 join
 TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     VerifyInitialState(preconfigure_pm_);
     const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
     AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
+    for (size_t i = 1; i <= instances_set_count_; i++) {
+        AddType5MvpnRoute(red_[i], prefix5(i), getRouteTarget(i, "1"),
+                          "10.1.1.1");
+    }
 
     if (!preconfigure_pm_) {
-        VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
+        VerifyInitialState(false, 1, 0, 1, instances_set_count_, 1, 0, 1,
+                           instances_set_count_);
     } else {
-        TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
-        TASK_UTIL_EXPECT_EQ(2, red1_->Size()); // 1 local + 1 remote(red1)
-        TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
-
-        // 1 local + 2 remote(red1) + 1 remote(blue1)
-        TASK_UTIL_EXPECT_EQ(4, green1_->Size());
+        TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
+        for (size_t i = 1; i <= instances_set_count_; i++) {
+            // 1 local + 1 remote(red1)
+            TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size());
+            TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
+            // 1 local + 2 remote(red1) + 1 remote(green1)
+            TASK_UTIL_EXPECT_EQ(4, green_[i-1]->Size());
+        }
     }
 
     // Inject type-7 receiver route with red1 RI vit.
@@ -1367,6 +1378,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     // 1 local + 1 remote(red1) + 1 remote(blue1)
     TASK_UTIL_EXPECT_EQ(3, green1_->Size());
 }
+
+#if 0
 
 // Receive Type-7 join route and ensure that Type-3 S-PMSI is generated.
 // Type-7 join comes in first followed by Type-5 source-active
