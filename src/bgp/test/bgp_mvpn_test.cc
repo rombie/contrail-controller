@@ -1349,8 +1349,10 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     }
 
     if (!preconfigure_pm_) {
-        VerifyInitialState(false, 2, 0, 1, 2, 2, 0, 1, 2);
-        VerifyInitialState(true, 3, 0, 2, 3, 2, 0, 1, 2);
+        VerifyInitialState(false, 2, 0, 1, 2*instances_set_count_, 2, 0, 1,
+                           2*instances_set_count_);
+        VerifyInitialState(true, 3, 0, 2, 3*instances_set_count_, 2, 0, 1,
+                           2*instances_set_count_);
     }
 
     // Route should go only into red_ which has the source-active route. This
@@ -1359,7 +1361,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     // active receiver agent joined yet.
 
     // 3 local + 1 remote + 1 join + 1 spmsi
-    TASK_UTIL_EXPECT_EQ(7+1, master_->Size());
+    TASK_UTIL_EXPECT_EQ(7*instances_set_count_+1, master_->Size());
     for (size_t i = 1; i <= instances_set_count_; i++) {
         // 1 local + 1 remote(red1)+1 join + 1 spmsi
         TASK_UTIL_EXPECT_EQ(4, red_[i-1]->Size());
@@ -1370,7 +1372,9 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
 
     for (size_t i = 1; i <= instances_set_count_; i++)
         DeleteMvpnRoute(red_[i-1], prefix5(i));
-    TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 join
+
+    // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local+ 1 join
@@ -1383,7 +1387,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     for (size_t i = 1; i <= instances_set_count_; i++)
         DeleteMvpnRoute(master_, prefix7(i));
 
-    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
+    // 3 local + 1 join
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_ + 1, master_->Size());
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local+ 1 join
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
