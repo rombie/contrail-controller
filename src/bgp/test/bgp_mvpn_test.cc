@@ -615,6 +615,12 @@ protected:
         return os.str();
     }
 
+    string prefix7(int index) const {
+        ostringstream os;
+        os << "7-10.1.1.1:" << index << ",1,224.1.2.3,9.8.7.6";
+        return os.str();
+    }
+
     string ermvpn_prefix(int index) const {
         ostringstream os;
         os << "2-10.1.1.1:" << index << "-192.168.1.1,224.1.2.3,9.8.7.6";
@@ -1317,8 +1323,6 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
 // Type-5 route comes in first followed by Type-7 join
 TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     VerifyInitialState(preconfigure_pm_);
-    const string t5_prefix = "5-0.0.0.0:65535,224.1.2.3,9.8.7.6";
-    AddType5MvpnRoute(red1_, t5_prefix, getRouteTarget(1, "1"), "10.1.1.1");
     for (size_t i = 1; i <= instances_set_count_; i++) {
         AddType5MvpnRoute(red_[i], prefix5(i), getRouteTarget(i, "1"),
                           "10.1.1.1");
@@ -1339,9 +1343,8 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     }
 
     // Inject type-7 receiver route with red1 RI vit.
-    const string t7_prefix = "7-10.1.1.1:65535,1,224.1.2.3,9.8.7.6";
-    AddMvpnRoute(master_, t7_prefix, "target:127.0.0.1:" +
-                 integerToString(red1_->routing_instance()->index()));
+    for (size_t i = 1; i <= instances_set_count_; i++)
+        AddMvpnRoute(master_, prefix7(i), getRouteTarget(i, "1"));
 
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 2, 0, 1, 2, 2, 0, 1, 2);
@@ -1352,31 +1355,39 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
     // active receiver agent joined yet.
-    TASK_UTIL_EXPECT_EQ(7+1, master_->Size()); // 3 local + 1 remote + 1 join +
-                                             // 1 spmsi
-    TASK_UTIL_EXPECT_EQ(4, red1_->Size()); // 1 local + 1 remote(red1)+1 join +
-                                           // 1 spmsi
-    TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
-    // 1 local + 2 remote(red1) + 1 remote(blue1) + 1 spmsi(red1)
-    TASK_UTIL_EXPECT_EQ(5, green1_->Size());
+    // 3 local + 1 remote + 1 join + 1 spmsi
+    TASK_UTIL_EXPECT_EQ(7+1, master_->Size());
+    for (size_t i = 1; i <= instances_set_count_; i++) {
+        // 1 local + 1 remote(red1)+1 join + 1 spmsi
+        TASK_UTIL_EXPECT_EQ(4, red1_->Size());
+        TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
+        // 1 local + 2 remote(red1) + 1 remote(blue1) + 1 spmsi(red1)
+        TASK_UTIL_EXPECT_EQ(5, green1_->Size());
+    }
 
-    DeleteMvpnRoute(red1_, t5_prefix);
+    for (size_t i = 1; i <= instances_set_count_; i++)
+        DeleteMvpnRoute(red_[i-1], t5_prefix(i));
     TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 join
-    TASK_UTIL_EXPECT_EQ(2, red1_->Size()); // 1 local+ 1 join
-    TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
 
-    // 1 local + 1 remote(red1) + 1 remote(blue1)
-    TASK_UTIL_EXPECT_EQ(3, green1_->Size());
+    for (size_t i = 1; i <= instances_set_count_; i++)
+        TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local+ 1 join
+        TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
+        // 1 local + 1 remote(red1) + 1 remote(blue1)
+        TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size());
+    }
 
     // Remove join route.
-    DeleteMvpnRoute(master_, t7_prefix);
-    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
-    TASK_UTIL_EXPECT_EQ(1, red1_->Size()); // 1 local+ 1 join
-    TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
+    for (size_t i = 1; i <= instances_set_count_; i++)
+        DeleteMvpnRoute(master_, prefix7(i));
 
-    // 1 local + 1 remote(red1) + 1 remote(blue1)
-    TASK_UTIL_EXPECT_EQ(3, green1_->Size());
+    TASK_UTIL_EXPECT_EQ(4 + 1, master_->Size()); // 3 local + 1 join
+    for (size_t i = 1; i <= instances_set_count_; i++)
+        TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local+ 1 join
+        TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
+        // 1 local + 1 remote(red1) + 1 remote(blue1)
+        TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size());
+    }
 }
 
 #if 0
