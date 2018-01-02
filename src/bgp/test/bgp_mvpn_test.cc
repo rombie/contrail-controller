@@ -72,7 +72,7 @@ struct SG {
 };
 
 
-static std::map<SG, PMSIParams> pmsi_params;
+static std::map<SG, const PMSIParams> pmsi_params;
 static tbb::mutex pmsi_params_mutex;
 
 class RoutingInstanceTest : public RoutingInstance {
@@ -113,7 +113,7 @@ public:
             dynamic_cast<const RoutingInstanceTest *>(
                 table()->routing_instance());
         string ri_index = ri->ri_index();
-        std::map<SG, PMSIParams>::iterator iter =
+        std::map<SG, const PMSIParams>::iterator iter =
             pmsi_params.find(SG(ri_index, MvpnState::SG(source, group)));
         if (iter == pmsi_params.end() || !iter->second.result)
             return NULL;
@@ -134,7 +134,7 @@ public:
                 table()->routing_instance());
         string ri_index = ri->ri_index();
         MvpnState::SG sg(rt->GetPrefix().source(), rt->GetPrefix().group());
-        std::map<SG, PMSIParams>::iterator iter =
+        std::map<SG, const PMSIParams>::iterator iter =
             pmsi_params.find(SG(ri_index, sg));
         if (iter == pmsi_params.end() || !iter->second.result)
             return false;
@@ -1153,10 +1153,13 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
         ermvpn_rt[i-1]->Notify();
 
         // Verify that leafad path or its attributes did not change.
-        TASK_UTIL_EXPECT_EQ(leafad_red_rt, VerifyLeafADMvpnRoute(red_, prefix,
-                                                                 pmsi));
-        TASK_UTIL_EXPECT_EQ(leafad_green_rt, VerifyLeafADMvpnRoute(green_,
-                                                 prefix, pmsi));
+        std::map<SG, const PMSIParams>::iterator iter =
+            pmsi_params.find(SG(i, sg));
+        assert(iter != pmsi_params.end());
+        TASK_UTIL_EXPECT_EQ(leafad_red_rt,
+            VerifyLeafADMvpnRoute(red_[i-1], prefix(i), iter->second));
+        TASK_UTIL_EXPECT_EQ(leafad_green_rt,
+            VerifyLeafADMvpnRoute(green_[i-1], prefix(i), iter->second));
         TASK_UTIL_EXPECT_EQ(red_path, leafad_red_rt->BestPath());
         TASK_UTIL_EXPECT_EQ(green_path, leafad_green_rt->BestPath());
         TASK_UTIL_EXPECT_EQ(red_attr, leafad_red_rt->BestPath()->GetAttr());
