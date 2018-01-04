@@ -1703,9 +1703,18 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     }
 }
 
+static size_t GetInstanceCount() {
+    char *env = getenv("BGP_MVPN_TEST_INSTANCE_COUNT");
+    size_t count = 4;
+    if (!env)
+        return count;
+    stringToInteger(string(env), count);
+    return count;
+}
+
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
-                        ::testing::Combine(::testing::Bool(),
-                                           ::testing::Values(1, 2, 10)));
+    ::testing::Combine(::testing::Bool(),
+                       ::testing::Values(1, 2, GetInstanceCount)));
 
 static void SetUp() {
     bgp_log_test::init();
