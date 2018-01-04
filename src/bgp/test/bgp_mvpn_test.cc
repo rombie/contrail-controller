@@ -1674,7 +1674,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     }
     if (!preconfigure_pm_) {
         VerifyInitialState(false, 1, 0, 1, 1*instances_set_count_, 1, 0, 1,
-                           2*instances_set_count_);
+                           1*instances_set_count_);
         VerifyInitialState(true, 1, 0, 1, 1*instances_set_count_, 1, 0, 1,
                            1*instances_set_count_);
     } else {
@@ -1705,7 +1705,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
 
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
                         ::testing::Combine(::testing::Bool(),
-                                           ::testing::Values(1, 2, 9)));
+                                           ::testing::Values(1, 2, 10)));
 
 static void SetUp() {
     bgp_log_test::init();
