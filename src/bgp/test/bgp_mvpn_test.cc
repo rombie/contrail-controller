@@ -1583,13 +1583,6 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_4) {
                           "10.1.1.1");
     }
 
-    if (!preconfigure_pm_) {
-        VerifyInitialState(false, 2, 0, 1, 2*instances_set_count_, 2, 0, 1,
-                           2*instances_set_count_);
-        VerifyInitialState(true, 3, 0, 2, 3*instances_set_count_, 2, 0, 1,
-                           2*instances_set_count_);
-    }
-
     // Route should go only into red_ which has the source-active route. This
     // should cause a Type3 S-PMSI route to be originated. This route will get
     // imported into green1 but no type-4 will get generated as there is no
