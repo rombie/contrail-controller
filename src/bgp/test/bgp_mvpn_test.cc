@@ -1673,8 +1673,6 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
                           "10.1.1.1");
     }
     if (!preconfigure_pm_) {
-        VerifyInitialState(false, 1, 0, 1, 1, 1, 0, 1, 1);
-        VerifyInitialState(true, 1, 0, 1, 1, 1, 0, 1, 1);
         VerifyInitialState(false, 1, 0, 1, 1*instances_set_count_, 1, 0, 1,
                            2*instances_set_count_);
         VerifyInitialState(true, 1, 0, 1, 1*instances_set_count_, 1, 0, 1,
