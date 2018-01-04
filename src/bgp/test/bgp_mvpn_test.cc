@@ -1703,9 +1703,9 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
     }
 }
 
-static size_t GetInstanceCount() {
+static int GetInstanceCount() {
     char *env = getenv("BGP_MVPN_TEST_INSTANCE_COUNT");
-    size_t count = 4;
+    int count = 4;
     if (!env)
         return count;
     stringToInteger(string(env), count);
