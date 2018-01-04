@@ -1653,10 +1653,12 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
             // 1 local + 1 remote(red1)
             TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size());
             TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
-            // 1 local + 2 remote(red1) + 1 remote(green1)
-            TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size());
         }
     }
+
+    // 1 local + 2 remote(red1) + 1 remote(blue1)
+    for (size_t i = 1; i <= instances_set_count_; i++) {
+        TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++)
         DeleteMvpnRoute(master_, prefix7(i));
@@ -1685,10 +1687,6 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_6) {
         VerifyInitialState(true, 1, 0, 1, 1*instances_set_count_, 1, 0, 1,
                            1*instances_set_count_);
     } else {
-        TASK_UTIL_EXPECT_EQ(5 + 1, master_->Size()); // 3 local + 1 remote
-        TASK_UTIL_EXPECT_EQ(2, red1_->Size()); // 1 local + 1 remote(red1)
-        TASK_UTIL_EXPECT_EQ(1, blue1_->Size()); // 1 local
-
         TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
         for (size_t i = 1; i <= instances_set_count_; i++) {
             // 1 local + 1 remote(red1)
