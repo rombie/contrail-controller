@@ -1657,7 +1657,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_5) {
     }
 
     // 1 local + 2 remote(red1) + 1 remote(blue1)
-    for (size_t i = 1; i <= instances_set_count_; i++) {
+    for (size_t i = 1; i <= instances_set_count_; i++)
         TASK_UTIL_EXPECT_EQ(3, green_[i-1]->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++)
