@@ -51,6 +51,25 @@ class TestInfraDM(TestCommonDM):
         self.delete_routers(bgp_router, pr)
         self.wait_for_routers_delete(bgp_router_fq, pr_fq)
 
+    # no crash if bgp router paramters are not configured
+    def test_dm_no_bgp_params(self):
+        bgp_router, pr = self.create_router('router1' + self.id(), '1.1.1.1',
+                                                          product=self.product)
+        self.check_if_xml_is_generated()
+        bgp_router_params = bgp_router.get_bgp_router_parameters()
+        FakeDeviceConnect.params["config"] = None
+        bgp_router.set_bgp_router_parameters(None)
+        self._vnc_lib.bgp_router_update(bgp_router)
+        self.check_if_config_is_not_pushed()
+        bgp_router.set_bgp_router_parameters(bgp_router_params)
+        self._vnc_lib.bgp_router_update(bgp_router)
+        self.check_if_xml_is_generated()
+        bgp_router_fq = bgp_router.get_fq_name()
+        pr_fq = pr.get_fq_name()
+        self.delete_routers(bgp_router, pr)
+        self.wait_for_routers_delete(bgp_router_fq, pr_fq)
+    # end test_dm_no_bgp_params
+
     @retries(5, hook=retry_exc_handler)
     def check_if_config_is_not_pushed(self):
         self.assertIsNone(FakeDeviceConnect.params.get("config"))
@@ -206,6 +225,14 @@ class TestInfraDM(TestCommonDM):
         FakeNetconfManager.set_model('mx480')
         pr.physical_router_vendor_name = "juniper"
         pr.physical_router_product_name = "mx480"
+        self._vnc_lib.physical_router_update(pr)
+        self.check_dm_plugin()
+
+        # product/vendor names can be case in-sensitive
+        FakeDeviceConnect.reset()
+        FakeNetconfManager.set_model('MX480')
+        pr.physical_router_vendor_name = "JunIper"
+        pr.physical_router_product_name = "mX480"
         self._vnc_lib.physical_router_update(pr)
         self.check_dm_plugin()
 

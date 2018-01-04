@@ -41,6 +41,7 @@
 #include <filter/acl.h>
 
 #include <cmn/agent_factory.h>
+#include <net/if.h>
 
 const std::string Agent::null_string_ = "";
 const std::set<std::string> Agent::null_string_list_;
@@ -64,6 +65,7 @@ const std::string Agent::config_file_ = "/etc/contrail/contrail-vrouter-agent.co
 const std::string Agent::log_file_ = "/var/log/contrail/vrouter.log";
 const std::string Agent::xmpp_dns_server_connection_name_prefix_ = "dns-server:";
 const std::string Agent::xmpp_control_node_connection_name_prefix_ = "control-node:";
+const uint16_t Agent::kDefaultVmiVmVnUveInterval = 30; //in seconds
 
 SandeshTraceBufferPtr TaskTraceBuf(SandeshTraceBufferCreate("TaskTrace", 5000));
 Agent *Agent::singleton_;
@@ -959,6 +961,10 @@ bool Agent::vrouter_on_nic_mode() const {
 
 bool Agent::vrouter_on_host_dpdk() const {
     return params_->vrouter_on_host_dpdk();
+}
+
+bool Agent::vrouter_on_windows() const {
+    return params_->vrouter_on_windows();
 }
 
 bool Agent::vrouter_on_host() const {

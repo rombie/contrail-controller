@@ -26,7 +26,7 @@ const string DATE_TIERED_COMPACTION_STRATEGY = "DateTieredCompactionStrategy";
 const string LEVELED_COMPACTION_STRATEGY = "LeveledCompactionStrategy";
 const string SIZE_TIERED_COMPACTION_STRATEGY = "SizeTieredCompactionStrategy";
 
-const u32 SCHEMA_REQUEST_TIMEOUT = 40000;
+const u32 SCHEMA_REQUEST_TIMEOUT = 120000;
 const u32 DEFAULT_REQUEST_TIMEOUT = 12000;
 
 struct DbTableInfo {
@@ -59,4 +59,18 @@ struct DbErrors {
     5: u64                                write_column_fails
     6: u64                                write_batch_column_fails
     7: u64                                read_column_fails
+}
+
+// Secondary/SASI Index
+enum ColIndexType {
+    NONE = 0,
+    INDEX,          // secondary index
+    CUSTOM_INDEX    // sasi index
+}
+
+// SASI Index modes
+enum ColIndexMode {
+    NONE = 0,
+    PREFIX,
+    CONTAINS
 }

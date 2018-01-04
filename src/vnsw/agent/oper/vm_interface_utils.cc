@@ -813,7 +813,7 @@ const Peer *VmInterface::peer() const {
 }
 
 bool VmInterface::IsFatFlow(uint8_t protocol, uint16_t port) const {
-    if (fat_flow_list_.list_.find(FatFlowEntry(protocol, port)) !=
+    if (fat_flow_list_.list_.find(FatFlowEntry(protocol, port, false)) !=
                 fat_flow_list_.list_.end()) {
         return true;
     }
@@ -1005,7 +1005,7 @@ void VmInterface::SendTrace(const AgentDBTable *table, Trace event) const {
     case ADD:
         intf_info.set_op("Add");
         break;
-    case DELETE:
+    case DEL:
         intf_info.set_op("Delete");
         break;
 

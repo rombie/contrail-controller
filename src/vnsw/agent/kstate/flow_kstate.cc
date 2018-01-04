@@ -154,10 +154,26 @@ const std::string FlowKState::DropCodeToStr(uint8_t drop_code) const {
         return "RevSG";
     case VR_FLOW_DR_REVERSE_OUT_SG:
         return "RevOutSG";
+    case VR_FLOW_DR_FW_POLICY:
+        return "FwPolicy";
+    case VR_FLOW_DR_OUT_FW_POLICY:
+        return "OutFwPolicy";
+    case VR_FLOW_DR_REVERSE_FW_POLICY:
+        return "RevFwPolicy";
+    case VR_FLOW_DR_REVERSE_OUT_FW_POLICY:
+        return "RevOutFwPolicy";
     case VR_FLOW_DR_SAME_FLOW_RFLOW_KEY:
         return "SameFlowRflowKey";
     default:
         return "Unknown";
+    }
+}
+
+void FlowKState::SetFlowHandle(KFlowResp *resp, const uint32_t idx) const {
+    if (evicted_) {
+        resp->set_flow_handle(integerToString(idx) + " evicted_set");
+    } else {
+        resp->set_flow_handle(integerToString(idx));
     }
 }
 
@@ -313,18 +329,16 @@ bool FlowKState::Run() {
         }
         if (count == KState::kMaxEntriesPerResponse) {
             if (idx != max_flows) {
-                resp->set_flow_handle(integerToString(idx));
+                SetFlowHandle(resp, idx);
             } else {
-                resp->set_flow_handle(integerToString(0));
+                SetFlowHandle(resp, 0);
             }
             SendResponse(resp);
             return true;
         }
     }
-
-    resp->set_flow_handle(integerToString(0));
+    SetFlowHandle(resp, 0);
     SendResponse(resp);
 
     return true;
 }
-

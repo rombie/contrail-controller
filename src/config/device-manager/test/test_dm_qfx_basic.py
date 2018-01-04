@@ -31,7 +31,7 @@ class TestQfxBasicDM(TestCommonDM):
         super(TestQfxBasicDM, self).__init__(*args, **kwargs)
 
     @retries(5, hook=retry_exc_handler)
-    def check_switch_options_config(self, vn_obj, vn_mode):
+    def check_switch_options_config(self, vn_obj, vn_mode, role):
         vrf_name = DMUtils.make_vrf_name(vn_obj.fq_name[-1], vn_obj.virtual_network_network_id, vn_mode)
 
         config = FakeDeviceConnect.get_xml_config()
@@ -40,28 +40,88 @@ class TestQfxBasicDM(TestCommonDM):
         self.assertEqual(switch_opts.get_vtep_source_interface(), "lo0.0")
         import_name = DMUtils.make_import_name(vrf_name)
         imports = switch_opts.get_vrf_import() or []
-        self.assertIn(import_name, imports)
+        if (role =='spine' and vn_mode == 'l2' and '_contrail_lr_internal_vn' in vrf_name) or \
+                       (role =='leaf' and vn_mode == 'l3'):
+            self.assertNotIn(import_name, imports)
+        else:
+            self.assertIn(import_name, imports)
         export_name = DMUtils.make_export_name(vrf_name)
         exports = switch_opts.get_vrf_export() or []
-        self.assertNotIn(export_name, exports)
+        # export policy is applicable only for spine/l3
+        if (role =='spine' and vn_mode == 'l2' and '_contrail_lr_internal_vn' in vrf_name) or \
+                        (role =='leaf'):
+            self.assertNotIn(export_name, exports)
+        else:
+            self.assertIn(export_name, exports)
     # end check_switch_options_config
 
     @retries(5, hook=retry_exc_handler)
-    def check_ri_vlans_config(self, vn_obj, vni, vn_mode='l3'):
+    def check_switch_options_export_policy_config(self, should_present=True):
+        config = FakeDeviceConnect.get_xml_config()
+        switch_opts = config.get_switch_options()
+        self.assertIsNotNone(switch_opts)
+        exports = switch_opts.get_vrf_export() or []
+        export_name = DMUtils.get_switch_export_policy_name()
+        if not should_present:
+            self.assertNotIn(export_name, exports)
+        else:
+            self.assertIn(export_name, exports)
+    # end check_switch_options_config
+
+    @retries(5, hook=retry_exc_handler)
+    def check_policy_options_config(self, should_present=True):
+        config = FakeDeviceConnect.get_xml_config()
+        try:
+            policy_opts = config.get_policy_options()
+            self.assertIsNotNone(policy_opts)
+            comms = policy_opts.get_community() or []
+            self.assertIsNotNone(comms)
+            comm_name = DMUtils.get_switch_export_community_name()
+            comm = comms[0]
+            self.assertIsNotNone(comm)
+            self.assertEqual(comm.name, comm_name)
+        except:
+            if not should_present:
+                return
+            raise Exception("Policy Options not found")
+    # end check_policy_options_config
+
+    @retries(5, hook=retry_exc_handler)
+    def check_ri_config(self, vn_obj, vn_mode='l2', check=True):
         vrf_name = DMUtils.make_vrf_name(vn_obj.fq_name[-1],
                                   vn_obj.virtual_network_network_id, vn_mode)
         config = FakeDeviceConnect.get_xml_config()
-        ris = self.get_routing_instances(config, ri_name)
-        if not ris:
-            self.assertTrue(check)
-        ri = ris[0]
-        vlans = ri.get_vlans() or []
-        vlans = vlans.get_vlan() or []
+        ris = self.get_routing_instances(config, vrf_name)
+        if not check and ris:
+            raise Exception("Routing Instances Present for: " + vrf_name)
+        if check and not ris:
+            raise Exception("Routing Instances not Present for: " + vrf_name)
+    # end check_ri_config
+
+    @retries(5, hook=retry_exc_handler)
+    def check_ri_vlans_config(self, vn_obj, vni, vn_mode='l3', check=True):
+        vrf_name = DMUtils.make_vrf_name(vn_obj.fq_name[-1],
+                                  vn_obj.virtual_network_network_id, vn_mode)
+        config = FakeDeviceConnect.get_xml_config()
+        ris = self.get_routing_instances(config, vrf_name)
+        ri = None
+        vlans = None
+        try:
+            ri = ris[0]
+            vlans = ri.get_vlans().get_vlan() or []
+        except:
+            if check:
+                raise Exception("RI Vlan Config Not Found: %s"%(vrf_name))
+        if not vlans and not check:
+            return
         vlan_name = vrf_name[1:]
         for vlan in vlans:
             if vlan.get_name() == vlan_name and vlan.get_vlan_id() == str(vni):
+                if not check:
+                    raise Exception("RI Vlan Config Found: %s"%(vrf_name))
                 return
-        raise Exception("RI Vlan Config Not Found: %s"%(vlan_name))
+        if check:
+            raise Exception("RI Vlan Config Not Found: %s"%(vlan_name))
 
     @retries(5, hook=retry_exc_handler)
     def check_vlans_config(self, vn_obj, vni, vn_mode):
@@ -204,6 +264,7 @@ class TestQfxBasicDM(TestCommonDM):
         raise Exception("No Correct EVPN Config generated")
     # end check_l2_evpn_proto_config
 
+    @retries(5, hook=retry_exc_handler)
     def check_l2_evpn_vrf_targets(self, target_id):
         config = FakeDeviceConnect.get_xml_config()
         protocols = config.get_protocols()
@@ -213,10 +274,83 @@ class TestQfxBasicDM(TestCommonDM):
         self.assertEqual(vni.get_vrf_target().get_community(), target_id)
     # end check_l2_evpn_vrf_targets
 
+    def check_spine_bogus_lo0_ip(self, int_vn):
+        vrf_name = DMUtils.make_vrf_name(int_vn.fq_name[-1],
+                                  int_vn.virtual_network_network_id, "l3")
+        config = FakeDeviceConnect.get_xml_config()
+        ris = self.get_routing_instances(config, vrf_name)
+        if not ris:
+            raise Exception("No RI Config found for internal vn: " + vrf_name)
+        ri = ris[0]
+        intfs = ri.get_interface()
+        if not intfs:
+            raise Exception("No interfaces Config found for internal vn: " + vrf_name)
+        found = False
+        ifl_num = str(1000 + int(int_vn.virtual_network_network_id))
+        bogus_lo0 = "lo0." + ifl_num
+        for intf in intfs:
+            if intf.name == bogus_lo0:
+                found = True
+                break
+        if not found:
+            raise Exception("No lo0 interface Config found for internal vn: " + vrf_name)
+
+        interfaces = self.get_interfaces(config)
+        if not interfaces:
+            raise Exception("Interface Config not lo0")
+        found = False
+        for intf in interfaces:
+            if intf.name == "lo0" and intf.get_unit() and intf.get_unit()[0].get_name() == ifl_num:
+                found = True
+        if not found:
+            raise Exception("Lo0 Interface unit not found")
+    # end check_spine_bogus_lo0_ip
+
+    @retries(5, hook=retry_exc_handler)
+    def check_spine_irb_config(self, int_vn, vn_obj):
+        vrf_name = DMUtils.make_vrf_name(int_vn.fq_name[-1],
+                                  int_vn.virtual_network_network_id, "l3")
+        config = FakeDeviceConnect.get_xml_config()
+        ris = self.get_routing_instances(config, vrf_name)
+        if not ris:
+            raise Exception("No RI Config found for internal vn: " + vrf_name)
+        ri = ris[0]
+        irb_name = "irb." + str(vn_obj.virtual_network_network_id)
+        # check if irb is attached to internal RI
+        intfs = ri.get_interface()
+        if not intfs:
+            raise Exception("No interfaces Config found for internal vn: " + vrf_name)
+        found = False
+        for intf in intfs:
+            if intf.name == irb_name:
+                found = True
+                break
+        if not found:
+            raise Exception("No IRB interface Config found for internal vn: " + vrf_name)
+        # check client VNs, VLans Config
+        vrf_name = DMUtils.make_vrf_name(vn_obj.fq_name[-1],
+                                  vn_obj.virtual_network_network_id, "l2")
+        vlans = config.get_vlans()
+        self.assertIsNotNone(vlans)
+        vlans = vlans.get_vlan() or []
+        found = False
+        vlan = None
+        # check bridges (vlans) are created for each client VN, and placed irb interface
+        for vl in vlans:
+            if vl.name == vrf_name[1:]:
+                found = True
+                vlan = vl
+                break
+        if not vlan:
+            raise Exception("No VLAN config found for vn: " + vrf_name)
+        if vlan.get_l3_interface() != irb_name:
+            raise Exception("No IRB config attached to VLAN for vn: " + vrf_name)
+    # end check_spine_irb_config
+
     def test_esi_config(self):
         self.product = 'qfx5110'
         FakeNetconfManager.set_model(self.product)
-        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=self.product)
+        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=self.product, role='leaf')
         pr.set_physical_router_role("leaf")
         self._vnc_lib.physical_router_update(pr)
         pi1 = PhysicalInterface('pi1-esi', parent_obj = pr)
@@ -246,7 +380,7 @@ class TestQfxBasicDM(TestCommonDM):
         self._vnc_lib.virtual_machine_interface_create(vmi1)
 
         li1 = LogicalInterface('li1.0', parent_obj = pi1)
-        li1.logical_interface_vlan_tag = 100
+        li1.set_logical_interface_vlan_tag(100)
         li1.set_virtual_machine_interface(vmi1)
         li1_id = self._vnc_lib.logical_interface_create(li1)
 
@@ -258,20 +392,42 @@ class TestQfxBasicDM(TestCommonDM):
         pi2.set_ethernet_segment_identifier(esi_value)
         pi_id = self._vnc_lib.physical_interface_create(pi2)
 
-        fq_name = ['default-domain', 'default-project', 'vmi2-esi' + self.id()]
-        vmi2 = VirtualMachineInterface(fq_name=fq_name, parent_type = 'project')
-        vmi2.set_virtual_network(vn1_obj)
-        self._vnc_lib.virtual_machine_interface_create(vmi2)
-
         li2 = LogicalInterface('li2.0', parent_obj = pi2)
-        li1.logical_interface_vlan_tag = 100
-        li2.set_virtual_machine_interface(vmi2)
+        li2.set_logical_interface_vlan_tag(100)
+        li2.set_virtual_machine_interface(vmi1)
         li2_id = self._vnc_lib.logical_interface_create(li2)
 
         self.check_esi_config('ae127', esi_value)
         self.check_esi_config('pi2-esi', esi_value, False)
 
         self.check_chassis_config()
+        self.check_lacp_config("ae127", esi_value, ["pi1-esi", "pi2-esi"])
+        self.check_l2_evpn_config("ae127", 100)
+
+        pi3 = PhysicalInterface('pi3-esi', parent_obj = pr)
+        esi_value = "44:44:44:44:44:44:44:44:44:44"
+        pi3.set_ethernet_segment_identifier(esi_value)
+        pi_id = self._vnc_lib.physical_interface_create(pi3)
+
+        fq_name = ['default-domain', 'default-project', 'vmi3-esi' + self.id()]
+        vmi3 = VirtualMachineInterface(fq_name=fq_name, parent_type = 'project')
+        vmi3.set_virtual_network(vn1_obj)
+        self._vnc_lib.virtual_machine_interface_create(vmi3)
+
+        li3 = LogicalInterface('li3.0', parent_obj = pi3)
+        li3.logical_interface_vlan_tag = 200
+        li3.set_virtual_machine_interface(vmi3)
+        li3_id = self._vnc_lib.logical_interface_create(li3)
+
+        self.check_esi_config('ae126', esi_value)
+        self.check_esi_config('pi3-esi', esi_value, False)
+
+        self.check_chassis_config()
+        self.check_lacp_config("ae126", esi_value, ["pi3-esi"])
+        self.check_l2_evpn_config("ae126", 200)
+
+        # check again ae127 state, should not be changed
+        esi_value = "33:33:33:33:33:33:33:33:33:33"
         self.check_lacp_config("ae127", esi_value, ["pi1-esi", "pi2-esi"])
         self.check_l2_evpn_config("ae127", 100)
 
@@ -319,7 +475,9 @@ class TestQfxBasicDM(TestCommonDM):
         if not interfaces:
             raise Exception("Interface Config not generated(native vlan check) : " + intf_name)
         if_config = interfaces[0]
-        if if_config.get_unit()[0].get_name() != '0' or if_config.get_unit()[0].get_vlan_id() != '4094':
+        if if_config.get_unit()[0].get_name() != '0' or \
+              if_config.get_unit()[0].get_vlan_id() != '4094' or \
+              if_config.get_native_vlan_id() != '4094':
             raise Exception ("Native vlan config properly generated for intf: " + intf_name)
         for vlan in vlans:
             if vlan.get_name() == vlan_name:
@@ -335,7 +493,7 @@ class TestQfxBasicDM(TestCommonDM):
     def test_native_vlan_config(self):
         self.product = 'qfx5110'
         FakeNetconfManager.set_model(self.product)
-        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=self.product)
+        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=self.product, role='leaf')
         pr.set_physical_router_role("leaf")
         self._vnc_lib.physical_router_update(pr)
         pi = PhysicalInterface('intf-native', parent_obj = pr)
@@ -404,13 +562,13 @@ class TestQfxBasicDM(TestCommonDM):
     # end
 
     # check qfx switch options
-    def verify_dm_qfx_switch_options(self, product):
+    def verify_dm_qfx_switch_options(self, product, role=None):
         # check basic valid vendor, product plugin
         FakeNetconfManager.set_model(product)
 
         # create global vrouter config object
         gv = self.create_global_vrouter_config()
-        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=product)
+        bgp_router, pr = self.create_router('router' + self.id(), '1.1.1.1', product=product, role=role)
 
         # enable vxlan routing on project
         proj = self._vnc_lib.project_read(fq_name=["default-domain", "default-project"])
@@ -447,26 +605,57 @@ class TestQfxBasicDM(TestCommonDM):
         # make sure internal is created
         int_vn = self.check_lr_internal_vn_state(lr)
 
+
         # verify generated switch options config
-        self.check_switch_options_config(vn1_obj, "l2")
-        ri = self._vnc_lib.routing_instance_read(fq_name=vn1_obj.get_fq_name() + [vn1_obj.name])
-        self.check_l2_evpn_vrf_targets(ri.get_route_target_refs()[0]['to'][0])
+        self.check_switch_options_config(vn1_obj, "l2", role)
+
+        if role == 'spine':
+            self.check_ri_config(vn1_obj, 'l2', False)
+            self.check_ri_config(int_vn, 'l3', True)
+            # check spine internal vn config
+            self.check_spine_irb_config(int_vn, vn1_obj)
+            # check bogus lo0 config
+            self.check_spine_bogus_lo0_ip(int_vn)
+        else:
+            self.check_ri_config(vn1_obj, 'l2', False)
+            self.check_ri_config(vn1_obj, 'l3', False)
+
+        # verify l2 evpns targets
+        if 'qfx5' in product:
+            ri = self._vnc_lib.routing_instance_read(fq_name=vn1_obj.get_fq_name() + [vn1_obj.name])
+            self.check_l2_evpn_vrf_targets(ri.get_route_target_refs()[0]['to'][0])
+
         # verify internal vn's config
-        if 'qfx5' not in self.product:
-            self.check_switch_options_config(int_vn, "l3")
+        if 'qfx5' not in product:
+            self.check_switch_options_config(int_vn, "l3", role)
 
         # check vlans config
-        self.check_vlans_config(vn1_obj,
+        if 'qfx5' in product:
+            self.check_vlans_config(vn1_obj,
                  vn1_obj_properties.get_vxlan_network_identifier(), 'l2')
-        if 'qfx10' in self.product:
-            self.check_ri_vlans_config(vn1_obj,
-                 vn1_obj_properties.get_vxlan_network_identifier(), 'l3')
+
+        if 'qfx10' in product:
+            self.check_ri_vlans_config(int_vn,
+                 vn1_obj_properties.get_vxlan_network_identifier(), 'l3', False)
 
         # check l2 evpn qfx5k leaf config
         if 'qfx5' in product:
             gv.set_vxlan_network_identifier_mode('configured')
             self._vnc_lib.global_vrouter_config_update(gv)
             self.check_l2_evpn_proto_config(vn1_obj, vn1_obj_properties.get_vxlan_network_identifier())
+
+        # check global export policy
+        if 'qfx5' in product:
+            self.check_switch_options_export_policy_config(True)
+        else:
+            self.check_switch_options_export_policy_config(False)
+
+        # check policy options
+        if 'qfx5' in product:
+            self.check_policy_options_config(True)
+        else:
+            self.check_policy_options_config(False)
+
         # cleanup
         pr = self._vnc_lib.physical_router_read(fq_name=pr.get_fq_name())
         lr = self._vnc_lib.logical_router_read(fq_name=lr.get_fq_name())
@@ -481,6 +670,6 @@ class TestQfxBasicDM(TestCommonDM):
     # end verify_dm_qfx_switch_options
 
     def test_dm_qfx_switch_options(self):
-        self.verify_dm_qfx_switch_options('qfx5110')
-        self.verify_dm_qfx_switch_options('qfx10000')
+        self.verify_dm_qfx_switch_options('qfx5110', role='leaf')
+        self.verify_dm_qfx_switch_options('qfx10000', role='spine')
     # end test_dm_qfx_switch_options

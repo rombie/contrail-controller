@@ -517,8 +517,9 @@ static void BuildFatFlowTable(Agent *agent, VmInterfaceConfigData *data,
     for (FatFlowProtocols::const_iterator it = cfg->fat_flow_protocols().begin();
             it != cfg->fat_flow_protocols().end(); it++) {
         uint16_t protocol = Agent::ProtocolStringToInt(it->protocol);
-        data->fat_flow_list_.list_.insert(VmInterface::FatFlowEntry(protocol,
-                                          it->port));
+        VmInterface::FatFlowEntry entry(protocol, it->port,
+                                        it->ignore_remote_address);
+        data->fat_flow_list_.Insert(&entry);
     }
 }
 
@@ -842,6 +843,14 @@ static void BuildVn(VmInterfaceConfigData *data,
         data->proxy_arp_mode_ = VmInterface::PROXY_ARP_UNRESTRICTED;
     }
 
+    /* Copy fat-flow configured at VN level */
+    for (FatFlowProtocols::const_iterator it = vn->fat_flow_protocols().begin();
+            it != vn->fat_flow_protocols().end(); it++) {
+        uint16_t protocol = Agent::ProtocolStringToInt(it->protocol);
+        VmInterface::FatFlowEntry fentry(protocol, it->port,
+                                         it->ignore_remote_address);
+        data->fat_flow_list_.Insert(&fentry);
+    }
     IFMapAgentTable *table = static_cast<IFMapAgentTable *>(node->table());
     for (DBGraphVertex::adjacency_iterator iter =
             node->begin(table->GetGraph());
@@ -1473,6 +1482,23 @@ bool InterfaceTable::VmiProcessConfig(IFMapNode *node, DBRequest &req,
             }
         }
     }
+    if (parent_vmi_node) {
+        IFMapAgentTable *vmi_table = static_cast<IFMapAgentTable *>
+                                    (parent_vmi_node->table());
+        DBGraph *vmi_graph = vmi_table->GetGraph();
+        //iterate through links for paremt VMI for VM
+        for (DBGraphVertex::adjacency_iterator vmi_iter = parent_vmi_node->begin(vmi_graph);
+             vmi_iter != parent_vmi_node->end(vmi_graph); ++vmi_iter) {
+        
+            IFMapNode *vm_node = static_cast<IFMapNode *>(vmi_iter.operator->());
+            if (agent_->config_manager()->SkipNode(vm_node, agent_->cfg()->cfg_vm_table())) {
+                continue;
+            }
+            BuildVm(data, vm_node, u, &vm_list);
+            break;
+        }
+    }
+
 
     agent_->oper_db()->bgp_as_a_service()->ProcessConfig
         (data->vrf_name_, bgp_router_node_list, bgp_as_a_service_node_list, u);

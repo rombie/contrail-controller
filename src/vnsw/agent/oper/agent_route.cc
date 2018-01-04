@@ -56,12 +56,11 @@ class AgentRouteTable::DeleteActor : public LifetimeActor {
     AgentRouteTable *table_;
 };
 
-bool RouteComparator::operator() (const AgentRoute *rt1,
-                                  const AgentRoute *rt2) {
+bool RouteComparator::operator() (const AgentRoute *rt1, const AgentRoute *rt2) const {
     return rt1->IsLess(*rt2);
 }
 
-bool NHComparator::operator() (const NextHop *nh1, const NextHop *nh2) {
+bool NHComparator::operator() (const NextHop *nh1, const NextHop *nh2) const {
     return nh1->IsLess(*nh2);
 }
 
@@ -251,6 +250,10 @@ void AgentRouteTable::AddChangeInput(DBTablePartition *part, VrfEntry *vrf,
 
     AgentPath *path = NULL;
     bool notify = false;
+    const NextHop *nh = NULL;
+    if (rt) {
+        nh = rt->GetActiveNextHop();
+    }
     if (key->sub_op_ == AgentKey::RESYNC) {
         // Process RESYNC only if route present and not-deleted
         if (rt && (rt->IsDeleted() == false))
@@ -278,6 +281,10 @@ void AgentRouteTable::AddChangeInput(DBTablePartition *part, VrfEntry *vrf,
         part->Notify(rt);
         rt->UpdateDependantRoutes();
         rt->ResyncTunnelNextHop();
+        if (rt->GetActiveNextHop() != nh) {
+            active_path_changed = true;
+        }
+
         // Since newly added path became active path, send path with
         // path_changed flag as true. Path can be NULL for resync requests
         active_path_changed |= (path == rt->GetActivePath());
@@ -622,7 +629,7 @@ void AgentRoute::DeletePathFromPeer(DBTablePartBase *part,
     // Delete route if no more paths
     if (GetActivePath() == NULL) {
         RouteInfo rt_info_del;
-        FillTrace(rt_info_del, AgentRoute::DELETE, NULL);
+        FillTrace(rt_info_del, AgentRoute::DEL, NULL);
         OPER_TRACE_ROUTE_ENTRY(Route, table, rt_info_del);
         DeleteDerivedRoutes(table);
         table->RemoveUnresolvedRoute(this);

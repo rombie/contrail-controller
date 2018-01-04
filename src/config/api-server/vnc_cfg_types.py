@@ -229,6 +229,12 @@ class Resource(ResourceDbMixin):
             return True, ''
 
         for r_ref in obj_dict.get(ref_name, []):
+            if 'uuid' not in r_ref:
+                try:
+                    r_ref['uuid'] = cls.db_conn.fq_name_to_uuid(object_type,
+                                                                r_ref['to'])
+                except cfgm_common.exceptions.NoIdError as e:
+                    return False, (404, str(e))
             ok, result = cls.dbe_read(cls.db_conn, object_type, r_ref['uuid'],
                                       obj_fields=['parent_type'])
             if not ok:
@@ -1076,6 +1082,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
     portbindings['VIF_TYPE_HW_VEB'] = 'hw_veb'
     portbindings['VNIC_TYPE_NORMAL'] = 'normal'
     portbindings['VNIC_TYPE_DIRECT'] = 'direct'
+    portbindings['VNIC_TYPE_BAREMETAL'] = 'baremetal'
     portbindings['PORT_FILTER'] = True
     portbindings['VIF_TYPE_VHOST_USER'] = 'vhostuser'
     portbindings['VHOST_USER_MODE'] = 'vhostuser_mode'
@@ -1238,17 +1245,35 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
         return (True, '')
 
     @classmethod
-    def _is_port_bound(cls, obj_dict):
+    def _is_port_bound(cls, obj_dict, new_kvp_dict):
         """Check whatever port is bound.
 
-        We assume port is bound when it is linked to either VM or Vrouter.
+        For any NON 'baremetal port' we assume port is bound when it is linked
+        to either VM or Vrouter.
+        For any 'baremetal' port we assume it is bound when it has set:
+            * binding:local_link_information
+            * binding:host_id
 
-        :param obj_dict: Port dict to check
+        :param obj_dict: Current port dict to check
+        :param new_kvp_dict: KVP dict of port update.
         :returns: True if port is bound, False otherwise.
         """
+        bindings = obj_dict['virtual_machine_interface_bindings']
+        kvps = bindings['key_value_pair']
+        kvp_dict = cls._kvp_to_dict(kvps)
+        old_vnic_type = kvp_dict.get('vnic_type')
+        new_vnic_type = new_kvp_dict.get('vnic_type')
 
-        return (obj_dict.get('logical_router_back_refs') or
-                obj_dict.get('virtual_machine_refs'))
+        if new_vnic_type == cls.portbindings['VNIC_TYPE_BAREMETAL']:
+            return False
+
+        if old_vnic_type == cls.portbindings['VNIC_TYPE_BAREMETAL']:
+            if (kvp_dict.get('profile', {}).get('local_link_information') and
+                kvp_dict.get('host_id')):
+                return True
+        else:
+            return (obj_dict.get('logical_router_back_refs') or
+                    obj_dict.get('virtual_machine_refs'))
 
     @classmethod
     def _get_port_vhostuser_socket_name(cls, id=None):
@@ -1562,7 +1587,7 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
             kvp_dict = cls._kvp_to_dict(kvps)
             new_vnic_type = kvp_dict.get('vnic_type', old_vnic_type)
             if (old_vnic_type != new_vnic_type):
-                if cls._is_port_bound(read_result):
+                if cls._is_port_bound(read_result, kvp_dict):
                     return (False, (409, "Vnic_type can not be modified when "
                                     "port is linked to Vrouter or VM."))
 
@@ -1607,16 +1632,19 @@ class VirtualMachineInterfaceServer(Resource, VirtualMachineInterface):
                 vif_type = {'key': 'vif_type',
                             'value': None}
                 vif_details = {'key': 'vif_details', 'value': None}
-                if obj_dict and 'vif_details' in kvp_dict_port:
-                    cls._kvps_update(kvps, vif_type)
-                    cls._kvps_update(kvps, vif_details)
-                elif kvp_dict.get('host_id') == 'null':
-                    vif_details_prop = {'field': 'virtual_machine_interface_bindings',
-                                        'operation': 'delete', 'value': vif_details, 'position': 'vif_details'}
-                    vif_type_prop = {'field': 'virtual_machine_interface_bindings',
-                                     'operation': 'delete', 'value': vif_type, 'position': 'vif_type'}
-                    prop_collection_updates.append(vif_details_prop)
-                    prop_collection_updates.append(vif_type_prop)
+                if kvp_dict_port.get('vnic_type') != cls.portbindings['VNIC_TYPE_DIRECT']:
+                    if obj_dict and 'vif_details' in kvp_dict_port:
+                        cls._kvps_update(kvps, vif_type)
+                        cls._kvps_update(kvps, vif_details)
+                    elif kvp_dict.get('host_id') == 'null':
+                        vif_details_prop = {'field': 'virtual_machine_interface_bindings',
+                                            'operation': 'delete', 'value': vif_details,
+                                            'position': 'vif_details'}
+                        vif_type_prop = {'field': 'virtual_machine_interface_bindings',
+                                         'operation': 'delete', 'value': vif_type,
+                                         'position': 'vif_type'}
+                        prop_collection_updates.append(vif_details_prop)
+                        prop_collection_updates.append(vif_type_prop)
 
         (ok,result) = cls._check_port_security_and_address_pairs(obj_dict,
                                                                  read_result)
@@ -2476,7 +2504,16 @@ class VirtualNetworkServer(Resource, VirtualNetwork):
             vn_ref = {'uuid': obj_dict['uuid'],
                       'is_provider_network': obj_dict.get(
                           'is_provider_network')}
-        uuids = [vn['uuid'] for vn in obj_dict.get('virtual_network_refs')]
+        uuids = []
+        for vn in obj_dict.get('virtual_network_refs'):
+            if 'uuid' not in vn:
+                try:
+                    uuids += [cls.db_conn.fq_name_to_uuid(cls.object_type,
+                                                          vn['to'])]
+                except cfgm_common.exceptions.NoIdError as e:
+                    return (False, str(e))
+            else:
+                uuids += [vn['uuid']]
 
         # if not a provider_vn, not more
         # than one virtual_network_refs is allowed
@@ -3997,7 +4034,7 @@ class LogicalInterfaceServer(Resource, LogicalInterface):
                             continue
 
                         peer_li_vmis = {x.get('uuid')
-                                        for x in li_obj.get('virtual_machine_interface_refs')}
+                                        for x in li_obj.get('virtual_machine_interface_refs') or []}
                         if peer_li_vmis != vmis:
                             return (False, (403, "LI should refer to the same set " +
                                                  "of VMIs as peer LIs belonging to the same ESI"))

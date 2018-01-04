@@ -87,7 +87,7 @@ public:
     };
 
     struct NodeCmp {
-        bool operator() (const Node &lhs, const Node &rhs) {
+        bool operator() (const Node &lhs, const Node &rhs) const {
             return lhs.state_.get() < rhs.state_.get();
         }
     };
@@ -183,7 +183,7 @@ public:
     };
 
     struct DeviceVnEntryCmp {
-        bool operator() (const DeviceVnEntry &lhs, const DeviceVnEntry &rhs) {
+        bool operator() (const DeviceVnEntry &lhs, const DeviceVnEntry &rhs) const {
             if (lhs.dev_ != rhs.dev_)
                 return lhs.dev_ < rhs.dev_;
 
@@ -412,9 +412,9 @@ int ConfigManager::Run() {
     count += bridge_domain_list_->Process(max_count - count);
     count += policy_set_list_->Process(max_count - count);
     count += logical_interface_list_->Process(max_count - count);
+    count += hc_list_->Process(max_count - count);
     count += vmi_list_->Process(max_count - count);
     count += device_list_->Process(max_count - count);
-    count += hc_list_->Process(max_count - count);
     count += device_vn_list_->Process(max_count - count);
     count += slo_list_->Process(max_count - count);
     return count;

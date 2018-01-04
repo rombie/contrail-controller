@@ -11,7 +11,7 @@
 // Pod DB Introspect datastructures.
 //
 struct PodInstance {
-    1: string uuid;
+    1: string uuid (link="VirtualMachineDatabaseList");
     2: string name;
     3: string name_space;
     4: map<string,string> labels;
@@ -51,7 +51,7 @@ response sandesh NamespaceDatabaseListResp {
 // Service DB Introspect datastructures.
 //
 struct ServiceInstance {
-    1: string uuid;
+    1: string uuid (link="LoadbalancerDatabaseList");
     2: string name;
     3: string name_space;
     4: map<string,string> labels;
@@ -141,7 +141,7 @@ struct IngressRule {
 }
 
 struct IngressInstance {
-    1: string uuid;
+    1: string uuid  (link="LoadbalancerDatabaseList");
     2: string name;
     3: string name_space;
     4: map<string, string> labels;
@@ -157,19 +157,59 @@ response sandesh IngressDatabaseListResp {
     1: list<IngressInstance> ingress;
 }
 
+struct FIPUuid {
+    1: string fip_uuid (link="FloatingIpDatabaseList");
+}
+
+struct FIPPoolUuid {
+    1: string fip_pool_uuid (link="FloatingIpPoolDatabaseList");
+}
+
+struct IIPUuid {
+    1: string iip_uuid (link="InstanceIpDatabaseList");
+}
+
+struct LbListenerUuid {
+    1: string lb_listener_uuid (link="LoadbalancerListenerDatabaseList");
+}
+
+struct NIPAMUuid {
+    1: string net_ipam_uuid (link="NetworkIpamDatabaseList");
+}
+
+struct VMUuid {
+    1: string vm_uuid (link="VirtualMachineDatabaseList");
+}
+
+struct VRUuid {
+    1: string vr_uuid (link="VirtualRouterDatabaseList");
+}
+
+struct VMIUuid {
+    1: string vmi_uuid (link="VirtualMachineInterfaceDatabaseList");
+}
+
+struct VNUuid {
+    1: string vn_uuid (link="VirtualNetworkDatabaseList");
+}
+
+struct SGUuid {
+    1: string sg_uuid (link="SecurityGroupDatabaseList");
+}
 
 //
 // Loadbalancer Introspect datastructures.
 //
 struct LoadbalancerInstance {
-    1: string uuid;
-    2: string name;
-    3: list<string> fq_name;
-    4: map<string, string> annotations;
-    5: string external_ip;
-    6: list<string> lb_listeners;
-    7: list<string> selectors;
-    8: list<string> vm_interfaces;
+    1: optional string uuid_to_service (link="ServiceDatabaseList");
+    2: optional string uuid_to_ingress (link="IngressDatabaseList");
+    3: string name;
+    4: list<string> fq_name;
+    5: map<string, string> annotations;
+    6: string external_ip;
+    7: list<LbListenerUuid> lb_listeners;
+    8: list<string> selectors;
+    9: list<VMIUuid> vm_interfaces;
 }
 
 request sandesh LoadbalancerDatabaseList {
@@ -190,10 +230,10 @@ struct LoadbalancerListenerInstance {
     3: list<string> fq_name;
     4: map<string, string> annotations;
     5: map<string, string> id_perms;
-    6: string loadbalancer;
-    7: string loadbalancer_pool;
+    6: string loadbalancer (link="LoadbalancerDatabaseList");
+    7: string loadbalancer_pool (link="LoadbalancerPoolDatabaseList");
     8: string port_name;
-    9: string parent_uuid;
+    9: string parent_uuid (link="ProjectDatabaseList");
 }
 
 request sandesh LoadbalancerListenerDatabaseList {
@@ -215,10 +255,10 @@ struct LoadbalancerPoolInstance {
     4: map<string, string> annotations;
     5: list<string> custom_attributes;
     6: map<string, string> id_perms;
-    7: string loadbalancer_listener;
+    7: string loadbalancer_listener (link="LoadbalancerListenerDatabaseList");
     8: list<string> members;
     9: map<string, string> params;
-    10: string parent_uuid;
+    10: string parent_uuid (link="ProjectDatabaseList");
     11: string provider;
 }
 
@@ -274,13 +314,16 @@ response sandesh HealthMonitorDatabaseListResp {
 // VirtualMachine Introspect datastructures.
 //
 struct VirtualMachineInstance {
-    1: string uuid;
+    1: string uuid (link="PodDatabaseList");
     2: string name;
     3: map<string, string> annotations;
     4: string owner;
-    5: string pod_namespace;
-    6: string pod_node;
-    7: map<string, string> pod_labels;
+    5: string node_ip;
+    6: string pod_namespace;
+    7: string pod_node;
+    8: map<string, string> pod_labels;
+    9: list<VMIUuid> vm_interfaces;
+    10: optional VRUuid vrouter_uuid;
 }
 
 request sandesh VirtualMachineDatabaseList {
@@ -300,7 +343,7 @@ struct VirtualRouterInstance {
     2: string name;
     3: list<string> fq_name;
     4: map<string, string> annotations;
-    5: list<string> virtual_machines;
+    5: list<VMUuid> virtual_machines;
 }
 
 request sandesh VirtualRouterDatabaseList {
@@ -320,12 +363,12 @@ struct VirtualMachineInterfaceInstance {
     2: string name;
     3: list<string> fq_name;
     4: map<string, string> annotations;
-    5: list<string> floating_ips;
+    5: list<FIPUuid> floating_ips;
     6: string host_id;
-    7: list<string> security_groups;
-    8: string virtual_machine;
-    9: list<string> virtual_machine_interfaces;
-    10: string virtual_network;
+    7: list<SGUuid> security_groups;
+    8: string virtual_machine (link="VirtualMachineDatabaseList");
+    9: list<VMIUuid> virtual_machine_interfaces;
+    10: string virtual_network (link="VirtualNetworkDatabaseList");
 }
 
 request sandesh VirtualMachineInterfaceDatabaseList {
@@ -350,9 +393,9 @@ struct VirtualNetworkInstance {
     2: string name;
     3: list<string> fq_name;
     4: map<string, string> annotations;
-    5: list<string> virtual_machine_interfaces;
-    6: list<string> instance_ips;
-    7: list<string> network_ipams;
+    5: list<VMIUuid> virtual_machine_interfaces;
+    6: list<IIPUuid> instance_ips;
+    7: list<NIPAMUuid> network_ipams;
     8: list<NetworkIpamSubnetInstance> network_ipam_subnets;
     9: string k8s_namespace;
     10: bool k8s_namespace_isolated;
@@ -376,9 +419,9 @@ struct InstanceIpInstance {
     3: list<string> fq_name;
     4: string address;
     5: string family;
-    6: list<string> vm_interfaces;
-    7: list<string> virtual_networks;
-    8: list<string> floating_ips;
+    6: list<VMIUuid> vm_interfaces;
+    7: list<VNUuid> virtual_networks;
+    8: list<FIPUuid> floating_ips;
 }
 
 request sandesh InstanceIpDatabaseList {
@@ -402,8 +445,8 @@ struct ProjectInstance {
     6: string k8s_namespace_name;
     7: string k8s_namespace_uuid;
     8: map<string, string> ns_labels;
-    9: list<string> security_groups;
-    10: list<string> virtual_networks;
+    9: list<SGUuid> security_groups;
+    10: list<VNUuid> virtual_networks;
 }
 
 request sandesh ProjectDatabaseList {
@@ -474,9 +517,9 @@ struct SecurityGroupInstance {
     10: list<string> np_sgs;
     11: map<string, string> np_spec;
     12: string owner;
-    13: string project_uuid;
+    13: string project_uuid (link="ProjectDatabaseList");
     14: list<SGRuleEntry> rule_entries;
-    15: list<string> vm_interfaces;
+    15: list<VMIUuid> vm_interfaces;
 }
 
 request sandesh SecurityGroupDatabaseList {
@@ -518,9 +561,9 @@ struct FloatingIpInstance {
     3: list<string> fq_name;
     4: map<string, string> annotations;
     5: string address;
-    6: string parent_uuid;
+    6: string parent_uuid (link="FloatingIpPoolDatabaseList");
     7: string virtual_ip;
-    8: list<string> vm_interfaces;
+    8: list<VMIUuid> vm_interfaces;
 }
 
 request sandesh FloatingIpDatabaseList {
@@ -550,6 +593,19 @@ response sandesh NetworkIpamDatabaseListResp {
     1: list<NetworkIpamInstance> network_ipams;
 }
 
+
+struct KubeGreenletStackInstance
+{
+    1: list<string> stack;
+}
+
+request sandesh KubeGreenletStackList {
+}
+
+response sandesh KubeGreenletStackListResp {
+    1: list<KubeGreenletStackInstance> greenlets;
+}
+
 struct KubeApiConnections {
     1: bool endpoint_monitor;
     2: bool ingress_monitor;
@@ -563,4 +619,10 @@ request sandesh KubeApiConnectionStatus {}
 
 response sandesh KubeApiConnectionStatusResp {
     1: KubeApiConnections connections;
+}
+
+request sandesh MastershipStatus {}
+
+response sandesh MastershipStatusResp {
+    1: bool is_master;
 }

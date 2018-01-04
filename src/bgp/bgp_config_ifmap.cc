@@ -976,7 +976,8 @@ static void SetServiceChainConfig(BgpInstanceConfig *rti,
             inet_chain.prefix,
             inet_chain.service_chain_address,
             inet_chain.service_instance,
-            inet_chain.source_routing_instance
+            inet_chain.source_routing_instance,
+            inet_chain.service_chain_group
         };
         list.push_back(item);
     }
@@ -991,7 +992,8 @@ static void SetServiceChainConfig(BgpInstanceConfig *rti,
             inet6_chain.prefix,
             inet6_chain.service_chain_address,
             inet6_chain.service_instance,
-            inet6_chain.source_routing_instance
+            inet6_chain.source_routing_instance,
+            inet6_chain.service_chain_group
         };
         list.push_back(item);
     }
@@ -1741,10 +1743,9 @@ static void BuildPolicyTermConfig(autogen::PolicyTermType cfg_term,
     term->match.protocols_match = cfg_term.term_match_condition.protocol;
     BOOST_FOREACH(const autogen::PrefixMatchType &prefix_match,
                   cfg_term.term_match_condition.prefix) {
-        PrefixMatchConfig match;
-        match.prefix_to_match = prefix_match.prefix;
-        match.prefix_match_type = prefix_match.prefix_type.empty() ?
-            "exact" : prefix_match.prefix_type;
+        string prefix_type(prefix_match.prefix_type);
+        PrefixMatchConfig match(prefix_match.prefix,
+            prefix_type.empty() ? "exact" : prefix_type);
         term->match.prefixes_to_match.push_back(match);
     }
     term->match.community_match_all =
@@ -1933,6 +1934,11 @@ bool BgpIfmapGlobalSystemConfig::Update(BgpIfmapConfigManager *manager,
 
     if (data_.always_compare_med() != system->bgp_always_compare_med()) {
         data_.set_always_compare_med(system->bgp_always_compare_med());
+        changed |= true;
+    }
+
+    if (data_.rd_cluster_seed() != system->rd_cluster_seed()) {
+        data_.set_rd_cluster_seed(system->rd_cluster_seed());
         changed |= true;
     }
 

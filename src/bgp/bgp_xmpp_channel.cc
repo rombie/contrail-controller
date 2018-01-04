@@ -509,6 +509,7 @@ BgpXmppChannel::BgpXmppChannel(XmppChannel *channel,
                 TaskScheduler::GetInstance()->GetTaskId("xmpp::StateMachine"),
                 channel->GetTaskInstance());
     }
+    channel_->RegisterReferer(peer_id_);
     channel_->RegisterReceive(peer_id_,
          boost::bind(&BgpXmppChannel::ReceiveUpdate, this, _1));
     BGP_LOG_PEER(Event, peer_.get(), SandeshLevel::SYS_INFO, BGP_LOG_FLAG_ALL,
@@ -827,7 +828,16 @@ bool BgpXmppChannel::ProcessMcastItem(string vrf_name,
     }
 
     // Build the key to the Multicast DBTable
-    RouteDistinguisher mc_rd(peer_->bgp_identifier(), instance_id);
+    uint16_t cluster_seed =
+        bgp_server_->global_config()->rd_cluster_seed();
+    RouteDistinguisher mc_rd;
+    if (cluster_seed) {
+        mc_rd = RouteDistinguisher(cluster_seed, peer_->bgp_identifier(),
+                                   instance_id);
+    } else {
+        mc_rd = RouteDistinguisher(peer_->bgp_identifier(), instance_id);
+    }
+
     ErmVpnPrefix mc_prefix(ErmVpnPrefix::NativeRoute, mc_rd,
         grp_address.to_v4(), src_address.to_v4());
 
@@ -1312,11 +1322,19 @@ bool BgpXmppChannel::ProcessItem(string vrf_name,
                 comm.communities.push_back(rt_community);
             }
 
-            BgpAttrNextHop nexthop(nh_address.to_v4().to_ulong());
+            uint32_t addr = nh_address.to_v4().to_ulong();
+            BgpAttrNextHop nexthop(addr);
             attrs.push_back(&nexthop);
-
-            BgpAttrSourceRd source_rd(
-                RouteDistinguisher(nh_address.to_v4().to_ulong(), instance_id));
+            uint16_t cluster_seed =
+                bgp_server_->global_config()->rd_cluster_seed();
+            BgpAttrSourceRd source_rd;
+            if (cluster_seed) {
+                source_rd = BgpAttrSourceRd(
+                    RouteDistinguisher(cluster_seed, addr, instance_id));
+            } else {
+                source_rd = BgpAttrSourceRd(
+                    RouteDistinguisher(addr, instance_id));
+            }
             if (!master)
                 attrs.push_back(&source_rd);
 
@@ -1599,8 +1617,15 @@ bool BgpXmppChannel::ProcessInet6Item(string vrf_name,
             BgpAttrSourceRd source_rd;
             if (!master) {
                 uint32_t addr = nh_address.to_v4().to_ulong();
-                source_rd =
-                    BgpAttrSourceRd(RouteDistinguisher(addr, instance_id));
+                uint16_t cluster_seed =
+                  bgp_server_->global_config()->rd_cluster_seed();
+                if (cluster_seed) {
+                    source_rd = BgpAttrSourceRd(
+                        RouteDistinguisher(cluster_seed, addr, instance_id));
+                } else {
+                    source_rd = BgpAttrSourceRd(
+                        RouteDistinguisher(addr, instance_id));
+                }
                 attrs.push_back(&source_rd);
             }
 
@@ -1872,8 +1897,16 @@ bool BgpXmppChannel::ProcessEnetItem(string vrf_name,
         BgpAttrNextHop nexthop(nh_address.to_v4().to_ulong());
         attrs.push_back(&nexthop);
 
-        BgpAttrSourceRd source_rd(
-            RouteDistinguisher(nh_address.to_v4().to_ulong(), instance_id));
+        uint16_t cluster_seed =
+            bgp_server_->global_config()->rd_cluster_seed();
+        BgpAttrSourceRd source_rd;
+        if (cluster_seed) {
+            source_rd = BgpAttrSourceRd(RouteDistinguisher(cluster_seed,
+                nh_address.to_v4().to_ulong(), instance_id));
+        } else {
+            source_rd = BgpAttrSourceRd(RouteDistinguisher(
+                nh_address.to_v4().to_ulong(), instance_id));
+        }
         attrs.push_back(&source_rd);
 
         // Process security group list.
@@ -2789,7 +2822,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
     }
 }
 
-bool BgpXmppChannelManager::DeleteExecutor(BgpXmppChannel *channel) {
+bool BgpXmppChannelManager::DeleteChannel(BgpXmppChannel *channel) {
     if (!channel->deleted()) {
         channel->set_deleted(true);
         delete channel;
@@ -2803,7 +2836,7 @@ BgpXmppChannelManager::BgpXmppChannelManager(XmppServer *xmpp_server,
     : xmpp_server_(xmpp_server),
       bgp_server_(server),
       queue_(TaskScheduler::GetInstance()->GetTaskId("bgp::Config"), 0,
-          boost::bind(&BgpXmppChannelManager::DeleteExecutor, this, _1)),
+          boost::bind(&BgpXmppChannelManager::DeleteChannel, this, _1)),
       id_(-1),
       asn_listener_id_(-1),
       identifier_listener_id_(-1),

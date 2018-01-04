@@ -2,6 +2,7 @@
  * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
  */
 
+#include <base/os.h>
 #include <base/util.h>
 #include <base/logging.h>
 #include <base/connection_info.h>
@@ -181,8 +182,8 @@ void AgentXmppChannel::ReceiveEvpnUpdate(XmlPugi *pugi) {
                 CONTROLLER_INFO_TRACE(Trace, GetBgpPeerName(), vrf_name,
                                             "EVPN Delete Node id:" + id);
 
-                char buff[id.length() + 1];
-                strcpy(buff, id.c_str());
+                boost::scoped_array<char> buff(new char[id.length() + 1]);
+                strcpy(buff.get(), id.c_str());
 
                 // retract does not have nlri. Need to decode key fields from
                 // retract id. Format of retract-id expected are:
@@ -200,14 +201,14 @@ void AgentXmppChannel::ReceiveEvpnUpdate(XmlPugi *pugi) {
 
                 // If id has "-", the value before "-" is treated as
                 // ethernet-tag
-                char *token = strtok_r(buff + offset, "-", &saveptr);
+                char *token = strtok_r(buff.get() + offset, "-", &saveptr);
                 if ((strlen(saveptr) != 0) && token) {
                     ethernet_tag = atoi(token);
                     offset += strlen(token) + 1;
                 }
 
                 // Get MAC address. Its delimited by ","
-                token = strtok_r(buff + offset, ",", &saveptr);
+                token = strtok_r(buff.get() + offset, ",", &saveptr);
                 if ((strlen(saveptr) == 0) || (token == NULL)) {
                     CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                                      "Error parsing MAC from retract-id: " +id);
@@ -224,7 +225,7 @@ void AgentXmppChannel::ReceiveEvpnUpdate(XmlPugi *pugi) {
 
                 offset += strlen(token) + 1;
                 IpAddress ip_addr;
-                if (ParseAddress(buff + offset, &ip_addr) < 0) {
+                if (ParseAddress(buff.get() + offset, &ip_addr) < 0) {
                     CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                                      "Error decoding IP address from "
                                      "retract-id: "+id);
@@ -341,16 +342,14 @@ void AgentXmppChannel::ReceiveMulticastUpdate(XmlPugi *pugi) {
                 }
 
                 boost::system::error_code ec;
-                IpAddress g_addr =
-                    IpAddress::from_string(group, ec);
+                IpAddress g_address = IpAddress::from_string(group, ec);
                 if (ec.value() != 0) {
                     CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                             "Error parsing multicast group address");
                     return;
                 }
 
-                IpAddress s_addr =
-                    IpAddress::from_string(source, ec);
+                IpAddress s_address = IpAddress::from_string(source, ec);
                 if (ec.value() != 0) {
                     CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                             "Error parsing multicast source address");
@@ -360,8 +359,8 @@ void AgentXmppChannel::ReceiveMulticastUpdate(XmlPugi *pugi) {
                 //Retract with invalid identifier
                 agent_->oper_db()->multicast()->
                     ModifyFabricMembers(agent_->multicast_tree_builder_peer(),
-                                        vrf, g_addr.to_v4(),
-                                        s_addr.to_v4(), 0, olist,
+                                        vrf, g_address.to_v4(),
+                                        s_address.to_v4(), 0, olist,
                                         ControllerPeerPath::kInvalidPeerIdentifier);
             }
         }
@@ -400,16 +399,14 @@ void AgentXmppChannel::ReceiveMulticastUpdate(XmlPugi *pugi) {
 
         item = &*items_iter;
 
-        IpAddress g_addr =
-            IpAddress::from_string(item->entry.nlri.group, ec);
+        IpAddress g_address = IpAddress::from_string(item->entry.nlri.group, ec);
         if (ec.value() != 0) {
             CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                              "Error parsing multicast group address");
             return;
         }
 
-        IpAddress s_addr =
-            IpAddress::from_string(item->entry.nlri.source, ec);
+        IpAddress s_address = IpAddress::from_string(item->entry.nlri.source, ec);
         if (ec.value() != 0) {
             CONTROLLER_TRACE(Trace, GetBgpPeerName(), vrf_name,
                             "Error parsing multicast source address");
@@ -439,7 +436,7 @@ void AgentXmppChannel::ReceiveMulticastUpdate(XmlPugi *pugi) {
 
         agent_->oper_db()->multicast()->ModifyFabricMembers(
                 agent_->multicast_tree_builder_peer(),
-                vrf, g_addr.to_v4(), s_addr.to_v4(),
+                vrf, g_address.to_v4(), s_address.to_v4(),
                 item->entry.nlri.source_label, olist,
                 agent_->controller()->multicast_sequence_number());
     }
@@ -2532,7 +2529,11 @@ void AgentXmppChannel::UpdateConnectionInfo(xmps::PeerState state) {
     string last_state_name;
     ep.address(boost::asio::ip::address::from_string(agent_->
                 controller_ifmap_xmpp_server(xs_idx_), ec));
-    ep.port(agent_->controller_ifmap_xmpp_port(xs_idx_));
+    uint32_t port = agent_->controller_ifmap_xmpp_port(xs_idx_);
+    if (!port) {
+        port = XMPP_SERVER_PORT;
+    }
+    ep.port(port);
     const string name = agent_->xmpp_control_node_prefix() +
                         ep.address().to_string();
     XmppChannel *xc = GetXmppChannel();

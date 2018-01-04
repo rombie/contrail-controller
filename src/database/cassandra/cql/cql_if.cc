@@ -556,17 +556,31 @@ std::string DynamicCf2CassCreateTableIfNotExists(const GenDb::NewCf &cf,
     return query.str();
 }
 
+static std::string DbColIndexMode2String(
+    const GenDb::ColIndexMode::type index_mode) {
+    switch (index_mode) {
+        case GenDb::ColIndexMode::NONE:
+            return "";
+        case GenDb::ColIndexMode::PREFIX:
+            return "PREFIX";
+        case GenDb::ColIndexMode::CONTAINS:
+            return "CONTAINS";
+        default:
+            assert(false && "INVALID");
+    }
+}
+
 //
 // CassCreateIndexIfNotExists
 //
 
 std::string CassCreateIndexIfNotExists(const std::string &cfname,
     const std::string &column, const std::string &indexname,
-    const std::string &mode) {
+    const GenDb::ColIndexMode::type index_mode) {
     std::ostringstream query;
 
     query << "CREATE ";
-    if (!mode.empty()) {
+    if (index_mode != GenDb::ColIndexMode::NONE) {
         query << "CUSTOM "; // SASI
     }
     // Indexname
@@ -574,9 +588,9 @@ std::string CassCreateIndexIfNotExists(const std::string &cfname,
     // Index Column
     query << "ON " << cfname << "(\""<< column <<"\")";
     // Mode if SASI
-    if (!mode.empty()) {
+    if (index_mode != GenDb::ColIndexMode::NONE) {
         query << " USING \'org.apache.cassandra.index.sasi.SASIIndex\' " <<
-        "WITH OPTIONS = {\'mode\': \'" << mode << "\'}";
+        "WITH OPTIONS = {\'mode\': \'" << DbColIndexMode2String(index_mode) << "\'}";
     }
     query << ";";
     return query.str();
@@ -1954,12 +1968,12 @@ bool CqlIfImpl::CreateTableIfNotExistsSync(const GenDb::NewCf &cf,
 
 bool CqlIfImpl::CreateIndexIfNotExistsSync(const std::string &cfname,
     const std::string &column, const std::string &indexname,
-    CassConsistency consistency, const std::string &mode) {
+    CassConsistency consistency, const GenDb::ColIndexMode::type index_mode) {
     if (schema_session_state_ != SessionState::CONNECTED) {
         return false;
     }
     std::string query(impl::CassCreateIndexIfNotExists(cfname, column,
-        indexname, mode));
+        indexname, index_mode));
     return impl::ExecuteQuerySync(cci_, schema_session_.get(), query.c_str(),
         consistency);
 }
@@ -2003,14 +2017,20 @@ bool CqlIfImpl::IsTablePresent(const std::string &table) {
         table);
 }
 
-bool CqlIfImpl::IsTableStatic(const std::string &table) {
+int CqlIfImpl::IsTableStatic(const std::string &table) {
     if (session_state_ != SessionState::CONNECTED) {
         return false;
     }
     size_t ck_count;
-    assert(impl::GetCassTableClusteringKeyCount(cci_, session_.get(),
-        keyspace_, table, &ck_count));
-    return ck_count == 0;
+    if (!impl::GetCassTableClusteringKeyCount(cci_, session_.get(),
+        keyspace_, table, &ck_count)) {
+        return -1;
+    }
+    if (ck_count == 0) {
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 bool CqlIfImpl::SelectFromTableAsync(const std::string &cfname,
@@ -2020,10 +2040,10 @@ bool CqlIfImpl::SelectFromTableAsync(const std::string &cfname,
         return false;
     }
     std::string query(impl::PartitionKey2CassSelectFromTable(cfname,rkey));
-    if (IsTableStatic(cfname)) {
+    if (IsTableStatic(cfname) == 1) {
         return impl::StaticCfGetResultAsync(cci_, session_.get(),
             query.c_str(), consistency, cb, cfname.c_str(), rkey);
-    } else {
+    } else if (IsTableStatic(cfname) == 0) {
         size_t rk_count;
         assert(impl::GetCassTablePartitionKeyCount(cci_, session_.get(),
             keyspace_, cfname, &rk_count));
@@ -2033,6 +2053,8 @@ bool CqlIfImpl::SelectFromTableAsync(const std::string &cfname,
         return impl::DynamicCfGetResultAsync(cci_, session_.get(),
             query.c_str(), consistency, cb, rk_count, ck_count,
             cfname, rkey);
+   } else {
+        return false;
    }
 }
 
@@ -2106,8 +2128,8 @@ bool CqlIfImpl::InsertIntoTablePrepareAsync(std::auto_ptr<GenDb::ColList> v_colu
 // for object-id. Some of these might be blank. This creates tombstones
 // so we dont want to prepare for inserts.
 bool CqlIfImpl::IsInsertIntoTablePrepareSupported(const std::string &table) {
-    return IsTableDynamic(table) &&
-           table.compare("MessageTablev2");
+    return (IsTableDynamic(table)) &&
+           (table != "MessageTablev2");
 }
 
 bool CqlIfImpl::SelectFromTableSync(const std::string &cfname,
@@ -2118,10 +2140,10 @@ bool CqlIfImpl::SelectFromTableSync(const std::string &cfname,
     }
     std::string query(impl::PartitionKey2CassSelectFromTable(cfname,
         rkey));
-    if (IsTableStatic(cfname)) {
+    if (IsTableStatic(cfname) == 1) {
         return impl::StaticCfGetResultSync(cci_, session_.get(),
             query.c_str(), consistency, out);
-    } else {
+    } else if (IsTableStatic(cfname) == 0){
         size_t rk_count;
         assert(impl::GetCassTablePartitionKeyCount(cci_, session_.get(),
             keyspace_, cfname, &rk_count));
@@ -2130,6 +2152,8 @@ bool CqlIfImpl::SelectFromTableSync(const std::string &cfname,
             keyspace_, cfname, &ck_count));
         return impl::DynamicCfGetResultSync(cci_, session_.get(),
             query.c_str(), rk_count, ck_count, consistency, out);
+    } else {
+        return false;
     }
 }
 
@@ -2142,15 +2166,17 @@ bool CqlIfImpl::SelectFromTableSync(const std::string &cfname,
     size_t rk_count;
     assert(impl::GetCassTablePartitionKeyCount(cci_, session_.get(),
         keyspace_, cfname, &rk_count));
-    if (IsTableStatic(cfname)) {
+    if (IsTableStatic(cfname) == 1) {
         return impl::StaticCfGetResultSync(cci_, session_.get(),
             query.c_str(), rk_count, consistency, out);
-    } else {
+    } else if (IsTableStatic(cfname) == 0){
         size_t ck_count;
         assert(impl::GetCassTableClusteringKeyCount(cci_, session_.get(),
             keyspace_, cfname, &ck_count));
         return impl::DynamicCfGetResultSync(cci_, session_.get(),
             query.c_str(), rk_count, ck_count, consistency, out);
+    } else {
+        return false;
     }
 }
 
@@ -2327,10 +2353,12 @@ bool CqlIfImpl::InsertIntoTableInternal(std::auto_ptr<GenDb::ColList> v_columns,
         return false;
     }
     std::string query;
-    if (IsTableStatic(v_columns->cfname_)) {
+    if (IsTableStatic(v_columns->cfname_) == 1) {
         query = impl::StaticCf2CassInsertIntoTable(v_columns.get());
-    } else {
+    } else if (IsTableStatic(v_columns->cfname_) == 0){
         query = impl::DynamicCf2CassInsertIntoTable(v_columns.get());
+    } else {
+        return false;
     }
     if (sync) {
         return impl::ExecuteQuerySync(cci_, session_.get(), query.c_str(),
@@ -2388,12 +2416,14 @@ bool CqlIfImpl::InsertIntoTablePrepareInternal(
     }
     impl::CassStatementPtr qstatement(cci_->CassPreparedBind(prepared.get()),
         cci_);
-    if (IsTableStatic(v_columns->cfname_)) {
+    if (IsTableStatic(v_columns->cfname_) == 1) {
         success = impl::StaticCf2CassPrepareBind(cci_, qstatement.get(),
             v_columns.get());
-    } else {
+    } else if (IsTableStatic(v_columns->cfname_) == 0){
         success = impl::DynamicCf2CassPrepareBind(cci_, qstatement.get(),
             v_columns.get());
+    } else {
+        return false;
     }
     if (!success) {
         return false;
@@ -2548,9 +2578,9 @@ bool CqlIf::Db_UseColumnfamily(const std::string &cfname) {
 // Index
 bool CqlIf::Db_CreateIndex(const std::string &cfname,
         const std::string &column, const std::string &indexname,
-        const std::string &mode) {
+        const GenDb::ColIndexMode::type index_mode) {
     bool success(impl_->CreateIndexIfNotExistsSync(cfname, column, indexname,
-        CASS_CONSISTENCY_QUORUM, mode));
+        CASS_CONSISTENCY_QUORUM, index_mode));
     if (!success) {
         IncrementTableWriteFailStats(cfname);
         IncrementErrors(GenDb::IfErrors::ERR_WRITE_COLUMN_FAMILY);

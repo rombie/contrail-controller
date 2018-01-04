@@ -163,7 +163,6 @@ public:
             out_bytes(0), out_pkts(0) , prev_in_bytes(0) , prev_in_pkts(0),
             prev_out_bytes(0), prev_out_pkts(0), prev_added(0), prev_deleted(0){
         }
-        std::string GetTagIdStr(const Agent *agent, uint32_t type) const;
     };
     typedef boost::shared_ptr<UveSecurityPolicyStats> UveSecurityPolicyStatsPtr;
     struct PolicyCmp {

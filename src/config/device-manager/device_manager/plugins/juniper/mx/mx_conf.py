@@ -147,6 +147,7 @@ class MxConf(JuniperConf):
                     si_obj, if_type, is_left_first_vrf)
                 vrf_interfaces = pnf_inters
                 ri_conf = { 'ri_name': vrf_name }
+                ri_conf['si'] = si_obj
                 ri_conf['import_targets'] = import_set
                 ri_conf['export_targets'] = export_set
                 ri_conf['interfaces'] = vrf_interfaces
@@ -246,6 +247,7 @@ class MxConf(JuniperConf):
     def add_routing_instance(self, ri_conf):
         ri_name = ri_conf.get("ri_name")
         vn = ri_conf.get("vn")
+        si = ri_conf.get("si")
         is_l2 = ri_conf.get("is_l2", False)
         is_l2_l3 = ri_conf.get("is_l2_l3", False)
         import_targets = ri_conf.get("import_targets", set())
@@ -270,6 +272,8 @@ class MxConf(JuniperConf):
         if vn:
             is_nat = True if fip_map else False
             ri.set_comment(DMUtils.vn_ri_comment(vn, is_l2, is_l2_l3, is_nat, router_external))
+        elif si:
+            ri.set_comment(DMUtils.si_ri_comment(si))
         ri_config.add_instance(ri)
         ri_opt = None
         if router_external and is_l2 == False:
@@ -368,7 +372,10 @@ class MxConf(JuniperConf):
 
         # add policies for export route targets
         ps = PolicyStatement(name=DMUtils.make_export_name(ri_name))
-        ps.set_comment(DMUtils.vn_ps_comment(vn, "Export"))
+        if vn:
+            ps.set_comment(DMUtils.vn_ps_comment(vn, "Export"))
+        elif si:
+            ps.set_comment(DMUtils.si_ps_comment(si, "Export"))
         then = Then()
         ps.add_term(Term(name="t1", then=then))
         for route_target in export_targets:
@@ -384,7 +391,10 @@ class MxConf(JuniperConf):
 
         # add policies for import route targets
         ps = PolicyStatement(name=DMUtils.make_import_name(ri_name))
-        ps.set_comment(DMUtils.vn_ps_comment(vn, "Import"))
+        if vn:
+            ps.set_comment(DMUtils.vn_ps_comment(vn, "Import"))
+        elif si:
+            ps.set_comment(DMUtils.si_ps_comment(si, "Import"))
         from_ = From()
         term = Term(name="t1", fromxx=from_)
         ps.add_term(term)
@@ -694,8 +704,8 @@ class MxConf(JuniperConf):
         if self.policy_config is None:
             self.policy_config = PolicyOptions(comment=DMUtils.policy_options_comment())
         for route_target in self.route_targets:
-            comm = CommunityType(name=DMUtils.make_community_name(route_target),
-                                 members=route_target)
+            comm = CommunityType(name=DMUtils.make_community_name(route_target))
+            comm.add_members(route_target)
             self.policy_config.add_community(comm)
     # end set_route_targets_config
 
@@ -704,9 +714,7 @@ class MxConf(JuniperConf):
             return 0
         if is_delete:
             return self.send_conf(is_delete=True)
-        if not self.physical_router.bgp_router:
-            self._logger.info("bgp router not configured for pr: " + \
-                                                 self.physical_router.name)
+        if not self.ensure_bgp_config():
             return 0
         self.build_bgp_config()
         vn_dict = self.get_vn_li_map()

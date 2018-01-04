@@ -123,7 +123,7 @@ public:
         return (rt ? rt->entry.nlri.source_label : 0);
     }
 
-    int CheckGlobalRouteOListSize(
+    int CheckErmvpnOListSize(
             boost::shared_ptr<const NetworkAgentMock> agent,
         const string &prefix) {
         const NetworkAgentMock::McastRouteEntry *ermvpn_rt =
@@ -139,8 +139,6 @@ public:
         const string &address, const string &encap,
         const string &source_address, const NetworkAgentMock *other_agent) {
 
-        if (olist_size == 0)
-            return true;
         const NetworkAgentMock::MvpnRouteEntry *mvpn_rt =
             agent->MvpnRouteLookup(net, prefix);
         if (mvpn_rt == NULL)
@@ -357,7 +355,7 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     // red, blue, green, BgpConfigManager::kFabricInstance
     TASK_UTIL_EXPECT_EQ(4, master_->Size());
 
-    const char *mroute = "224.1.2.3,192.168.1.1";
+    string mroute = "224.1.2.3,192.168.1.1";
 
     // Register agent a and add a source active mvpn route
     Subscribe("red", 1);
@@ -393,13 +391,13 @@ TEST_F(BgpMvpnOneControllerTest, Basic) {
     TASK_UTIL_EXPECT_EQ(0, agent_xb_->MvpnRouteCount());
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.1.2",
             "192.168.0.101", agent_xb_);
-    TASK_UTIL_EXPECT_EQ(0, CheckGlobalRouteOListSize(agent_xb_, mroute));
+    TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_xb_, mroute));
 
     // Add a receiver in red
     agent_xa_->AddMcastRoute(BgpConfigManager::kFabricInstance, mroute,
                              "10.1.1.3", "50-60");
     // ermvpn route olist size will increase
-    TASK_UTIL_EXPECT_EQ(1, CheckGlobalRouteOListSize(agent_xb_, mroute));
+    TASK_UTIL_EXPECT_EQ(1, CheckErmvpnOListSize(agent_xb_, mroute));
     // No change in mvpn route olist
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.1.2",
                          "192.168.0.101", agent_xb_);
@@ -428,6 +426,25 @@ static const char *config_tmpl3 = "\
         </vrf-target>\
     </routing-instance>\
 </config>\
+";
+static const char *delete_green = "\
+<delete>\
+    <routing-instance name='green'>\
+        <virtual-network>green</virtual-network>\
+        <vrf-target>target:127.0.0.1:1003</vrf-target>\
+        <vrf-target>\
+            target:127.0.0.1:1001\
+            <import-export>import</import-export>\
+        </vrf-target>\
+        <vrf-target>\
+            target:127.0.0.1:1002\
+            <import-export>import</import-export>\
+        </vrf-target>\
+    </routing-instance>\
+    <virtual-network name='green'>\
+        <network-id>2</network-id>\
+    </virtual-network>\
+</delete>\
 ";
 
 static const char *config_tmpl2 = "\
@@ -632,6 +649,72 @@ protected:
     static int validate_done_;
 };
 
+TEST_F(BgpMvpnTwoControllerTest, MultipleReceivers) {
+    // Register agents and add a source active mvpn route
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    Subscribe("blue", 3);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+    task_util::WaitForIdle();
+
+    TASK_UTIL_EXPECT_EQ(2, red_->Size()); // 1 type1 each from A, B
+    TASK_UTIL_EXPECT_EQ(2, red_y_->Size()); // 1 type1 each from A, B
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_->FindType1ADRoute());
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        red_y_->FindType1ADRoute());
+
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size()); // 1 type1 each from A, B
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        blue_->FindType1ADRoute());
+
+    TASK_UTIL_EXPECT_EQ(2, green_->Size()); // // 1 type1 each from A, B
+
+    TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                        green_->FindType1ADRoute());
+    TASK_UTIL_EXPECT_TRUE(peer_x_->IsReady());
+    TASK_UTIL_EXPECT_TRUE(peer_y_->IsReady());
+    // red, blue, green, BgpConfigManager::kFabricInstance from A, B
+    TASK_UTIL_EXPECT_EQ(8, master_->Size());
+    // red, blue, green, BgpConfigManager::kFabricInstance from A, B
+    TASK_UTIL_EXPECT_EQ(8, master_y_->Size());
+
+    string tunnel;
+    RouteAttributes attr;
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
+    agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
+    task_util::WaitForIdle();
+
+    const char *mroute = "224.1.2.3,192.168.1.1";
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
+
+    // Verify that the type5 route gets added to red and master only
+    TASK_UTIL_EXPECT_EQ(3, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(9, master_->Size());
+    TASK_UTIL_EXPECT_EQ(2, green_->Size());
+
+    agent_ya_->AddType7MvpnRoute("red", mroute, "10.1.2.2", "30-40");
+    agent_yb_->AddType7MvpnRoute("red", mroute, "10.1.2.3", "50-60");
+    agent_yc_->AddType7MvpnRoute("red", mroute, "10.1.2.4", "70-80");
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(5, fabric_ermvpn_->Size());
+
+    // verify that type7, type3, type4 primary routes get added to red, master
+    TASK_UTIL_EXPECT_EQ(6, red_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    // Verify that sender agent should have received a mvpn route
+    TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_yb_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(1, agent_xa_->MvpnRouteCount());
+    TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.4",
+            "192.168.0.101", agent_yc_);
+    TASK_UTIL_EXPECT_EQ(2, CheckErmvpnOListSize(agent_ya_, mroute));
+}
+
 TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     Configure(config_tmpl3);
     task_util::WaitForIdle();
@@ -696,7 +779,71 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
             "192.168.0.101", agent_yb_);
-    TASK_UTIL_EXPECT_EQ(0, CheckGlobalRouteOListSize(agent_yb_, mroute));
+    TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_yb_, mroute));
+}
+
+TEST_F(BgpMvpnTwoControllerTest, MultipleGroups) {
+    Configure(config_tmpl3);
+    task_util::WaitForIdle();
+    // Register agents and add a source active mvpn route
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    Subscribe("blue", 3);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+    TASK_UTIL_EXPECT_EQ(4, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_->Size());
+    TASK_UTIL_EXPECT_EQ(6, green_->Size());
+    task_util::WaitForIdle();
+    unsigned int groupCount = 10;
+
+    string tunnel;
+    RouteAttributes attr;
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
+    agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
+    task_util::WaitForIdle();
+
+    for (unsigned int idx = 0; idx < groupCount; idx++) {
+        std::ostringstream sg;
+        sg << "224.1.2." << (idx+1) << ",192.168.1.1";
+        agent_xa_->AddType5MvpnRoute("red", sg.str(), "10.1.1.2");
+        task_util::WaitForIdle();
+    }
+
+    // Verify that the type5 route gets added to red and master only
+    TASK_UTIL_EXPECT_EQ(4 + groupCount, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(8 + groupCount, master_->Size());
+    TASK_UTIL_EXPECT_EQ(6 + groupCount, green_->Size());
+
+    for (unsigned int idx = 0; idx < 10; idx++) {
+        std::ostringstream sg;
+        sg << "224.1.2." << (idx+1) << ",192.168.1.1";
+        agent_yb_->AddType7MvpnRoute("green", sg.str(), "10.1.2.2", "30-40");
+        task_util::WaitForIdle();
+    }
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(3 * groupCount, fabric_ermvpn_->Size());
+
+    // verify that type7, type3, type4 primary routes get added to red, master
+    TASK_UTIL_EXPECT_EQ(4 + (4 * groupCount), red_->Size());
+    TASK_UTIL_EXPECT_EQ(6 + (2 * groupCount), green_->Size());
+    TASK_UTIL_EXPECT_EQ(8 + (4 * groupCount), master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(8 + (4 * groupCount), master_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    // Verify that sender agent should have received a mvpn route
+    TASK_UTIL_EXPECT_EQ(0, agent_xa_->McastRouteCount());
+    TASK_UTIL_EXPECT_EQ(groupCount, (uint32_t)(agent_yb_->McastRouteCount()));
+    TASK_UTIL_EXPECT_EQ(groupCount, (uint32_t)(agent_xa_->MvpnRouteCount()));
+    TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
+    for (unsigned int idx = 0; idx < 10; idx++) {
+        std::ostringstream sg;
+        sg << "224.1.2." << (idx+1) << ",192.168.1.1";
+        agent_yb_->AddType7MvpnRoute("green", sg.str(), "10.1.2.2", "30-40");
+        VerifyOListAndSource(agent_xa_, "red", sg.str(), 1, "10.1.2.2",
+            "192.168.0.101", agent_yb_);
+        TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_yb_, sg.str()));
+    }
 }
 
 TEST_F(BgpMvpnTwoControllerTest, RedSenderRedGreenReceiver) {
@@ -760,7 +907,7 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
             "192.168.0.101", agent_yb_);
-    TASK_UTIL_EXPECT_EQ(0, CheckGlobalRouteOListSize(agent_yb_, mroute));
+    TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_yb_, mroute));
 
     Configure(config_tmpl3);
     task_util::WaitForIdle();
@@ -772,6 +919,48 @@ TEST_F(BgpMvpnTwoControllerTest, RedSenderRedGreenReceiver) {
     TASK_UTIL_EXPECT_EQ(12, master_->Size());
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
             "192.168.0.101", agent_yb_);
+}
+
+TEST_F(BgpMvpnTwoControllerTest, RedSenderRedGreenReceiverGreenDown) {
+    // Register agents and add a source active mvpn route
+    Configure(config_tmpl3);
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    Subscribe("blue", 3);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+    task_util::WaitForIdle();
+
+    string tunnel;
+    RouteAttributes attr;
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
+    agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
+    task_util::WaitForIdle();
+
+    const char *mroute = "224.1.2.3,192.168.1.1";
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
+
+    agent_yb_->AddType7MvpnRoute("red", mroute, "10.1.2.2", "30-40");
+    task_util::WaitForIdle();
+
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
+            "192.168.0.101", agent_yb_);
+    agent_ya_->AddType7MvpnRoute("green", mroute, "10.1.1.3", "50-60");
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(8, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, blue_->Size());
+    TASK_UTIL_EXPECT_EQ(8, green_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_y_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_->Size());
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
+            "192.168.0.101", agent_yb_);
+    TASK_UTIL_EXPECT_EQ(1, CheckErmvpnOListSize(agent_yb_, mroute));
+
+    Configure(delete_green);
+    agent_ya_->McastUnsubscribe(BgpConfigManager::kFabricInstance, 1000);
+    task_util::WaitForIdle();
+    TASK_UTIL_EXPECT_EQ(6, red_->Size());
+    TASK_UTIL_EXPECT_EQ(10, master_->Size());
+    TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_yb_, mroute));
 }
 
 TEST_F(BgpMvpnTwoControllerTest, Type5AfterType7) {
@@ -842,11 +1031,10 @@ TEST_F(BgpMvpnTwoControllerTest, Type5AfterType7) {
     TASK_UTIL_EXPECT_EQ(0, agent_yb_->MvpnRouteCount());
     VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
             "192.168.0.101", agent_yb_);
-    TASK_UTIL_EXPECT_EQ(0, CheckGlobalRouteOListSize(agent_yb_, mroute));
+    TASK_UTIL_EXPECT_EQ(0, CheckErmvpnOListSize(agent_yb_, mroute));
 }
 
 TEST_F(BgpMvpnTwoControllerTest, MvpnWithoutErmvpnRoute) {
-    task_util::WaitForIdle();
     // Register agents
     Subscribe("blue", 3);
     Subscribe("red", 1);
@@ -876,9 +1064,162 @@ TEST_F(BgpMvpnTwoControllerTest, MvpnWithoutErmvpnRoute) {
     TASK_UTIL_EXPECT_EQ(5, red_->Size());
     TASK_UTIL_EXPECT_EQ(11, master_y_->Size());
     TASK_UTIL_EXPECT_EQ(11, master_->Size());
-    // Verify that Olist sent to sender is empty
-    VerifyOListAndSource(agent_xa_, "red", mroute, 0, "10.1.2.2",
+    // Verify that type5 route is withdrawn since there are no receivers
+    TASK_UTIL_EXPECT_EQ(static_cast<NetworkAgentMock::MvpnRouteEntry *>(NULL),
+            agent_xa_->MvpnRouteLookup("red", mroute));
+
+    // Add the ermvpn receiver back
+    agent_yb_->AddMcastRoute(BgpConfigManager::kFabricInstance, mroute,
+                             "10.1.2.2", "30-40", "");
+    task_util::WaitForIdle();
+
+    // Verify that type4 route gets added back
+    TASK_UTIL_EXPECT_EQ(6, red_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_y_->Size());
+    // Verify that mvpn and ermvpn routes are ok
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
             "192.168.0.101", agent_yb_);
+}
+
+static const char *change_identifier= "\
+<config>\
+    <bgp-router name=\'X\'>\
+        <identifier>192.168.0.201</identifier>\
+        <address>127.0.0.101</address>\
+        <port>%d</port>\
+        <address-families>\
+            <family>inet</family>\
+            <family>inet-mvpn</family>\
+            <family>inet-vpn</family>\
+            <family>erm-vpn</family>\
+            <family>route-target</family>\
+        </address-families>\
+        <session to=\'Y\'>\
+            <address-families>\
+                <family>inet</family>\
+                <family>inet-vpn</family>\
+                <family>inet-mvpn</family>\
+                <family>erm-vpn</family>\
+                <family>route-target</family>\
+            </address-families>\
+        </session>\
+    </bgp-router>\
+    <bgp-router name=\'Y\'>\
+        <identifier>192.168.0.202</identifier>\
+        <address>127.0.0.102</address>\
+        <port>%d</port>\
+        <address-families>\
+            <family>inet</family>\
+            <family>inet-mvpn</family>\
+            <family>inet-vpn</family>\
+            <family>erm-vpn</family>\
+            <family>route-target</family>\
+        </address-families>\
+        <session to=\'X\'>\
+            <address-families>\
+                <family>inet</family>\
+                <family>inet-vpn</family>\
+                <family>inet-mvpn</family>\
+                <family>erm-vpn</family>\
+                <family>route-target</family>\
+            </address-families>\
+        </session>\
+    </bgp-router>\
+</config>\
+";
+
+TEST_F(BgpMvpnTwoControllerTest, ReceiverSenderLeave) {
+    Configure(config_tmpl3);
+    task_util::WaitForIdle();
+    // Register agents
+    Subscribe("blue", 3);
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    task_util::WaitForIdle();
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+
+    const char *mroute = "224.1.2.3,192.168.1.1";
+    string tunnel;
+    RouteAttributes attr;
+    NextHop nexthop_red("10.1.1.2", 11, tunnel, "red");
+    agent_xa_->AddRoute("red", "192.168.1.1/32", nexthop_red, attr);
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
+    agent_yb_->AddType7MvpnRoute("green", mroute, "10.1.2.2", "30-40");
+    task_util::WaitForIdle();
+
+    // Verify that tables get all mvpn routes
+    TASK_UTIL_EXPECT_EQ(8, red_->Size());
+    TASK_UTIL_EXPECT_EQ(8, green_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_y_->Size());
+
+    // Delete the type7 join route
+    agent_yb_->DeleteMvpnRoute("green", mroute, 7);
+    task_util::WaitForIdle();
+    // Verify that type7, type3 and type4 routes get deleted
+    TASK_UTIL_EXPECT_EQ(5, red_->Size());
+    TASK_UTIL_EXPECT_EQ(9, master_->Size());
+    // Verify that type5 route is withdrawn since there are no receivers
+    TASK_UTIL_EXPECT_EQ(static_cast<NetworkAgentMock::MvpnRouteEntry *>(NULL),
+            agent_xa_->MvpnRouteLookup("red", mroute));
+
+    // Add the receiver back
+    agent_yb_->AddType7MvpnRoute("green", mroute, "10.1.2.2", "30-40");
+    task_util::WaitForIdle();
+
+    // Verify that type7, type3 and type4 routes get added back
+    TASK_UTIL_EXPECT_EQ(8, red_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_->Size());
+    // Verify that mvpn and ermvpn routes are ok
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
+            "192.168.0.101", agent_yb_);
+
+    // Delete the type5 source active route
+    agent_xa_->DeleteMvpnRoute("red", mroute, 5);
+    task_util::WaitForIdle();
+    // Verify that type5, type3 and type4 routes get deleted
+    TASK_UTIL_EXPECT_EQ(5, red_->Size());
+    TASK_UTIL_EXPECT_EQ(9, master_->Size());
+    // Verify that type5 route is withdrawn since there are no receivers
+    TASK_UTIL_EXPECT_EQ(static_cast<NetworkAgentMock::MvpnRouteEntry *>(NULL),
+            agent_xa_->MvpnRouteLookup("red", mroute));
+
+    // Add the sender back
+    agent_xa_->AddType5MvpnRoute("red", mroute, "10.1.1.2");
+    task_util::WaitForIdle();
+
+    // Verify that type5, type3 and type4 routes get added back
+    TASK_UTIL_EXPECT_EQ(8, red_->Size());
+    TASK_UTIL_EXPECT_EQ(12, master_->Size());
+    // Verify that mvpn and ermvpn routes are ok
+    VerifyOListAndSource(agent_xa_, "red", mroute, 1, "10.1.2.2",
+            "192.168.0.101", agent_yb_);
+};
+
+TEST_F(BgpMvpnTwoControllerTest, ChangeIdentifier) {
+    // Register agents
+    Subscribe("blue", 3);
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    task_util::WaitForIdle();
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+
+    // Verify that tables get all mvpn routes
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, green_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_y_->Size());
+
+    // Change the identifiers of routers
+    Configure(change_identifier);
+    Subscribe("blue", 3);
+    Subscribe("red", 1);
+    Subscribe("green", 2);
+    Subscribe(BgpConfigManager::kFabricInstance, 1000);
+    task_util::WaitForIdle();
+
+    // Verify that tables get all mvpn routes
+    TASK_UTIL_EXPECT_EQ(2, red_->Size());
+    TASK_UTIL_EXPECT_EQ(2, green_->Size());
+    TASK_UTIL_EXPECT_EQ(8, master_y_->Size());
 }
 
 class TestEnvironment : public ::testing::Environment {

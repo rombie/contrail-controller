@@ -138,6 +138,7 @@ public:
     enum Platform {
         VROUTER_ON_HOST,
         VROUTER_ON_HOST_DPDK,
+        VROUTER_ON_WINDOWS,
         VROUTER_ON_NIC
     };
 
@@ -278,7 +279,12 @@ public:
     }
     uint16_t http_server_port() const { return http_server_port_; }
     const std::string &host_name() const { return host_name_; }
-    int agent_stats_interval() const { return agent_stats_interval_; }
+    int agent_stats_interval() const {
+        if (test_mode_) {
+            return agent_stats_interval_;
+        }
+        return vmi_vm_vn_uve_interval_msecs();
+    }
     int flow_stats_interval() const { return flow_stats_interval_; }
     int vrouter_stats_interval() const { return vrouter_stats_interval_; }
     void set_agent_stats_interval(int val) { agent_stats_interval_ = val; }
@@ -307,6 +313,9 @@ public:
     }
     bool vrouter_on_host_dpdk() const {
         return platform_ == VROUTER_ON_HOST_DPDK;
+    }
+    bool vrouter_on_windows() const {
+        return platform_ == VROUTER_ON_WINDOWS;
     }
     bool vrouter_on_host() const {
         return platform_ == VROUTER_ON_HOST;
@@ -417,6 +426,10 @@ public:
             return Agent::kMinAapPrefixLen;
         }
         return min_aap_prefix_len_;
+    }
+    uint16_t vmi_vm_vn_uve_interval() const { return vmi_vm_vn_uve_interval_; }
+    uint32_t vmi_vm_vn_uve_interval_msecs() const {
+        return (vmi_vm_vn_uve_interval_ * 1000);
     }
 
     // Restart parameters
@@ -755,6 +768,7 @@ private:
     uint32_t mac_learning_update_tokens_;
     uint32_t mac_learning_delete_tokens_;
     uint16_t min_aap_prefix_len_;
+    uint16_t vmi_vm_vn_uve_interval_;
     DISALLOW_COPY_AND_ASSIGN(AgentParam);
 };
 

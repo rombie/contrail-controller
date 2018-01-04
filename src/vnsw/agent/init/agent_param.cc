@@ -473,6 +473,10 @@ void AgentParam::ParseHypervisorArguments
             return;
         }
     }
+    if (!GetValueFromTree<uint16_t>(vmi_vm_vn_uve_interval_,
+                                    "DEFAULT.vmi_vm_vn_uve_interval")) {
+        vmi_vm_vn_uve_interval_ = Agent::kDefaultVmiVmVnUveInterval;
+    }
 }
 
 void AgentParam::ParseDefaultSectionArguments
@@ -513,6 +517,8 @@ void AgentParam::ParseDefaultSectionArguments
                         "DEFAULT.tunnel_type");
     GetOptValue<uint16_t>(var_map, min_aap_prefix_len_,
                          "DEFAULT.min_aap_prefix_len");
+    GetOptValue<uint16_t>(var_map, vmi_vm_vn_uve_interval_,
+                          "DEFAULT.vmi_vm_vn_uve_interval");
 }
 
 void AgentParam::ParseTaskSectionArguments
@@ -648,6 +654,8 @@ void AgentParam::ParsePlatformArguments
                 physical_interface_mac_addr_ =
                 var_map["DEFAULT.physical_interface_mac"].as<string>();
             }
+        } else if (var_map["DEFAULT.platform"].as<string>() == "windows") {
+            platform_ = AgentParam::VROUTER_ON_WINDOWS;
         } else {
             platform_ = AgentParam::VROUTER_ON_HOST;
         }
@@ -926,6 +934,8 @@ static bool ValidateInterface(bool test_mode, const std::string &ifname,
     if (test_mode) {
         return true;
     }
+
+#ifndef _WIN32
     int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
     assert(fd >= 0);
 
@@ -956,6 +966,7 @@ static bool ValidateInterface(bool test_mode, const std::string &ifname,
             }
         }
     }
+#endif
 
     return true;
 }
@@ -1231,6 +1242,8 @@ void AgentParam::PostValidateLogConfig() const {
         LOG(DEBUG, "Platform mode           : Vrouter on NIC");
     } else if (platform_ == VROUTER_ON_HOST_DPDK) {
         LOG(DEBUG, "Platform mode           : Vrouter on DPDK");
+    } else if (platform_ == VROUTER_ON_WINDOWS) {
+        LOG(DEBUG, "Platform mode           : Vrouter on Windows");
     } else {
         LOG(DEBUG, "Platform mode           : Vrouter on host linux kernel ");
     }
@@ -1343,7 +1356,8 @@ AgentParam::AgentParam(bool enable_flow_options,
         mac_learning_add_tokens_(Agent::kMacLearningDefaultTokens),
         mac_learning_update_tokens_(Agent::kMacLearningDefaultTokens),
         mac_learning_delete_tokens_(Agent::kMacLearningDefaultTokens),
-        min_aap_prefix_len_(Agent::kMinAapPrefixLen) {
+        min_aap_prefix_len_(Agent::kMinAapPrefixLen),
+        vmi_vm_vn_uve_interval_(Agent::kDefaultVmiVmVnUveInterval) {
 
     uint32_t default_pkt0_tx_buffers = Agent::kPkt0TxBufferCount;
     uint32_t default_stale_interface_cleanup_timeout = Agent::kDefaultStaleInterfaceCleanupTimeout;
@@ -1412,6 +1426,9 @@ AgentParam::AgentParam(bool enable_flow_options,
          "List of IPAddress of TSN Servers")
         ("DEFAULT.min_aap_prefix_len", opt::value<uint16_t>(),
          "Minimum prefix-len for Allowed-address-pair entries")
+        ("DEFAULT.vmi_vm_vn_uve_interval",
+         opt::value<uint16_t>()->default_value(Agent::kDefaultVmiVmVnUveInterval),
+         "UVE send interval in seconds")
         ("DNS.dns_timeout", opt::value<uint32_t>()->default_value(3000),
          "DNS Timeout")
         ("DNS.dns_max_retries", opt::value<uint32_t>()->default_value(2),

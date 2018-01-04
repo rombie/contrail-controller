@@ -1623,9 +1623,9 @@ bool BridgeTunnelRouteAdd(const BgpPeer *peer, const string &vm_vrf,
                           const char *vm_addr, uint8_t plen,uint32_t tag,
                           bool leaf) {
     boost::system::error_code ec;
-    BridgeTunnelRouteAdd(peer, vm_vrf, bmap,
-                        Ip4Address::from_string(server_ip, ec), label, remote_vm_mac,
-                        IpAddress::from_string(vm_addr, ec), plen, tag, leaf);
+    return BridgeTunnelRouteAdd(peer, vm_vrf, bmap,
+                                Ip4Address::from_string(server_ip, ec), label, remote_vm_mac,
+                                IpAddress::from_string(vm_addr, ec), plen, tag, leaf);
 }
 
 bool EcmpTunnelRouteAdd(const BgpPeer *peer, const string &vrf_name,
@@ -1675,6 +1675,7 @@ bool EcmpTunnelRouteAdd(const BgpPeer *peer, const string &vrf_name,
                                 path_preference, TunnelType::MplsType(),
                                 nh_req, vm_ip.to_string());
     InetUnicastAgentRouteTable::AddRemoteVmRouteReq(peer, vrf_name, vm_ip, plen, data);
+    return true;
 }
 
 bool Inet6TunnelRouteAdd(const BgpPeer *peer, const string &vm_vrf, const Ip6Address &vm_addr,
@@ -1723,10 +1724,11 @@ bool EcmpTunnelRouteAdd(Agent *agent, const BgpPeer *peer, const string &vrf,
 
     SecurityGroupList sg_id_list;
     TagList tag_id_list;
-    EcmpTunnelRouteAdd(peer, vrf, Ip4Address::from_string(prefix), plen,
-                       comp_nh_list, false, vn, sg_id_list, tag_id_list,
-                       PathPreference());
+    bool ret = EcmpTunnelRouteAdd(peer, vrf, Ip4Address::from_string(prefix), plen,
+                                  comp_nh_list, false, vn, sg_id_list, tag_id_list,
+                                  PathPreference());
     client->WaitForIdle();
+    return ret;
 }
 
 bool Inet4TunnelRouteAdd(const BgpPeer *peer, const string &vm_vrf, const Ip4Address &vm_addr,
@@ -1757,9 +1759,9 @@ bool Inet4TunnelRouteAdd(const BgpPeer *peer, const string &vm_vrf, char *vm_add
                          const TagList &tag,
                          const PathPreference &path_preference) {
     boost::system::error_code ec;
-    Inet4TunnelRouteAdd(peer, vm_vrf, Ip4Address::from_string(vm_addr, ec), plen,
-                        Ip4Address::from_string(server_ip, ec), bmap, label,
-                        dest_vn_name, sg, tag, path_preference);
+    return Inet4TunnelRouteAdd(peer, vm_vrf, Ip4Address::from_string(vm_addr, ec), plen,
+                               Ip4Address::from_string(server_ip, ec), bmap, label,
+                               dest_vn_name, sg, tag, path_preference);
 }
 
 bool TunnelRouteAdd(const char *server, const char *vmip, const char *vm_vrf,
@@ -3966,9 +3968,6 @@ int MplsToVrfId(int label) {
     return vrf;
 }
 
-uint32_t GetInterfaceLabel(int uuid, bool l3) {
-}
-
 PktGen *TxMplsPacketUtil(int ifindex, const char *out_sip,
                             const char *out_dip, uint32_t label,
                             const char *sip, const char *dip,
@@ -5114,4 +5113,18 @@ void AddLocalVmRoute(Agent *agent, const std::string &vrf_name,
     rt_table->AddLocalVmRouteReq(peer, vrf_name,
             Ip4Address::from_string(ip), plen,
             static_cast<LocalVmRoute *>(local_vm_rt));
+}
+
+void AddVlan(std::string intf_name, int intf_id, uint32_t vlan) {
+    std::ostringstream buf;
+    buf << "<virtual-machine-interface-properties>";
+    buf << "<sub-interface-vlan-tag>";
+    buf << vlan;
+    buf << "</sub-interface-vlan-tag>";
+    buf << "</virtual-machine-interface-properties>";
+    char cbuf[10000];
+    strcpy(cbuf, buf.str().c_str());
+    AddNode("virtual-machine-interface", intf_name.c_str(),
+            intf_id, cbuf);
+    client->WaitForIdle();
 }

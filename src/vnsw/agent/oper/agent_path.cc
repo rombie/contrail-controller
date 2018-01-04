@@ -1037,7 +1037,9 @@ bool ReceiveRoute::UpdateRoute(AgentRoute *rt) {
 }
 
 MulticastRoutePath::MulticastRoutePath(const Peer *peer) :
-    AgentPath(peer, NULL), original_nh_() {
+    AgentPath(peer, NULL), original_nh_(),
+    evpn_label_(MplsTable::kInvalidLabel),
+    fabric_label_(MplsTable::kInvalidLabel) {
 }
 
 bool MulticastRoutePath::PostChangeNH(Agent *agent, NextHop *nh) {
@@ -1313,7 +1315,7 @@ void AgentRoute::FillTrace(RouteInfo &rt_info, Trace event,
         break;
     }
 
-    case DELETE: {
+    case DEL: {
         rt_info.set_op("DELETE");
         break;
     }

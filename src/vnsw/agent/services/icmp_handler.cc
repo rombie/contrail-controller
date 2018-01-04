@@ -9,6 +9,7 @@
 #include <pkt/control_interface.h>
 #include <oper/interface_common.h>
 #include <services/icmp_proto.h>
+#include <boost/scoped_array.hpp>
 
 IcmpHandler::IcmpHandler(Agent *agent, boost::shared_ptr<PktInfo> info,
                          boost::asio::io_service &io)
@@ -64,15 +65,15 @@ void IcmpHandler::SendResponse(VmInterface *vm_intf) {
     uint16_t buf_len = pkt_info_->max_pkt_len;
 
     // Copy the ICMP payload
-    char icmp_payload[icmp_len_];
-    memcpy(icmp_payload, icmp_, icmp_len_);
+    boost::scoped_array<char> icmp_payload(new char[icmp_len_]);
+    memcpy(icmp_payload.get(), icmp_, icmp_len_);
 
     uint16_t len = 0;
 
     // Form ICMP Packet with following
     // EthHdr - IP Header - ICMP Header
     len += EthHdr(ptr + len, buf_len - len,
-                  agent()->vhost_interface()->mac(),
+                  MacAddress(pkt_info_->eth->ether_dhost),
                   MacAddress(pkt_info_->eth->ether_shost),
                   ETHERTYPE_IP, vm_intf->tx_vlan_id());
 
@@ -85,7 +86,7 @@ void IcmpHandler::SendResponse(VmInterface *vm_intf) {
 
     // Restore the ICMP header copied earlier
     struct icmp *hdr = (struct icmp *) (ptr + len);
-    memcpy(ptr + len, icmp_payload, icmp_len_);
+    memcpy(ptr + len, icmp_payload.get(), icmp_len_);
     len += icmp_len_;
 
     // Change type to reply

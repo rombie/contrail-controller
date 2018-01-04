@@ -948,7 +948,9 @@ void SessionStatsCollector::AddSloEntry(const boost::uuids::uuid &uuid,
     SecurityLoggingObject *slo = static_cast<SecurityLoggingObject *>
         (agent_uve_->agent()->slo_table()->FindActiveEntry(&slo_key));
     if (slo) {
-        AddSloEntryRules(slo, slo_rule_map);
+        if (slo->status()) {
+            AddSloEntryRules(slo, slo_rule_map);
+        }
     }
 }
 
@@ -1170,6 +1172,12 @@ bool SessionStatsCollector::CheckSessionLogging(
     bool fwd_logged = false, rev_logged = false;
     const SessionExportInfo &info = stats_info.export_info;
 
+    if (!agent_uve_->agent()->global_slo_status()) {
+        /* SLO is not enabled */
+        flow_stats_manager_->session_global_slo_logging_drops_++;
+        return false;
+    }
+
     if (stats_info.deleted) {
         fwd_logged = DeletedFlowLogging(stats_info,
                             info.fwd_flow);
@@ -1188,6 +1196,7 @@ bool SessionStatsCollector::CheckSessionLogging(
     if (fwd_logged || rev_logged) {
         return true;
     }
+    flow_stats_manager_->session_slo_logging_drops_++;
     return false;
 }
 
@@ -1567,51 +1576,36 @@ void SessionStatsCollector::FillSessionAggInfo
     key->set_protocol(it->first.proto);
 }
 
-void SessionStatsCollector::FillSessionTagInfo(const TagList &list,
-                                               SessionEndpoint *session_ep,
-                                               bool is_remote) const {
-    std::set<std::string>   labels;
-    TagList::const_iterator it = list.begin();
-    while (it != list.end()) {
-        uint32_t    ttype = (uint32_t)*it >> TagEntry::kTagTypeBitShift;
-        std::string tag_type = TagEntry::GetTypeStr(ttype);
-        if (tag_type == "site") {
-            if (is_remote) {
-                session_ep->set_remote_site(agent_uve_->agent()->tag_table()->TagName(*it));
-            } else {
-                session_ep->set_site(agent_uve_->agent()->tag_table()->TagName(*it));
-            }
-        } else if (tag_type == "deployment") {
-            if (is_remote) {
-                session_ep->set_remote_deployment(agent_uve_->agent()->tag_table()->TagName(*it));
-            } else {
-                session_ep->set_deployment(agent_uve_->agent()->tag_table()->TagName(*it));
-            }
-        } else if (tag_type == "tier") {
-            if (is_remote) {
-                session_ep->set_remote_tier(agent_uve_->agent()->tag_table()->TagName(*it));
-            } else {
-                session_ep->set_tier(agent_uve_->agent()->tag_table()->TagName(*it));
-            }
-        } else if (tag_type == "application") {
-            if (is_remote) {
-                session_ep->set_remote_application(agent_uve_->agent()->tag_table()->TagName(*it));
-            } else {
-                session_ep->set_application(agent_uve_->agent()->tag_table()->TagName(*it));
-            }
-        } else if(tag_type == "label") {
-            labels.insert(agent_uve_->agent()->tag_table()->TagName(*it));
-        }
-        it++;
+void SessionStatsCollector::FillSessionTags(const TagList &list,
+                                            SessionEndpoint *ep) const {
+    UveTagData tinfo(true);
+    agent_uve_->BuildTagNamesFromList(list, &tinfo);
+    ep->set_application(tinfo.application);
+    ep->set_tier(tinfo.tier);
+    ep->set_site(tinfo.site);
+    ep->set_deployment(tinfo.deployment);
+    if (tinfo.label_set.size() != 0) {
+        ep->set_labels(tinfo.label_set);
     }
-    if (labels.size() != 0) {
-        if (is_remote) {
-            session_ep->set_labels(labels);
-        } else {
-            session_ep->set_remote_labels(labels);
-        }
+    if (tinfo.custom_tag_set.size() != 0) {
+        ep->set_custom_tags(tinfo.custom_tag_set);
     }
+}
 
+void SessionStatsCollector::FillSessionRemoteTags(const TagList &list,
+                                                  SessionEndpoint *ep) const {
+    UveTagData tinfo(true);
+    agent_uve_->BuildTagIdsFromList(list, &tinfo);
+    ep->set_remote_application(tinfo.application);
+    ep->set_remote_tier(tinfo.tier);
+    ep->set_remote_site(tinfo.site);
+    ep->set_remote_deployment(tinfo.deployment);
+    if (tinfo.label_set.size() != 0) {
+        ep->set_remote_labels(tinfo.label_set);
+    }
+    if (tinfo.custom_tag_set.size() != 0) {
+        ep->set_remote_custom_tags(tinfo.custom_tag_set);
+    }
 }
 
 void SessionStatsCollector::FillSessionEndpoint(SessionEndpointMap::iterator it,
@@ -1629,8 +1623,8 @@ void SessionStatsCollector::FillSessionEndpoint(SessionEndpointMap::iterator it,
         session_ep->set_remote_prefix(it->first.remote_prefix);
     }
     session_ep->set_security_policy_rule(it->first.match_policy);
-    FillSessionTagInfo(it->first.local_tagset, session_ep, false);
-    FillSessionTagInfo(it->first.remote_tagset, session_ep, true);
+    FillSessionTags(it->first.local_tagset, session_ep);
+    FillSessionRemoteTags(it->first.remote_tagset, session_ep);
     session_ep->set_vrouter_ip(
                     boost::asio::ip::address::from_string(rid, ec));
 }
@@ -1643,8 +1637,6 @@ bool SessionStatsCollector::ProcessSessionEndpoint
 
     SessionInfo session_info;
     SessionIpPort session_key;
-    SessionAggInfo session_agg_info;
-    SessionIpPortProtocol session_agg_key;
     uint32_t session_count = 0, session_agg_count = 0;
     bool exit = false, ep_completed = true;
 
@@ -1653,6 +1645,8 @@ bool SessionStatsCollector::ProcessSessionEndpoint
     session_agg_map_iter = it->second.session_agg_map_.
         lower_bound(session_agg_iteration_key_);
     while (session_agg_map_iter != it->second.session_agg_map_.end()) {
+        SessionAggInfo session_agg_info;
+        SessionIpPortProtocol session_agg_key;
         session_count = 0;
         session_map_iter = session_agg_map_iter->second.session_map_.
             lower_bound(session_iteration_key_);

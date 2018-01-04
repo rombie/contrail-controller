@@ -136,6 +136,13 @@ void PktHandler::CalculatePort(PktInfo *pkt) {
         pkt->dport = 0;
         return;
     }
+    /* If Fat-flow port is 0, then both source and destination ports have to
+     * be ignored */
+    if (intf->IsFatFlow(pkt->ip_proto, 0)) {
+        pkt->sport = 0;
+        pkt->dport = 0;
+        return;
+    }
 }
 
 bool PktHandler::IsBFDHealthCheckPacket(const PktInfo *pkt_info,
@@ -1173,7 +1180,7 @@ std::size_t PktInfo::hash(const Agent *agent,
     } else if (family == Address::INET6) {
         if (ecmp_load_balance.is_source_ip_set()) {
             uint32_t words[4];
-            memcpy(words, ip_saddr.to_v6().to_bytes().c_array(), sizeof(words));
+            memcpy(words, ip_saddr.to_v6().to_bytes().data(), sizeof(words));
             boost::hash_combine(seed, words[0]);
             boost::hash_combine(seed, words[1]);
             boost::hash_combine(seed, words[2]);
@@ -1182,7 +1189,7 @@ std::size_t PktInfo::hash(const Agent *agent,
 
         if (ecmp_load_balance.is_destination_ip_set()) {
             uint32_t words[4];
-            memcpy(words, ip_daddr.to_v6().to_bytes().c_array(), sizeof(words));
+            memcpy(words, ip_daddr.to_v6().to_bytes().data(), sizeof(words));
             boost::hash_combine(seed, words[0]);
             boost::hash_combine(seed, words[1]);
             boost::hash_combine(seed, words[2]);
