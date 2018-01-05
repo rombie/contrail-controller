@@ -130,8 +130,8 @@ public:
             return NULL;
         TASK_UTIL_EXPECT_NE(static_cast<ErmVpnRoute *>(NULL),
                             *(iter->second.ermvpn_rt));
-        assert((*(iter->second.ermvpn_rt))->GetPrefix().source == source);
-        assert((*(iter->second.ermvpn_rt))->GetPrefix().group == group);
+        assert((*(iter->second.ermvpn_rt))->GetPrefix().source() == source);
+        assert((*(iter->second.ermvpn_rt))->GetPrefix().group() == group);
         return *(iter->second.ermvpn_rt);
     }
 
