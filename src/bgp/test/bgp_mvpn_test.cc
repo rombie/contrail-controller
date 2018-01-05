@@ -134,11 +134,11 @@ public:
         TASK_UTIL_EXPECT_NE(static_cast<ErmVpnRoute *>(NULL), *ermvpn_rtp);
 
         tbb::mutex::scoped_lock lock2(pmsi_params_mutex);
-        assert((*(iter->second.ermvpn_rt))->GetPrefix().source().to_string() ==
+        assert((*ermvpn_rtp)->GetPrefix().source().to_string() ==
                 source.to_string());
-        assert((*(iter->second.ermvpn_rt))->GetPrefix().group().to_string() ==
+        assert((*ermvpn_rtp)->GetPrefix().group().to_string() ==
                 group.to_string());
-        return *(iter->second.ermvpn_rt);
+        return *ermvpn_rtp;
     }
 
     virtual bool GetForestNodePMSI(ErmVpnRoute *rt, uint32_t *label,
