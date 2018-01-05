@@ -665,6 +665,10 @@ protected:
                                           IpAddress::from_string(os.str(), e)));
     }
 
+    SG sg(int instance, const Ip4Address &s, const Ip4Address &g) const {
+        return SG(instance, MvpnState::SG(s, g));
+    }
+
     scoped_ptr<EventManager> evm_;
     scoped_ptr<ServerThread> thread_;
     scoped_ptr<BgpServerTest> server_;
