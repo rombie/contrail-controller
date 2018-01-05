@@ -969,8 +969,6 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     }
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
-        WalkTable(fabric_ermvpn_[i-1]);
-        WalkTable(red_[i-1]);
         // 1 local+1 remote(red1)+1 leaf-ad
         TASK_UTIL_EXPECT_EQ(1 + 2*groups_count_, red_[i-1]->Size());
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
