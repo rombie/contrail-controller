@@ -462,8 +462,9 @@ protected:
             const PMSIParams &pmsi) {
         MvpnPrefix type4_prefix =
             MvpnPrefix::FromString("4-" + prefix + ",127.0.0.1");
+        TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL),
+                            table->FindRoute(type4_prefix));
         MvpnRoute *leaf_ad_rt = table->FindRoute(type4_prefix);
-        TASK_UTIL_EXPECT_NE(static_cast<MvpnRoute *>(NULL), leaf_ad_rt);
         EXPECT_EQ(type4_prefix, leaf_ad_rt->GetPrefix());
         TASK_UTIL_EXPECT_EQ(type4_prefix.ToString(),
                             leaf_ad_rt->GetPrefix().ToString());
