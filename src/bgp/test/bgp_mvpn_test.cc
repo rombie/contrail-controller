@@ -619,8 +619,10 @@ protected:
             boost::bind(&BgpMvpnTest::WalkCallback, this, _1, _2),
             boost::bind(&BgpMvpnTest::WalkDoneCallback, this, _1, _2,
                         &complete));
+        std::cout << "Table " << table->name() << " walk start\n";
         table->WalkTable(walk_ref);
         TASK_UTIL_EXPECT_TRUE(complete);
+        std::cout << "Table " << table->name() << " walk end\n";
     }
 
     string prefix1(int index) const {
