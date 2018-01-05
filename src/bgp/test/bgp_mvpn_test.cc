@@ -917,11 +917,17 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
             ermvpn_rt[(i-1)*instances_set_count_+(j-1)] =
                 AddErmVpnRoute(fabric_ermvpn_[i-1], ermvpn_prefix(i, j),
                                "target:127.0.0.1:1100");
-            // 1 local+1 remote(red1)+1 leaf-ad
-            TASK_UTIL_EXPECT_EQ(3, red_[i-1]->Size());
-            TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
-            // 1 local + 2 remote(red1) + 1 remote(green1) + 1 leaf-ad
-            TASK_UTIL_EXPECT_EQ(5, green_[i-1]->Size());
+        }
+    }
+
+    for (size_t i = 1; i <= instances_set_count_; i++) {
+        // 1 local+1 remote(red1)+1 leaf-ad
+        TASK_UTIL_EXPECT_EQ(1 + 2*groups_count_, red_[i-1]->Size());
+        TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
+        // 1 local + 1 remote(red1) + 1 remote(green1) + // AD
+        // 1 red-spmsi + 1 red-leafad
+        TASK_UTIL_EXPECT_EQ(3 + 2*groups_count_, green_[i-1]->Size());
+        for (size_t j = 1; j <= groups_count_; j++) {
             // Lookup the actual leaf-ad route and verify its attributes.
             VerifyLeafADMvpnRoute(red_[i-1], prefix3(i, j),
                                   pmsi_params[sg(i, j)]);
