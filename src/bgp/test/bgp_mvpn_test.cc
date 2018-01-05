@@ -1033,7 +1033,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
     ErmVpnRoute *ermvpn_rt[instances_set_count_];
     error_code e;
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
-                     IpAddress::from_string("224.1.2.3", e));
+                     IpAddress::from_string("224.1.2.1", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
         PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
@@ -1111,7 +1111,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
     ErmVpnRoute *ermvpn_rt[instances_set_count_];
     error_code e;
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
-                     IpAddress::from_string("224.1.2.3", e));
+                     IpAddress::from_string("224.1.2.1", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
         PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
@@ -1201,7 +1201,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
     ErmVpnRoute *ermvpn_rt[instances_set_count_];
     error_code e;
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
-                     IpAddress::from_string("224.1.2.3", e));
+                     IpAddress::from_string("224.1.2.1", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
         PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
@@ -1303,7 +1303,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
     ErmVpnRoute *ermvpn_rt[instances_set_count_];
     error_code e;
     MvpnState::SG sg(IpAddress::from_string("9.8.7.6", e),
-                     IpAddress::from_string("224.1.2.3", e));
+                     IpAddress::from_string("224.1.2.1", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
         PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
@@ -1798,7 +1798,7 @@ static size_t GetGroupCount() {
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
     ::testing::Combine(::testing::Bool(),
                        ::testing::Values(1, 2, GetInstanceCount()),
-                       ::testing::Values(1, 2, GetGroupCount())));
+                       ::testing::Values(1, GetGroupCount())));
 
 static void SetUp() {
     bgp_log_test::init();
