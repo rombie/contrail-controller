@@ -71,9 +71,9 @@ struct SGCompare {
             return true;
         if (lhs.ri_index > rhs.ri_index)
             return false;
-        if (lhs.sg.souce < rhs.sg.source)
+        if (lhs.sg.source < rhs.sg.source)
             return true;
-        if (lhs.sg.souce > rhs.sg.source)
+        if (lhs.sg.source > rhs.sg.source)
             return false;
         if (lhs.sg.group < rhs.sg.group)
             return true;
