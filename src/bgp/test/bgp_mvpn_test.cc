@@ -8,6 +8,7 @@
 
 #include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
+#include "db/db_table_walker.h"
 #include "bgp/bgp_attr.h"
 #include "bgp/bgp_config.h"
 #include "bgp/bgp_config_ifmap.h"
@@ -599,6 +600,27 @@ protected:
         }
     }
 
+    bool WalkCallback(DBTablePartBase *tpart, DBEntryBase *db_entry) {
+        CHECK_CONCURRENCY("db::DBTable");
+        BgpRoute *route = static_cast<BgpRoute *>(db_entry);
+        std::cout << route->ToString() << std::endl;
+        return true;
+    }
+
+    void WalkDoneCallback(DBTableBase *table, bool *complete) {
+        if (complete)
+            *complete = true;
+    }
+
+    void WalkTable(BgpTable *table) {
+        bool complete = false;
+        DBTable::DBTableWalkRef walk_ref = table->AllocWalker(
+            boost::bind(&BgpMvpnTest::WalkCallback, this, _1, _2),
+            boost::bind(&BgpMvpnTest::WalkDoneCallback, this, _1, &complete));
+        table->WalkTable(walk_ref);
+        TASK_UTIL_EXPECT_TRUE(complete);
+    }
+
     string prefix1(int index) const {
         ostringstream os;
         os << "1-10.1.1.1:" << index << ",9.8.7.6";
@@ -921,6 +943,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     }
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
+        WalkTable(red_[i-1]);
         // 1 local+1 remote(red1)+1 leaf-ad
         TASK_UTIL_EXPECT_EQ(1 + 2*groups_count_, red_[i-1]->Size());
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
