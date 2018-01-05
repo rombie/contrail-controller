@@ -40,13 +40,12 @@ using std::string;
 struct PMSIParams {
 public:
     PMSIParams() { }
-    PMSIParams(bool result, uint32_t label, const string &address,
-               string encap_s, ErmVpnRoute **rt) :
-            result(result), label(label), address(address), ermvpn_rt(rt) {
+    PMSIParams(uint32_t label, const string &address, string encap_s,
+               ErmVpnRoute **rt) :
+            label(label), address(address), ermvpn_rt(rt) {
         encaps.push_back(encap_s);
     }
 
-    bool result;
     uint32_t label;
     string address;
     std::vector<std::string> encaps;
@@ -126,7 +125,7 @@ public:
         string ri_index = ri->ri_index();
         std::map<SG, const PMSIParams>::iterator iter =
             pmsi_params.find(SG(ri_index, MvpnState::SG(source, group)));
-        if (iter == pmsi_params.end() || !iter->second.result)
+        if (iter == pmsi_params.end())
             return NULL;
 
         ErmVpnRoute **ermvpn_rtp = iter->second.ermvpn_rt;
@@ -155,7 +154,7 @@ public:
         MvpnState::SG sg(rt->GetPrefix().source(), rt->GetPrefix().group());
         std::map<SG, const PMSIParams>::iterator iter =
             pmsi_params.find(SG(ri_index, sg));
-        if (iter == pmsi_params.end() || !iter->second.result)
+        if (iter == pmsi_params.end())
             return false;
 
         *label = iter->second.label;
@@ -933,13 +932,12 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
     ErmVpnRoute *ermvpn_rt[instances_set_count_*groups_count_];
     for (size_t i = 1; i <= instances_set_count_; i++) {
         for (size_t j = 1; j <= groups_count_; j++) {
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             ermvpn_rt[(i-1)*instances_set_count_+(j-1)] = NULL;
-            PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
+            PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre",
                             &ermvpn_rt[(i-1)*instances_set_count_+(j-1)]));
-            {
-                tbb::mutex::scoped_lock lock(pmsi_params_mutex);
-                pmsi_params.insert(make_pair(sg(i, j), pmsi));
-            }
+            pmsi_params.insert(make_pair(sg(i, j), pmsi));
+            lock.release();
             AddMvpnRoute(master_, prefix3(i,j), getRouteTarget(i, "1"));
         }
     }
@@ -1040,8 +1038,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_2) {
                      IpAddress::from_string("224.1.2.3", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
-        PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
-                        &ermvpn_rt[i-1]));
+        PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
         {
             tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             pmsi_params.insert(make_pair(SG(i, sg), pmsi));
@@ -1119,8 +1116,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_3) {
                      IpAddress::from_string("224.1.2.3", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
-        PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
-                        &ermvpn_rt[i-1]));
+        PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
         {
             tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             pmsi_params.insert(make_pair(SG(i, sg), pmsi));
@@ -1210,8 +1206,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_4) {
                      IpAddress::from_string("224.1.2.3", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
-        PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
-                        &ermvpn_rt[i-1]));
+        PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
         {
             tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             pmsi_params.insert(make_pair(SG(i, sg), pmsi));
@@ -1313,8 +1308,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
                      IpAddress::from_string("224.1.2.3", e));
     for (size_t i = 1; i <= instances_set_count_; i++) {
         ermvpn_rt[i-1] = NULL;
-        PMSIParams pmsi(PMSIParams(true, 10, "1.2.3.4", "gre",
-                        &ermvpn_rt[i-1]));
+        PMSIParams pmsi(PMSIParams(10, "1.2.3.4", "gre", &ermvpn_rt[i-1]));
         {
             tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             pmsi_params.insert(make_pair(SG(i, sg), pmsi));
@@ -1353,8 +1347,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
             pmsi_params.erase(SG(i, sg));
         }
 
-        PMSIParams pmsi(PMSIParams(true, 20, "1.2.3.5", "udp",
-                        &ermvpn_rt[i-1]));
+        PMSIParams pmsi(PMSIParams(20, "1.2.3.5", "udp", &ermvpn_rt[i-1]));
         {
             tbb::mutex::scoped_lock lock(pmsi_params_mutex);
             assert(pmsi_params.insert(make_pair(SG(i, sg), pmsi)).second);
