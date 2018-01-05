@@ -843,8 +843,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
                            groups_count_, instances_set_count_*groups_count_);
     }
 
-    TASK_UTIL_EXPECT_EQ(4*instances_set_count_ + groups_count_ + 1,
-                        master_->Size());
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_+groups_count_, master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         // 1 local + groups_count_ remote(red1)
@@ -859,7 +858,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
         for (size_t j = 1; j <= groups_count_; j++)
             DeleteMvpnRoute(master_, prefix3(i, j));
 
-    TASK_UTIL_EXPECT_EQ(4*instances_set_count_, master_->Size());
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_+1, master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local
