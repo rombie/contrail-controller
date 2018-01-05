@@ -607,7 +607,8 @@ protected:
         return true;
     }
 
-    void WalkDoneCallback(DBTableBase *table, bool *complete) {
+    void WalkDoneCallback(DBTable::DBTableWalkRef ref,
+                          DBTableBase *table, bool *complete) {
         if (complete)
             *complete = true;
     }
@@ -616,7 +617,8 @@ protected:
         bool complete = false;
         DBTable::DBTableWalkRef walk_ref = table->AllocWalker(
             boost::bind(&BgpMvpnTest::WalkCallback, this, _1, _2),
-            boost::bind(&BgpMvpnTest::WalkDoneCallback, this, _1, &complete));
+            boost::bind(&BgpMvpnTest::WalkDoneCallback, this, _1, _2,
+                        &complete));
         table->WalkTable(walk_ref);
         TASK_UTIL_EXPECT_TRUE(complete);
     }
