@@ -128,9 +128,12 @@ public:
             pmsi_params.find(SG(ri_index, MvpnState::SG(source, group)));
         if (iter == pmsi_params.end() || !iter->second.result)
             return NULL;
-        TASK_UTIL_EXPECT_NE(static_cast<ErmVpnRoute *>(NULL),
-                            *(iter->second.ermvpn_rt));
-        usleep(1000);
+
+        ErmVpnRoute **ermvpn_rtp = iter->second.ermvpn_rt;
+        lock.release();
+        TASK_UTIL_EXPECT_NE(static_cast<ErmVpnRoute *>(NULL), *ermvpn_rtp);
+
+        tbb::mutex::scoped_lock lock2(pmsi_params_mutex);
         assert((*(iter->second.ermvpn_rt))->GetPrefix().source().to_string() ==
                 source.to_string());
         assert((*(iter->second.ermvpn_rt))->GetPrefix().group().to_string() ==
@@ -959,9 +962,11 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute) {
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         for (size_t j = 1; j <= groups_count_; j++) {
-            ermvpn_rt[(i-1)*instances_set_count_+(j-1)] =
+            ErmVpnRoute *ermvpn_rt =
                 AddErmVpnRoute(fabric_ermvpn_[i-1], ermvpn_prefix(i, j),
                                "target:127.0.0.1:1100");
+            tbb::mutex::scoped_lock lock(pmsi_params_mutex);
+            ermvpn_rt[(i-1)*instances_set_count_+(j-1)] = ermvpn_rt;
         }
     }
 
