@@ -150,7 +150,7 @@ public:
 private:
 };
 
-typedef std::tr1::tuple<bool, int> TestParams;
+typedef std::tr1::tuple<bool, int, int> TestParams;
 class BgpMvpnTest : public ::testing::TestWithParam<TestParams> {
 protected:
     BgpMvpnTest() {
@@ -296,6 +296,7 @@ protected:
         thread_->Start();
         preconfigure_pm_ = std::tr1::get<0>(GetParam());
         instances_set_count_ = std::tr1::get<1>(GetParam());
+        groups_count_ = std::tr1::get<2>(GetParam());
         fabric_ermvpn_ = new ErmVpnTable *[instances_set_count_];
         fabric_mvpn_ = new MvpnTable *[instances_set_count_];
         red_ = new MvpnTable *[instances_set_count_];
@@ -603,27 +604,29 @@ protected:
         return os.str();
     }
 
-    string prefix3(int index) const {
+    string prefix3(int index, int gindex = 1) const {
         ostringstream os;
-        os << "3-10.1.1.1:" << index << ",9.8.7.6,224.1.2.3,192.168.1.1";
+        os << "3-10.1.1.1:" << index << ",9.8.7.6";
+        os << ",224.1.2." << gindex << ",192.168.1.1";
         return os.str();
     }
 
-    string prefix5(int index) const {
+    string prefix5(int index, int gindex = 1) const {
         ostringstream os;
-        os << "5-0.0.0.0:" << index << ",224.1.2.3,9.8.7.6";
+        os << "5-0.0.0.0:" << index << ",224.1.2." << gindex << ",9.8.7.6";
         return os.str();
     }
 
-    string prefix7(int index) const {
+    string prefix7(int index, int gindex = 1) const {
         ostringstream os;
-        os << "7-10.1.1.1:" << index << ",1,224.1.2.3,9.8.7.6";
+        os << "7-10.1.1.1:" << index << ",1,224.1.2." << gindex << ",9.8.7.6";
         return os.str();
     }
 
-    string ermvpn_prefix(int index) const {
+    string ermvpn_prefix(int index, int gindex = 1) const {
         ostringstream os;
-        os << "2-10.1.1.1:" << index << "-192.168.1.1,224.1.2.3,9.8.7.6";
+        os << "2-10.1.1.1:" << index << "-192.168.1.1,224.1.2." << gindex;
+        os << ",9.8.7.6";
         return os.str();
     }
 
@@ -639,6 +642,7 @@ protected:
     MvpnTable **green_;
     bool preconfigure_pm_;
     size_t instances_set_count_;
+    size_t groups_count_;
 };
 
 // Ensure that Type1 AD routes are created inside the mvpn table.
@@ -822,33 +826,41 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
     // Inject Type3 route from a mock peer into bgp.mvpn.0 table with red1
     // route target. This route should go into red1 and green1 table.
     for (size_t i = 1; i <= instances_set_count_; i++)
-        AddMvpnRoute(master_, prefix3(i), getRouteTarget(i, "1"));
+        for (size_t j = 1; j <= groups_count_; j++)
+            AddMvpnRoute(master_, prefix3(i, j), getRouteTarget(i, "1"));
 
     if (!preconfigure_pm_) {
-        TASK_UTIL_EXPECT_EQ(instances_set_count_, master_->Size());
+        TASK_UTIL_EXPECT_EQ(instances_set_count_*groups_count_,
+                            master_->Size());
         for (size_t i = 1; i <= instances_set_count_; i++) {
-            TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 remote(red1)
+            // 1 remote(red1)
+            TASK_UTIL_EXPECT_EQ(groups_count_, red_[i-1]->Size());
             TASK_UTIL_EXPECT_EQ(0, blue_[i-1]->Size());
-            TASK_UTIL_EXPECT_EQ(1, green_[i-1]->Size()); // 1 remote
+            TASK_UTIL_EXPECT_EQ(groups_count_, green_[i-1]->Size()); // 1 remote
         }
-        VerifyInitialState(true, 1, 0, 1, instances_set_count_, 1, 0, 1,
-                           instances_set_count_);
+        VerifyInitialState(true, groups_count_, 0, groups_count_,
+                           instances_set_count_*groups_count_, groups_count_, 0,
+                           groups_count_, instances_set_count_*groups_count_);
     }
 
-    TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
+    TASK_UTIL_EXPECT_EQ(5*instances_set_count_*groups_count_ + 1,
+                        master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
-        TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size()); // 1 local + 1 remote(red1)
+        // 1 local + groups_count_ remote(red1)
+        TASK_UTIL_EXPECT_EQ(groups_count_+1, red_[i-1]->Size());
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
 
         // 1 local + 2 remote(red1) + 1 remote(green1)
-        TASK_UTIL_EXPECT_EQ(4, green_[i-1]->Size());
+        TASK_UTIL_EXPECT_EQ(4*groups_count_, green_[i-1]->Size());
     }
 
     for (size_t i = 1; i <= instances_set_count_; i++)
-        DeleteMvpnRoute(master_, prefix3(i));
+        for (size_t j = 1; j <= groups_count_; j++)
+            DeleteMvpnRoute(master_, prefix3(i, j));
 
-    TASK_UTIL_EXPECT_EQ(4*instances_set_count_ + 1, master_->Size()); // 3 local
+    TASK_UTIL_EXPECT_EQ(4*instances_set_count_*groups_count_ + 1,
+                        master_->Size());
 
     for (size_t i = 1; i <= instances_set_count_; i++) {
         TASK_UTIL_EXPECT_EQ(1, red_[i-1]->Size()); // 1 local
@@ -1712,9 +1724,19 @@ static size_t GetInstanceCount() {
     return count;
 }
 
+static size_t GetGroupCount() {
+    char *env = getenv("BGP_MVPN_TEST_GROUP_COUNT");
+    size_t count = 4;
+    if (!env)
+        return count;
+    stringToInteger(string(env), count);
+    return count;
+}
+
 INSTANTIATE_TEST_CASE_P(BgpMvpnTestWithParams, BgpMvpnTest,
     ::testing::Combine(::testing::Bool(),
-                       ::testing::Values(1, 2, GetInstanceCount())));
+                       ::testing::Values(1, 2, GetInstanceCount()),
+                       ::testing::Values(1, 2, GetGroupCount())));
 
 static void SetUp() {
     bgp_log_test::init();
