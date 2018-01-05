@@ -852,7 +852,7 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_Without_ErmVpnRoute) {
         TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
 
         // 1 local + 2 remote(red1) + 1 remote(green1)
-        TASK_UTIL_EXPECT_EQ(4*groups_count_, green_[i-1]->Size());
+        TASK_UTIL_EXPECT_EQ(3 + 1*groups_count_, green_[i-1]->Size());
     }
 
     for (size_t i = 1; i <= instances_set_count_; i++)
