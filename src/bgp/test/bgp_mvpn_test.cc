@@ -1474,28 +1474,35 @@ TEST_P(BgpMvpnTest, Type3_SPMSI_With_ErmVpnRoute_5) {
 TEST_P(BgpMvpnTest, Type3_SPMSI_1) {
     VerifyInitialState(preconfigure_pm_);
     for (size_t i = 1; i <= instances_set_count_; i++) {
-        AddType5MvpnRoute(red_[i-1], prefix5(i), getRouteTarget(i, "1"),
-                          "10.1.1.1");
+        for (size_t j = 1; j <= groups_count_; j++) {
+            AddType5MvpnRoute(red_[i-1], prefix5(i, j), getRouteTarget(i, "1"),
+                              "10.1.1.1");
+        }
     }
 
     if (!preconfigure_pm_) {
-        VerifyInitialState(false, 1, 0, 1, instances_set_count_, 1, 0, 1,
-                           instances_set_count_);
+        VerifyInitialState(false, groups_count_, 0, groups_count_,
+                           instances_set_count_*groups_count_, groups_count_,
+                           0, groups_count_,
+                           instances_set_count_*groups_count_);
     } else {
-        TASK_UTIL_EXPECT_EQ(5*instances_set_count_ + 1, master_->Size());
+        TASK_UTIL_EXPECT_EQ((4 + groups_count_)*instances_set_count_ + 1,
+                            master_->Size());
         for (size_t i = 1; i <= instances_set_count_; i++) {
             // 1 local + 1 remote(red1)
-            TASK_UTIL_EXPECT_EQ(2, red_[i-1]->Size());
+            TASK_UTIL_EXPECT_EQ(groups_count_ + 1, red_[i-1]->Size());
             TASK_UTIL_EXPECT_EQ(1, blue_[i-1]->Size()); // 1 local
             // 1 local + 2 remote(red1) + 1 remote(green1)
-            TASK_UTIL_EXPECT_EQ(4, green_[i-1]->Size());
+            TASK_UTIL_EXPECT_EQ(groups_count_+3, green_[i-1]->Size());
         }
     }
 
     // Inject type-7 receiver route with red1 RI vit.
     for (size_t i = 1; i <= instances_set_count_; i++) {
-        AddMvpnRoute(master_, prefix7(i), "target:127.0.0.1:" +
-                     integerToString(red_[i-1]->routing_instance()->index()));
+        for (size_t j = 1; j <= groups_count_; j++) {
+            AddMvpnRoute(master_, prefix7(i,j), "target:127.0.0.1:" +
+                integerToString(red_[i-1]->routing_instance()->index()));
+        }
     }
 
     if (!preconfigure_pm_) {
