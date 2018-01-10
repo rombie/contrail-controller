@@ -598,7 +598,7 @@ protected:
         VerifyWithProjectManager(red1c, blue1c, green1c, masterc);
 
         // Delete and add ProjectManager a few times and verify.
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < 3; i++) {
             DeleteProjectManagerRoutingInstance();
             VerifyWithNoProjectManager(red1_nopm_c, blue1_nopm_c, green1_nopm_c,
                                        master_nopm_c);
