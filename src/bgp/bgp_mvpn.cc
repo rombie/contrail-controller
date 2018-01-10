@@ -748,13 +748,7 @@ bool MvpnProjectManagerPartition::IsUsableGlobalTreeRootRoute(
         return false;
     ErmVpnRoute *global_rt = table()->tree_manager()->GetGlobalTreeRootRoute(
         ermvpn_route->GetPrefix().source(), ermvpn_route->GetPrefix().group());
-    if (!global_rt)
-        return false;
-    if (global_rt != ermvpn_route) {
-        table()->tree_manager()->GetGlobalTreeRootRoute(ermvpn_route->GetPrefix().source(), ermvpn_route->GetPrefix().group());
-        return false;
-    }
-    return true;
+    return (global_rt && global_rt == ermvpn_route);
 }
 
 // ErmVpnTable route listener callback function.
