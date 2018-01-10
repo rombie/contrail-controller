@@ -59,30 +59,20 @@ struct SG {
         this->ri_index = os.str();
     }
     SG(string ri_index, const MvpnState::SG &sg) : ri_index(ri_index), sg(sg) {}
+    bool operator<(const SG &other) const {
+        if (ri_index < other.ri_index)
+            return true;
+        if (ri_index > other.ri_index)
+            return false;
+        return sg < other.sg;
+    }
 
     string ri_index;
     MvpnState::SG sg;
 };
 
-struct SGCompare {
-    bool operator()(const SG &lhs, const SG &rhs) const {
-        if (lhs.ri_index < rhs.ri_index)
-            return true;
-        if (lhs.ri_index > rhs.ri_index)
-            return false;
-        if (lhs.sg.source < rhs.sg.source)
-            return true;
-        if (lhs.sg.source > rhs.sg.source)
-            return false;
-        if (lhs.sg.group < rhs.sg.group)
-            return true;
-        if (lhs.sg.group > rhs.sg.group)
-            return false;
-        return false;
-    }
-};
 
-static std::map<SG, const PMSIParams, SGCompare> pmsi_params;
+static std::map<SG, const PMSIParams> pmsi_params;
 static tbb::mutex pmsi_params_mutex;
 
 class RoutingInstanceTest : public RoutingInstance {
