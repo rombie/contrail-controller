@@ -324,7 +324,7 @@ struct ServiceChainConfig {
     std::string service_chain_address;
     std::string service_instance;
     std::string source_routing_instance;
-    std::string service_chain_group;
+    std::string service_chain_id;
 };
 
 struct StaticRouteConfig {
@@ -336,6 +336,7 @@ struct StaticRouteConfig {
     std::vector<std::string> communities;
 };
 
+typedef std::vector<uint16_t> AsnList;
 typedef std::vector<std::string> CommunityList;
 typedef std::vector<std::string> ProtocolList;
 
@@ -358,6 +359,7 @@ struct RoutingPolicyMatchConfig {
 };
 
 struct ActionUpdate {
+    AsnList aspath_expand;
     CommunityList community_set;
     CommunityList community_add;
     CommunityList community_remove;

@@ -2,15 +2,15 @@ cfgm_common
 vnc_api
 sandesh
 sandesh-common
-gevent==1.1a2
-geventhttpclient==1.0a
+gevent
+geventhttpclient
 pycassa>=1.7.2
 netaddr>=0.7.5
 bitarray>=0.8.0
 psutil>=0.6.0
 python-novaclient
 python-keystoneclient
-kombu
+# kombu # comment due to a dependency issue with RPM packaging https://bugzilla.redhat.com/show_bug.cgi?id=1357660
 netifaces
 bottle
 stevedore
