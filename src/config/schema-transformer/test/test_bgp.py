@@ -166,8 +166,8 @@ class TestBgp(STTestCase, VerifyBgp):
         print vn_rt_refs
         print("1================\n")
 
-        self.assertTrue(vn_rt_refs_with_lr != vn_rt_refs,
-                        msg='RT attached to VN is same after LR creation')
+        self.assertTrue(vn_rt_refs_with_lr == vn_rt_refs,
+                        msg='RT attached to VN is different after LR creation')
 
         # configure a new route target after
         # LR is created
@@ -184,8 +184,8 @@ class TestBgp(STTestCase, VerifyBgp):
         print vn_rt_refs_with_lr
         print vn_rt_refs
         print("2================\n")
-        self.assertTrue(vn_rt_refs_with_lr != vn_rt_refs,
-                        msg='RT attached to VN is same after LR creation')
+        self.assertTrue(vn_rt_refs_with_lr == vn_rt_refs,
+                        msg='RT attached to VN is different after LR creation')
 
         # cleanup
         lr.del_virtual_machine_interface(vmi)
