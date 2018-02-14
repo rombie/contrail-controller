@@ -191,7 +191,7 @@ class DBBaseKM(DBBase):
         if obj.ann_fq_name:
             if tuple(obj.ann_fq_name) in cls._ann_fq_name_to_uuid:
                 del cls._ann_fq_name_to_uuid[tuple(obj.ann_fq_name)]
- 
+
         if tuple(obj.fq_name) in cls._fq_name_to_uuid:
             del cls._fq_name_to_uuid[tuple(obj.fq_name)]
 
@@ -671,6 +671,7 @@ class VirtualMachineKM(DBBaseKM):
     def __init__(self, uuid, obj_dict=None):
         self.uuid = uuid
         self.owner = None
+        self.cluster = None
         self.virtual_router = None
         self.virtual_machine_interfaces = set()
         self.pod_labels = None
@@ -693,6 +694,8 @@ class VirtualMachineKM(DBBaseKM):
             for kvp in self.annotations['key_value_pair'] or []:
                 if kvp['key'] == 'owner':
                     self.owner = kvp['value']
+                elif kvp['key'] == 'cluster':
+                    self.cluster = kvp['value']
                 elif kvp['key'] == 'namespace':
                     self.pod_namespace = kvp['value']
                 elif kvp['key'] == 'labels':
@@ -1831,7 +1834,6 @@ class PolicyManagementKM(DBBaseKM):
     def delete(cls, uuid):
         if uuid not in cls._dict:
             return
-        obj = cls._dict[uuid]
         super(PolicyManagementKM, cls).delete(uuid)
         del cls._dict[uuid]
 # end class PolicyManagementKM
@@ -1860,7 +1862,6 @@ class ApplicationPolicySetKM(DBBaseKM):
     def delete(cls, uuid):
         if uuid not in cls._dict:
             return
-        obj = cls._dict[uuid]
         super(ApplicationPolicySetKM, cls).delete(uuid)
         del cls._dict[uuid]
 
@@ -1877,6 +1878,7 @@ class FirewallRuleKM(DBBaseKM):
     def __init__(self, uuid, obj_dict=None):
         self.uuid = uuid
         super(FirewallRuleKM, self).__init__(uuid, obj_dict)
+        self.address_groups = set()
         obj_dict = self.update(obj_dict)
 
     def update(self, obj=None):
@@ -1889,6 +1891,7 @@ class FirewallRuleKM(DBBaseKM):
         self.endpoint_2 = obj['endpoint_2']
         self.match_tag_types = obj['match_tag_types']
         self.service = obj.get('service', None)
+        self.update_multiple_refs('address_group', obj)
         self.build_fq_name_to_uuid(self.uuid, obj)
         return obj
 
@@ -1896,6 +1899,8 @@ class FirewallRuleKM(DBBaseKM):
     def delete(cls, uuid):
         if uuid not in cls._dict:
             return
+        obj = cls._dict[uuid]
+        obj.update_multiple_refs('address_group', {})
         super(FirewallRuleKM, cls).delete(uuid)
         del cls._dict[uuid]
 
@@ -1913,12 +1918,15 @@ class FirewallPolicyKM(DBBaseKM):
         self.uuid = uuid
         self.firewall_rules = set()
         self.deny_all_rule_uuid = None
+        self.egress_deny_all_rule_uuid = None
+        self.firewall_rules = set()
 
         # Marker to indicate if this is policy is the beginning of
         # collection of end/tail policys in an application set. The tail
         # section of an APS contains policy's that are meant to enforce
         # deafult behavior in the APS.
         self.tail = False
+        self.spec = None
 
         super(FirewallPolicyKM, self).__init__(uuid, obj_dict)
         obj_dict = self.update(obj_dict)
@@ -1935,6 +1943,10 @@ class FirewallPolicyKM(DBBaseKM):
                     self.tail = kvp['value']
                 elif kvp['key'] == 'deny_all_rule_uuid':
                     self.deny_all_rule_uuid = kvp['value']
+                elif kvp['key'] == 'egress_deny_all_rule_uuid':
+                    self.egress_deny_all_rule_uuid = kvp['value']
+                elif kvp['key'] == 'spec':
+                    self.spec = kvp['value']
 
         self.update_multiple_refs('firewall_rule', obj)
         self.build_fq_name_to_uuid(self.uuid, obj)
@@ -1976,7 +1988,6 @@ class AddressGroupKM(DBBaseKM):
     def delete(cls, uuid):
         if uuid not in cls._dict:
             return
-        obj = cls._dict[uuid]
         super(AddressGroupKM, cls).delete(uuid)
         del cls._dict[uuid]
 # end class AddressGroupKM
