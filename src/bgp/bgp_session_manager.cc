@@ -38,8 +38,9 @@ BgpSessionManager::~BgpSessionManager() {
 // Start listening at the given port.
 //
 bool BgpSessionManager::Initialize(unsigned short port) {
+    // Changes to already bound bgp listen port number is not supported.
     if (acceptor())
-        return acceptor()->local_endpoint() == tcp::endpoint(session_ip_, port);
+        return true;
 
     LOG(DEBUG, "Starting Bgp Server at " << session_ip_ << ":" << port);
     bool r = TcpServer::Initialize(port, session_ip_);

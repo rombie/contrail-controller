@@ -201,8 +201,8 @@ public:
         }
 
         // We currently do not support bind failures or changes to listen port.
-        if (!server_->session_manager()->Initialize(config->port()))
-            exit(1);
+        if (config)
+            server_->session_manager()->Initialize(config->port());
 
         Ip4Address identifier(ntohl(config_identifier));
         if (server_->bgp_identifier_ != identifier) {
