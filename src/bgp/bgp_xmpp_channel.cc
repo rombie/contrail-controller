@@ -1128,7 +1128,7 @@ bool BgpXmppChannel::ProcessMvpnItem(string vrf_name,
 }
 
 bool BgpXmppChannel::ProcessItem(string vrf_name,
-    const pugi::xml_node &node, bool add_change) {
+    const pugi::xml_node &node, bool add_change, int primary_instance_id) {
     ItemType item;
     item.Clear();
 
@@ -1303,16 +1303,17 @@ bool BgpXmppChannel::ProcessItem(string vrf_name,
         attrs.push_back(&nexthop);
         uint16_t cluster_seed =
             bgp_server_->global_config()->rd_cluster_seed();
-        BgpAttrSourceRd source_rd;
-        if (cluster_seed) {
-            source_rd = BgpAttrSourceRd(
-                RouteDistinguisher(cluster_seed, addr, instance_id));
-        } else {
-            source_rd = BgpAttrSourceRd(
-                RouteDistinguisher(addr, instance_id));
-        }
-        if (!master)
+        if (!master) {
+            BgpAttrSourceRd source_rd;
+            if (cluster_seed) {
+                source_rd = BgpAttrSourceRd(
+                    RouteDistinguisher(cluster_seed, addr, instance_id));
+            } else {
+                source_rd = BgpAttrSourceRd(
+                    RouteDistinguisher(addr, instance_id));
+            }
             attrs.push_back(&source_rd);
+        }
 
         // Process security group list.
         const SecurityGroupListType &isg_list =
@@ -2751,6 +2752,27 @@ void BgpXmppChannel::SendEndOfRIB() {
                  BGP_PEER_DIR_OUT, "EndOfRib marker sent");
 }
 
+// Process any associated primary instance-id.
+int BgpXmppChannel::GetPrimaryInstanceID(char *str, bool expect_prefix_len) {
+    if (!str)
+        return 0;
+    char *token = strtok_r(NULL, "/", &str);
+    if (!token) // this vrf name
+        return 0;
+    token = strtok_r(NULL, "/", &str); // address
+    if (!token)
+        return 0;
+    if (expect_prefix_len) {
+        token = strtok_r(NULL, "/", &str); // prefix-length
+        if (!token)
+            return 0;
+    }
+    token = strtok_r(NULL, "/", &str); // primary instance-id
+    if (!token)
+        return 0;
+    return strtoul(token, 0);
+}
+
 void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
     CHECK_CONCURRENCY("xmpp::StateMachine");
 
@@ -2798,7 +2820,8 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
                         if (atoi(af) == BgpAf::IPv4 &&
                             ((atoi(safi) == BgpAf::Unicast) ||
                              (atoi(safi) == BgpAf::Mpls))) {
-                            ProcessItem(iq->node, item, iq->is_as_node);
+                            ProcessItem(iq->node, item, iq->is_as_node,
+                                        GetPrimaryInstanceID(saveptr, true);
                         } else if (atoi(af) == BgpAf::IPv6 &&
                                    atoi(safi) == BgpAf::Unicast) {
                             ProcessInet6Item(iq->node, item, iq->is_as_node);
