@@ -293,7 +293,7 @@ private:
         const std::string &instance) const;
 
     bool ProcessItem(std::string vrf_name, const pugi::xml_node &node,
-                     bool add_change);
+                     bool add_change, int primary_instance_id);
     bool ProcessInet6Item(std::string vrf_name, const pugi::xml_node &node,
                           bool add_change);
     bool ProcessMcastItem(std::string vrf_name,
@@ -398,6 +398,7 @@ public:
         return channel_name_map_.lower_bound(name);
     }
 
+    int GetPrimaryInstanceID(char *str, bool expect_prefix_len) const;
     void VisitChannels(BgpXmppChannelManager::VisitorFn);
     void VisitChannels(BgpXmppChannelManager::VisitorFn) const;
     BgpXmppChannel *FindChannel(const XmppChannel *channel);

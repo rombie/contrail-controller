@@ -77,37 +77,37 @@ static RouteDistinguisher GenerateDistinguisher(
 // master table for this peer. If a path is found and is associated
 // with OriginVn community, attach the same to this route as well.
 BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
-                                                  BgpAttrPtr attrp) {
+                                                  BgpAttrPtr attrp,
+                                                  const IPeer *peer) {
     InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
     assert(inet_route);
-    if (!attrp)
-        return NULL;
+    if (!attrp || attrp->source_rd().IsZero())
+        return attrp;
+
     const InetPrefix &inet_prefix = inet_route->GetPrefix();
+    InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
+    DBTablePartition *inet_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
+
     InetVpnPrefix inetvpn_prefix(attrp->source_rd(), inet_prefix.ip4_addr(),
                                  inet_prefix.prefixlen);
+    RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
+    DBTablePartition *inetvpn_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
+    assert(inet_partition == inetvpn_partition);
+    InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
+        TableFind(inetvpn_partition, &inetvpn_rt_key));
+    if (!inetvpn_route)
+        return attrp;
+    BgpPath *path = inetvpn_route->FindPath(peer);
+    if (!path)
+        return attrp;
+    return UpdateInetRouteAttributes(server, ext_commp, path);
 }
 
-void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
-                                   const BgpPath *vpn_path,
-                                   ExtCommunityPtr ext_commp) {
-    assert(routing_instance()->IsMasterRoutingInstance());
-
-    // Check if a route is present in inet.0 table for this prefix.
-    InetTable *inet_table =
-        dynamic_cast<InetTable *>(routing_instance()->GetTable(Address::INET));
-    Ip4Prefix inet_prefix(route->GetPrefix().addr(),
-                          route->GetPrefix().prefixlen());
-    InetTable::RequestKey rt_key(inet_prefix, NULL);
-    DBTablePartition *rtp =
-        static_cast<DBTablePartition *>(GetTablePartition(&rt_key));
-    InetRoute *inet_route = dynamic_cast<InetRoute *>(
-        inet_table->TableFind(rtp, &rt_key));
-    if (!inet_route)
-        return;
-    BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
-    if (!path)
-        return;
-
+BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(BgpServer *server,
+                                                   ExtCommunityPtr ext_commp,
+                                                   BgpPath *path) {
     // Check if origin-vn path attribute in inet.0 table path is identical to
     // what is in inetvpn table path.
     ExtCommunity::ExtCommunityValue const *inetvpn_rt_origin_vn = NULL;
@@ -131,7 +131,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
 
     // Ignore if there is no change.
     if (inetvpn_rt_origin_vn == inet_rt_origin_vn)
-        return;
+        return attrp;
 
     // Update/Delete inet route attributes with updated OriginVn community.
     ExtCommunityPtr new_ext_community;
@@ -143,9 +143,32 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
             attrp->ext_community(), *inetvpn_rt_origin_vn);
     }
 
-    BgpAttrPtr new_attr = server->attr_db()->ReplaceExtCommunityAndLocate(
-            attrp.get(), new_ext_community);
-    path->SetAttr(new_attr, path->GetOriginalAttr());
+    return server->attr_db()->ReplaceExtCommunityAndLocate(attrp.get(),
+                                                           new_ext_community);
+}
+
+void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
+                                   const BgpPath *vpn_path,
+                                   ExtCommunityPtr ext_commp) {
+    assert(routing_instance()->IsMasterRoutingInstance());
+
+    // Check if a route is present in inet.0 table for this prefix.
+    InetTable *inet_table =
+        dynamic_cast<InetTable *>(routing_instance()->GetTable(Address::INET));
+    Ip4Prefix inet_prefix(route->GetPrefix().addr(),
+                          route->GetPrefix().prefixlen());
+    InetTable::RequestKey rt_key(inet_prefix, NULL);
+    DBTablePartition *rtp =
+        static_cast<DBTablePartition *>(GetTablePartition(&rt_key));
+    InetRoute *inet_route = dynamic_cast<InetRoute *>(
+        inet_table->TableFind(rtp, &rt_key));
+    if (!inet_route)
+        return;
+    BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
+    if (!path)
+        return;
+    BgpAttrPtr new_attrp = UpdateInetRouteAttributes(server, ext_commp, path);
+    path->SetAttr(new_attrp, path->GetOriginalAttr());
     inet_route->Notify();
 }
 

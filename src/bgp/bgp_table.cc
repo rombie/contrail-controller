@@ -530,7 +530,7 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
                 routing_instance()->IsMasterRoutingInstance()) {
             InetVpnTable *vpn_table = routing_instance()->GetTable(
                                           Address::INETVPN);
-            attr = vpn_table->GetUpdatedPathAttributes(rt, attr);
+            attr = vpn_table->GetUpdatedPathAttributes(rt, attr, peer);
         }
     } else {
         if (!path)
