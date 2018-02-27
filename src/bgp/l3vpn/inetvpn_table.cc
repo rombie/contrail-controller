@@ -102,12 +102,13 @@ BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
     BgpPath *path = inetvpn_route->FindPath(peer);
     if (!path)
         return attrp;
-    return UpdateInetRouteAttributes(server, ext_commp, path);
+    return UpdateInetRouteAttributes(ext_commp, path);
 }
 
-BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(BgpServer *server,
-                                                   ExtCommunityPtr ext_commp,
+BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
                                                    BgpPath *path) {
+    BgpServer *server = routing_instance()->server();
+
     // Check if origin-vn path attribute in inet.0 table path is identical to
     // what is in inetvpn table path.
     ExtCommunity::ExtCommunityValue const *inetvpn_rt_origin_vn = NULL;
@@ -167,7 +168,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
     BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
     if (!path)
         return;
-    BgpAttrPtr new_attrp = UpdateInetRouteAttributes(server, ext_commp, path);
+    BgpAttrPtr new_attrp = UpdateInetRouteAttributes(ext_commp, path);
     path->SetAttr(new_attrp, path->GetOriginalAttr());
     inet_route->Notify();
 }
