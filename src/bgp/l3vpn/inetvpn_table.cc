@@ -148,7 +148,8 @@ BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
                                                            new_ext_community);
 }
 
-void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
+void InetVpnTable::UpdateInetRoute(BgpServer *server,
+                                   InetVpnRoute *inetvpn_route,
                                    const BgpPath *inetvpn_path,
                                    BgpAttrPtr new_inetvpn_attr) {
     assert(routing_instance()->IsMasterRoutingInstance());
@@ -156,13 +157,19 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
     // Check if a route is present in inet.0 table for this prefix.
     InetTable *inet_table =
         dynamic_cast<InetTable *>(routing_instance()->GetTable(Address::INET));
-    Ip4Prefix inet_prefix(route->GetPrefix().addr(),
-                          route->GetPrefix().prefixlen());
-    InetTable::RequestKey rt_key(inet_prefix, NULL);
-    DBTablePartition *rtp =
-        static_cast<DBTablePartition *>(GetTablePartition(&rt_key));
+    Ip4Prefix inet_prefix(inetvpn_route->GetPrefix().addr(),
+                          inetvpn_route->GetPrefix().prefixlen());
+    InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
+    DBTablePartition *inet_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
+
+    InetVpnRoute inetvpn_rt_key(inetvpn_route->GetPrefix());
+    DBTablePartition *inetvpn_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
+    assert(inet_partition == inetvpn_partition);
+
     InetRoute *inet_route = dynamic_cast<InetRoute *>(
-        inet_table->TableFind(rtp, &rt_key));
+        inet_table->TableFind(inet_partition, &inet_rt_key));
     if (!inet_route)
         return;
     BgpPath *inet_path = inet_route->FindPath(inetvpn_path->GetPeer());
