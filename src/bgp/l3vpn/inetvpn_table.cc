@@ -6,6 +6,7 @@
 
 #include <boost/foreach.hpp>
 
+#include "base/task_annotations.h"
 #include "bgp/ipeer.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
@@ -76,37 +77,6 @@ static RouteDistinguisher GenerateDistinguisher(
 // table index and associated next-hop and look up in bgp.l3vpn.0
 // master table for this peer. If a path is found and is associated
 // with OriginVn community, attach the same to this route as well.
-BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
-                                           BgpAttrPtr inet_attrp,
-                                           const IPeer *peer) {
-    CHECK_CONCURRENCY("db::DBTable");
-    InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
-    assert(inet_route);
-    if (!inet_attrp || inet_attrp->source_rd().IsZero())
-        return inet_attrp;
-
-    const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
-    InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
-    DBTablePartition *inet_partition =
-        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
-
-    InetVpnPrefix inetvpn_prefix(inet_attrp->source_rd(),
-                                 inet_prefix.ip4_addr(),
-                                 inet_prefix.prefixlen());
-    RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
-    DBTablePartition *inetvpn_partition =
-        static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
-    assert(inet_partition == inetvpn_partition);
-    InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
-        TableFind(inetvpn_partition, &inetvpn_rt_key));
-    if (!inetvpn_route)
-        return inet_attrp;
-    BgpPath *inetvpn_path = inetvpn_route->FindPath(peer);
-    if (!inetvpn_path)
-        return inet_attrp;
-    return UpdateInetAttributes(inetvpn_path->GetAttr(), inet_attrp);
-}
-
 BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
                                               const BgpAttrPtr inet_attrp) {
     BgpServer *server = routing_instance()->server();
@@ -147,6 +117,37 @@ BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
 
     return server->attr_db()->ReplaceExtCommunityAndLocate(inet_attrp.get(),
                                                            new_ext_community);
+}
+
+BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
+                                           BgpAttrPtr inet_attrp,
+                                           const IPeer *peer) {
+    CHECK_CONCURRENCY("db::DBTable");
+    InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
+    assert(inet_route);
+    if (!inet_attrp || inet_attrp->source_rd().IsZero())
+        return inet_attrp;
+
+    const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
+    InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
+    DBTablePartition *inet_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
+
+    InetVpnPrefix inetvpn_prefix(inet_attrp->source_rd(),
+                                 inet_prefix.ip4_addr(),
+                                 inet_prefix.prefixlen());
+    RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
+    DBTablePartition *inetvpn_partition =
+        static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
+    assert(inet_partition == inetvpn_partition);
+    InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
+        TableFind(inetvpn_partition, &inetvpn_rt_key));
+    if (!inetvpn_route)
+        return inet_attrp;
+    BgpPath *inetvpn_path = inetvpn_route->FindPath(peer);
+    if (!inetvpn_path)
+        return inet_attrp;
+    return UpdateInetAttributes(inetvpn_path->GetAttr(), inet_attrp);
 }
 
 void InetVpnTable::UpdateInetRoute(BgpServer *server,

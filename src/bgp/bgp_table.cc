@@ -469,7 +469,6 @@ bool BgpTable::InputCommon(DBTablePartBase *root, BgpRoute *rt, BgpPath *path,
 
 void BgpTable::Input(DBTablePartition *root, DBClient *client,
                      DBRequest *req) {
-    CHECK_CONCURRENCY("db::DBTable");
     const IPeer *peer = (static_cast<RequestKey *>(req->key.get()))->GetPeer();
     RequestData *data = static_cast<RequestData *>(req->data.get());
 
