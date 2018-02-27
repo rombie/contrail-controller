@@ -80,6 +80,11 @@ BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
                                                   BgpAttrPtr attrp) {
     InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
     assert(inet_route);
+    if (!attrp)
+        return NULL;
+    const InetPrefix &inet_prefix = inet_route->GetPrefix();
+    InetVpnPrefix inetvpn_prefix(attrp->source_rd(), inet_prefix.ip4_addr(),
+                                 inet_prefix.prefixlen);
 }
 
 void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
