@@ -532,7 +532,7 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
             InetVpnTable *vpn_table =
                 dynamic_cast<InetVpnTable *>(routing_instance()->GetTable(
                                                  Address::INETVPN));
-            attr = vpn_table->GetUpdatedPathAttributes(rt, attr, peer);
+            attr = vpn_table->GetInetAttributes(rt, attr, peer);
         }
     } else {
         if (!path)

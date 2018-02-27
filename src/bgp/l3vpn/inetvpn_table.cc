@@ -76,9 +76,9 @@ static RouteDistinguisher GenerateDistinguisher(
 // table index and associated next-hop and look up in bgp.l3vpn.0
 // master table for this peer. If a path is found and is associated
 // with OriginVn community, attach the same to this route as well.
-BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
-                                                  BgpAttrPtr inet_attrp,
-                                                  const IPeer *peer) {
+BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
+                                           BgpAttrPtr inet_attrp,
+                                           const IPeer *peer) {
     InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
     assert(inet_route);
     if (!inet_attrp || inet_attrp->source_rd().IsZero())

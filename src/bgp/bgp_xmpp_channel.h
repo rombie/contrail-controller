@@ -294,7 +294,7 @@ private:
         const std::string &instance) const;
 
     bool ProcessItem(std::string vrf_name, const pugi::xml_node &node,
-                     bool add_change, int primary_instance_id);
+                     bool add_change, int primary_instance_id = 0);
     bool ProcessInet6Item(std::string vrf_name, const pugi::xml_node &node,
                           bool add_change);
     bool ProcessMcastItem(std::string vrf_name,

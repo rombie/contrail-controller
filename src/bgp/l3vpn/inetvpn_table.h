@@ -45,8 +45,8 @@ public:
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
-    BgpAttrPtr GetUpdatedPathAttributes(BgpRoute *route, BgpAttrPtr attrp,
-                                        const IPeer *peer);
+    BgpAttrPtr GetInetAttributes(BgpRoute *route, BgpAttrPtr attrp,
+                                 const IPeer *peer);
 
 private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
