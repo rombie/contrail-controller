@@ -4,6 +4,8 @@
 
 #include "bgp/l3vpn/inetvpn_table.h"
 
+#include <boost/foreach.hpp>
+
 #include "bgp/ipeer.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
@@ -69,10 +71,72 @@ static RouteDistinguisher GenerateDistinguisher(
     return *src_instance->GetRD();
 }
 
+void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
+                                   const BgpPath *vpn_path,
+                                   ExtCommunityPtr ext_commp) {
+    assert(routing_instance()->IsMasterRoutingInstance());
+
+    // Check if a route is present in inet.0 table for this prefix.
+    InetTable *inet_table =
+        dynamic_cast<InetTable *>(routing_instance()->GetTable(Address::INET));
+    Ip4Prefix inet_prefix(route->GetPrefix().addr(),
+                          route->GetPrefix().prefixlen());
+    InetTable::RequestKey rt_key(inet_prefix, NULL);
+    DBTablePartition *rtp =
+        static_cast<DBTablePartition *>(GetTablePartition(&rt_key));
+    InetRoute *inet_route = dynamic_cast<InetRoute *>(
+        inet_table->TableFind(rtp, &rt_key));
+    if (!inet_route)
+        return;
+    BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
+    if (!path)
+        return;
+
+    // Check if origin-vn path attribute in inet.0 table path is identical to
+    // what is in inetvpn table path.
+    ExtCommunity::ExtCommunityValue const *inetvpn_rt_origin_vn = NULL;
+    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                  ext_commp->communities()) {
+        if (!ExtCommunity::is_origin_vn(comm))
+            continue;
+        inetvpn_rt_origin_vn = &comm;
+        break;
+    }
+
+    ExtCommunity::ExtCommunityValue const *inet_rt_origin_vn = NULL;
+    const BgpAttrPtr attrp = path->GetAttr();
+    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                  attrp->ext_community()->communities()) {
+        if (!ExtCommunity::is_origin_vn(comm))
+            continue;
+        inet_rt_origin_vn = &comm;
+        break;
+    }
+
+    // Ignore if there is no change.
+    if (inetvpn_rt_origin_vn == inet_rt_origin_vn)
+        return;
+
+    // Update/Delete inet route attributes with updated OriginVn community.
+    ExtCommunityPtr new_ext_community;
+    if (!inetvpn_rt_origin_vn) {
+        new_ext_community = server->extcomm_db()->RemoveOriginVnAndLocate(
+            attrp->ext_community());
+    } else {
+        new_ext_community = server->extcomm_db()->ReplaceOriginVnAndLocate(
+            attrp->ext_community(), *inetvpn_rt_origin_vn);
+    }
+
+    BgpAttrPtr new_attr = server->attr_db()->ReplaceExtCommunityAndLocate(
+            attrp.get(), new_ext_community);
+    path->SetAttr(new_attr, path->GetOriginalAttr());
+    inet_route->Notify();
+}
+
 BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,
         BgpTable *src_table, BgpRoute *src_rt, const BgpPath *src_path,
         ExtCommunityPtr community) {
-    assert(src_table->family()  == Address::INET);
+    assert(src_table->family() == Address::INET);
 
     InetRoute *inet = dynamic_cast<InetRoute *> (src_rt);
     assert(inet);
@@ -140,6 +204,10 @@ BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,
 
     // Always trigger notification.
     rtp->Notify(dest_route);
+
+    // Update corresponding route's extended communities in inet.0 table.
+    UpdateInetRoute(server, dynamic_cast<InetVpnRoute *>(dest_route), src_path,
+                    community);
 
     return dest_route;
 }

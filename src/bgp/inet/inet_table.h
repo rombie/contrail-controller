@@ -52,9 +52,10 @@ public:
     virtual bool IsRoutingPolicySupported() const { return true; }
     virtual bool IsRouteAggregationSupported() const {
         return((family_ == Address::INETMPLS) ? false : true); }
-private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
+
+private:
     Address::Family family_;
     DISALLOW_COPY_AND_ASSIGN(InetTable);
 };

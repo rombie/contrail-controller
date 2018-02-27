@@ -534,6 +534,12 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
     bool notify_rt = InputCommon(root, rt, path, peer, req, req->oper,
         attr, path_id, flags, label, l3_label);
     InputCommonPostProcess(root, rt, notify_rt);
+
+    // Insert origin-vn extended-community if primary table is different
+    // from the targeted table. (e.g. fabric routes). Form RD using primary
+    // table index and associated next-hop and look up in bgp.l3vpn.0
+    // master table for this peer. If a path is found and is associated
+    // with OriginVn community, attach the same to this route as well.
 }
 
 void BgpTable::InputCommonPostProcess(DBTablePartBase *root,

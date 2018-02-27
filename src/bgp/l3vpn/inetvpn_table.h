@@ -49,6 +49,8 @@ public:
 private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
+    void UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
+                         const BgpPath *path, ExtCommunityPtr ext_commp);
 
     DISALLOW_COPY_AND_ASSIGN(InetVpnTable);
 };

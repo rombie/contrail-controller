@@ -1341,7 +1341,6 @@ bool BgpXmppChannel::ProcessItem(string vrf_name,
             attrs.push_back(&comm);
         if (!master && !ext.communities.empty())
             attrs.push_back(&ext);
-
         BgpAttrPtr attr = bgp_server_->attr_db()->Locate(attrs);
         req.data.reset(new BgpTable::RequestData(
             attr, flags, label, 0, subscription_gen_id));
