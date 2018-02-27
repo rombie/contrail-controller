@@ -12,6 +12,7 @@
 #include "bgp/l3vpn/inetvpn_address.h"
 #include "bgp/l3vpn/inetvpn_route.h"
 
+class BgpAttrPtr;
 class BgpServer;
 class BgpRoute;
 
@@ -45,6 +46,7 @@ public:
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
+    BgpAttrPtr GetUpdatedPathAttributes(BgpRoute *route, BgpAttrPtr attrp);
 
 private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,

@@ -71,6 +71,17 @@ static RouteDistinguisher GenerateDistinguisher(
     return *src_instance->GetRD();
 }
 
+// Insert origin-vn extended-community if primary table is different
+// from the targeted table. (e.g. fabric routes). Form RD using primary
+// table index and associated next-hop and look up in bgp.l3vpn.0
+// master table for this peer. If a path is found and is associated
+// with OriginVn community, attach the same to this route as well.
+BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
+                                                  BgpAttrPtr attrp) {
+    InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
+    assert(inet_route);
+}
+
 void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
                                    const BgpPath *vpn_path,
                                    ExtCommunityPtr ext_commp) {
