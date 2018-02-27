@@ -139,7 +139,7 @@ BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
     RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
-    assert(inet_partition == inetvpn_partition);
+    assert(inet_partition->index() == inetvpn_partition->index());
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
         TableFind(inetvpn_partition, &inetvpn_rt_key));
     if (!inetvpn_route)
@@ -169,7 +169,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server,
     RequestKey inetvpn_rt_key(inetvpn_route->GetPrefix(), NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
-    assert(inet_partition == inetvpn_partition);
+    assert(inet_partition->index() == inetvpn_partition->index());
 
     InetRoute *inet_route = dynamic_cast<InetRoute *>(
         inet_table->TableFind(inet_partition, &inet_rt_key));
