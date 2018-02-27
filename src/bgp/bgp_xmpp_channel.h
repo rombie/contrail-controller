@@ -285,6 +285,7 @@ private:
         const std::string &table_name);
     const TableMembershipRequestState *GetTableMembershipState(
         const std::string &table_name) const;
+    int GetPrimaryInstanceID(char *str, bool prefix_len) const;
 
     void AddInstanceMembershipState(const std::string &instance,
         InstanceMembershipRequestState imr_state);
@@ -398,7 +399,6 @@ public:
         return channel_name_map_.lower_bound(name);
     }
 
-    int GetPrimaryInstanceID(char *str, bool expect_prefix_len) const;
     void VisitChannels(BgpXmppChannelManager::VisitorFn);
     void VisitChannels(BgpXmppChannelManager::VisitorFn) const;
     BgpXmppChannel *FindChannel(const XmppChannel *channel);

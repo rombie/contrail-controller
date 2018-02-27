@@ -2755,25 +2755,24 @@ void BgpXmppChannel::SendEndOfRIB() {
 }
 
 // Process any associated primary instance-id.
-int BgpXmppChannel::GetPrimaryInstanceID(char *str,
-                                         bool expect_prefix_len) const {
+int BgpXmppChannel::GetPrimaryInstanceID(char *str, bool prefix_len) const {
     if (!str)
         return 0;
     char *token = strtok_r(NULL, "/", &str);
-    if (!token) // this vrf name
+    if (!token || !str) // this vrf name
         return 0;
     token = strtok_r(NULL, "/", &str); // address
-    if (!token)
+    if (!token || !str)
         return 0;
-    if (expect_prefix_len) {
+    if (prefix_len) {
         token = strtok_r(NULL, "/", &str); // prefix-length
-        if (!token)
+        if (!token || !str)
             return 0;
     }
     token = strtok_r(NULL, "/", &str); // primary instance-id
     if (!token)
         return 0;
-    return strtoul(token, 0);
+    return strtoul(token, NULL, 0);
 }
 
 void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
@@ -2814,30 +2813,30 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
                 for (; item; item = item.next_sibling()) {
                     if (strcmp(item.name(), "item") != 0) continue;
 
-                        string id(iq->as_node.c_str());
-                        char *str = const_cast<char *>(id.c_str());
-                        char *saveptr;
-                        char *af = strtok_r(str, "/", &saveptr);
-                        char *safi = strtok_r(NULL, "/", &saveptr);
+                    string id(iq->as_node.c_str());
+                    char *str = const_cast<char *>(id.c_str());
+                    char *saveptr;
+                    char *af = strtok_r(str, "/", &saveptr);
+                    char *safi = strtok_r(NULL, "/", &saveptr);
 
-                        if (atoi(af) == BgpAf::IPv4 &&
-                            ((atoi(safi) == BgpAf::Unicast) ||
-                             (atoi(safi) == BgpAf::Mpls))) {
-                            ProcessItem(iq->node, item, iq->is_as_node,
-                                        GetPrimaryInstanceID(saveptr, true);
-                        } else if (atoi(af) == BgpAf::IPv6 &&
-                                   atoi(safi) == BgpAf::Unicast) {
-                            ProcessInet6Item(iq->node, item, iq->is_as_node);
-                        } else if (atoi(af) == BgpAf::IPv4 &&
-                            atoi(safi) == BgpAf::Mcast) {
-                            ProcessMcastItem(iq->node, item, iq->is_as_node);
-                        } else if (atoi(af) == BgpAf::IPv4 &&
-                            atoi(safi) == BgpAf::MVpn) {
-                            ProcessMvpnItem(iq->node, item, iq->is_as_node);
-                        } else if (atoi(af) == BgpAf::L2Vpn &&
-                                   atoi(safi) == BgpAf::Enet) {
-                            ProcessEnetItem(iq->node, item, iq->is_as_node);
-                        }
+                    if (atoi(af) == BgpAf::IPv4 &&
+                        ((atoi(safi) == BgpAf::Unicast) ||
+                         (atoi(safi) == BgpAf::Mpls))) {
+                        ProcessItem(iq->node, item, iq->is_as_node,
+                                    GetPrimaryInstanceID(saveptr, true));
+                    } else if (atoi(af) == BgpAf::IPv6 &&
+                               atoi(safi) == BgpAf::Unicast) {
+                        ProcessInet6Item(iq->node, item, iq->is_as_node);
+                    } else if (atoi(af) == BgpAf::IPv4 &&
+                        atoi(safi) == BgpAf::Mcast) {
+                        ProcessMcastItem(iq->node, item, iq->is_as_node);
+                    } else if (atoi(af) == BgpAf::IPv4 &&
+                        atoi(safi) == BgpAf::MVpn) {
+                        ProcessMvpnItem(iq->node, item, iq->is_as_node);
+                    } else if (atoi(af) == BgpAf::L2Vpn &&
+                               atoi(safi) == BgpAf::Enet) {
+                        ProcessEnetItem(iq->node, item, iq->is_as_node);
+                    }
                 }
             }
         }

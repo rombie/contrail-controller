@@ -84,13 +84,14 @@ BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
     if (!inet_attrp || inet_attrp->source_rd().IsZero())
         return inet_attrp;
 
-    const InetPrefix &inet_prefix = inet_route->GetPrefix();
+    const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
     InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
     DBTablePartition *inet_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
 
     InetVpnPrefix inetvpn_prefix(inet_attrp->source_rd(),
-                                 inet_prefix.ip4_addr(), inet_prefix.prefixlen);
+                                 inet_prefix.ip4_addr(),
+                                 inet_prefix.prefixlen());
     RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
@@ -102,7 +103,7 @@ BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
     BgpPath *inetvpn_path = inetvpn_route->FindPath(peer);
     if (!inetvpn_path)
         return inet_attrp;
-    return UpdateInetRouteAttributes(inetvpn_path->GetAttr(), inet_attrp);
+    return UpdateInetAttributes(inetvpn_path->GetAttr(), inet_attrp);
 }
 
 BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
@@ -122,7 +123,7 @@ BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
 
     ExtCommunity::ExtCommunityValue const *inet_rt_origin_vn = NULL;
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                  attrp->ext_community()->communities()) {
+                  inet_attrp->ext_community()->communities()) {
         if (!ExtCommunity::is_origin_vn(comm))
             continue;
         inet_rt_origin_vn = &comm;
@@ -131,25 +132,25 @@ BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
 
     // Ignore if there is no change.
     if (inetvpn_rt_origin_vn == inet_rt_origin_vn)
-        return attrp;
+        return inet_attrp;
 
     // Update/Delete inet route attributes with updated OriginVn community.
     ExtCommunityPtr new_ext_community;
     if (!inetvpn_rt_origin_vn) {
         new_ext_community = server->extcomm_db()->RemoveOriginVnAndLocate(
-            attrp->ext_community());
+            inet_attrp->ext_community());
     } else {
         new_ext_community = server->extcomm_db()->ReplaceOriginVnAndLocate(
-            attrp->ext_community(), *inetvpn_rt_origin_vn);
+            inet_attrp->ext_community(), *inetvpn_rt_origin_vn);
     }
 
-    return server->attr_db()->ReplaceExtCommunityAndLocate(attrp.get(),
+    return server->attr_db()->ReplaceExtCommunityAndLocate(inet_attrp.get(),
                                                            new_ext_community);
 }
 
 void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
-                                   const BgpPath *vpn_path,
-                                   BgpAttrPtr new_attr) {
+                                   const BgpPath *inetvpn_path,
+                                   BgpAttrPtr new_inetvpn_attr) {
     assert(routing_instance()->IsMasterRoutingInstance());
 
     // Check if a route is present in inet.0 table for this prefix.
@@ -164,12 +165,16 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
         inet_table->TableFind(rtp, &rt_key));
     if (!inet_route)
         return;
-    BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
-    if (!path)
+    BgpPath *inet_path = inet_route->FindPath(inetvpn_path->GetPeer());
+    if (!inet_path)
         return;
-    BgpAttrPtr new_attrp = UpdateInetAttributes(new_attr, path->GetAttr());
-    path->SetAttr(new_attrp, path->GetOriginalAttr());
-    inet_route->Notify();
+    BgpAttrPtr inet_attrp = inet_path->GetAttr();
+    BgpAttrPtr new_inet_attrp = UpdateInetAttributes(new_inetvpn_attr,
+                                                     inet_attrp);
+    if (new_inet_attrp != inet_attrp) {
+        inet_path->SetAttr(new_inet_attrp, inet_path->GetOriginalAttr());
+        inet_route->Notify();
+    }
 }
 
 BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,

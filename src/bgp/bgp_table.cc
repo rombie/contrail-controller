@@ -16,6 +16,7 @@
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
+#include "bgp/l3vpn/inetvpn_table.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"
@@ -528,8 +529,9 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
 
         if (family() == Address::INET &&
                 routing_instance()->IsMasterRoutingInstance()) {
-            InetVpnTable *vpn_table = routing_instance()->GetTable(
-                                          Address::INETVPN);
+            InetVpnTable *vpn_table =
+                dynamic_cast<InetVpnTable *>(routing_instance()->GetTable(
+                                                 Address::INETVPN));
             attr = vpn_table->GetUpdatedPathAttributes(rt, attr, peer);
         }
     } else {

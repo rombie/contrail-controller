@@ -12,7 +12,6 @@
 #include "bgp/l3vpn/inetvpn_address.h"
 #include "bgp/l3vpn/inetvpn_route.h"
 
-class BgpAttrPtr;
 class BgpServer;
 class BgpRoute;
 
@@ -47,15 +46,16 @@ public:
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
     BgpAttrPtr GetUpdatedPathAttributes(BgpRoute *route, BgpAttrPtr attrp,
-                                        const IPeer *peer):
+                                        const IPeer *peer);
 
 private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     void UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
-                         const BgpPath *path, ExtCommunityPtr ext_commp);
-    BgpAttrPtr UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
-                                         BgpPath *path);
+                         const BgpPath *inetvpn_path,
+                         BgpAttrPtr new_inetvpn_attr);
+    BgpAttrPtr UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
+                                    const BgpAttrPtr inet_attrp);
 
     DISALLOW_COPY_AND_ASSIGN(InetVpnTable);
 };
