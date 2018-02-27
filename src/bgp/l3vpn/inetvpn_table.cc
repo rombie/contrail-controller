@@ -79,6 +79,7 @@ static RouteDistinguisher GenerateDistinguisher(
 BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
                                            BgpAttrPtr inet_attrp,
                                            const IPeer *peer) {
+    CHECK_CONCURRENCY("db::DBTable");
     InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
     assert(inet_route);
     if (!inet_attrp || inet_attrp->source_rd().IsZero())
@@ -152,6 +153,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server,
                                    InetVpnRoute *inetvpn_route,
                                    const BgpPath *inetvpn_path,
                                    BgpAttrPtr new_inetvpn_attr) {
+    CHECK_CONCURRENCY("db::DBTable");
     assert(routing_instance()->IsMasterRoutingInstance());
 
     // Check if a route is present in inet.0 table for this prefix.
