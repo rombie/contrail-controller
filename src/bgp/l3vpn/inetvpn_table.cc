@@ -153,7 +153,7 @@ BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
 void InetVpnTable::UpdateInetRoute(BgpServer *server,
                                    InetVpnRoute *inetvpn_route,
                                    const BgpPath *inetvpn_path,
-                                   BgpAttrPtr new_inetvpn_attr) {
+                                   BgpAttrPtr inetvpn_attr) {
     CHECK_CONCURRENCY("db::DBTable");
     assert(routing_instance()->IsMasterRoutingInstance());
 
@@ -166,7 +166,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server,
     DBTablePartition *inet_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
 
-    InetVpnRoute inetvpn_rt_key(inetvpn_route->GetPrefix());
+    RequestKey inetvpn_rt_key(inetvpn_route->GetPrefix(), NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
     assert(inet_partition == inetvpn_partition);
@@ -179,8 +179,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server,
     if (!inet_path)
         return;
     BgpAttrPtr inet_attrp = inet_path->GetAttr();
-    BgpAttrPtr new_inet_attrp = UpdateInetAttributes(new_inetvpn_attr,
-                                                     inet_attrp);
+    BgpAttrPtr new_inet_attrp = UpdateInetAttributes(inetvpn_attr, inet_attrp);
     if (new_inet_attrp != inet_attrp) {
         inet_path->SetAttr(new_inet_attrp, inet_path->GetOriginalAttr());
         inet_route->Notify();

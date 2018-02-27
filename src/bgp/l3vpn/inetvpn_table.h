@@ -52,8 +52,7 @@ private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
     void UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
-                         const BgpPath *inetvpn_path,
-                         BgpAttrPtr new_inetvpn_attr);
+                         const BgpPath *inetvpn_path, BgpAttrPtr inetvpn_attr);
     BgpAttrPtr UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
                                     const BgpAttrPtr inet_attrp);
 
