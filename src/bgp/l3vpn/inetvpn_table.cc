@@ -77,20 +77,20 @@ static RouteDistinguisher GenerateDistinguisher(
 // master table for this peer. If a path is found and is associated
 // with OriginVn community, attach the same to this route as well.
 BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
-                                                  BgpAttrPtr attrp,
+                                                  BgpAttrPtr inet_attrp,
                                                   const IPeer *peer) {
     InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
     assert(inet_route);
-    if (!attrp || attrp->source_rd().IsZero())
-        return attrp;
+    if (!inet_attrp || inet_attrp->source_rd().IsZero())
+        return inet_attrp;
 
     const InetPrefix &inet_prefix = inet_route->GetPrefix();
     InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
     DBTablePartition *inet_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
 
-    InetVpnPrefix inetvpn_prefix(attrp->source_rd(), inet_prefix.ip4_addr(),
-                                 inet_prefix.prefixlen);
+    InetVpnPrefix inetvpn_prefix(inet_attrp->source_rd(),
+                                 inet_prefix.ip4_addr(), inet_prefix.prefixlen);
     RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
@@ -98,22 +98,22 @@ BgpAttrPtr InetVpnTable::GetUpdatedPathAttributes(BgpRoute *route,
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
         TableFind(inetvpn_partition, &inetvpn_rt_key));
     if (!inetvpn_route)
-        return attrp;
-    BgpPath *path = inetvpn_route->FindPath(peer);
-    if (!path)
-        return attrp;
-    return UpdateInetRouteAttributes(ext_commp, path);
+        return inet_attrp;
+    BgpPath *inetvpn_path = inetvpn_route->FindPath(peer);
+    if (!inetvpn_path)
+        return inet_attrp;
+    return UpdateInetRouteAttributes(inetvpn_path->GetAttr(), inet_attrp);
 }
 
-BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
-                                                   BgpPath *path) {
+BgpAttrPtr InetVpnTable::UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
+                                              const BgpAttrPtr inet_attrp) {
     BgpServer *server = routing_instance()->server();
 
     // Check if origin-vn path attribute in inet.0 table path is identical to
     // what is in inetvpn table path.
     ExtCommunity::ExtCommunityValue const *inetvpn_rt_origin_vn = NULL;
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                  ext_commp->communities()) {
+                  inetvpn_attrp->ext_community()->communities()) {
         if (!ExtCommunity::is_origin_vn(comm))
             continue;
         inetvpn_rt_origin_vn = &comm;
@@ -121,7 +121,6 @@ BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
     }
 
     ExtCommunity::ExtCommunityValue const *inet_rt_origin_vn = NULL;
-    const BgpAttrPtr attrp = path->GetAttr();
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
                   attrp->ext_community()->communities()) {
         if (!ExtCommunity::is_origin_vn(comm))
@@ -150,7 +149,7 @@ BgpAttrPtr InetVpnTable::UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
 
 void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
                                    const BgpPath *vpn_path,
-                                   ExtCommunityPtr ext_commp) {
+                                   BgpAttrPtr new_attr) {
     assert(routing_instance()->IsMasterRoutingInstance());
 
     // Check if a route is present in inet.0 table for this prefix.
@@ -168,7 +167,7 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
     BgpPath *path = inet_route->FindPath(vpn_path->GetPeer());
     if (!path)
         return;
-    BgpAttrPtr new_attrp = UpdateInetRouteAttributes(ext_commp, path);
+    BgpAttrPtr new_attrp = UpdateInetAttributes(new_attr, path->GetAttr());
     path->SetAttr(new_attrp, path->GetOriginalAttr());
     inet_route->Notify();
 }
@@ -247,7 +246,7 @@ BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,
 
     // Update corresponding route's extended communities in inet.0 table.
     UpdateInetRoute(server, dynamic_cast<InetVpnRoute *>(dest_route), src_path,
-                    community);
+                    new_attr);
 
     return dest_route;
 }

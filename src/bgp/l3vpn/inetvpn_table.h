@@ -54,6 +54,8 @@ private:
                                 const DBRequestKey *prefix);
     void UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
                          const BgpPath *path, ExtCommunityPtr ext_commp);
+    BgpAttrPtr UpdateInetRouteAttributes(ExtCommunityPtr ext_commp,
+                                         BgpPath *path);
 
     DISALLOW_COPY_AND_ASSIGN(InetVpnTable);
 };
