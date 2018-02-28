@@ -4,6 +4,8 @@
 
 #include "bgp/inet/inet_table.h"
 
+#include <boost/foreach.hpp>
+
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
 #include "bgp/extended-community/source_as.h"
@@ -156,6 +158,33 @@ bool InetTable::Export(RibOut *ribout, Route *route, const RibPeerSet &peerset,
 
     if (ribout->ExportPolicy().encoding == RibExportPolicy::BGP) {
         BgpAttrDB *attr_db = routing_instance()->server()->attr_db();
+        ExtCommunityDB *extcomm_db = routing_instance()->server()->extcomm_db();
+        // Strip ExtCommunity execpt OriginVN.
+        ExtCommunityPtr ext_commp = uinfo->roattr.attr()->ext_community();
+        if (ext_commp) {
+            ExtCommunity::ExtCommunityValue const *origin_vnp = NULL;
+            BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                          ext_commp->communities()) {
+                if (!ExtCommunity::is_origin_vn(comm))
+                    continue;
+                origin_vnp = &comm;
+                break;
+            }
+
+            if (!origin_vnp) {
+                BgpAttrPtr new_attr = attr_db->ReplaceExtCommunityAndLocate(
+                    uinfo->roattr.attr(), NULL);
+                uinfo->roattr.set_attr(this, new_attr);
+            } else if (ext_commp->communities().size() > 1) {
+                ExtCommunity::ExtCommunityList list;
+                list.push_back(*origin_vnp);
+                ext_commp = extcomm_db->AppendAndLocate(NULL, list);
+                BgpAttrPtr new_attr = attr_db->ReplaceExtCommunityAndLocate(
+                    uinfo->roattr.attr(), ext_commp);
+                uinfo->roattr.set_attr(this, new_attr);
+            }
+        }
+
         // Strip OriginVnPath.
         if (uinfo->roattr.attr()->origin_vn_path()) {
             BgpAttrPtr new_attr = attr_db->ReplaceOriginVnPathAndLocate(
