@@ -128,17 +128,19 @@ BgpAttrPtr InetVpnTable::GetInetAttributes(BgpRoute *route,
     if (!inet_attrp || inet_attrp->source_rd().IsZero())
         return inet_attrp;
 
+    BgpTable *inet_table = dynamic_cast<InetTable *>(route->table());
+    assert(inet_table);
     const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
     InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
-    DBTablePartition *inet_partition =
-        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
+    DBTablePartition *inet_partition = dynamic_cast<DBTablePartition *>(
+        inet_table->GetTablePartition(&inet_rt_key));
 
     InetVpnPrefix inetvpn_prefix(inet_attrp->source_rd(),
                                  inet_prefix.ip4_addr(),
                                  inet_prefix.prefixlen());
     RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
-    DBTablePartition *inetvpn_partition =
-        static_cast<DBTablePartition *>(GetTablePartition(&inetvpn_rt_key));
+    DBTablePartition *inetvpn_partition = dynamic_cast<DBTablePartition *>(
+        GetTablePartition(&inetvpn_rt_key));
     assert(inet_partition->index() == inetvpn_partition->index());
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
         TableFind(inetvpn_partition, &inetvpn_rt_key));
@@ -163,8 +165,8 @@ void InetVpnTable::UpdateInetRoute(BgpServer *server,
     Ip4Prefix inet_prefix(inetvpn_route->GetPrefix().addr(),
                           inetvpn_route->GetPrefix().prefixlen());
     InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
-    DBTablePartition *inet_partition =
-        static_cast<DBTablePartition *>(GetTablePartition(&inet_rt_key));
+    DBTablePartition *inet_partition = dynamic_cast<DBTablePartition *>(
+        inet_table->GetTablePartition(&inet_rt_key));
 
     RequestKey inetvpn_rt_key(inetvpn_route->GetPrefix(), NULL);
     DBTablePartition *inetvpn_partition =
