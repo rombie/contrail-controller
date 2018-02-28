@@ -1303,10 +1303,10 @@ bool BgpXmppChannel::ProcessItem(string vrf_name,
         attrs.push_back(&nexthop);
         uint16_t cluster_seed =
             bgp_server_->global_config()->rd_cluster_seed();
+        BgpAttrSourceRd source_rd;
         if (!master || primary_instance_id) {
             if (master)
                 instance_id = primary_instance_id;
-            BgpAttrSourceRd source_rd;
             if (cluster_seed) {
                 source_rd = BgpAttrSourceRd(
                     RouteDistinguisher(cluster_seed, addr, instance_id));
