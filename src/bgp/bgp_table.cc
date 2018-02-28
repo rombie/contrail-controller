@@ -16,7 +16,7 @@
 #include "bgp/bgp_route.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
-#include "bgp/l3vpn/inetvpn_table.h"
+#include "bgp/inet/inet_table.h"
 #include "bgp/routing-instance/iroute_aggregator.h"
 #include "bgp/routing-instance/path_resolver.h"
 #include "bgp/routing-instance/routing_instance.h"

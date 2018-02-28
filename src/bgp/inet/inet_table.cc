@@ -6,6 +6,7 @@
 
 #include <boost/foreach.hpp>
 
+#include "base/task_annotations.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
 #include "bgp/extended-community/source_as.h"
@@ -270,7 +271,7 @@ BgpAttrPtr InetTable::GetAttributes(BgpRoute *route, BgpAttrPtr inet_attrp,
     const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
     RequestKey inet_rt_key(inet_prefix, NULL);
     DBTablePartition *inet_partition = dynamic_cast<DBTablePartition *>(
-        inet_table->GetTablePartition(&inet_rt_key));
+        GetTablePartition(&inet_rt_key));
 
     InetVpnTable *inetvpn_table = dynamic_cast<InetVpnTable *>(
         routing_instance()->GetTable(Address::INETVPN));
@@ -280,7 +281,7 @@ BgpAttrPtr InetTable::GetAttributes(BgpRoute *route, BgpAttrPtr inet_attrp,
                                  inet_prefix.prefixlen());
     InetVpnTable::RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition = dynamic_cast<DBTablePartition *>(
-        GetTablePartition(&inetvpn_rt_key));
+        inetvpn_table->GetTablePartition(&inetvpn_rt_key));
     assert(inet_partition->index() == inetvpn_partition->index());
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
         inetvpn_table->TableFind(inetvpn_partition, &inetvpn_rt_key));
@@ -297,7 +298,6 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
     CHECK_CONCURRENCY("db::DBTable");
     assert(routing_instance()->IsMasterRoutingInstance());
 
-    BgpServer *server = routing_instance()->server();
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(route);
     assert(route);
 

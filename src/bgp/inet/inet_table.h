@@ -58,8 +58,8 @@ public:
 private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
-    void UpdateRoute(BgpServer *server, BgpRoute *route,
-                      const BgpPath *inetvpn_path, BgpAttrPtr inetvpn_attr);
+    void UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
+                     BgpAttrPtr inetvpn_attr);
     BgpAttrPtr UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                 const BgpAttrPtr inet_attrp);
     void UpdateExtendedCommunity(RibOutAttr *roattr);
