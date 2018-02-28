@@ -54,10 +54,10 @@ public:
         return((family_ == Address::INETMPLS) ? false : true); }
     BgpAttrPtr GetAttributes(BgpRoute *route, BgpAttrPtr attrp,
                              const IPeer *peer);
-
-private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
+
+private:
     void UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
                      BgpAttrPtr inetvpn_attr);
     BgpAttrPtr UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
