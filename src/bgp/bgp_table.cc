@@ -527,13 +527,9 @@ void BgpTable::Input(DBTablePartition *root, DBClient *client,
         label = nexthop.label_;
         l3_label = nexthop.l3_label_;
 
-        if (family() == Address::INET &&
-                routing_instance()->IsMasterRoutingInstance()) {
-            InetVpnTable *vpn_table =
-                dynamic_cast<InetVpnTable *>(routing_instance()->GetTable(
-                                                 Address::INETVPN));
-            attr = vpn_table->GetInetAttributes(rt, attr, peer);
-        }
+        InetTable *inet_table = dynamic_cast<InetTable *>(this);
+        if (inet_table)
+            attr = inet_table->GetAttributes(rt, attr, peer);
     } else {
         if (!path)
             return;

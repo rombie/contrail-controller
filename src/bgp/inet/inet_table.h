@@ -52,10 +52,18 @@ public:
     virtual bool IsRoutingPolicySupported() const { return true; }
     virtual bool IsRouteAggregationSupported() const {
         return((family_ == Address::INETMPLS) ? false : true); }
-    virtual BgpRoute *TableFind(DBTablePartition *rtp,
-                                const DBRequestKey *prefix);
+    BgpAttrPtr GetAttributes(BgpRoute *route, BgpAttrPtr attrp,
+                             const IPeer *peer);
 
 private:
+    virtual BgpRoute *TableFind(DBTablePartition *rtp,
+                                const DBRequestKey *prefix);
+    void UpdateRoute(BgpServer *server, BgpRoute *route,
+                      const BgpPath *inetvpn_path, BgpAttrPtr inetvpn_attr);
+    BgpAttrPtr UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
+                                const BgpAttrPtr inet_attrp);
+    void UpdateExtendedCommunity(RibOutAttr *roattr);
+
     Address::Family family_;
     DISALLOW_COPY_AND_ASSIGN(InetTable);
 };

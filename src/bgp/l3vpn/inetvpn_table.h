@@ -45,16 +45,10 @@ public:
                         const RibPeerSet &peerset,
                         UpdateInfoSList &info_slist);
     static DBTableBase *CreateTable(DB *db, const std::string &name);
-    BgpAttrPtr GetInetAttributes(BgpRoute *route, BgpAttrPtr attrp,
-                                 const IPeer *peer);
-
-private:
     virtual BgpRoute *TableFind(DBTablePartition *rtp,
                                 const DBRequestKey *prefix);
-    void UpdateInetRoute(BgpServer *server, InetVpnRoute *route,
-                         const BgpPath *inetvpn_path, BgpAttrPtr inetvpn_attr);
-    BgpAttrPtr UpdateInetAttributes(const BgpAttrPtr inetvpn_attrp,
-                                    const BgpAttrPtr inet_attrp);
+
+private:
 
     DISALLOW_COPY_AND_ASSIGN(InetVpnTable);
 };
