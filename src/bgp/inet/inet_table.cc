@@ -299,7 +299,7 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
     assert(routing_instance()->IsMasterRoutingInstance());
 
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(route);
-    assert(route);
+    assert(inetvpn_route);
 
     // Check if a route is present in inet.0 table for this prefix.
     Ip4Prefix inet_prefix(inetvpn_route->GetPrefix().addr(),
@@ -326,11 +326,13 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
     if (!inet_path)
         return;
     BgpAttrPtr inet_attrp = inet_path->GetAttr();
+    if (!inet_attrp)
+        return;
 
     // Bail if the RDs do not match.
-    if (!inet_attrp || inet_attrp->source_rd() !=
-            inetvpn_route->GetPrefix().route_distinguisher()) {
-        return inet_attrp;
+    if (!(inet_attrp->source_rd() ==
+            inetvpn_route->GetPrefix().route_distinguisher())) {
+        return;
     }
     BgpAttrPtr new_inet_attrp = UpdateAttributes(inetvpn_attr, inet_attrp);
     if (new_inet_attrp == inet_attrp)
