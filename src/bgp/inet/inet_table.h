@@ -54,15 +54,15 @@ public:
         return((family_ == Address::INETMPLS) ? false : true); }
     BgpAttrPtr GetAttributes(BgpRoute *route, BgpAttrPtr attrp,
                              const IPeer *peer);
-    virtual BgpRoute *TableFind(DBTablePartition *rtp,
-                                const DBRequestKey *prefix);
-
-private:
     void UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
                      BgpAttrPtr inetvpn_attr);
+
+private:
     BgpAttrPtr UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                 const BgpAttrPtr inet_attrp);
     void UpdateExtendedCommunity(RibOutAttr *roattr);
+    virtual BgpRoute *TableFind(DBTablePartition *rtp,
+                                const DBRequestKey *prefix);
 
     Address::Family family_;
     DISALLOW_COPY_AND_ASSIGN(InetTable);
