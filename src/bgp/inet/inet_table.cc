@@ -321,10 +321,17 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
         TableFind(inet_partition, &inet_rt_key));
     if (!inet_route)
         return;
+
     BgpPath *inet_path = inet_route->FindPath(inetvpn_path->GetPeer());
     if (!inet_path)
         return;
     BgpAttrPtr inet_attrp = inet_path->GetAttr();
+
+    // Bail if the RDs do not match.
+    if (!inet_attrp || inet_attrp->source_rd() !=
+            inetvpn_route->GetPrefix().route_distinguisher()) {
+        return inet_attrp;
+    }
     BgpAttrPtr new_inet_attrp = UpdateAttributes(inetvpn_attr, inet_attrp);
     if (new_inet_attrp == inet_attrp)
         return;
