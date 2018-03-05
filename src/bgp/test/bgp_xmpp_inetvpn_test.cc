@@ -1112,7 +1112,6 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_4) {
                       route_a, "192.168.1.1", 200, "", "blue");
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "", "blue");
-    FabricTestTearDown(route_a);
 
     // Delete VPN route.
     agent_a_->DeleteRoute("blue", route_a);
@@ -1126,6 +1125,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_4) {
                       route_a, "192.168.1.1", 200, "", "blue");
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
 }
 
 //
