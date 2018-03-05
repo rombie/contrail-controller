@@ -1953,10 +1953,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete1) {
 
     // Verify reach/unreach, end-of-rib and total counts.
     // 1 route-target and kRouteCount inet-vpn routes.
-    // 2 end-of-ribs - one for route-target and one for inet-vpn.
+    // 3 end-of-ribs - one for route-target, one for inet-vpn and one for inet.
     TASK_UTIL_EXPECT_EQ(3 + kRouteCount, peer_xy->get_tx_route_reach());
     TASK_UTIL_EXPECT_EQ(2 + kRouteCount, peer_xy->get_tx_route_unreach());
-    TASK_UTIL_EXPECT_EQ(2, peer_xy->get_tx_end_of_rib());
+    TASK_UTIL_EXPECT_EQ(3, peer_xy->get_tx_end_of_rib());
     TASK_UTIL_EXPECT_EQ(
         2 * (2 + kRouteCount) + 3, peer_xy->get_tx_route_total());
 
