@@ -178,6 +178,10 @@ static const char *config_2_control_nodes = "\
         <virtual-network>default-domain:default-project:ip-fabric</virtual-network>\
         <vrf-target>target:1:100</vrf-target>\
     </routing-instance>\
+    <routing-instance name='default-domain:default-project:ip-fabric:default'>\
+        <virtual-network>default-domain:default-project:ip-fabric</virtual-network>\
+        <vrf-target>target:1:200</vrf-target>\
+    </routing-instance>\
     <virtual-network name='blue'>\
         <network-id>1</network-id>\
     </virtual-network>\
@@ -787,6 +791,69 @@ static string BuildPrefix(uint32_t idx) {
     string prefix = string("10.1.") +
         integerToString(idx / 255) + "." + integerToString(idx % 255) + "/32";
     return prefix;
+}
+
+TEST_F(BgpXmppInetvpn2ControlNodeTest, VPNaddThenFabricAdd) {
+    Configure();
+    task_util::WaitForIdle();
+
+    // Create XMPP Agent A connected to XMPP server X.
+    agent_a_.reset(
+        new test::NetworkAgentMock(&evm_, "agent-a", xs_x_->GetPort(),
+            "127.0.0.1", "127.0.0.1"));
+    TASK_UTIL_EXPECT_TRUE(agent_a_->IsEstablished());
+
+    // Create XMPP Agent B connected to XMPP server Y.
+    agent_b_.reset(
+        new test::NetworkAgentMock(&evm_, "agent-b", xs_y_->GetPort(),
+            "127.0.0.2", "127.0.0.2"));
+    TASK_UTIL_EXPECT_TRUE(agent_b_->IsEstablished());
+
+    // Register to blue instance
+    agent_a_->Subscribe("blue", 1);
+    agent_a_->Subscribe(BgpConfigManager::kMasterInstance, 0);
+    agent_b_->Subscribe("blue", 1);
+    agent_b_->Subscribe(BgpConfigManager::kMasterInstance, 0);
+
+    // Add route from agent A.
+    stringstream route_a;
+    route_a << "10.1.1.1/32";
+    agent_a_->AddRoute("blue", route_a.str(), "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    // Verify that route showed up on agents A and B.
+    VerifyRouteExists(agent_a_, "blue", route_a.str(), "192.168.1.1", 200);
+    VerifyRouteExists(agent_b_, "blue", route_a.str(), "192.168.1.1", 200);
+
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue.
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a.str(),
+                       "192.168.1.1", 200, 0, 1);
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a.str(), "192.168.1.1", 200);
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a.str(), "192.168.1.1", 200);
+
+    // Verify that fabric route has blue OriginVN extended community attribute
+    // in both controln-nodes.
+
+    // Delete route from agent A from both blue and fabric.
+    agent_a_->DeleteRoute("blue", route_a.str());
+    task_util::WaitForIdle();
+    agent_a_->DeleteRoute(BgpConfigManager::kMasterInstance, route_a.str());
+    task_util::WaitForIdle();
+
+    // Verify that route is deleted at agents A and B.
+    VerifyRouteNoExists(agent_a_, "blue", route_a.str());
+    VerifyRouteNoExists(agent_b_, "blue", route_a.str());
+    VerifyRouteNoExists(agent_a_, BgpConfigManager::kMasterInstance,
+                        route_a.str());
+    VerifyRouteNoExists(agent_b_, BgpConfigManager::kMasterInstance,
+                        route_a.str());
+
+    // Close the sessions.
+    agent_a_->SessionDown();
+    agent_b_->SessionDown();
 }
 
 //
