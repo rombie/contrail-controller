@@ -1958,7 +1958,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete1) {
     TASK_UTIL_EXPECT_EQ(2 + kRouteCount, peer_xy->get_tx_route_unreach());
     TASK_UTIL_EXPECT_EQ(3, peer_xy->get_tx_end_of_rib());
     TASK_UTIL_EXPECT_EQ(
-        2 * (2 + kRouteCount) + 3, peer_xy->get_tx_route_total());
+        2 * (2 + kRouteCount) + 4, peer_xy->get_tx_route_total());
 
     // Close the sessions.
     agent_a_->SessionDown();
