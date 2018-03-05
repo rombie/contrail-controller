@@ -636,8 +636,10 @@ protected:
             return false;
         if (seq && rt->entry.sequence_number != seq)
             return false;
-        if (!origin_vn.empty() && rt->entry.virtual_network != origin_vn)
-            return false;
+        if (!origin_vn.empty()) {
+            if (rt->entry.virtual_network != origin_vn)
+                return false;
+        }
         if (!sgids.empty() &&
             rt->entry.security_group_list.security_group != sgids)
             return false;
@@ -775,6 +777,8 @@ protected:
     void VerifyL3VPNRouteExists(BgpServerTestPtr server, string prefix) {
         TASK_UTIL_EXPECT_TRUE(CheckL3VPNRouteExists(server, prefix));
     }
+    void FabricTestSetUp();
+    void FabricTestTearDown(const string &route_a);
 
     EventManager evm_;
     ServerThread thread_;
@@ -795,7 +799,7 @@ static string BuildPrefix(uint32_t idx) {
     return prefix;
 }
 
-TEST_F(BgpXmppInetvpn2ControlNodeTest, VPNaddThenFabricAdd) {
+void BgpXmppInetvpn2ControlNodeTest::FabricTestSetUp() {
     Configure();
     task_util::WaitForIdle();
 
@@ -816,48 +820,224 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, VPNaddThenFabricAdd) {
     agent_a_->Subscribe(BgpConfigManager::kMasterInstance, 0);
     agent_b_->Subscribe("blue", 1);
     agent_b_->Subscribe(BgpConfigManager::kMasterInstance, 0);
+}
 
-    // Add route from agent A.
-    stringstream route_a;
-    route_a << "10.1.1.1/32";
-    agent_a_->AddRoute("blue", route_a.str(), "192.168.1.1", 200);
-    task_util::WaitForIdle();
-
-    // Verify that route showed up on agents A and B.
-    VerifyRouteExists(agent_a_, "blue", route_a.str(), "192.168.1.1", 200, "",
-                      "blue");
-    VerifyRouteExists(agent_b_, "blue", route_a.str(), "192.168.1.1", 200, "",
-                      "blue");
-
-    // Add the same ipv4 route to fabric instance with primary table index as
-    // that of blue.
-    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a.str(),
-                       "192.168.1.1", 200, 0, 1);
-    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
-                      route_a.str(), "192.168.1.1", 200, "", "blue");
-    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
-                      route_a.str(), "192.168.1.1", 200, "", "blue");
-
-    // Verify that fabric route has blue OriginVN extended community attribute
-    // in both control-nodes.
-
+void BgpXmppInetvpn2ControlNodeTest::FabricTestTearDown(const string &route_a) {
     // Delete route from agent A from both blue and fabric.
-    agent_a_->DeleteRoute("blue", route_a.str());
+    agent_a_->DeleteRoute("blue", route_a);
     task_util::WaitForIdle();
-    agent_a_->DeleteRoute(BgpConfigManager::kMasterInstance, route_a.str());
+    agent_a_->DeleteRoute(BgpConfigManager::kMasterInstance, route_a);
     task_util::WaitForIdle();
 
     // Verify that route is deleted at agents A and B.
-    VerifyRouteNoExists(agent_a_, "blue", route_a.str());
-    VerifyRouteNoExists(agent_b_, "blue", route_a.str());
-    VerifyRouteNoExists(agent_a_, BgpConfigManager::kMasterInstance,
-                        route_a.str());
-    VerifyRouteNoExists(agent_b_, BgpConfigManager::kMasterInstance,
-                        route_a.str());
+    VerifyRouteNoExists(agent_a_, "blue", route_a);
+    VerifyRouteNoExists(agent_b_, "blue", route_a);
+    VerifyRouteNoExists(agent_a_, BgpConfigManager::kMasterInstance, route_a);
+    VerifyRouteNoExists(agent_b_, BgpConfigManager::kMasterInstance, route_a);
 
     // Close the sessions.
     agent_a_->SessionDown();
     agent_b_->SessionDown();
+}
+
+// Add VPN route followed by fabric route with correct primary index.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_1) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue.
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
+}
+
+// Add VPN route followed by fabric route with incorrect primary index.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_2) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue.
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 2); // 2 is incorrect index.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    FabricTestTearDown(route_a);
+}
+
+// Add VPN route followed by fabric route with incorrect primary index. Update
+// the route with correct primary table index afterwards.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_3) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue (but index is incorrect)
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 2);
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+     
+                      BgpConfigManager::kMasterInstance);
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue ,now with correct index.
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
+}
+
+// Add Fabric route followed by VPN route with correct primary index.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_1) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+
+    // Add the ipv4 route to fabric instance with primary table index as blue
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
+
+    // OriginVN is not expected to be set as VPN route is not added yet.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+
+    // Add the vpn route to blue.
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // OriginVN should now be set to blue as VPN route is also added.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
+}
+
+// Add Fabric route followed by VPN route with incorrect primary index.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_2) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+
+    // Add the ipv4 route to fabric instance with primary table index as junk
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 2);
+    task_util::WaitForIdle();
+
+    // OriginVN is not expected to be set as VPN route is not added yet.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+
+    // Add the vpn route to blue.
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // OriginVN should still not be set to blue as fabric route was added with
+    // incorrect primary instance index.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    FabricTestTearDown(route_a);
+}
+
+// Add Fabric route followed by VPN route with incorrect primary index. Update
+// with correct primary instance index afterwards.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_3) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+
+    // Add the ipv4 route to fabric instance with primary table index as junk
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 2);
+    task_util::WaitForIdle();
+
+    // OriginVN is not expected to be set as VPN route is not added yet.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+
+    // Add the vpn route to blue.
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // OriginVN should still not be set to blue as fabric route was added with
+    // incorrect primary instance index.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "",
+                      BgpConfigManager::kMasterInstance);
+
+    // Add the ipv4 route to fabric instance with primary table index as blue
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
+
+    // OriginVN should now be set to blue as VPN route is also added.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
 }
 
 //
