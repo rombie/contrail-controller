@@ -179,6 +179,8 @@ public:
     XmppChannel *xmpp_channel() const { return channel_; }
     void ReceiveEndOfRIB(Address::Family family);
     void ProcessPendingSubscriptions();
+    int GetPrimaryInstanceID(const std::string &s,
+                             bool expect_prefix_len) const;
 
 protected:
     struct InstanceMembershipRequestState {
@@ -190,6 +192,7 @@ protected:
         int instance_id;
         bool no_ribout;
     };
+
 
     XmppChannel *channel_;
 
@@ -285,7 +288,6 @@ private:
         const std::string &table_name);
     const TableMembershipRequestState *GetTableMembershipState(
         const std::string &table_name) const;
-    int GetPrimaryInstanceID(char *str, bool prefix_len) const;
 
     void AddInstanceMembershipState(const std::string &instance,
         InstanceMembershipRequestState imr_state);

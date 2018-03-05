@@ -2755,21 +2755,30 @@ void BgpXmppChannel::SendEndOfRIB() {
 }
 
 // Process any associated primary instance-id.
-int BgpXmppChannel::GetPrimaryInstanceID(char *str, bool prefix_len) const {
-    if (!str)
+int BgpXmppChannel::GetPrimaryInstanceID(const string &s, 
+                                         bool expect_prefix_len) const {
+    if (s.empty())
         return 0;
-    char *token = strtok_r(NULL, "/", &str);
-    if (!token || !str) // this vrf name
+    char *str = const_cast<char *>(s.c_str());
+    char *saveptr, *token;
+    token = strtok_r(str, "/", &saveptr); // Get afi
+    if (!token || !saveptr)
         return 0;
-    token = strtok_r(NULL, "/", &str); // address
-    if (!token || !str)
+    token = strtok_r(NULL, "/", &saveptr); // Get safi
+    if (!token || !saveptr)
         return 0;
-    if (prefix_len) {
-        token = strtok_r(NULL, "/", &str); // prefix-length
-        if (!token || !str)
+    token = strtok_r(NULL, "/", &saveptr); // vrf name
+    if (!token || !saveptr)
+        return 0;
+    token = strtok_r(NULL, "/", &saveptr); // address
+    if (!token || !saveptr)
+        return 0;
+    if (expect_prefix_len) {
+        token = strtok_r(NULL, "/", &saveptr); // prefix-length
+        if (!token || !saveptr)
             return 0;
     }
-    token = strtok_r(NULL, "/", &str); // primary instance-id
+    token = strtok_r(NULL, "/", &saveptr); // primary instance-id
     if (!token)
         return 0;
     return strtoul(token, NULL, 0);
@@ -2823,7 +2832,7 @@ void BgpXmppChannel::ReceiveUpdate(const XmppStanza::XmppMessage *msg) {
                         ((atoi(safi) == BgpAf::Unicast) ||
                          (atoi(safi) == BgpAf::Mpls))) {
                         ProcessItem(iq->node, item, iq->is_as_node,
-                                    GetPrimaryInstanceID(saveptr, true));
+                            GetPrimaryInstanceID(iq->as_node, true));
                     } else if (atoi(af) == BgpAf::IPv6 &&
                                atoi(safi) == BgpAf::Unicast) {
                         ProcessInet6Item(iq->node, item, iq->is_as_node);
