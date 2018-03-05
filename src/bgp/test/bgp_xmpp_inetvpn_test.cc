@@ -883,10 +883,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_2) {
     task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     FabricTestTearDown(route_a);
 }
 
@@ -910,11 +910,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_3) {
     task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-     
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     // Add the same ipv4 route to fabric instance with primary table index as
     // that of blue ,now with correct index.
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
@@ -989,10 +988,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_2) {
     // incorrect primary instance index.
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     FabricTestTearDown(route_a);
 }
 
@@ -1026,10 +1025,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_3) {
     // incorrect primary instance index.
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
-                      BgpConfigManager::kMasterInstance);
+                      BgpConfigManager::kMasterNetwork);
 
     // Add the ipv4 route to fabric instance with primary table index as blue
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
