@@ -56,7 +56,7 @@ public:
     BgpAttrPtr GetAttributes(const Ip4Prefix &inet_prefix, BgpAttrPtr attrp,
                              const IPeer *peer);
     void UpdateRoute(const InetVpnPrefix &inetvpn_prefix, const IPeer *peer,
-                     BgpAttrPtr inetvpn_attr);
+                     BgpAttrPtr inetvpn_attrp);
 
 private:
     BgpAttrPtr UpdateAttributes(const BgpAttrPtr inetvpn_attrp,

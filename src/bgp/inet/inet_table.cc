@@ -290,7 +290,7 @@ BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
 }
 
 void InetTable::UpdateRoute(const InetVpnPrefix &inetvpn_prefix,
-                            const IPeer *peer, BgpAttrPtr inetvpn_attr) {
+                            const IPeer *peer, BgpAttrPtr inetvpn_attrp) {
     CHECK_CONCURRENCY("db::DBTable");
     assert(routing_instance()->IsMasterRoutingInstance());
 
@@ -325,7 +325,7 @@ void InetTable::UpdateRoute(const InetVpnPrefix &inetvpn_prefix,
     if (!(inet_attrp->source_rd() == inetvpn_prefix.route_distinguisher())) {
         return;
     }
-    BgpAttrPtr new_inet_attrp = UpdateAttributes(inetvpn_attr, inet_attrp);
+    BgpAttrPtr new_inet_attrp = UpdateAttributes(inetvpn_attrp, inet_attrp);
     if (new_inet_attrp == inet_attrp)
         return;
 
