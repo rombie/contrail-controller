@@ -487,7 +487,8 @@ pugi::xml_document *XmppDocumentMock::RouteAddDeleteXmlDoc(
             autogen::NextHopType item_nexthop;
             item_nexthop.af = BgpAf::IPv4;
             item_nexthop.address = localaddr();
-            item_nexthop.label = label_alloc_++;
+            if (!primary_instance_index)
+                item_nexthop.label = label_alloc_++;
             item_nexthop.tunnel_encapsulation_list.tunnel_encapsulation =
                 list_of("gre");
             rt_entry.entry.next_hops.next_hop.push_back(item_nexthop);
@@ -496,7 +497,7 @@ pugi::xml_document *XmppDocumentMock::RouteAddDeleteXmlDoc(
             item_nexthop.af = BgpAf::IPv4;
             assert(!nh.address_.empty());
             item_nexthop.address = nh.address_;
-            if (!nh.no_label_) {
+            if (!primary_instance_index && !nh.no_label_) {
                 item_nexthop.label = nh.label_ ? nh.label_ : label_alloc_++;
             }
             item_nexthop.tunnel_encapsulation_list.tunnel_encapsulation =

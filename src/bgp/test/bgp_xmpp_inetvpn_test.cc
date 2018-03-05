@@ -178,7 +178,7 @@ static const char *config_2_control_nodes = "\
         <virtual-network>default-domain:default-project:ip-fabric</virtual-network>\
         <vrf-target>target:1:100</vrf-target>\
     </routing-instance>\
-    <routing-instance name='default-domain:default-project:ip-fabric:default'>\
+    <routing-instance name='default-domain:default-project:ip-fabric:__default__'>\
         <virtual-network>default-domain:default-project:ip-fabric</virtual-network>\
         <vrf-target>target:1:200</vrf-target>\
     </routing-instance>\
@@ -835,7 +835,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, VPNaddThenFabricAdd) {
                       route_a.str(), "192.168.1.1", 200);
 
     // Verify that fabric route has blue OriginVN extended community attribute
-    // in both controln-nodes.
+    // in both control-nodes.
 
     // Delete route from agent A from both blue and fabric.
     agent_a_->DeleteRoute("blue", route_a.str());
