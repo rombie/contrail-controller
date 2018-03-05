@@ -174,7 +174,7 @@ bool InetTable::Export(RibOut *ribout, Route *route, const RibPeerSet &peerset,
     return true;
 }
 
-// Strip ExtCommunity execpt OriginVN.
+// Strip ExtCommunity except OriginVN.
 void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
     ExtCommunityPtr ext_commp = roattr->attr()->ext_community();
     if (!ext_commp)
@@ -215,7 +215,7 @@ void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
 // master table for this peer. If a path is found and is associated
 // with OriginVn community, attach the same to this route as well.
 BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
-                                           const BgpAttrPtr inet_attrp) {
+                                       const BgpAttrPtr inet_attrp) {
     BgpServer *server = routing_instance()->server();
 
     // Check if origin-vn path attribute in inet.0 table path is identical to
@@ -256,8 +256,8 @@ BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                                            new_ext_community);
 }
 
-BgpAttrPtr InetTable::GetAttributes(BgpRoute *route, BgpAttrPtr inet_attrp,
-                                    const IPeer *peer) {
+BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
+                                    BgpAttrPtr inet_attrp, const IPeer *peer) {
     CHECK_CONCURRENCY("db::DBTable");
 
     if (!routing_instance()->IsMasterRoutingInstance())
@@ -265,10 +265,6 @@ BgpAttrPtr InetTable::GetAttributes(BgpRoute *route, BgpAttrPtr inet_attrp,
     if (!inet_attrp || inet_attrp->source_rd().IsZero())
         return inet_attrp;
 
-    InetRoute *inet_route = dynamic_cast<InetRoute *>(route);
-    assert(inet_route);
-
-    const Ip4Prefix &inet_prefix = inet_route->GetPrefix();
     RequestKey inet_rt_key(inet_prefix, NULL);
     DBTablePartition *inet_partition = dynamic_cast<DBTablePartition *>(
         GetTablePartition(&inet_rt_key));
@@ -293,17 +289,13 @@ BgpAttrPtr InetTable::GetAttributes(BgpRoute *route, BgpAttrPtr inet_attrp,
     return UpdateAttributes(inetvpn_path->GetAttr(), inet_attrp);
 }
 
-void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
-                            BgpAttrPtr inetvpn_attr) {
+void InetTable::UpdateRoute(const InetVpnPrefix &inetvpn_prefix,
+                            const IPeer *peer, BgpAttrPtr inetvpn_attr) {
     CHECK_CONCURRENCY("db::DBTable");
     assert(routing_instance()->IsMasterRoutingInstance());
 
-    InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(route);
-    assert(inetvpn_route);
-
     // Check if a route is present in inet.0 table for this prefix.
-    Ip4Prefix inet_prefix(inetvpn_route->GetPrefix().addr(),
-                          inetvpn_route->GetPrefix().prefixlen());
+    Ip4Prefix inet_prefix(inetvpn_prefix.addr(), inetvpn_prefix.prefixlen());
     InetTable::RequestKey inet_rt_key(inet_prefix, NULL);
     DBTablePartition *inet_partition = dynamic_cast<DBTablePartition *>(
         GetTablePartition(&inet_rt_key));
@@ -311,7 +303,7 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
     InetVpnTable *inetvpn_table = dynamic_cast<InetVpnTable *>(
         routing_instance()->GetTable(Address::INETVPN));
     assert(inetvpn_table);
-    InetVpnTable::RequestKey inetvpn_rt_key(inetvpn_route->GetPrefix(), NULL);
+    InetVpnTable::RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition =
         static_cast<DBTablePartition *>(inetvpn_table->GetTablePartition(
             &inetvpn_rt_key));
@@ -322,7 +314,7 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
     if (!inet_route)
         return;
 
-    BgpPath *inet_path = inet_route->FindPath(inetvpn_path->GetPeer());
+    BgpPath *inet_path = inet_route->FindPath(peer);
     if (!inet_path)
         return;
     BgpAttrPtr inet_attrp = inet_path->GetAttr();
@@ -330,8 +322,7 @@ void InetTable::UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
         return;
 
     // Bail if the RDs do not match.
-    if (!(inet_attrp->source_rd() ==
-            inetvpn_route->GetPrefix().route_distinguisher())) {
+    if (!(inet_attrp->source_rd() == inetvpn_prefix.route_distinguisher())) {
         return;
     }
     BgpAttrPtr new_inet_attrp = UpdateAttributes(inetvpn_attr, inet_attrp);

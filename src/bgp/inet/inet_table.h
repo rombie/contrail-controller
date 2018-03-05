@@ -11,8 +11,9 @@
 #include "bgp/inet/inet_route.h"
 #include "net/address.h"
 
-class Ip4Prefix;
 class BgpServer;
+class InetVpnPrefix;
+class Ip4Prefix;
 class PathResolver;
 
 class InetTable : public BgpTable {
@@ -52,9 +53,9 @@ public:
     virtual bool IsRoutingPolicySupported() const { return true; }
     virtual bool IsRouteAggregationSupported() const {
         return((family_ == Address::INETMPLS) ? false : true); }
-    BgpAttrPtr GetAttributes(BgpRoute *route, BgpAttrPtr attrp,
+    BgpAttrPtr GetAttributes(const Ip4Prefix &inet_prefix, BgpAttrPtr attrp,
                              const IPeer *peer);
-    void UpdateRoute(BgpRoute *route, const BgpPath *inetvpn_path,
+    void UpdateRoute(const InetVpnPrefix &inetvpn_prefix, const IPeer *peer,
                      BgpAttrPtr inetvpn_attr);
 
 private:

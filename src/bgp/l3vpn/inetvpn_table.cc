@@ -4,7 +4,6 @@
 
 #include "bgp/l3vpn/inetvpn_table.h"
 
-#include "base/task_annotations.h"
 #include "bgp/ipeer.h"
 #include "bgp/bgp_server.h"
 #include "bgp/bgp_update.h"
@@ -145,8 +144,9 @@ BgpRoute *InetVpnTable::RouteReplicate(BgpServer *server,
     // Update corresponding route's extended communities in inet.0 table.
     InetTable *inet_table =
         dynamic_cast<InetTable *>(routing_instance()->GetTable(Address::INET));
-    assert(inet_table);
-    inet_table->UpdateRoute(dest_route, src_path, new_attr);
+    InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(dest_route);
+    inet_table->UpdateRoute(inetvpn_route->GetPrefix(), src_path->GetPeer(),
+                            new_attr);
     return dest_route;
 }
 

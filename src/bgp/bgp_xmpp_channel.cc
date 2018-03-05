@@ -2755,7 +2755,7 @@ void BgpXmppChannel::SendEndOfRIB() {
 }
 
 // Process any associated primary instance-id.
-int BgpXmppChannel::GetPrimaryInstanceID(const string &s, 
+int BgpXmppChannel::GetPrimaryInstanceID(const string &s,
                                          bool expect_prefix_len) const {
     if (s.empty())
         return 0;
