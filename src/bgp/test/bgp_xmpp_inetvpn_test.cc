@@ -856,6 +856,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_1) {
     // that of blue.
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
                        "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "", "blue");
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
@@ -876,9 +877,10 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_2) {
                       "blue");
 
     // Add the same ipv4 route to fabric instance with primary table index as
-    // that of blue.
+    // that of blue with incorrect index.
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
                        "192.168.1.1", 200, 0, 2); // 2 is incorrect index.
+    task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
                       BgpConfigManager::kMasterInstance);
@@ -905,6 +907,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_3) {
     // that of blue (but index is incorrect)
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
                        "192.168.1.1", 200, 0, 2);
+    task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "",
                       BgpConfigManager::kMasterInstance);
@@ -916,6 +919,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_3) {
     // that of blue ,now with correct index.
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
                        "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "", "blue");
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
