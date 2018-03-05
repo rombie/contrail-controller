@@ -926,6 +926,44 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_3) {
     FabricTestTearDown(route_a);
 }
 
+// Add VPN route followed by fabric route with correct primary index. Delete VPN
+// route aftwards.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_VPNAddThenFabricAdd_4) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // Add the same ipv4 route to fabric instance with primary table index as
+    // that of blue.
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+
+    // Delete VPN route.
+    agent_a_->DeleteRoute("blue", route_a);
+    task_util::WaitForIdle();
+    VerifyRouteNoExists(agent_a_, "blue", route_a);
+    VerifyRouteNoExists(agent_b_, "blue", route_a);
+
+    // Fabric route shall remain with "blue" as the attribute. In production
+    // code, fabric route is also expected to be deleted anyways.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
+}
+
 // Add Fabric route followed by VPN route with correct primary index.
 TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_1) {
     FabricTestSetUp();
@@ -1041,6 +1079,53 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_3) {
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
                       route_a, "192.168.1.1", 200, "", "blue");
     FabricTestTearDown(route_a);
+}
+
+// Add Fabric route followed by VPN route with correct primary index.
+// Delete VPN route afterwards.
+TEST_F(BgpXmppInetvpn2ControlNodeTest, FabricTest_FabricAddThenVPNAdd_4) {
+    FabricTestSetUp();
+    string route_a = "10.1.1.1/32";
+
+    // Add the ipv4 route to fabric instance with primary table index as blue
+    agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a,
+                       "192.168.1.1", 200, 0, 1);
+    task_util::WaitForIdle();
+
+    // OriginVN is not expected to be set as VPN route is not added yet.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "");
+
+    // Add the vpn route to blue.
+    agent_a_->AddRoute("blue", route_a, "192.168.1.1", 200);
+    task_util::WaitForIdle();
+
+    VerifyRouteExists(agent_a_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a, "192.168.1.1", 200, "",
+                      "blue");
+
+    // OriginVN should now be set to blue as VPN route is also added.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    FabricTestTearDown(route_a);
+
+    // Delete VPN route.
+    agent_a_->DeleteRoute("blue", route_a);
+    task_util::WaitForIdle();
+    VerifyRouteNoExists(agent_a_, "blue", route_a);
+    VerifyRouteNoExists(agent_b_, "blue", route_a);
+
+    // Fabric route shall remain with "blue" as the attribute. In production
+    // code, fabric route is also expected to be deleted anyways.
+    VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
+    VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
+                      route_a, "192.168.1.1", 200, "", "blue");
 }
 
 //
