@@ -314,8 +314,10 @@ XmppDocumentMock::XmppDocumentMock(const std::string &hostname)
 
 pugi::xml_document *XmppDocumentMock::RouteAddXmlDoc(
         const std::string &network, const std::string &prefix,
-        const NextHop &nh, const RouteAttributes &attributes) {
-    return RouteAddDeleteXmlDoc(network, prefix, true, nh, attributes);
+        const NextHop &nh, const RouteAttributes &attributes,
+        int primary_instance_index) {
+    return RouteAddDeleteXmlDoc(network, prefix, true, nh, attributes,
+                                primary_instance_index);
 }
 
 pugi::xml_document *XmppDocumentMock::RouteDeleteXmlDoc(
@@ -444,13 +446,16 @@ pugi::xml_document *XmppDocumentMock::AddEorMarker() {
 
 pugi::xml_document *XmppDocumentMock::RouteAddDeleteXmlDoc(
         const std::string &network, const std::string &prefix, bool add,
-        const NextHop &nh, const RouteAttributes &attributes) {
+        const NextHop &nh, const RouteAttributes &attributes,
+        int primary_instance_index) {
     xdoc_->reset();
     xml_node pubsub = PubSubHeader(kNetworkServiceJID);
     xml_node pub = pubsub.append_child("publish");
     stringstream header;
     header << BgpAf::IPv4 << "/" <<  BgpAf::Unicast << "/" <<
               network.c_str() << "/" << prefix.c_str();
+    if (primary_instance_index)
+        header << "/" << primary_instance_index;
     pub.append_attribute("node") = header.str().c_str();
     autogen::ItemType rt_entry;
     rt_entry.Clear();
@@ -1195,14 +1200,15 @@ void NetworkAgentMock::SendEorMarker() {
 
 void NetworkAgentMock::AddRoute(const string &network_name,
                                 const string &prefix, const string nexthop,
-                                int local_pref, int med) {
+                                int local_pref, int med,
+                                int primary_instance_index) {
     NextHop nh(nexthop);
     RouteAttributes attributes(
         local_pref, med, RouteAttributes::GetDefaultSequence());
 
     AgentPeer *peer = GetAgent();
-    xml_document *xdoc =
-        impl_->RouteAddXmlDoc(network_name, prefix, nh, attributes);
+    xml_document *xdoc = impl_->RouteAddXmlDoc(network_name, prefix, nh,
+            attributes, primary_instance_index);
     peer->SendDocument(xdoc);
     route_mgr_->AddOriginated(network_name, prefix);
 }
@@ -1210,10 +1216,11 @@ void NetworkAgentMock::AddRoute(const string &network_name,
 void NetworkAgentMock::AddRoute(const string &network_name,
                                 const string &prefix,
                                 const NextHop &nh,
-                                const RouteAttributes &attributes) {
+                                const RouteAttributes &attributes,
+                                int primary_instance_index) {
     AgentPeer *peer = GetAgent();
-    xml_document *xdoc =
-        impl_->RouteAddXmlDoc(network_name, prefix, nh, attributes);
+    xml_document *xdoc = impl_->RouteAddXmlDoc(network_name, prefix, nh,
+            attributes, primary_instance_index);
     peer->SendDocument(xdoc);
     route_mgr_->AddOriginated(network_name, prefix);
 }
@@ -1221,9 +1228,10 @@ void NetworkAgentMock::AddRoute(const string &network_name,
 void NetworkAgentMock::AddRoute(const string &network_name,
                                 const string &prefix,
                                 const string &nexthop,
-                                const RouteAttributes &attributes) {
+                                const RouteAttributes &attributes,
+                                int primary_instance_index) {
     NextHop nh(nexthop);
-    AddRoute(network_name, prefix, nh, attributes);
+    AddRoute(network_name, prefix, nh, attributes, primary_instance_index);
 }
 
 void NetworkAgentMock::DeleteRoute(const string &network_name,

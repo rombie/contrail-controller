@@ -221,21 +221,25 @@ BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
     // Check if origin-vn path attribute in inet.0 table path is identical to
     // what is in inetvpn table path.
     ExtCommunity::ExtCommunityValue const *inetvpn_rt_origin_vn = NULL;
-    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                  inetvpn_attrp->ext_community()->communities()) {
-        if (!ExtCommunity::is_origin_vn(comm))
-            continue;
-        inetvpn_rt_origin_vn = &comm;
-        break;
+    if (inetvpn_attrp && inetvpn_attrp->ext_community()) {
+        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                    inetvpn_attrp->ext_community()->communities()) {
+            if (!ExtCommunity::is_origin_vn(comm))
+                continue;
+            inetvpn_rt_origin_vn = &comm;
+            break;
+        }
     }
 
     ExtCommunity::ExtCommunityValue const *inet_rt_origin_vn = NULL;
-    BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
-                  inet_attrp->ext_community()->communities()) {
-        if (!ExtCommunity::is_origin_vn(comm))
-            continue;
-        inet_rt_origin_vn = &comm;
-        break;
+    if (inet_attrp && inet_attrp->ext_community()) {
+        BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
+                    inet_attrp->ext_community()->communities()) {
+            if (!ExtCommunity::is_origin_vn(comm))
+                continue;
+            inet_rt_origin_vn = &comm;
+            break;
+        }
     }
 
     // Ignore if there is no change.
