@@ -209,11 +209,11 @@ void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
     }
 }
 
-// Insert origin-vn extended-community if primary table is different
-// from the targeted table. (e.g. fabric routes). Form RD using primary
-// table index and associated next-hop and look up in bgp.l3vpn.0
-// master table for this peer. If a path is found and is associated
-// with OriginVn community, attach the same to this route as well.
+// Insert origin-vn extended-community if primary table is different from the
+// targeted table. (e.g. fabric routes). Form RD using primary table index and
+// associated next-hop and look up in bgp.l3vpn.0 master table for this peer.
+// If a path is found and is associated with OriginVn community, attach the same
+// to this route as well.
 BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                        const BgpAttrPtr inet_attrp) {
     BgpServer *server = routing_instance()->server();
