@@ -287,7 +287,7 @@ BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
         inetvpn_table->TableFind(inetvpn_partition, &inetvpn_rt_key));
     if (!inetvpn_route)
         return inet_attrp;
-    BgpPath *inetvpn_path = inetvpn_route->FindPath(peer);
+    BgpPath *inetvpn_path = inetvpn_route->FindPath(peer, true);
     if (!inetvpn_path)
         return inet_attrp;
     return UpdateAttributes(inetvpn_path->GetAttr(), inet_attrp);
