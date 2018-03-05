@@ -2043,9 +2043,9 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete2) {
     // Verify bgp update and socket write counters.
     // X->Y : 2 route-target (1 advertise, 1 withdraw) +
     //        515 inet-vpn (512 advertise, 3 withdraw) +
-    //        2 end-of-rib (1 route-target, 1 inet-vpn)
+    //        3 end-of-rib (1 route-target, 1 inet-vpn, 1 inet0)
     // Y->X : 2 route-target (1 advertise, 1 withdraw) +
-    //        2 end-of-rib (1 route-target, 1 inet-vpn)
+    //        3 end-of-rib (1 route-target, 1 inet-vpn, 1 inet)
     // Socket writes must be way fewer than kRouteCount
     // since we coalesce many updates into fewer socket
     // writes.
@@ -2053,7 +2053,7 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete2) {
     const BgpPeer *peer_yx = VerifyPeerExists(bs_y_, bs_x_);
     TASK_UTIL_EXPECT_EQ(peer_xy->get_rx_update(), peer_yx->get_tx_update());
     TASK_UTIL_EXPECT_EQ(peer_xy->get_tx_update(), peer_yx->get_rx_update());
-    TASK_UTIL_EXPECT_EQ(4 + 3 + kRouteCount, peer_xy->get_tx_update());
+    TASK_UTIL_EXPECT_EQ(5 + 4 + kRouteCount, peer_xy->get_tx_update());
     TASK_UTIL_EXPECT_EQ(5, peer_yx->get_tx_update());
     TASK_UTIL_EXPECT_GE(32, peer_xy->get_socket_writes());
 
