@@ -174,12 +174,13 @@ bool InetTable::Export(RibOut *ribout, Route *route, const RibPeerSet &peerset,
     return true;
 }
 
-// Strip ExtCommunity except OriginVN.
+// Strip all extended-communities except OriginVN.
 void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
     ExtCommunityPtr ext_commp = roattr->attr()->ext_community();
     if (!ext_commp)
         return;
 
+    // Retrieve any origin_vn already present.
     ExtCommunity::ExtCommunityValue const *origin_vnp = NULL;
     BOOST_FOREACH(const ExtCommunity::ExtCommunityValue &comm,
                   ext_commp->communities()) {
@@ -190,6 +191,8 @@ void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
     }
 
     BgpAttrDB *attr_db = routing_instance()->server()->attr_db();
+
+    // If there is no origin-vn, then remove all other extended communities.
     if (!origin_vnp) {
         BgpAttrPtr new_attr = attr_db->ReplaceExtCommunityAndLocate(
             roattr->attr(), NULL);
@@ -197,6 +200,8 @@ void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
         return;
     }
 
+    // Remove all communities other than OriginVN by replacing all of the
+    // extended-community with just OriginVN.
     if (ext_commp->communities().size() > 1) {
         ExtCommunity::ExtCommunityList list;
         list.push_back(*origin_vnp);
@@ -209,11 +214,8 @@ void InetTable::UpdateExtendedCommunity(RibOutAttr *roattr) {
     }
 }
 
-// Insert origin-vn extended-community if primary table is different from the
-// targeted table. (e.g. fabric routes). Form RD using primary table index and
-// associated next-hop and look up in bgp.l3vpn.0 master table for this peer.
-// If a path is found and is associated with OriginVn community, attach the same
-// to this route as well.
+// Attach OriginVN extended-community from inetvpn path attribute if present
+// into inet route path attribute.
 BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                        const BgpAttrPtr inet_attrp) {
     BgpServer *server = routing_instance()->server();
@@ -260,6 +262,8 @@ BgpAttrPtr InetTable::UpdateAttributes(const BgpAttrPtr inetvpn_attrp,
                                                            new_ext_community);
 }
 
+// Given an inet prefix, update OriginVN with corresponding inetvpn route's
+// path attribute.
 BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
                                     BgpAttrPtr inet_attrp, const IPeer *peer) {
     CHECK_CONCURRENCY("db::DBTable");
@@ -282,6 +286,9 @@ BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
     InetVpnTable::RequestKey inetvpn_rt_key(inetvpn_prefix, NULL);
     DBTablePartition *inetvpn_partition = dynamic_cast<DBTablePartition *>(
         inetvpn_table->GetTablePartition(&inetvpn_rt_key));
+
+    // Assert that the partition indicies are identical. This is a MUST
+    // requirement as we need to peek into tables across different families.
     assert(inet_partition->index() == inetvpn_partition->index());
     InetVpnRoute *inetvpn_route = dynamic_cast<InetVpnRoute *>(
         inetvpn_table->TableFind(inetvpn_partition, &inetvpn_rt_key));
@@ -293,6 +300,8 @@ BgpAttrPtr InetTable::GetAttributes(const Ip4Prefix &inet_prefix,
     return UpdateAttributes(inetvpn_path->GetAttr(), inet_attrp);
 }
 
+// Update inet route path attributes with OriginVN from corresponding inetvpn
+// route path attribute.
 void InetTable::UpdateRoute(const InetVpnPrefix &inetvpn_prefix,
                             const IPeer *peer, BgpAttrPtr inetvpn_attrp) {
     CHECK_CONCURRENCY("db::DBTable");
