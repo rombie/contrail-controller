@@ -824,17 +824,19 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, VPNaddThenFabricAdd) {
     task_util::WaitForIdle();
 
     // Verify that route showed up on agents A and B.
-    VerifyRouteExists(agent_a_, "blue", route_a.str(), "192.168.1.1", 200);
-    VerifyRouteExists(agent_b_, "blue", route_a.str(), "192.168.1.1", 200);
+    VerifyRouteExists(agent_a_, "blue", route_a.str(), "192.168.1.1", 200, "",
+                      "blue");
+    VerifyRouteExists(agent_b_, "blue", route_a.str(), "192.168.1.1", 200, "",
+                      "blue");
 
     // Add the same ipv4 route to fabric instance with primary table index as
     // that of blue.
     agent_a_->AddRoute(BgpConfigManager::kMasterInstance, route_a.str(),
                        "192.168.1.1", 200, 0, 1);
     VerifyRouteExists(agent_a_, BgpConfigManager::kMasterInstance,
-                      route_a.str(), "192.168.1.1", 200);
+                      route_a.str(), "192.168.1.1", 200, "", "blue");
     VerifyRouteExists(agent_b_, BgpConfigManager::kMasterInstance,
-                      route_a.str(), "192.168.1.1", 200);
+                      route_a.str(), "192.168.1.1", 200, "", "blue");
 
     // Verify that fabric route has blue OriginVN extended community attribute
     // in both control-nodes.
