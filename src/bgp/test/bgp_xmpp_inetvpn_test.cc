@@ -157,6 +157,7 @@ static const char *config_2_control_nodes = "\
             <address-families>\
                 <family>route-target</family>\
                 <family>inet-vpn</family>\
+                <family>inet</family>\
             </address-families>\
         </session>\
     </bgp-router>\
@@ -168,6 +169,7 @@ static const char *config_2_control_nodes = "\
             <address-families>\
                 <family>route-target</family>\
                 <family>inet-vpn</family>\
+                <family>inet</family>\
             </address-families>\
         </session>\
     </bgp-router>\

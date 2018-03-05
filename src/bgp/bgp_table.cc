@@ -261,7 +261,7 @@ UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
                 return NULL;
 
             // Handle route-target filtering.
-            if (attr->ext_community() != NULL) {
+            if (IsVpnTable() && attr->ext_community() != NULL) {
                 server()->rtarget_group_mgr()->GetRibOutInterestedPeers(
                     ribout, attr->ext_community(), peerset, &new_peerset);
                 if (new_peerset.empty())
