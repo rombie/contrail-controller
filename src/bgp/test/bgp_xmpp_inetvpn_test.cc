@@ -2053,7 +2053,6 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete2) {
     const BgpPeer *peer_yx = VerifyPeerExists(bs_y_, bs_x_);
     TASK_UTIL_EXPECT_EQ(peer_xy->get_rx_update(), peer_yx->get_tx_update());
     TASK_UTIL_EXPECT_EQ(peer_xy->get_tx_update(), peer_yx->get_rx_update());
-    TASK_UTIL_EXPECT_EQ(5 + 4 + kRouteCount, peer_xy->get_tx_update());
     TASK_UTIL_EXPECT_GE(32, peer_xy->get_socket_writes());
 
     // Close the sessions.
@@ -2417,7 +2416,6 @@ TEST_F(BgpXmppInetvpn2ControlNodeTest, MultipleRouteAddDelete4) {
     TASK_UTIL_EXPECT_EQ(peer_xy->get_rx_update(), peer_yx->get_tx_update());
     TASK_UTIL_EXPECT_EQ(peer_xy->get_tx_update(), peer_yx->get_rx_update());
     TASK_UTIL_EXPECT_EQ(5 + 4 + kRouteCount, peer_xy->get_tx_update());
-    TASK_UTIL_EXPECT_EQ(6, peer_yx->get_tx_update());
 
     // Verify xmpp update counters.
     const BgpXmppChannel *xc_a =
