@@ -40,7 +40,7 @@ snmp {
 {% endif %}
 {% if input.snmp is defined and input.snmp.snmp_communities is defined %}
     {% for comm in input.snmp.snmp_communities %}
-        community {{ comm.community }} {
+        community {{ comm }} {
             authorization read-only;
         }
     {% endfor %}
@@ -53,7 +53,7 @@ routing-options {
     {% for static_route in input.static_routes %}
         {% if static_route.subnets is defined and static_route.nexthop is defined %}
             {% for subnet in static_route.subnets %}
-                route {{subnet}} next-hop {{ static_route.nexthop }}
+                route {{subnet}} next-hop {{ static_route.nexthop }};
             {% endfor %}
         {% endif %}
     {% endfor %}

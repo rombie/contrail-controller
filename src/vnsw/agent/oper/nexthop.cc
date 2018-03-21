@@ -18,6 +18,9 @@
 #include <oper/vrf.h>
 #include <oper/agent_sandesh.h>
 #include <oper/crypt_tunnel.h>
+#include <resource_manager/resource_manager.h>
+#include <resource_manager/resource_table.h>
+#include <resource_manager/nexthop_index.h>
 
 using namespace std;
 
@@ -87,7 +90,17 @@ void NextHop::SendObjectLog(const NextHopTable *table,
 NextHop::~NextHop() {
     if (id_ != kInvalidIndex) {
         static_cast<NextHopTable *>(get_table())->FreeInterfaceId(id_);
+        id_ = kInvalidIndex;
     }
+}
+
+void NextHopTable::FreeInterfaceId(size_t index) {
+    if (index <= 2) {
+        agent()->resource_manager()->ReleaseIndex(Resource::NEXTHOP_INDEX, index);
+    } else {
+        agent()->resource_manager()->Release(Resource::NEXTHOP_INDEX, index);
+    }
+    index_table_.Remove(index);
 }
 
 void NextHop::SetKey(const DBRequestKey *key) {
@@ -269,16 +282,23 @@ bool NextHop::NexthopToInterfacePolicy() const {
 NextHopTable::NextHopTable(DB *db, const string &name) : AgentDBTable(db, name){
     // nh-index 0 is reserved by vrouter. So, pre-allocate the first index so
     // that nh added by agent use index 1 and above
-    int id = index_table_.Insert(NULL);
+    Agent::GetInstance()->resource_manager()->
+        ReserveIndex(Resource::NEXTHOP_INDEX, 0);
+    Agent::GetInstance()->resource_manager()->
+        ReserveIndex(Resource::NEXTHOP_INDEX, 1);
+    uint32_t id = index_table_.InsertAtIndex(0, NULL);
+    index_table_.InsertAtIndex(1, NULL);
     assert(id == 0);
 }
 
 NextHopTable::~NextHopTable() {
     FreeInterfaceId(0);
 }
-
+// Reserve the index for DiscardNHKey
 uint32_t NextHopTable::ReserveIndex() {
-    return index_table_.Insert(NULL);
+    agent()->resource_manager()->ReserveIndex(Resource::NEXTHOP_INDEX, 2);
+    index_table_.InsertAtIndex(NextHopTable::kRpfDiscardIndex, NULL);
+    return NextHopTable::kRpfDiscardIndex;
 }
 
 std::auto_ptr<DBEntry> NextHopTable::AllocEntry(const DBRequestKey *k) const {
@@ -297,12 +317,60 @@ std::auto_ptr<DBEntry> NextHopTable::GetEntry(const DBRequestKey *key) const {
 DBEntry *NextHopTable::Add(const DBRequest *req) {
     const NextHopKey *key = static_cast<const NextHopKey *>(req->key.get());
     NextHop *nh = AllocWithKey(key);
-
+    uint32_t index;
     if (nh->CanAdd() == false) {
         delete nh;
         return NULL;
     }
-    nh->set_id(index_table_.Insert(nh));
+    //parse the CompositeNHKey and fill the nh_id's & lables
+    if (nh->GetType() == NextHop::COMPOSITE) {
+        CompositeNH *cnh = static_cast<CompositeNH*>(nh);
+        std::vector<cnhid_label_map>nh_ids;
+        ComponentNHKeyList::const_iterator it =
+            cnh->component_nh_key_list().begin();
+        for (;it != cnh->component_nh_key_list().end(); it++) {
+            if ((*it) != NULL) {
+                CompositeNHKey *composite_nh_key =
+                    static_cast<CompositeNHKey *>((*it)->nh_key()->Clone());
+                const NextHop *nexthop = static_cast<const NextHop *>
+                    (NextHopTable::GetInstance()->FindActiveEntry(composite_nh_key));
+                cnhid_label_map cnh_label;
+                if (nexthop) {
+                    cnh_label.nh_id = nexthop->id();
+                    cnh_label.label = (*it)->label();
+                    nh_ids.push_back(cnh_label);
+                }
+                else {
+                    cnh_label.nh_id = 0;
+                    cnh_label.label = 0;
+                    nh_ids.push_back(cnh_label);
+                }
+                delete composite_nh_key;
+            } else {
+                continue;
+            }
+        }
+        ResourceManager::KeyPtr rkey(new NHIndexResourceKey
+                                     (agent()->resource_manager(),
+                                      NextHop::COMPOSITE,
+                                      (cnh)->composite_nh_type(),
+                                      nh_ids, nh->PolicyEnabled(),
+                                      cnh->vrf()->GetName()));
+        index = ((static_cast<IndexResourceData *>
+                  (agent()->resource_manager()->Allocate(rkey).get()))->index());
+    } else if (nh->GetType() != NextHop::DISCARD) {
+        ResourceManager::KeyPtr rkey(new NHIndexResourceKey
+                                     (agent()->resource_manager(),
+                                      nh->GetType(),
+                                      key->Clone()));
+        index = ((static_cast<IndexResourceData *>
+                  (agent()->resource_manager()->Allocate(rkey).get()))->index());
+    } else {
+        // will be a discard index
+        index = NextHopTable::kRpfDiscardIndex;
+    }
+    nh->set_id(index);
+    index_table_.InsertAtIndex(index, nh);
     nh->Add(agent(), req);
     nh->SendObjectLog(this, AgentLogEvent::ADD);
     return static_cast<DBEntry *>(nh);
@@ -380,6 +448,7 @@ NextHop *ArpNHKey::AllocEntry() const {
         (Agent::GetInstance()->vrf_table()->Find(&vrf_key_, true));
     return new ArpNH(vrf, dip_);
 }
+
 
 bool ArpNH::CanAdd() const {
     if (vrf_ == NULL) {
@@ -1502,6 +1571,22 @@ void VlanNH::SendObjectLog(const NextHopTable *table,
 /////////////////////////////////////////////////////////////////////////////
 // CompositeNH routines
 /////////////////////////////////////////////////////////////////////////////
+void CompositeNHKey::ReplaceLocalNexthop(const ComponentNHKeyList &lnh) {
+    //Clear all local nexthop
+    ComponentNHKeyList::iterator it = component_nh_key_list_.begin();
+    for (uint32_t i = 0; i < component_nh_key_list_.size();) {
+        ComponentNHKeyPtr cnh = component_nh_key_list_[i];
+        if (cnh->nh_key()->GetType() == NextHop::INTERFACE) {
+            component_nh_key_list_.erase(component_nh_key_list_.begin() + i);
+        } else {
+            i++;
+        }
+    }
+
+    component_nh_key_list_.insert(component_nh_key_list_.begin(), lnh.begin(),
+                                  lnh.end());
+}
+
 bool CompositeNH::CanAdd() const {
     if (vrf_ == NULL || vrf_->IsDeleted()) {
         LOG(ERROR, "Invalid VRF in composite NH. Skip Add");
@@ -1549,7 +1634,8 @@ bool CompositeNH::HasVmInterface(const VmInterface *vmi) const {
     return false;
 }
 
-uint32_t CompositeNH::PickMember(uint32_t seed, uint32_t affinity_index) const {
+uint32_t CompositeNH::PickMember(uint32_t seed, uint32_t affinity_index,
+                                 bool ingress) const {
     uint32_t idx = kInvalidComponentNHIdx;
     size_t size = component_nh_list_.size();
     if (size == 0) {
@@ -1566,7 +1652,9 @@ uint32_t CompositeNH::PickMember(uint32_t seed, uint32_t affinity_index) const {
     idx = seed % size;
     if (component_nh_list_[idx].get() == NULL ||
         component_nh_list_[idx]->nh() == NULL ||
-        component_nh_list_[idx]->nh()->IsActive() == false) {
+        component_nh_list_[idx]->nh()->IsActive() == false ||
+        (ingress == false &&
+         component_nh_list_[idx]->nh()->GetType() == NextHop::TUNNEL)) {
 
         std::vector<uint32_t> active_list;
         for (uint32_t i = 0; i < size; i++) {
@@ -1575,7 +1663,13 @@ uint32_t CompositeNH::PickMember(uint32_t seed, uint32_t affinity_index) const {
             if (component_nh_list_[i].get() != NULL &&
                 component_nh_list_[i]->nh() != NULL &&
                 component_nh_list_[i]->nh()->IsActive()) {
-                active_list.push_back(i);
+                if (ingress == false) {
+                    if (component_nh_list_[i]->nh()->GetType() != NextHop::TUNNEL) {
+                        active_list.push_back(i);
+                    }
+                } else {
+                    active_list.push_back(i);
+                }
             }
         }
         idx = (active_list.size()) ?
@@ -1909,7 +2003,8 @@ void CompositeNH::ChangeComponentNHKeyTunnelType(
             if (composite_nh_key->composite_nh_type() == Composite::TOR) {
                 type = TunnelType::VXLAN;
             }
-            if (composite_nh_key->composite_nh_type() == Composite::FABRIC) {
+            if (composite_nh_key->composite_nh_type() == Composite::FABRIC ||
+                composite_nh_key->composite_nh_type() == Composite::L3FABRIC) {
                 type = TunnelType::ComputeType(TunnelType::MplsType());
             }
             ChangeComponentNHKeyTunnelType(
@@ -1941,7 +2036,8 @@ CompositeNH *CompositeNH::ChangeTunnelType(Agent *agent,
     if (composite_nh_type_ == Composite::TOR) {
         type = TunnelType::VXLAN;
     }
-    if (composite_nh_type_ == Composite::FABRIC) {
+    if (composite_nh_type_ == Composite::FABRIC ||
+        composite_nh_type_ == Composite::L3FABRIC) {
         type = TunnelType::ComputeType(TunnelType::MplsType());
     }
     //Create all component NH with new tunnel type
@@ -2313,6 +2409,25 @@ bool CompositeNHKey::ExpandLocalCompositeNH(Agent *agent) {
             //individual entries of this local composite NH
             erase(component_nh_key);
             break;
+        }
+    }
+
+    //In case of ECMP in fabric VRF there is no mpls
+    //label, hence pick policy flag from corresponding
+    //interface NH
+    if (label ==  MplsTable::kInvalidLabel &&
+        vrf_key_.IsEqual(VrfKey(agent->fabric_vrf_name()))) {
+        BOOST_FOREACH(ComponentNHKeyPtr component_nh_key,
+                component_nh_key_list_) {
+            if (component_nh_key.get() &&
+                    component_nh_key->nh_key()->GetType() == NextHop::INTERFACE) {
+                //Interface NH wouldnt have policy hence pick from VMI
+                const NextHop *nh =  static_cast<const NextHop *>(
+                    agent->nexthop_table()->FindActiveEntry(component_nh_key->nh_key()));
+                if (nh && nh->NexthopToInterfacePolicy()) {
+                    return true;
+                }
+            }
         }
     }
 
@@ -2703,6 +2818,17 @@ static void ExpandCompositeNextHop(const CompositeNH *comp_nh,
     }
     case Composite::FABRIC: {
         comp_str << "fabric Composite"  << " sub nh count: " 
+            << comp_nh->ComponentNHCount();
+        data.set_type(comp_str.str());
+        if (comp_nh->ComponentNHCount() == 0)
+            break;
+        std::vector<McastData> data_list;
+        FillComponentNextHop(comp_nh, data_list);
+        data.set_mc_list(data_list);
+        break;
+    }
+    case Composite::L3FABRIC: {
+        comp_str << "L3 Fabric Composite"  << " sub nh count: "
             << comp_nh->ComponentNHCount();
         data.set_type(comp_str.str());
         if (comp_nh->ComponentNHCount() == 0)

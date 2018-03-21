@@ -805,10 +805,14 @@ class VncDbClient(object):
                 db_prefix=db_prefix, credential=db_credential)
             self._zk_db = self._object_db
 
+        health_check_interval = api_svr_mgr.get_rabbit_health_check_interval()
+        if api_svr_mgr.get_worker_id() > 0:
+            health_check_interval = 0.0
+
         self._msgbus = VncServerKombuClient(self, rabbit_servers,
             rabbit_port, rabbit_user, rabbit_password,
             rabbit_vhost, rabbit_ha_mode,
-            api_svr_mgr.get_rabbit_health_check_interval(),
+            health_check_interval,
             **kwargs)
     # end __init__
 
@@ -1756,14 +1760,6 @@ class VncDbClient(object):
     def get_worker_id(self):
         return self._api_svr_mgr.get_worker_id()
     # end get_worker_id
-
-    def get_autonomous_system(self):
-        config_uuid = self.fq_name_to_uuid('global_system_config',
-                                           ['default-global-system-config'])
-        ok, config = self._object_db.object_read('global_system_config',
-                                                 [config_uuid])
-        global_asn = config[0]['autonomous_system']
-        return global_asn
 
     # Insert new perms. Called on startup when walking DB
     def update_perms2(self, obj_uuid):
