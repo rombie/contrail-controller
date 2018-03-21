@@ -2,6 +2,9 @@
  * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
  */
 
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
 
 #include <csignal>
 #include <fstream>
@@ -213,7 +216,15 @@ void ReConfigSignalHandler(const boost::system::error_code &error, int sig) {
     options.ParseReConfig();
 }
 
+static void SignalHandler (int sig) {
+#ifdef VALGRIND
+    if (sig == SIGUSR1)
+        VALGRIND_DO_LEAK_CHECK;
+#endif
+}
+
 int main(int argc, char *argv[]) {
+    signal(SIGUSR1, SignalHandler);
     // Process options from command-line and configuration file.
     if (!options.Parse(evm, argc, argv)) {
         exit(-1);
