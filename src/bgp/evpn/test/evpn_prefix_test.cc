@@ -2419,7 +2419,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix1) {
         BgpAttrSpec attr_spec;
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, false);
+        pmsi_spec.SetLabel(10000, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2460,7 +2460,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix2) {
         BgpAttrSpec attr_spec;
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, false);
+        pmsi_spec.SetLabel(10000, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2505,7 +2505,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix3) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, true);
+        pmsi_spec.SetLabel(10000, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2550,7 +2550,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix4) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        pmsi_spec.SetLabel(label, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2596,7 +2596,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix5) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        pmsi_spec.SetLabel(label, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2641,7 +2641,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix6) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, true);
+        pmsi_spec.SetLabel(10000, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2686,7 +2686,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix7) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        pmsi_spec.SetLabel(label, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2732,7 +2732,7 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix8) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        pmsi_spec.SetLabel(label, NULL);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
