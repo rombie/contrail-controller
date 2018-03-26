@@ -458,11 +458,10 @@ protected:
         BgpAttrNextHop nexthop(nexthop_address.to_ulong());
         attr_spec.push_back(&nexthop);
 
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label ? label : peer->label(), &ext);
+        pmsi_spec.SetLabel(label ? label : peer->label());
         pmsi_spec.SetIdentifier(nexthop_address);
         attr_spec.push_back(&pmsi_spec);
 
@@ -539,9 +538,7 @@ protected:
             pmsi_tunnel->tunnel_flags());
         TASK_UTIL_EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
             pmsi_tunnel->tunnel_type());
-        ExtCommunitySpec ext_comm;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel(&ext));
+        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel());
         TASK_UTIL_EXPECT_EQ(peer->address(), pmsi_tunnel->identifier());
         TASK_UTIL_EXPECT_EQ(peer->address(), attr->nexthop().to_v4());
         TASK_UTIL_EXPECT_TRUE(attr->originator_id().is_unspecified());
@@ -828,9 +825,8 @@ protected:
         } else {
             pmsi_spec.tunnel_flags = 0;
         }
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(peer->label(), &ext);
+        pmsi_spec.SetLabel(peer->label());
         pmsi_spec.SetIdentifier(peer->address());
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
@@ -931,8 +927,7 @@ protected:
             pmsi_spec.tunnel_flags = 0;
         }
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        pmsi_spec.SetLabel(peer->label(), &ext);
+        pmsi_spec.SetLabel(peer->label());
         pmsi_spec.SetIdentifier(peer->address());
         attr_spec.push_back(&pmsi_spec);
 
@@ -1113,8 +1108,7 @@ protected:
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_flags = PmsiTunnelSpec::ARLeaf;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::AssistedReplicationContrail;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        pmsi_spec.SetLabel(peer->label(), &ext);
+        pmsi_spec.SetLabel(peer->label());
         pmsi_spec.SetIdentifier(peer->replicator_address());
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = server_->attr_db()->Locate(attr_spec);
@@ -1202,8 +1196,7 @@ protected:
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_flags = PmsiTunnelSpec::ARLeaf;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::AssistedReplicationContrail;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        pmsi_spec.SetLabel(label ? label : peer->label(), &ext);
+        pmsi_spec.SetLabel(label ? label : peer->label());
         pmsi_spec.SetIdentifier(peer->replicator_address());
         attr_spec.push_back(&pmsi_spec);
 
@@ -1287,9 +1280,7 @@ protected:
         TASK_UTIL_EXPECT_EQ(PmsiTunnelSpec::ARLeaf, pmsi_tunnel->tunnel_flags());
         TASK_UTIL_EXPECT_EQ(PmsiTunnelSpec::AssistedReplicationContrail,
             pmsi_tunnel->tunnel_type());
-        ExtCommunitySpec ext_comm;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel(&ext));
+        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel());
         TASK_UTIL_EXPECT_EQ(peer->replicator_address(),
             pmsi_tunnel->identifier());
         TASK_UTIL_EXPECT_EQ(peer->address(), attr->nexthop().to_v4());
@@ -1395,8 +1386,7 @@ protected:
         pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported |
             PmsiTunnelSpec::ARReplicator | PmsiTunnelSpec::LeafInfoRequired;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        pmsi_spec.SetLabel(label ? label : peer->label(), &ext);
+        pmsi_spec.SetLabel(label ? label : peer->label());
         pmsi_spec.SetIdentifier(nexthop_address);
         attr_spec.push_back(&pmsi_spec);
 
@@ -1468,9 +1458,7 @@ protected:
         TASK_UTIL_EXPECT_EQ(tunnel_flags, pmsi_tunnel->tunnel_flags());
         TASK_UTIL_EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
             pmsi_tunnel->tunnel_type());
-        ExtCommunitySpec ext_comm;
-        ExtCommunity ext(server_->extcomm_db(), ext_comm);
-        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel(&ext));
+        TASK_UTIL_EXPECT_EQ(peer->label(), pmsi_tunnel->GetLabel());
         TASK_UTIL_EXPECT_EQ(peer->address(), pmsi_tunnel->identifier());
         TASK_UTIL_EXPECT_EQ(peer->address(), attr->nexthop().to_v4());
         TASK_UTIL_EXPECT_TRUE(attr->originator_id().is_unspecified());

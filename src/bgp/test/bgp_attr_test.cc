@@ -16,7 +16,6 @@
 #include "bgp/extended-community/mac_mobility.h"
 #include "bgp/extended-community/router_mac.h"
 #include "bgp/origin-vn/origin_vn.h"
-#include "bgp/tunnel_encap/tunnel_encap.h"
 #include "control-node/control_node.h"
 #include "net/community_type.h"
 #include "net/mac_address.h"
@@ -1828,12 +1827,10 @@ TEST_F(BgpAttrTest, PmsiTunnelSpecToString1) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnelSpecToString2) {
-    ExtCommunitySpec spec;
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec;
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec.SetLabel(10000, &ext);
+    pmsi_spec.SetLabel(10000);
     error_code ec;
     pmsi_spec.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     EXPECT_EQ("PmsiTunnel <code: 22, flags: 0xc0>"
@@ -1894,12 +1891,10 @@ TEST_F(BgpAttrTest, PmsiTunnelSpecTunnelFlagsStrings) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel2) {
-    ExtCommunitySpec spec;
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec;
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec.SetLabel(10000, &ext);
+    pmsi_spec.SetLabel(10000);
     error_code ec;
     pmsi_spec.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
 
@@ -1909,17 +1904,15 @@ TEST_F(BgpAttrTest, PmsiTunnel2) {
         pmsi_spec.flags);
     EXPECT_EQ(PmsiTunnelSpec::EdgeReplicationSupported, pmsi_spec.tunnel_flags);
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication, pmsi_spec.tunnel_type);
-    EXPECT_EQ(10000, pmsi_spec.GetLabel(&ext));
+    EXPECT_EQ(10000, pmsi_spec.GetLabel());
     EXPECT_EQ("10.1.1.1", pmsi_spec.GetIdentifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel3) {
-    ExtCommunitySpec spec;
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
 
@@ -1931,18 +1924,16 @@ TEST_F(BgpAttrTest, PmsiTunnel3) {
     EXPECT_EQ(PmsiTunnelSpec::EdgeReplicationSupported,
         pmsi_spec2.tunnel_flags);
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication, pmsi_spec2.tunnel_type);
-    EXPECT_EQ(10000, pmsi_spec2.GetLabel(&ext));
+    EXPECT_EQ(10000, pmsi_spec2.GetLabel());
     EXPECT_EQ("10.1.1.1", pmsi_spec2.GetIdentifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel4a) {
-    ExtCommunitySpec spec;
-    ExtCommunity ext(extcomm_db_, spec);
     BgpAttrSpec attr_spec;
     PmsiTunnelSpec pmsi_spec;
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec.SetLabel(10000, &ext);
+    pmsi_spec.SetLabel(10000);
     error_code ec;
     pmsi_spec.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     attr_spec.push_back(&pmsi_spec);
@@ -1954,20 +1945,16 @@ TEST_F(BgpAttrTest, PmsiTunnel4a) {
         pmsi_tunnel->tunnel_flags());
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
         pmsi_tunnel->tunnel_type());
-    EXPECT_EQ(10000, pmsi_tunnel->GetLabel(&ext));
+    EXPECT_EQ(10000, pmsi_tunnel->GetLabel());
     EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel4b) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    spec.communities.push_back(tun_encap.GetExtCommunityValue());
-    ExtCommunity ext(extcomm_db_, spec);
     BgpAttrSpec attr_spec;
     PmsiTunnelSpec pmsi_spec;
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec.SetLabel(EvpnPrefix::kMaxVni, &ext);
+    pmsi_spec.SetLabel(EvpnPrefix::kMaxVni, true);
     error_code ec;
     pmsi_spec.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     attr_spec.push_back(&pmsi_spec);
@@ -1979,19 +1966,16 @@ TEST_F(BgpAttrTest, PmsiTunnel4b) {
         pmsi_tunnel->tunnel_flags());
     EXPECT_EQ(PmsiTunnelSpec::IngressReplication,
         pmsi_tunnel->tunnel_type());
-    EXPECT_EQ(EvpnPrefix::kMaxVni, pmsi_tunnel->GetLabel(&ext));
+    EXPECT_EQ(EvpnPrefix::kMaxVni, pmsi_tunnel->GetLabel(true));
     EXPECT_EQ("10.1.1.1", pmsi_tunnel->identifier().to_string());
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel5) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     BgpAttrSpec attr_spec;
     PmsiTunnelSpec pmsi_spec;
     pmsi_spec.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec.SetLabel(10000, &ext);
+    pmsi_spec.SetLabel(10000);
     error_code ec;
     pmsi_spec.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     attr_spec.push_back(&pmsi_spec);
@@ -2001,14 +1985,11 @@ TEST_F(BgpAttrTest, PmsiTunnel5) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel6) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     BgpAttrSpec attr_spec1;
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     attr_spec1.push_back(&pmsi_spec1);
@@ -2026,14 +2007,11 @@ TEST_F(BgpAttrTest, PmsiTunnel6) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel7) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     BgpAttrSpec attr_spec1;
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     attr_spec1.push_back(&pmsi_spec1);
@@ -2050,13 +2028,10 @@ TEST_F(BgpAttrTest, PmsiTunnel7) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel8) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     PmsiTunnelPtr pmsi_tunnel1 = pmsi_tunnel_db_->Locate(pmsi_spec1);
@@ -2069,13 +2044,10 @@ TEST_F(BgpAttrTest, PmsiTunnel8) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel9a) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     PmsiTunnelPtr pmsi_tunnel1 = pmsi_tunnel_db_->Locate(pmsi_spec1);
@@ -2089,13 +2061,10 @@ TEST_F(BgpAttrTest, PmsiTunnel9a) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel9b) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     PmsiTunnelPtr pmsi_tunnel1 = pmsi_tunnel_db_->Locate(pmsi_spec1);
@@ -2109,18 +2078,15 @@ TEST_F(BgpAttrTest, PmsiTunnel9b) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel9c) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     PmsiTunnelPtr pmsi_tunnel1 = pmsi_tunnel_db_->Locate(pmsi_spec1);
     PmsiTunnelSpec pmsi_spec2 = pmsi_spec1;
-    pmsi_spec2.SetLabel(20000, &ext);
+    pmsi_spec2.SetLabel(20000);
     PmsiTunnelPtr pmsi_tunnel2 = pmsi_tunnel_db_->Locate(pmsi_spec2);
 
     EXPECT_NE(pmsi_tunnel1, pmsi_tunnel2);
@@ -2129,13 +2095,10 @@ TEST_F(BgpAttrTest, PmsiTunnel9c) {
 }
 
 TEST_F(BgpAttrTest, PmsiTunnel9d) {
-    ExtCommunitySpec spec;
-    TunnelEncap tun_encap(TunnelEncapType::VXLAN);
-    ExtCommunity ext(extcomm_db_, spec);
     PmsiTunnelSpec pmsi_spec1;
     pmsi_spec1.tunnel_flags = PmsiTunnelSpec::EdgeReplicationSupported;
     pmsi_spec1.tunnel_type = PmsiTunnelSpec::IngressReplication;
-    pmsi_spec1.SetLabel(10000, &ext);
+    pmsi_spec1.SetLabel(10000);
     error_code ec;
     pmsi_spec1.SetIdentifier(Ip4Address::from_string("10.1.1.1", ec));
     PmsiTunnelPtr pmsi_tunnel1 = pmsi_tunnel_db_->Locate(pmsi_spec1);
