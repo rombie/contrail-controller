@@ -8,7 +8,7 @@
           username: "{{junos_username}}"
           password: "{{junos_password}}"
           port: 22
-          timeout: {{JUNOS_COMMAND_TIMEOUT}}
+          timeout: "{{JUNOS_COMMAND_TIMEOUT|int}}"
       register: interface_info
   rescue:
     - name: Perform the necessary error handling
@@ -36,7 +36,7 @@
           username: "{{junos_username}}"
           password: "{{junos_password}}"
           port: 22
-          timeout: {{JUNOS_COMMAND_TIMEOUT}}
+          timeout: "{{JUNOS_COMMAND_TIMEOUT|int}}"
       register: interface_info
   rescue:
     - name: Perform the necessary error handling
@@ -60,6 +60,6 @@
 
 - name: Test POST REST Call for runtime phy and log interfaces
   include_tasks: phy_interface.yml
-  when: "item.name not in configured_phy_interface_names and item['oper-status'] == 'up'"
+  when: "item.name not in configured_phy_interface_names"
   with_items: "{{interface_list_new}}"
 

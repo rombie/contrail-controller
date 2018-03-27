@@ -2433,7 +2433,9 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix1) {
         BgpAttrSpec attr_spec;
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, false);
+        ExtCommunitySpec spec;
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(10000, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2474,7 +2476,9 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix2) {
         BgpAttrSpec attr_spec;
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, false);
+        ExtCommunitySpec spec;
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(10000, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2519,7 +2523,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix3) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(10000, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2564,7 +2572,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix4) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(label, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2610,7 +2622,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix5) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(label, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2655,7 +2671,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix6) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(10000, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(10000, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2700,7 +2720,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix7) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(label, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
@@ -2746,7 +2770,11 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix8) {
         attr_spec.push_back(&comm_spec);
         PmsiTunnelSpec pmsi_spec;
         pmsi_spec.tunnel_type = PmsiTunnelSpec::IngressReplication;
-        pmsi_spec.SetLabel(label, true);
+        ExtCommunitySpec spec;
+        TunnelEncap tun_encap(TunnelEncapType::VXLAN);
+        spec.communities.push_back(tun_encap.GetExtCommunityValue());
+        ExtCommunity ext(bs_->extcomm_db(), spec);
+        pmsi_spec.SetLabel(label, &ext);
         attr_spec.push_back(&pmsi_spec);
         BgpAttrPtr attr = bs_->attr_db()->Locate(attr_spec);
 
