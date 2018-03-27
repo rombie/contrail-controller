@@ -64,7 +64,8 @@ TEST_F(EvpnPrefixTest, FromProtoPrefix_Error) {
             continue;
         proto_prefix.type = type;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -182,7 +183,8 @@ TEST_F(EvpnAutoDiscoveryPrefixTest, FromProtoPrefix1) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -409,7 +411,8 @@ TEST_F(EvpnAutoDiscoveryPrefixTest, FromProtoPrefix_Error1) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -692,7 +695,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix1a) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -733,7 +737,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix1b) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         uint32_t l3_label2;
@@ -775,7 +780,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix2a) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -816,7 +822,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix2b) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         uint32_t l3_label2;
@@ -858,7 +865,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix3a) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -899,7 +907,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix3b) {
         EXPECT_EQ(expected_size, proto_prefix.prefix.size());
 
         EvpnPrefix prefix2;
-        BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in2 =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out2;
         uint32_t label2;
         uint32_t l3_label2;
@@ -2048,7 +2057,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix_Error1) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2091,7 +2101,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix_Error3) {
         if (mac_len == 48)
             continue;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[mac_len_offset] = mac_len;
@@ -2141,7 +2152,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix_Error5) {
         if (ip_len == 0 || ip_len == 32 || ip_len == 128)
             continue;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[ip_len_offset] = ip_len;
@@ -2193,7 +2205,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix_Error7) {
         proto_prefix.prefix[mac_len_offset] = 48;
         proto_prefix.prefix[ip_len_offset] = 32;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2243,7 +2256,8 @@ TEST_F(EvpnMacAdvertisementPrefixTest, FromProtoPrefix_Error9) {
         proto_prefix.prefix[mac_len_offset] = 48;
         proto_prefix.prefix[ip_len_offset] = 128;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2769,7 +2783,8 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix_Error1) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2791,7 +2806,8 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix_Error2) {
         if (ip_len == 32 || ip_len == 128)
             continue;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[ip_len_offset] = ip_len;
@@ -2815,7 +2831,8 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix_Error3) {
         proto_prefix.prefix.resize(nlri_size, 0);
         proto_prefix.prefix[ip_len_offset] = 32;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2838,7 +2855,8 @@ TEST_F(EvpnInclusiveMulticastPrefixTest, FromProtoPrefix_Error4) {
         proto_prefix.prefix.resize(nlri_size, 0);
         proto_prefix.prefix[ip_len_offset] = 128;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -2988,7 +3006,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix1) {
         proto_prefix.prefix.size());
 
     EvpnPrefix prefix2;
-    BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+    BgpAttrPtr attr_in2 =
+        bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
     BgpAttrPtr attr_out2;
     uint32_t label2;
     int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3018,7 +3037,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix2) {
         proto_prefix.prefix.size());
 
     EvpnPrefix prefix2;
-    BgpAttrPtr attr_in2(new BgpAttr(bs_->attr_db()));
+    BgpAttrPtr attr_in2 =
+        bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
     BgpAttrPtr attr_out2;
     uint32_t label2;
     int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3042,7 +3062,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix_Error1) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3064,7 +3085,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix_Error2) {
         if (ip_len == 32 || ip_len == 128)
             continue;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[ip_len_offset] = ip_len;
@@ -3088,7 +3110,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix_Error3) {
         proto_prefix.prefix.resize(nlri_size, 0);
         proto_prefix.prefix[ip_len_offset] = 32;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3111,7 +3134,8 @@ TEST_F(EvpnSegmentPrefixTest, FromProtoPrefix_Error4) {
         proto_prefix.prefix.resize(nlri_size, 0);
         proto_prefix.prefix[ip_len_offset] = 128;
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3451,7 +3475,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error1) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3502,7 +3527,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error3) {
         proto_prefix.prefix.clear();
         proto_prefix.prefix.resize(nlri_size, 0);
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         int result = EvpnPrefix::FromProtoPrefix(bs_.get(),
@@ -3557,7 +3583,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error5) {
 
     for (uint16_t ip_len = 33; ip_len <= 255; ++ip_len) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[ip_plen_offset] = ip_len;
@@ -3580,7 +3607,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error6) {
 
     for (uint16_t ip_len = 129; ip_len <= 255; ++ip_len) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[ip_plen_offset] = ip_len;
@@ -3602,7 +3630,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error7) {
 
     for (size_t idx = 0; idx < EvpnPrefix::kEsiSize; ++idx) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[esi_offset + idx] = 0x01;
@@ -3625,7 +3654,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error8) {
 
     for (size_t idx = 0; idx < EvpnPrefix::kEsiSize; ++idx) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[esi_offset + idx] = 0x01;
@@ -3649,7 +3679,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error9) {
 
     for (size_t idx = 0; idx < EvpnPrefix::kIp4AddrSize; ++idx) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[gw_offset + idx] = 0x01;
@@ -3673,7 +3704,8 @@ TEST_F(EvpnIpPrefixTest, FromProtoPrefix_Error10) {
 
     for (size_t idx = 0; idx < EvpnPrefix::kIp6AddrSize; ++idx) {
         EvpnPrefix prefix;
-        BgpAttrPtr attr_in(new BgpAttr(bs_->attr_db()));
+        BgpAttrPtr attr_in =
+            bs_->attr_db()->Locate(new BgpAttr(bs_->attr_db()));
         BgpAttrPtr attr_out;
         uint32_t label;
         proto_prefix.prefix[gw_offset + idx] = 0x01;
