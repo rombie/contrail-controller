@@ -57,7 +57,6 @@ void ControlNode::SetDefaultSchedulingPolicy() {
         (TaskExclusion(scheduler->GetTaskId("bgp::StateMachine")))
         (TaskExclusion(scheduler->GetTaskId("bgp::PeerMembership")))
         (TaskExclusion(scheduler->GetTaskId("db::DBTable")))
-        (TaskExclusion(scheduler->GetTaskId("db::IFMapTable")))
         (TaskExclusion(scheduler->GetTaskId("db::Walker")))
         (TaskExclusion(scheduler->GetTaskId("io::ReaderTask")))
         (TaskExclusion(scheduler->GetTaskId("xmpp::StateMachine")))
