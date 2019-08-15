@@ -10,10 +10,10 @@ import (
 func TestOneControlNodeOneAgent(t *testing.T) {
     name := "TestOneControlNodeOneAgent"
     os.Chdir("/build/anantha/bgpaas")
-    cat := new(CAT)
-    cat.Initialize()
+    cat := new(CAT).Initialize()
     c1 := cat.AddControlNode(name, "control-node1", 10000)
-    cat.AddAgent(name, "agent1", []*ControlNode{c1})
+    agent := cat.AddAgent(name, "agent1", []*ControlNode{c1})
+    assert(c1.CheckXmppConnections(agents))
     cat.CleanUp()
 }
 
@@ -22,12 +22,11 @@ func TestOneControlNodeTenAgents(t *testing.T) {
     os.Chdir("/build/anantha/bgpaas")
     cat := new(CAT).Initialize()
     c1 := cat.AddControlNode(name, "control-node1", 10000)
-    control_nodes := []*ControlNode{c1}
     agents := []*Agent{}
     for i := 1; i <= 10; i++ {
         agents = append(agents,
-           cat.AddAgent(name, "agent" + strconv.Itoa(i), control_nodes))
+           cat.AddAgent(name, "agent" + strconv.Itoa(i), []*ControlNode{c1}))
     }
-    fmt.Println(agents)
+    assert(c1.CheckXmppConnections(agents))
     cat.CleanUp()
 }

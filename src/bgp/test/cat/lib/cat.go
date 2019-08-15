@@ -116,6 +116,22 @@ func (self *ControlNode) ReadPortNumbers() {
     log.Fatal(err)
 }
 
+func (self *ControlNode) CheckXmppConnections(agent *Agent) bool {
+    url := "curl -s 'http://127.0.0.1:" + strconv.Itoa(self.HttpPort) +
+           "/Snh_BgpNeighborReq?x=" + agent.Name +
+           "' | xmllint --format  - | grep -i state | grep -i Established"
+    cmd := Command.run(url)
+}
+
+func (self *ControlNode) CheckXmppConnections(agents []*Agent) bool {
+    for i := 0; i < len(agents); i++ {
+        if CheckXmppConnections(agents[i]) == false {
+            return false
+        }
+    }
+    return true
+}
+
 func (self *CAT) AddAgent(test string, name string,
                           control_nodes []*ControlNode) *Agent {
     agent := new(Agent).Initialize(test, name, self)
