@@ -127,7 +127,7 @@ func (self *CAT) AddAgent(test string, name string,
 func (self *CAT) DeleteAllFile() {
     return
 }
-    
+
 func (self *CAT) RedirectStdOutErr() {
     /*
     old := os.dup(1)
@@ -135,7 +135,7 @@ func (self *CAT) RedirectStdOutErr() {
     f = self.log_files + "/" + self.Name + ".log"
     open(f, 'w')
     os.open(f, os.O_WRONLY)
-    
+
     old = os.dup(2)
     os.close(2)
     f = self.log_files + "/" + self.Name + ".log"
@@ -173,7 +173,7 @@ func (self *ControlNode) Start() int {
     if _, err := os.Stat(c1); os.IsNotExist(err) {
         log.Fatal(err)
     }
-    
+
     env := map[string] string {
 "USER": os.Getenv("USER"),
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_SELF_NAME": "overcloud-contrailcontroller-1",
@@ -234,7 +234,7 @@ func (self *Agent) CreateAgent(objs []*ControlNode) {
     self.CreateConfiguration()
     self.Pid = self.Start()
 }
-        
+
 func (self *Agent) Start() int {
     c1 := "/build/anantha/bgpaas/build/debug/vnsw/agent/" +
           "contrail/contrail-vrouter-agent"
