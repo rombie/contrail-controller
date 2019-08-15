@@ -32,10 +32,10 @@ func (self *CAT) CleanUp() {
         self.__Pause()
     }
     for _, item := range self.ControlNodes {
-        syscall.Kill(item.pid, syscall.SIGKILL)
+        syscall.Kill(item.Pid, syscall.SIGKILL)
     }
     for _, item := range self.Agents {
-        syscall.Kill(item.pid, syscall.SIGKILL)
+        syscall.Kill(item.Pid, syscall.SIGKILL)
     }
 }
 
@@ -144,7 +144,7 @@ func (self *CAT) RedirectStdOutErr() {
     */
 }
 
-func (self *Component) SendSignal(signal int) {
+func (self *Component) SendSignal(signal syscall.Signal) {
     syscall.Kill(self.Pid, signal) // syscall.SIGHUP
 }
 
@@ -158,10 +158,10 @@ func (self *ControlNode) Initialize(test, name string, cat *CAT) *ControlNode {
     self.PortsFile = ""
 
     self.Verbose = false
-    self.ConfDir = cat.LogDir + "/" + test + "/control-node/" +
-                   name + "/" + "conf"
-    self.LogDir = cat.LogDir + "/" + test + "/control-node/" +
-                   name + "/" + "log"
+    self.ConfDir = cat.LogDir + "/" + test + "/control-node/" + name + "/" +
+                   "conf"
+    self.LogDir = cat.LogDir + "/" + test + "/control-node/" + name + "/" +
+                   "log"
     self.Cat.CreateDir(self.LogDir)
     self.Cat.CreateDir(self.ConfDir)
     return self
@@ -209,7 +209,6 @@ func (self *ControlNode) RestartControlNode() {
 }
 
 func (self *Agent) Initialize(test, name string, cat *CAT) *Agent {
-    self := new(Agent)
     self.Cat = cat
     self.Pid = 0
     self.XmppPort = 0

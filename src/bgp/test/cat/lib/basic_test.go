@@ -6,25 +6,27 @@ import (
     "testing"
 )
 
-func TestBasicOneControlNodeOneAgent(t *testing.T) {
+func TestOneControlNodeOneAgent(t *testing.T) {
     return
+    name := "TestOneControlNodeOneAgent"
     os.Chdir("/build/anantha/bgpaas")
     cat := new(CAT)
     cat.Initialize()
-    c1 := cat.AddControlNode(t.Name(), "control-node1", 10000)
-    cat.AddAgent(t.Name(), "agent1", []*ControlNode{c1})
-    cat.Pause = true; cat.CleanUP()
+    c1 := cat.AddControlNode(name, "control-node1", 10000)
+    cat.AddAgent(name, "agent1", []*ControlNode{c1})
+    cat.Pause = true; cat.CleanUp()
 }
 
-func TestBasicOneControlNodeTenAgents(t *testing.T) {
+func TestOneControlNodeTenAgents(t *testing.T) {
+    name := "TestOneControlNodeTenAgents"
     os.Chdir("/build/anantha/bgpaas")
     cat := new(CAT).Initialize()
-    c1 := cat.AddControlNode(t.Name(), "control-node1", 10000)
+    c1 := cat.AddControlNode(name, "control-node1", 10000)
     control_nodes := []*ControlNode{c1}
     agents := []*Agent{}
     for i := 1; i <= 10; i++ {
         agents = append(agents,
-           cat.AddAgent(t.Name(), "agent" + strconv.Itoa(i), control_nodes))
+           cat.AddAgent(name, "agent" + strconv.Itoa(i), control_nodes))
     }
-    cat.Pause = true; cat.CleanUP()
+    cat.Pause = true; cat.CleanUp()
 }
