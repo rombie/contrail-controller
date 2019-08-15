@@ -8,7 +8,6 @@ import (
 )
 
 func TestOneControlNodeOneAgent(t *testing.T) {
-    return
     name := "TestOneControlNodeOneAgent"
     os.Chdir("/build/anantha/bgpaas")
     cat := new(CAT)
@@ -30,5 +29,5 @@ func TestOneControlNodeTenAgents(t *testing.T) {
            cat.AddAgent(name, "agent" + strconv.Itoa(i), control_nodes))
     }
     fmt.Println(agents)
-    cat.Pause = true; cat.CleanUp()
+    cat.CleanUp()
 }
