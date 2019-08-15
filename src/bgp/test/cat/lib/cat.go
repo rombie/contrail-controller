@@ -252,8 +252,7 @@ func (self *Agent) Start() int {
     fmt.Printf("%s --config_file=%s\n", c1, self.ConfFile)
     cmd.Env = enva
     cmd.Dir = "/build/anantha/bgpaas"
-    // err := cmd.Start()
-    err := cmd.Run()
+    err := cmd.Start()
     if err != nil {
         log.Fatal(err)
     }

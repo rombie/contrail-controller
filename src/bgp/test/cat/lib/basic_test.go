@@ -1,6 +1,7 @@
 package main
 
 import (
+    "fmt"
     "os"
     "strconv"
     "testing"
@@ -14,7 +15,7 @@ func TestOneControlNodeOneAgent(t *testing.T) {
     cat.Initialize()
     c1 := cat.AddControlNode(name, "control-node1", 10000)
     cat.AddAgent(name, "agent1", []*ControlNode{c1})
-    cat.Pause = true; cat.CleanUp()
+    cat.CleanUp()
 }
 
 func TestOneControlNodeTenAgents(t *testing.T) {
@@ -28,5 +29,6 @@ func TestOneControlNodeTenAgents(t *testing.T) {
         agents = append(agents,
            cat.AddAgent(name, "agent" + strconv.Itoa(i), control_nodes))
     }
+    fmt.Println(agents)
     cat.Pause = true; cat.CleanUp()
 }
