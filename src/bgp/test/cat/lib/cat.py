@@ -149,12 +149,10 @@ class Component:
     def create_component(self, read_port):
         new_pid = os.fork()
         if new_pid == 0:
-            self.pid = os.getpid()
             self.execute_child()
-        else:
-            self.pid = new_pid
-            if read_port:
-                self.read_port_numbers()
+        self.pid = new_pid
+        if read_port:
+            self.read_port_numbers()
 
     def create_directory(self, component):
         directory = self.user

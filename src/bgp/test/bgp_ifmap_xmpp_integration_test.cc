@@ -211,7 +211,7 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
 
         string h = boost::lexical_cast<string>(Sandesh::http_port());
         string ufile = dir + "/conf/" + boost::lexical_cast<string>(pid) +
-            ".txt";
+            ".json";
 
         int xmpp = 0, bgp = 0;
         xmpp = strtoul(getenv("CAT_XMPP_PORT") ?: "0", NULL, 0);
@@ -222,12 +222,14 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
         string b = boost::lexical_cast<string>(
             server_->session_manager()->GetPort());
         string x = boost::lexical_cast<string>(xmpp_server_test_->GetPort());
+        string p = boost::lexical_cast<string>(pid);
 
         ofstream myfile;
         myfile.open (ufile.c_str());
-        string data = "{\"ControllerDetails\": [{ \"ProcessID\": " +
-            boost::lexical_cast<string>(pid) + ", \"BGPPORT\": "+ b +
-            ", \"XMPPPORT\": " + x + ", \"HTTPPORT\": " + h +"}]}" ;
+        string data = "{ \"ProcessID\": " + p +
+                      ", \"BgpPort\": " + b +
+                      ", \"XmppPort\": " + x +
+                      ", \"HttpPort\": " + h + "}";
         myfile << data;
         cout << data << endl;
         myfile.close();
