@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "errors"
     "fmt"
+    "github.com/Juniper/contrail-go-api/types"
     "io/ioutil"
     "log"
     "os"
@@ -321,4 +322,90 @@ func (self *Agent) CreateConfiguration() {
     for _, line := range new_conf {
         file.WriteString(line + "\n");
     }
+}
+
+type ContrailConfigObject struct {
+    Type string `json:"type"`
+    ParentType string `json:"parent_type"`
+    FqName []string `json:"fq_name"`
+
+    Perms2 types.PermType `json:"prop:perms2"`
+    IdPerms types.IdPermsType `json:"prop:id_perms"`
+    DisplayName string `json:"display_name"`
+}
+
+func (self *ContrailConfigObject) toJson (b []byte) string {
+    var v map[string]interface{}
+    json.Unmarshal(b, &v)
+    json_strings := make(map[string]string)
+    for key, _ := range v {
+        if strings.HasSuffix(key, "_refs") {
+            refs := v[key].([]interface{})
+            for i := range refs {
+                ref := refs[i].(map[string]interface{})
+                k := "ref:" + ref["type"].(string) + ":" + ref["uuid"].(string)
+                // json_strings[k] = "{\"attr\": null}"
+                c, _ := json.Marshal(ref["attr"])
+                json_strings[k] = string(c)
+            }
+        } else {
+            b, _ = json.Marshal(v[key])
+            json_strings[key] = string(b)
+        }
+    }
+
+    b, _ = json.Marshal(json_strings)
+    return string(b)
+}
+
+
+type Ref struct {
+    Uuid string `json:"uuid"`
+    Type string `json:"type"`
+    Attr map[string]string `json:"attr"`
+}
+type VirtualRouter struct {
+    ContrailConfigObject
+    VirtualRouterIpAddress string `json:"prop:virtual_router_ip_address"`
+    VirtualRouterDpdkEnabled bool `json:"prop:virtual_router_dpdk_enabled"`
+    VirtualMachineRefs []Ref `json:"virtual_machines_refs"`
+}
+
+func (self *VirtualRouter) UpdateRef(ref_type, uuid string) {
+    self.VirtualMachineRefs = []Ref {
+        Ref {
+            Uuid: uuid,
+            Type: ref_type,
+            Attr: map[string]string {
+                "attr": "",
+            },
+        },
+    }
+}
+
+func (self *VirtualRouter) Create(name, ip string) *VirtualRouter {
+    self.Type = "virtual_router"
+    self.ParentType = "global-system-config"
+    self.DisplayName = name
+    self.VirtualRouterIpAddress = ip
+    self.VirtualRouterDpdkEnabled = false
+    self.Perms2 = types.PermType {
+        Owner: "cloud-admin",
+        OwnerAccess: 0,
+    }
+
+    uuid := types.UuidType {
+        UuidMslong: 7845966321683075561,
+        UuidLslong: 11696129868600660048,
+    }
+    self.IdPerms =  types.IdPermsType {
+        Enable: true,
+        Uuid: &uuid,
+        Created: "2019-08-20T15:25:33.570592",
+        LastModified: "2019-08-20T15:25:33.570617",
+        UserVisible: true,
+    }
+
+    self.FqName = []string{"default-global-system-config", name}
+    return self
 }

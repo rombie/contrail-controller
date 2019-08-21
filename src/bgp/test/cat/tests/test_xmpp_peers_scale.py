@@ -22,7 +22,7 @@ class TestCAT(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        CAT.delete_all_files()
+        # CAT.delete_all_files()
         return
 
     def setUp(self):

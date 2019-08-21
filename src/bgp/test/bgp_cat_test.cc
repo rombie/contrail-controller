@@ -44,6 +44,7 @@ TEST_F(BgpCatTest, BasicGoLang) {
         (char *) "test",
         NULL
     };
+    system("third_party/go/bin/go get github.com/Juniper/contrail-go-api");
     if (!(child = vfork())) {
         chdir("controller/src/bgp/test/cat/lib");
         execv("../../../../../../third_party/go/bin/go", argv);

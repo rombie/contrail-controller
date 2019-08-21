@@ -1,11 +1,22 @@
 package main
 
 import (
-    "os"
-    "strconv"
+//    "os"
+//    "strconv"
+    "encoding/json"
+    "fmt"
     "testing"
 )
 
+func TestContrailConfiguration(t *testing.T) {
+    vr := new(VirtualRouter)
+    vr.Create("vrouter1", "127.0.0.1")
+    vr.UpdateRef("virtual-machine", "6ce20cfc-c399-11e9-a251-002590c75050")
+    b, _ := json.Marshal(vr)
+    fmt.Println(vr.toJson(b))
+}
+
+/*
 func TestSingleControlNodeSingleAgent(t *testing.T) {
     name := "TestSingleControlNodeSingleAgent"
     cat := new(CAT).Initialize()
@@ -118,3 +129,4 @@ func TestMultipleControlNodeRestart(t *testing.T) {
     }
     cat.CleanUp()
 }
+*/
