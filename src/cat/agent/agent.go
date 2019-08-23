@@ -16,7 +16,7 @@ const agentName = "control-vrouter-agent"
 
 // Agent is a SUT component for VRouter Agent.
 type Agent struct {
-    Component sut.Component
+    sut.Component
     XMPPPorts []int
 }
 
@@ -25,8 +25,8 @@ func New(m sut.Manager, name, test string, xmpp_ports []int) (*Agent, error) {
         Component: sut.Component{
             Name:    name,
             Manager: m,
-            LogDir:  filepath.Join(m.LogDir, test, agentName, name, "log"),
-            ConfDir: filepath.Join(m.LogDir, test, agentName, name, "conf"),
+            LogDir:  filepath.Join(m.RootDir, test, agentName, name, "log"),
+            ConfDir: filepath.Join(m.RootDir, test, agentName, name, "conf"),
             Config: sut.Config{
                 Pid:      0,
                 HTTPPort: 0,
@@ -48,13 +48,12 @@ func New(m sut.Manager, name, test string, xmpp_ports []int) (*Agent, error) {
 }
 
 func (a *Agent) Start() int {
-    fmt.Println(os.Getwd())
-    c1:= "../../../build/debug/vnsw/agent/contrail/contrail-vrouter-agent"
+    c1:= "../../../../build/debug/vnsw/agent/contrail/contrail-vrouter-agent"
     if _, err := os.Stat(c1); os.IsNotExist(err) {
         log.Fatal(err)
     }
     env := map[string]string{
-        "LD_LIBRARY_PATH": "../../../../../../build/lib",
+        "LD_LIBRARY_PATH": "../../../../build/lib",
         "LOGNAME":         os.Getenv("USER"),
     }
     var enva []string

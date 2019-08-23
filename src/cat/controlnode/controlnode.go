@@ -27,9 +27,8 @@ func New(m sut.Manager, name, test string,http_port int) (*ControlNode, error) {
         Component: sut.Component{
             Name:    name,
             Manager: m,
-            LogDir: filepath.Join(m.LogDir, test, controlNodeName, name, "log"),
-            ConfDir: filepath.Join(m.LogDir, test, controlNodeName, name,
-                                   "conf"),
+            LogDir: filepath.Join(m.RootDir,test,controlNodeName, name,"log"),
+            ConfDir: filepath.Join(m.RootDir,test,controlNodeName,name,"conf"),
             Config: sut.Config{
                 Pid:      0,
                 HTTPPort: http_port,
@@ -51,7 +50,7 @@ func New(m sut.Manager, name, test string,http_port int) (*ControlNode, error) {
 
 func (c *ControlNode) start() int {
     c1 :=
-      "../../../build/debug/bgp/test/bgp_ifmap_xmpp_integration_test"
+      "../../../../build/debug/bgp/test/bgp_ifmap_xmpp_integration_test"
     if _, err := os.Stat(c1); os.IsNotExist(err) {
         log.Fatal(err)
     }
@@ -65,8 +64,8 @@ func (c *ControlNode) start() int {
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_PAUSE": "1",
 "LOG_DISABLE" : strconv.FormatBool(c.Verbose),
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_DATA_FILE":
-"/cs-shared/CAT/configs/bulk_sync_2.json",
-"LD_LIBRARY_PATH": "../../../../../../build/lib",
+    "/cs-shared/CAT/configs/bulk_sync_2.json",
+"LD_LIBRARY_PATH": "../../../../build/lib",
 "CONTRAIL_CAT_FRAMEWORK": "1",
 "USER_DIR": c.ConfDir + "/..",
     }

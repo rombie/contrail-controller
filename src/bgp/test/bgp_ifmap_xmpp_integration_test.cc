@@ -234,10 +234,10 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
 
         ofstream myfile;
         myfile.open (ufile.c_str());
-        string data = "{ \"ProcessID\": " + p +
-                      ", \"BgpPort\": " + b +
-                      ", \"XmppPort\": " + x +
-                      ", \"HttpPort\": " + h + "}";
+        string data = "{ \"Pid\": " + p +
+                      ", \"BGPPort\": " + b +
+                      ", \"XMPPPort\": " + x +
+                      ", \"HTTPPort\": " + h + "}";
         myfile << data;
         cout << data << endl;
         myfile.close();

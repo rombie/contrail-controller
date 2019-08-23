@@ -9,9 +9,8 @@ import (
 type Manager struct {
     Verbose   bool
     IP        string
-    LogDir    string
-    ReportDir string
     RootDir   string
+    ReportDir string
 }
 
 // Component is the base CAT component used for testing.
@@ -27,10 +26,10 @@ type Component struct {
 }
 
 type Config struct {
-    Pid      int `json:pid`
-    XMPPPort int `json:xmpp_port`
-    BGPPort  int `json:bgp_port`
-    HTTPPort int `json:http_port`
+    Pid      int `json:Pid`
+    BGPPort  int `json:BGPPort`
+    XMPPPort int `json:XMPPPort`
+    HTTPPort int `json:HTTPPort`
 }
 
 // Stop will stop the component sending a signal to the process.

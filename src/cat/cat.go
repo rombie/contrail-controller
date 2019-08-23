@@ -33,20 +33,25 @@ func New() (*CAT, error) {
     c := &CAT{}
     now := time.Now()
 
-    c.sut.LogDir = filepath.Join("/tmp/CAT", os.Getenv("USER"),
-                                 now.Format(timestamp))
-    if err := os.MkdirAll(c.sut.LogDir, 0700); err != nil {
-        return nil, fmt.Errorf("failed to create logdir %q :%v",
-                               c.sut.LogDir, err)
+    pwd, err := os.Getwd()
+    if err != nil {
+        return nil, fmt.Errorf("Cannot find present working directory: %v", err)
     }
-    c.sut.Manager.ReportDir = filepath.Join(c.sut.LogDir, "reports")
-    err := os.MkdirAll(c.sut.Manager.ReportDir, 0700)
+    c.sut.Manager.RootDir =
+        filepath.Join(pwd + "../../../../build/debug/cat",
+                      now.Format(timestamp))
+    if err := os.MkdirAll(c.sut.Manager.RootDir, 0700); err != nil {
+        return nil, fmt.Errorf("failed to create rootdir %q :%v",
+                               c.sut.Manager.RootDir, err)
+    }
+    c.sut.Manager.ReportDir = filepath.Join(c.sut.Manager.RootDir, "reports")
+    err = os.MkdirAll(c.sut.Manager.ReportDir, 0700)
     if err != nil {
         fmt.Println("failed to make report directory: %v", err)
         return nil, err
     }
     c.setHostIP()
-    fmt.Println("Logs are in " + c.sut.LogDir)
+    fmt.Println("Test data in " + c.sut.Manager.RootDir)
     return c, err
 }
 
@@ -73,11 +78,14 @@ func (c *CAT) Teardown() {
     }
     for _, cn := range c.ControlNodes {
         cn.Component.Stop(syscall.SIGTERM)
+        os.Remove(cn.ConfDir)
+        os.Remove(cn.LogDir)
     }
     for _, a := range c.Agents {
         a.Component.Stop(syscall.SIGTERM)
+        os.Remove(a.ConfDir)
+        os.Remove(a.LogDir)
     }
-    os.Remove(c.sut.LogDir)
 }
 
 func (c *CAT) Pause() {
