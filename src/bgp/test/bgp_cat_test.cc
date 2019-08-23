@@ -25,12 +25,9 @@ TEST_F(BgpCatTest, BasicGoLang) {
     };
     boost::filesystem::path cwd(boost::filesystem::current_path());
     if (!(child = vfork())) {
-        char *const env[2] = {
-            (char *) (string("GOPATH=") + cwd.string() + "controller").c_str(),
-            NULL
-        };
+        setenv("GOPATH", cwd.string().c_str(), true);
         chdir("controller/src/cat/test");
-        execvpe("../../../../third_party/go/bin/go", argv, env);
+        execv("../../../../third_party/go/bin/go", argv);
     }
     int status = 0;
     waitpid(child, &status, 0);
