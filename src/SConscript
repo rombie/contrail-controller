@@ -31,11 +31,11 @@ if platform.system() != 'Darwin':
 
 if platform.system() != 'Windows':
     subdirs += [
-        'config',
-        'container',
+#       'config',
+#       'container',
         'control-node',
-        'utils',
-        'vcenter-import',
+#       'utils',
+#       'vcenter-import',
     ]
 
 include = ['#/controller/src', '#/build/include', '#src/contrail-common', '#controller/lib']

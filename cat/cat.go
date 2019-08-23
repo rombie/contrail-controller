@@ -39,16 +39,14 @@ func New() (*CAT, error) {
         return nil, fmt.Errorf("failed to create logdir %q :%v",
                                c.sut.LogDir, err)
     }
-    fmt.Println("Logs are in " + c.sut.LogDir)
     c.sut.Manager.ReportDir = filepath.Join(c.sut.LogDir, "reports")
-
-    c.setHostIP()
     err := os.MkdirAll(c.sut.Manager.ReportDir, 0700)
     if err != nil {
-        fmt.Println("here", err)
-        // return nil, fmt.Errorf("failed to make report directory: %v", err)
+        fmt.Println("failed to make report directory: %v", err)
         return nil, err
     }
+    c.setHostIP()
+    fmt.Println("Logs are in " + c.sut.LogDir)
     return c, err
 }
 
