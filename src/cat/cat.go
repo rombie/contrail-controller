@@ -33,12 +33,12 @@ func New() (*CAT, error) {
     c := &CAT{}
     now := time.Now()
 
-    pwd, err := os.Getwd()
+    cwd, err := os.Getwd()
     if err != nil {
         return nil, fmt.Errorf("Cannot find present working directory: %v", err)
     }
     c.sut.Manager.RootDir =
-        filepath.Join(pwd + "../../../../build/debug/cat",
+        filepath.Join(cwd + "../../../../build/debug/cat",
                       now.Format(timestamp))
     if err := os.MkdirAll(c.sut.Manager.RootDir, 0700); err != nil {
         return nil, fmt.Errorf("failed to create rootdir %q :%v",
