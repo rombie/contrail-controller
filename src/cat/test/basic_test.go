@@ -5,11 +5,15 @@ import (
     "testing"
     "cat"
     "cat/agent"
+    "cat/config"
     "cat/controlnode"
     "fmt"
+    "io"
+    "os"
 )
 
 var cat_obj *cat.CAT
+const confFile = "../../../../build/debug/bgp/test/cat_db.json"
 
 func setup() error {
     if cat_obj != nil {
@@ -23,14 +27,38 @@ func setup() error {
     return err
 }
 
+func generateConfiguration() error {
+    vr := config.NewVirtualRouter("agent1", "1.2.3.1")
+    vr.AddRef("virtual-machine", "5ce20cfc-c399-11e9-a251-002590c75050")
+    vr.AddRef("virtual-machine", "6ce20cfc-c399-11e9-a251-002590c75050")
+    vr.UpdateDB()
+
+    vr = config.NewVirtualRouter("agent2", "1.2.3.2")
+    vr.AddRef("virtual-machine", "7ce20cfc-c399-11e9-a251-002590c75050")
+    vr.AddRef("virtual-machine", "8ce20cfc-c399-11e9-a251-002590c75050")
+    vr.UpdateDB()
+    file, err := os.Create(confFile)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    _, err = io.WriteString(file, config.GenerateDB())
+    return file.Sync()
+}
+
 func TestSingleControlNodeSingleAgent(t *testing.T) {
     err := setup()
     if err != nil {
         t.Fail()
     }
-    createControlNodseAndAgents(t, "TestSingleControlNodeSingleAgent", 1,1)
+    generateConfiguration()
+    createControlNodseAndAgents(t, "TestSingleControlNodeSingleAgent", 1, 1)
+    cat_obj.PauseAfterRun = true
     cat_obj.Teardown()
 }
+
+/*
 
 func TestSingleControlNodeMultipleAgent(t *testing.T) {
     if setup() != nil {
@@ -79,6 +107,7 @@ func TestMultipleControlNodeRestart(t *testing.T) {
     verifyControlNodseAndAgents(t, control_nodes, agents)
     cat_obj.Teardown()
 }
+*/
 
 func createControlNodseAndAgents(t *testing.T, test string, nc,
         na int) ([]*controlnode.ControlNode, []*agent.Agent, error) {
@@ -88,7 +117,7 @@ func createControlNodseAndAgents(t *testing.T, test string, nc,
 
     for c := 0; c < nc; c++ {
         cn, err := cat_obj.AddControlNode(test,
-            "control-node" + strconv.Itoa(c), 0)
+            "control-node" + strconv.Itoa(c), confFile, 0)
         if err != nil {
             return control_nodes, agents, err
         }

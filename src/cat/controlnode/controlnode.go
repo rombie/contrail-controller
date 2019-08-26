@@ -18,11 +18,13 @@ import (
 // Control-Node specific class
 type ControlNode struct {
     sut.Component
+    confFile string
 }
 
 const controlNodeName = "control-node"
 
-func New(m sut.Manager, name, test string,http_port int) (*ControlNode, error) {
+func New(m sut.Manager, name, conf_file, test string,
+         http_port int) (*ControlNode, error) {
     c := &ControlNode{
         Component: sut.Component{
             Name:    name,
@@ -34,7 +36,7 @@ func New(m sut.Manager, name, test string,http_port int) (*ControlNode, error) {
                 HTTPPort: http_port,
                 XMPPPort: 0,
             },
-            ConfFile: "",
+            ConfFile: conf_file,
         },
     }
     if err := os.MkdirAll(c.Component.ConfDir, 0755); err != nil {
@@ -55,6 +57,11 @@ func (c *ControlNode) start() int {
         log.Fatal(err)
     }
 
+    if c.ConfFile == "" {
+        c.ConfFile =
+            "../../../../controller/src/ifmap/client/testdata/bulk_sync.json"
+    }
+
     env := map[string] string {
 "USER": os.Getenv("USER"),
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_SELF_NAME": "overcloud-contrailcontroller-1",
@@ -63,8 +70,7 @@ func (c *ControlNode) start() int {
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_INTROSPECT": strconv.Itoa(c.Config.HTTPPort),
 "BGP_IFMAP_XMPP_INTEGRATION_TEST_PAUSE": "1",
 "LOG_DISABLE" : strconv.FormatBool(c.Verbose),
-"BGP_IFMAP_XMPP_INTEGRATION_TEST_DATA_FILE":
-    "../../../../controller/src/ifmap/client/testdata/bulk_sync.json",
+"BGP_IFMAP_XMPP_INTEGRATION_TEST_DATA_FILE": c.ConfFile,
 "LD_LIBRARY_PATH": "../../../../build/lib",
 "CONTRAIL_CAT_FRAMEWORK": "1",
 "USER_DIR": c.ConfDir + "/..",
