@@ -19,6 +19,7 @@ func (o *VirtualRouter) AddRef(obj *ContrailConfigObject) {
         case "virtual_machine":
             o.VirtualMachineRefs = append(o.VirtualMachineRefs, ref)
     }
+    o.UpdateDB()
 }
 
 func NewVirtualRouter(name, ip string) *VirtualRouter {
@@ -29,6 +30,7 @@ func NewVirtualRouter(name, ip string) *VirtualRouter {
         VirtualRouterDpdkEnabled: false,
 
     }
+    o.UpdateDB()
     return o
 }
 

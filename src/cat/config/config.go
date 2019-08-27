@@ -33,6 +33,9 @@ func (self *ContrailConfigObject) ToJson (b []byte) map[string]string {
     json_strings := make(map[string]string)
     for key, _ := range v {
         if strings.HasSuffix(key, "_refs") {
+            if v[key] == nil {
+                continue
+            }
             refs := v[key].([]interface{})
             for i := range refs {
                 ref := refs[i].(map[string]interface{})
@@ -40,6 +43,17 @@ func (self *ContrailConfigObject) ToJson (b []byte) map[string]string {
                 // json_strings[k] = "{\"attr\": null}"
                 c, _ := json.Marshal(ref["attr"])
                 json_strings[k] = string(c)
+            }
+        } else if strings.HasSuffix(key, "_children") {
+            if v[key] == nil {
+                continue
+            }
+            children := v[key].([]interface{})
+            for i := range children {
+                child := children[i].(map[string]interface{})
+                k := "children:" + child["type"].(string) + ":" +
+                     child["uuid"].(string)
+                json_strings[k] = "null"
             }
         } else {
             b, _ = json.Marshal(v[key])
@@ -87,6 +101,11 @@ type Ref struct {
     Attr map[string]interface{} `json:"attr"`
 }
 
+type Child struct {
+    Uuid string `json:"uuid"`
+    Type string `json:"type"`
+}
+
 func GenerateDB(confFile string) error {
     file, err := os.Create(confFile)
     if err != nil {
@@ -104,6 +123,7 @@ func GenerateDB(confFile string) error {
 func NewConfigObject (tp, name, parent string,
                       fqname []string) *ContrailConfigObject {
     obj := createContrailConfigObject(tp, name, parent, fqname)
+    obj.UpdateDB()
     return &obj
 }
 

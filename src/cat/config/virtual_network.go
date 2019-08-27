@@ -9,6 +9,17 @@ import (
 type VirtualNetwork struct {
     ContrailConfigObject
     NetworkIpamRefs []Ref `json:"network_ipam_refs"`
+    RoutingInstanceChildren []Child `json:"routing_instance_children"`
+}
+
+func (o *VirtualNetwork) AddChild(obj *ContrailConfigObject) {
+    switch obj.Type{
+        case "routing_instance":
+            child := Child{ Uuid: obj.Uuid, Type:obj.Type }
+            o.RoutingInstanceChildren = append(o.RoutingInstanceChildren, child)
+            
+    }
+    o.UpdateDB()
 }
 
 func (o *VirtualNetwork) AddRef(obj *ContrailConfigObject) {
@@ -34,6 +45,7 @@ func (o *VirtualNetwork) AddRef(obj *ContrailConfigObject) {
             }
             o.NetworkIpamRefs = append(o.NetworkIpamRefs, ref)
     }
+    o.UpdateDB()
 }
 
 func NewVirtualNetwork(name string) *VirtualNetwork {
@@ -41,6 +53,7 @@ func NewVirtualNetwork(name string) *VirtualNetwork {
         ContrailConfigObject: createContrailConfigObject("virtual_network",
          name, "project", []string{"default-domain", "default-project", name}),
     }
+    o.UpdateDB()
     return o
 }
 

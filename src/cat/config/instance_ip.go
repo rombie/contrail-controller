@@ -19,6 +19,7 @@ func (o *InstanceIp) AddRef(obj *ContrailConfigObject) {
         case "virtual_network":
             o.VirtualNetworkRefs = append(o.VirtualNetworkRefs, ref)
     }
+    o.UpdateDB()
 }
 
 func NewInstanceIp(name, address, family string) *InstanceIp {
@@ -29,6 +30,7 @@ func NewInstanceIp(name, address, family string) *InstanceIp {
         InstanceIpFamily: family,
 
     }
+    o.UpdateDB()
     return o
 }
 
