@@ -8,8 +8,6 @@ import (
     "cat/config"
     "cat/controlnode"
     "fmt"
-    "io"
-    "os"
 )
 
 var cat_obj *cat.CAT
@@ -28,6 +26,12 @@ func setup() error {
 }
 
 func generateConfiguration() error {
+    vm := config.NewConfigObject("virtual_machine", "vm1", "", []string{"vm1"})
+    vm.UpdateDB()
+
+    domain := config.NewConfigObject("domain", "default-domain", "", []string{"default-domain"})
+    domain.UpdateDB()
+
     vr := config.NewVirtualRouter("agent1", "1.2.3.1")
     vr.AddRef("virtual-machine", "5ce20cfc-c399-11e9-a251-002590c75050")
     vr.AddRef("virtual-machine", "6ce20cfc-c399-11e9-a251-002590c75050")
@@ -37,14 +41,8 @@ func generateConfiguration() error {
     vr.AddRef("virtual-machine", "7ce20cfc-c399-11e9-a251-002590c75050")
     vr.AddRef("virtual-machine", "8ce20cfc-c399-11e9-a251-002590c75050")
     vr.UpdateDB()
-    file, err := os.Create(confFile)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
 
-    _, err = io.WriteString(file, config.GenerateDB())
-    return file.Sync()
+    return config.GenerateDB(confFile)
 }
 
 func TestSingleControlNodeSingleAgent(t *testing.T) {

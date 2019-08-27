@@ -33,7 +33,7 @@ func New(m sut.Manager, name, conf_file, test string,
             ConfDir: filepath.Join(m.RootDir,test,controlNodeName,name,"conf"),
             Config: sut.Config{
                 Pid:      0,
-                HTTPPort: http_port,
+                HTTPPort: 10000, // http_port,
                 XMPPPort: 0,
             },
             ConfFile: conf_file,

@@ -4,6 +4,8 @@ import (
     "cat/types"
     "encoding/json"
     "fmt"
+    "io"
+    "os"
     // "github.com/Juniper/contrail-go-api/types"
     "github.com/google/uuid"
     "strings"
@@ -85,10 +87,27 @@ type Ref struct {
     Attr map[string]string `json:"attr"`
 }
 
-func GenerateDB() string {
+func GenerateDB(confFile string) error {
+    file, err := os.Create(confFile)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
     b1, _ := json.Marshal(UUIDTable)
     b2, _ := json.Marshal(FQNameTable)
-    return fmt.Sprintf("[{ \"operation\": \"db_sync\", \"db\": " + string(b1) +
-                       ", \"OBJ_FQ_NAME_TABLE\": " + string(b2) + "}]\n")
-               
+    conf := fmt.Sprintf("[{ \"operation\": \"db_sync\", \"db\": " + string(b1) +
+                        ", \"OBJ_FQ_NAME_TABLE\": " + string(b2) + "}]\n")
+    _, err = io.WriteString(file, conf)
+    return file.Sync()
+}
+
+func NewConfigObject (tp, name, parent string,
+                      fqname []string) *ContrailConfigObject {
+    obj := createContrailConfigObject(tp, name, parent, fqname)
+    return &obj
+}
+
+func (c *ContrailConfigObject) UpdateDB() {
+    b, _ := json.Marshal(c)
+    UUIDTable[c.Uuid] = c.ToJson(b)
 }
