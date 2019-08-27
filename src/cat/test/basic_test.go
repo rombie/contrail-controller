@@ -26,6 +26,7 @@ func setup() error {
 }
 
 func generateConfiguration() error {
+    config.NewGlobalSystemsConfig("100")
     vm1 := config.NewConfigObject("virtual_machine", "vm1", "", []string{"vm1"})
     vm2 := config.NewConfigObject("virtual_machine", "vm2", "", []string{"vm2"})
     vm3 := config.NewConfigObject("virtual_machine", "vm3", "", []string{"vm3"})
@@ -43,12 +44,12 @@ func generateConfiguration() error {
 
     rtarget := config.NewConfigObject("route_target", "target:100:8000000", "",
                                       []string{"target:100:8000000"})
-    ri := config.NewRoutingInstance("vn1")
-    ri.AddRef(rtarget)
+    ri1 := config.NewRoutingInstance("vn1")
+    ri1.AddRef(rtarget)
 
     vn1 := config.NewVirtualNetwork("vn1")
     vn1.AddRef(network_ipam)
-    vn1.AddChild(&ri.ContrailConfigObject)
+    vn1.AddChild(&ri1.ContrailConfigObject)
 
     ip := config.NewInstanceIp("ip1", "2.2.2.10", "v4")
     ip.AddRef(&vn1.ContrailConfigObject)
@@ -60,6 +61,11 @@ func generateConfiguration() error {
     vr = config.NewVirtualRouter("agent2", "1.2.3.2")
     vr.AddRef(vm3)
     vr.AddRef(vm4)
+
+    vmi1 := config.NewVirtualMachineInterface("vmi1")
+    vmi1.AddRef(vm1)
+    vmi1.AddRef(&vn1.ContrailConfigObject)
+    vmi1.AddRef(&ri1.ContrailConfigObject)
 
     return config.GenerateDB(confFile)
 }
