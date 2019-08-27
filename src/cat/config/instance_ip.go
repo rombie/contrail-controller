@@ -9,6 +9,7 @@ type InstanceIp struct {
     InstanceIpAddress string `json:"prop:instance_ip_address"`
     InstanceIpFamily string `json:"prop:instance_ip_family"`
     VirtualNetworkRefs []Ref `json:"virtual_network_refs"`
+    VirtualMachineInterfaceRefs []Ref `json:"virtual_machine_interface_refs"`
 }
 
 func (o *InstanceIp) AddRef(obj *ContrailConfigObject) {
@@ -18,6 +19,9 @@ func (o *InstanceIp) AddRef(obj *ContrailConfigObject) {
     switch obj.Type{
         case "virtual_network":
             o.VirtualNetworkRefs = append(o.VirtualNetworkRefs, ref)
+        case "virtual_machine_interface":
+            o.VirtualMachineInterfaceRefs =
+                append(o.VirtualMachineInterfaceRefs, ref)
     }
     o.UpdateDB()
 }

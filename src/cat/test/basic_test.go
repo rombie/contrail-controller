@@ -51,9 +51,6 @@ func generateConfiguration() error {
     vn1.AddRef(network_ipam)
     vn1.AddChild(&ri1.ContrailConfigObject)
 
-    ip := config.NewInstanceIp("ip1", "2.2.2.10", "v4")
-    ip.AddRef(&vn1.ContrailConfigObject)
-
     vr := config.NewVirtualRouter("agent1", "1.2.3.1")
     vr.AddRef(vm1)
     vr.AddRef(vm2)
@@ -66,6 +63,10 @@ func generateConfiguration() error {
     vmi1.AddRef(vm1)
     vmi1.AddRef(&vn1.ContrailConfigObject)
     vmi1.AddRef(&ri1.ContrailConfigObject)
+
+    instance_ip := config.NewInstanceIp("ip1", "2.2.2.10", "v4")
+    instance_ip.AddRef(&vn1.ContrailConfigObject)
+    instance_ip.AddRef(&vmi1.ContrailConfigObject)
 
     return config.GenerateDB(confFile)
 }

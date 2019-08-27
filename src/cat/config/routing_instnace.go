@@ -15,7 +15,7 @@ func (o *RoutingInstance) AddRef(obj *ContrailConfigObject) {
         case "route_target":
             ref := Ref{
               Uuid: obj.Uuid, Type:obj.Type,
-              Attr:map[string]interface{} {"attr":"{\"import_export\": null}",},
+              Attr:map[string]interface{} {"attr":"",},
             }
             o.RouteTargetRefs = append(o.RouteTargetRefs, ref)
     }
