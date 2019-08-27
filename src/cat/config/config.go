@@ -84,7 +84,7 @@ func createContrailConfigObject (tp, name, parent_type string,
 type Ref struct {
     Uuid string `json:"uuid"`
     Type string `json:"type"`
-    Attr map[string]string `json:"attr"`
+    Attr map[string]interface{} `json:"attr"`
 }
 
 func GenerateDB(confFile string) error {

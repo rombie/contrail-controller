@@ -1,9 +1,7 @@
-
 package config
 
 import (
     "encoding/json"
-    "fmt"
 )
 
 type InstanceIp struct {
@@ -15,7 +13,7 @@ type InstanceIp struct {
 
 func (o *InstanceIp) AddRef(obj *ContrailConfigObject) {
     ref := Ref{
-        Uuid: obj.Uuid, Type:obj.Type, Attr:map[string]string {"attr":"",},
+        Uuid: obj.Uuid, Type:obj.Type, Attr:map[string]interface{} {"attr":"",},
     }
     switch obj.Type{
         case "virtual_network":

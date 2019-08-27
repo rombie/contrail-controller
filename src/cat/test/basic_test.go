@@ -42,11 +42,21 @@ func generateConfiguration() error {
                                      []string{"default-domain"})
     domain.UpdateDB()
 
-    vn1 := config.NewConfigObject("virtual_network", "vn1", "", []string{"vn1"})
+    project := config.NewConfigObject("project", "default-project",
+        "domain:" + domain.Uuid, []string{"default-domain", "default-project"})
+    project.UpdateDB()
+
+    network_ipam := config.NewConfigObject("network_ipam",
+        "default-network-ipam", "project:" + project.Uuid,
+        []string{"default-domain", "default-project", "default-network-ipam"})
+    network_ipam.UpdateDB()
+
+    vn1 := config.NewVirtualNetwork("vn1")
+    vn1.AddRef(network_ipam)
     vn1.UpdateDB()
 
     ip := config.NewInstanceIp("ip1", "2.2.2.10", "v4")
-    ip.AddRef(vn1)
+    ip.AddRef(&vn1.ContrailConfigObject)
     ip.UpdateDB()
     fmt.Println(config.UUIDTable)
 
