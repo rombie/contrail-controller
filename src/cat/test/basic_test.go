@@ -26,20 +26,38 @@ func setup() error {
 }
 
 func generateConfiguration() error {
-    vm := config.NewConfigObject("virtual_machine", "vm1", "", []string{"vm1"})
-    vm.UpdateDB()
+    vm1 := config.NewConfigObject("virtual_machine", "vm1", "", []string{"vm1"})
+    vm1.UpdateDB()
 
-    domain := config.NewConfigObject("domain", "default-domain", "", []string{"default-domain"})
+    vm2 := config.NewConfigObject("virtual_machine", "vm2", "", []string{"vm2"})
+    vm2.UpdateDB()
+
+    vm3 := config.NewConfigObject("virtual_machine", "vm3", "", []string{"vm3"})
+    vm3.UpdateDB()
+
+    vm4 := config.NewConfigObject("virtual_machine", "vm4", "", []string{"vm4"})
+    vm4.UpdateDB()
+
+    domain := config.NewConfigObject("domain", "default-domain", "",
+                                     []string{"default-domain"})
     domain.UpdateDB()
 
+    vn1 := config.NewConfigObject("virtual_network", "vn1", "", []string{"vn1"})
+    vn1.UpdateDB()
+
+    ip := config.NewInstanceIp("ip1", "2.2.2.10", "v4")
+    ip.AddRef(vn1)
+    ip.UpdateDB()
+    fmt.Println(config.UUIDTable)
+
     vr := config.NewVirtualRouter("agent1", "1.2.3.1")
-    vr.AddRef("virtual-machine", "5ce20cfc-c399-11e9-a251-002590c75050")
-    vr.AddRef("virtual-machine", "6ce20cfc-c399-11e9-a251-002590c75050")
+    vr.AddRef(vm1)
+    vr.AddRef(vm2)
     vr.UpdateDB()
 
     vr = config.NewVirtualRouter("agent2", "1.2.3.2")
-    vr.AddRef("virtual-machine", "7ce20cfc-c399-11e9-a251-002590c75050")
-    vr.AddRef("virtual-machine", "8ce20cfc-c399-11e9-a251-002590c75050")
+    vr.AddRef(vm3)
+    vr.AddRef(vm4)
     vr.UpdateDB()
 
     return config.GenerateDB(confFile)

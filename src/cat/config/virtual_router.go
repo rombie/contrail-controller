@@ -8,29 +8,31 @@ type VirtualRouter struct {
     ContrailConfigObject
     VirtualRouterIpAddress string `json:"prop:virtual_router_ip_address"`
     VirtualRouterDpdkEnabled bool `json:"prop:virtual_router_dpdk_enabled"`
-    VirtualMachineRefs []Ref `json:"virtual_machines_refs"`
+    VirtualMachineRefs []Ref `json:"virtual_machine_refs"`
 }
 
-func (self *VirtualRouter) AddRef(ref_type, uuid string) {
-    ref := Ref {Uuid:uuid, Type:ref_type, Attr:map[string]string {"attr":"",},}
-    switch ref_type {
-        case "virtual-machine":
-            self.VirtualMachineRefs = append(self.VirtualMachineRefs, ref)
+func (o *VirtualRouter) AddRef(obj *ContrailConfigObject) {
+    ref := Ref{
+        Uuid: obj.Uuid, Type:obj.Type, Attr:map[string]string {"attr":"",},
+    }
+    switch obj.Type{
+        case "virtual_machine":
+            o.VirtualMachineRefs = append(o.VirtualMachineRefs, ref)
     }
 }
 
 func NewVirtualRouter(name, ip string) *VirtualRouter {
-    vr := &VirtualRouter{
+    o := &VirtualRouter{
         ContrailConfigObject: createContrailConfigObject("virtual_router", name,
           "global-system-config",[]string{"default-global-system-config",name}),
         VirtualRouterIpAddress: ip,
         VirtualRouterDpdkEnabled: false,
 
     }
-    return vr
+    return o
 }
 
-func (vr *VirtualRouter) UpdateDB() {
-    b, _ := json.Marshal(vr)
-    UUIDTable[vr.Uuid] = vr.ToJson(b)
+func (o *VirtualRouter) UpdateDB() {
+    b, _ := json.Marshal(o)
+    UUIDTable[o.Uuid] = o.ToJson(b)
 }
