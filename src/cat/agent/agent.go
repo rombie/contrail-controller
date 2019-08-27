@@ -54,7 +54,7 @@ func (a *Agent) Start() int {
     }
     env := map[string]string{
         "LD_LIBRARY_PATH": "../../../../build/lib",
-        "LOGNAME":         os.Getenv("USER"),
+        "LOGNAME":         a.Component.LogDir,
     }
     var enva []string
     for k, v := range env {
