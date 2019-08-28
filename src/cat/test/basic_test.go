@@ -107,8 +107,8 @@ func createControlNodseAndAgents(t *testing.T, test string, nc,
         agents = append(agents, ag)
     }
 
-    verifyConfiguration(t, control_nodes)
     verifyControlNodseAndAgents(t, control_nodes, agents)
+    verifyConfiguration(t, control_nodes)
     return control_nodes, agents, nil
 }
 
@@ -171,13 +171,43 @@ func generateConfiguration() error {
 func verifyConfiguration(t *testing.T,
                          control_nodes []*controlnode.ControlNode) {
     for c := range control_nodes {
+        if !control_nodes[c].CheckConfiguration("domain", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("global-system-config", 1, 3,
+                3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("instance-ip", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("network-ipam", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("project", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("route-target", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("routing-instance", 1, 3, 3) {
+            t.Fail()
+        }
         if !control_nodes[c].CheckConfiguration("virtual-machine", 4, 3, 3) {
             t.Fail()
         }
-        if !control_nodes[c].CheckConfiguration("virtual-router", 2, 3, 3) {
+        if !control_nodes[c].CheckConfiguration("virtual-machine-interface", 1,
+                3, 3) {
             t.Fail()
         }
         if !control_nodes[c].CheckConfiguration("virtual-network", 1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("virtual-network-network-ipam",
+                1, 3, 3) {
+            t.Fail()
+        }
+        if !control_nodes[c].CheckConfiguration("virtual-router", 1, 3, 3) {
             t.Fail()
         }
     }
