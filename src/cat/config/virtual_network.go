@@ -17,7 +17,6 @@ func (o *VirtualNetwork) AddChild(obj *ContrailConfigObject) {
         case "routing_instance":
             child := Child{ Uuid: obj.Uuid, Type:obj.Type }
             o.RoutingInstanceChildren = append(o.RoutingInstanceChildren, child)
-            
     }
     o.UpdateDB()
 }
