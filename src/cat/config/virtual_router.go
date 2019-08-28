@@ -5,7 +5,7 @@ import (
 )
 
 type VirtualRouter struct {
-    ContrailConfigObject
+    *ContrailConfigObject
     VirtualRouterIpAddress string `json:"prop:virtual_router_ip_address"`
     VirtualRouterDpdkEnabled bool `json:"prop:virtual_router_dpdk_enabled"`
     VirtualMachineRefs []Ref `json:"virtual_machine_refs"`
@@ -22,19 +22,30 @@ func (o *VirtualRouter) AddRef(obj *ContrailConfigObject) {
     o.UpdateDB()
 }
 
-func NewVirtualRouter(name, ip string) *VirtualRouter {
+func NewVirtualRouter(name, ip string) (*VirtualRouter, error) {
+    co, err := createContrailConfigObject("virtual_router", name, "global-system-config",[]string{"default-global-system-config",name})
+    if err != nil {
+        return nil, err
+    }
     o := &VirtualRouter{
-        ContrailConfigObject: createContrailConfigObject("virtual_router", name,
-          "global-system-config",[]string{"default-global-system-config",name}),
+        ContrailConfigObject: co,
         VirtualRouterIpAddress: ip,
         VirtualRouterDpdkEnabled: false,
 
     }
-    o.UpdateDB()
-    return o
+
+    err = o.UpdateDB()
+    if err != nil {
+        return nil, err
+    }
+    return o, nil
 }
 
-func (o *VirtualRouter) UpdateDB() {
-    b, _ := json.Marshal(o)
-    UUIDTable[o.Uuid] = o.ToJson(b)
+func (o *VirtualRouter) UpdateDB() error {
+    b, err := json.Marshal(o)
+    if err != nil {
+        return err
+    }
+    UUIDTable[o.Uuid], err = o.ToJson(b)
+    return err
 }

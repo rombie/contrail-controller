@@ -5,7 +5,7 @@ import (
 )
 
 type VirtualMachineInterface struct {
-    ContrailConfigObject
+    *ContrailConfigObject
     VirtualMachineRefs []Ref `json:"virtual_machine_refs"`
     VirtualNetworkRefs []Ref `json:"virtual_network_refs"`
     RoutingInstanceRefs []Ref `json:"routing_instance_refs"`
@@ -28,24 +28,33 @@ func (o *VirtualMachineInterface) AddRef(obj *ContrailConfigObject) {
         case "routing_instance":
             ref := Ref{
                 Uuid: obj.Uuid, Type:obj.Type,
-                Attr:map[string]interface{} {"attr":"",},
+                Attr:map[string]interface{} {"attr":nil, "is_weakref": false},
             }
             o.RoutingInstanceRefs = append(o.RoutingInstanceRefs, ref)
     }
     o.UpdateDB()
 }
 
-func NewVirtualMachineInterface(name string) *VirtualMachineInterface {
-    o := &VirtualMachineInterface{
-        ContrailConfigObject: createContrailConfigObject(
-          "virtual_machine_interface", name,
-          "project", []string{"default-domain", "default-project", name}),
+func NewVirtualMachineInterface(name string) (*VirtualMachineInterface, error) {
+    co, err := createContrailConfigObject("virtual_machine_interface", name, "project", []string{"default-domain", "default-project", name})
+    if err != nil {
+        return nil, err
     }
-    o.UpdateDB()
-    return o
+    o := &VirtualMachineInterface{
+        ContrailConfigObject: co,
+    }
+    err = o.UpdateDB()
+    if err != nil {
+        return nil, err
+    }
+    return o, nil
 }
 
-func (o *VirtualMachineInterface) UpdateDB() {
-    b, _ := json.Marshal(o)
-    UUIDTable[o.Uuid] = o.ToJson(b)
+func (o *VirtualMachineInterface) UpdateDB() error {
+    b, err := json.Marshal(o)
+    if err != nil {
+        return err
+    }
+    UUIDTable[o.Uuid], err = o.ToJson(b)
+    return err
 }

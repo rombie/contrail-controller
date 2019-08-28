@@ -2,17 +2,21 @@ package agent
 
 import (
     "bufio"
+    "cat/config"
     "cat/sut"
     "fmt"
+    "io/ioutil"
     "log"
     "os"
     "os/exec"
     "path/filepath"
     "strings"
-    "strconv"
 )
 
 const agentName = "control-vrouter-agent"
+const agentConfFile = "../agent/contrail-vrouter-agent.conf"
+const agentBinary = "../../../../build/debug/vnsw/agent/contrail/contrail-vrouter-agent"
+const agentAddPortBinary = "../../../../controller/src/vnsw/agent/port_ipc/vrouter-port-control" 
 
 // Agent is a SUT component for VRouter Agent.
 type Agent struct {
@@ -28,7 +32,7 @@ func New(m sut.Manager, name, test string, xmpp_ports []int) (*Agent, error) {
             LogDir:  filepath.Join(m.RootDir, test, agentName, name, "log"),
             ConfDir: filepath.Join(m.RootDir, test, agentName, name, "conf"),
             Config: sut.Config{
-                Pid:      0,
+                BGPPort: 0,
                 HTTPPort: 0,
                 XMPPPort: 0,
             },
@@ -43,68 +47,65 @@ func New(m sut.Manager, name, test string, xmpp_ports []int) (*Agent, error) {
         return nil, fmt.Errorf("failed to make log directory: %v", err)
     }
     a.CreateConfiguration()
-    a.Component.Config.Pid = a.Start()
+    if err := a.Start(); err != nil {
+        return nil, err
+    }
     return a, nil
 }
 
-func (a *Agent) Start() int {
-    c1:= "../../../../build/debug/vnsw/agent/contrail/contrail-vrouter-agent"
-    if _, err := os.Stat(c1); os.IsNotExist(err) {
+func (a *Agent) Start() error {
+    if _, err := os.Stat(agentBinary); os.IsNotExist(err) {
         log.Fatal(err)
     }
-    env := map[string]string{
+    a.Cmd = exec.Command(agentBinary, "--config_file=" + a.Component.ConfFile)
+    env := sut.EnvMap{
         "LD_LIBRARY_PATH": "../../../../build/lib",
         "LOGNAME": os.Getenv("USER"),
     }
-    var enva []string
-    for k, v := range env {
-        enva = append(enva, k+"="+v)
+    a.Cmd.Env = a.Env(env)
+    if err := a.Cmd.Start(); err != nil {
+        return fmt.Errorf("Failed to start agent: %v", err)
     }
-    cmd := exec.Command(c1, "--config_file="+a.Component.ConfFile)
-    cmd.Env = enva
-    err := cmd.Start()
-    if err != nil {
-        log.Fatal(err)
-    }
-    return cmd.Process.Pid
+    return nil
 }
 
-func (a *Agent) CreateConfiguration() {
-    sample_conf := "../agent/contrail-vrouter-agent.conf"
-    file, err := os.Open(sample_conf)
+func (a *Agent) AddVirtualPort(vmi, vm, vn, project *config.ContrailConfigObject, ipv4_address, mac_address, tap_if  string) error {
+    cmd := fmt.Sprintf("%s --oper=add --uuid=%s --instance_uuid=%s --vn_uuid=%s --vm_project_uuid=%s --ip_address=%s  --ipv6_address= --vm_name=%s --tap_name=%s --mac=%s --rx_vlan_id=0 --tx_vlan_id=0", agentAddPortBinary, vmi.Uuid, vm.Uuid, vn.Uuid, project.Uuid, ipv4_address, vm.Uuid, tap_if, mac_address)
+    _, err := exec.Command("/bin/bash", "-c", cmd).Output()
+    return err
+}
+
+func (a *Agent) CreateConfiguration() error {
+    file, err := os.Open(agentConfFile)
     if err != nil {
         log.Fatal(err)
     }
     defer file.Close()
-    var new_conf []string
+    var config []string
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
         line := scanner.Text()
-        if strings.Contains(line, "xmpp_port") {
-            updated_line := "servers="
+        var confLine string
+        switch {
+        case strings.Contains(line, "xmpp_port"):
+            confLine = "servers="
             for _, p := range a.XMPPPorts {
-                updated_line = updated_line + "127.0.0.1:" + strconv.Itoa(p) +
-                               " "
+                confLine = fmt.Sprintf("%s127.0.0.1:%d ", confLine, p)
             }
-            new_conf = append(new_conf, updated_line)
-        } else if strings.Contains(line, "agent_name") {
-            new_conf = append(new_conf, "agent_name="+a.Component.Name)
-        } else if strings.Contains(line, "log_file") {
-            new_conf = append(new_conf, "log_file="+a.Component.LogDir+"/"+
-                a.Component.Name+".log")
-        } else {
-            new_conf = append(new_conf, line)
+        case strings.Contains(line, "agent_name"):
+            confLine = fmt.Sprintf("agent_name=%s", a.Name)
+        case strings.Contains(line, "log_file"):
+            confLine = fmt.Sprintf("log_file=%s/%s.log", a.LogDir, a.Name)
+        default:
+            confLine = line
         }
+        config = append(config, confLine)
     }
 
-    a.Component.ConfFile = a.Component.ConfDir + "/" + a.Component.Name +".conf"
-    file, err = os.Create(a.Component.ConfFile)
-    if err != nil {
-        log.Fatal(err)
+    a.Component.ConfFile = fmt.Sprintf("%s/%s.conf", a.Component.ConfDir,
+                                       a.Component.Name)
+    if err := ioutil.WriteFile(a.Component.ConfFile, []byte(strings.Join(config, "\n")), 0644); err != nil {
+        return err
     }
-    defer file.Close()
-
-    for _, line := range new_conf {
-        file.WriteString(line + "\n")
-    }
+    return nil
 }

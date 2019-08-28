@@ -37,38 +37,18 @@ func New() (*CAT, error) {
     if err != nil {
         return nil, fmt.Errorf("Cannot find present working directory: %v", err)
     }
-    c.sut.Manager.RootDir =
-        filepath.Join(cwd + "../../../../build/debug/cat",
-                      now.Format(timestamp))
+    c.sut.Manager.RootDir = filepath.Join(cwd + "../../../../build/debug/cat", now.Format(timestamp))
     if err := os.MkdirAll(c.sut.Manager.RootDir, 0700); err != nil {
-        return nil, fmt.Errorf("failed to create rootdir %q :%v",
-                               c.sut.Manager.RootDir, err)
+        return nil, fmt.Errorf("failed to create rootdir %q :%v", c.sut.Manager.RootDir, err)
     }
     c.sut.Manager.ReportDir = filepath.Join(c.sut.Manager.RootDir, "reports")
     err = os.MkdirAll(c.sut.Manager.ReportDir, 0700)
     if err != nil {
-        fmt.Printf("failed to make report directory: %v\n", err)
-        return nil, err
+        return nil, fmt.Errorf("failed to make report directory: %v", err)
     }
     c.setHostIP()
-    fmt.Println("Test data in " + c.sut.Manager.RootDir)
+    log.Printf("Test data in %s", c.sut.Manager.RootDir)
     return c, err
-}
-
-func (c *CAT) RedirectStdOuterr() {
-    /*
-       old := os.dup(1)
-       os.close(1)
-       f = self.log_files + "/" + self.Name + ".log"
-       open(f, 'w')
-       os.open(f, os.O_WRONLY)
-
-       old = os.dup(2)
-       os.close(2)
-       f = self.log_files + "/" + self.Name + ".log"
-       open(f, 'w')
-       os.open(f, os.O_WRONLY)
-    */
 }
 
 // Teardown stops all components and closes down the CAT instance.
@@ -118,8 +98,7 @@ func (c *CAT) setHostIP() error {
     return errors.New("Cannot retrieve host ip address")
 }
 
-func (c *CAT) AddAgent(test string, name string,
-              control_nodes []*controlnode.ControlNode) (*agent.Agent, error) {
+func (c *CAT) AddAgent(test string, name string, control_nodes []*controlnode.ControlNode) (*agent.Agent, error) {
     var xmpp_ports []int
     for _, control_node := range control_nodes {
         xmpp_ports = append(xmpp_ports, control_node.Config.XMPPPort)
@@ -132,8 +111,7 @@ func (c *CAT) AddAgent(test string, name string,
     return agent, nil
 }
 
-func (c *CAT) AddControlNode(test string, name, conf_file string,
-                             http_port int) (*controlnode.ControlNode, error) {
+func (c *CAT) AddControlNode(test string, name, conf_file string, http_port int) (*controlnode.ControlNode, error) {
     cn, err := controlnode.New(c.sut.Manager, name, conf_file, test, http_port)
     if err != nil {
         return nil, fmt.Errorf("failed to create control-node: %v", err)

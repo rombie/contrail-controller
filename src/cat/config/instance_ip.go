@@ -5,7 +5,7 @@ import (
 )
 
 type InstanceIp struct {
-    ContrailConfigObject
+    *ContrailConfigObject
     InstanceIpAddress string `json:"prop:instance_ip_address"`
     InstanceIpFamily string `json:"prop:instance_ip_family"`
     VirtualNetworkRefs []Ref `json:"virtual_network_refs"`
@@ -26,19 +26,27 @@ func (o *InstanceIp) AddRef(obj *ContrailConfigObject) {
     o.UpdateDB()
 }
 
-func NewInstanceIp(name, address, family string) *InstanceIp {
+func NewInstanceIp(name, address, family string) (*InstanceIp, error) {
+    ip, err := createContrailConfigObject("instance_ip", name, "", []string{name})
     o := &InstanceIp{
-        ContrailConfigObject: createContrailConfigObject("instance_ip", name,
-          "", []string{name}),
+        ContrailConfigObject: ip,
         InstanceIpAddress: address,
         InstanceIpFamily: family,
 
     }
-    o.UpdateDB()
-    return o
+
+    err = o.UpdateDB()
+    if err != nil {
+        return nil, err
+    }
+    return o, nil
 }
 
-func (o *InstanceIp) UpdateDB() {
-    b, _ := json.Marshal(o)
-    UUIDTable[o.Uuid] = o.ToJson(b)
+func (o *InstanceIp) UpdateDB() error {
+    b, err := json.Marshal(o)
+    if err != nil {
+        return err
+    }
+    UUIDTable[o.Uuid], err = o.ToJson(b)
+    return err
 }

@@ -15,6 +15,17 @@ import (
 var FQNameTable map[string]map[string]string= make(map[string]map[string]string)
 var UUIDTable map[string]map[string]string= make(map[string]map[string]string)
 
+type Ref struct {
+    Uuid string `json:"uuid"`
+    Type string `json:"type"`
+    Attr map[string]interface{} `json:"attr"`
+}
+
+type Child struct {
+    Uuid string `json:"uuid"`
+    Type string `json:"type"`
+}
+
 type ContrailConfigObject struct {
     Uuid string
     Type string `json:"type"`
@@ -26,7 +37,7 @@ type ContrailConfigObject struct {
     DisplayName string `json:"prop:display_name"`
 }
 
-func (self *ContrailConfigObject) ToJson (b []byte) map[string]string {
+func (self *ContrailConfigObject) ToJson (b []byte) (map[string]string, error) {
     var v map[string]interface{}
     json.Unmarshal(b, &v)
     json_strings := make(map[string]string)
@@ -38,9 +49,11 @@ func (self *ContrailConfigObject) ToJson (b []byte) map[string]string {
             refs := v[key].([]interface{})
             for i := range refs {
                 ref := refs[i].(map[string]interface{})
-                k := "ref:" + ref["type"].(string) + ":" + ref["uuid"].(string)
-                // json_strings[k] = "{\"attr\": null}"
-                c, _ := json.Marshal(ref["attr"])
+                k := fmt.Sprintf("ref:%s:%s", ref["type"].(string), ref["uuid"].(string))
+                c, err := json.Marshal(ref["attr"])
+                if err != nil {
+                    return nil, err
+                }
                 json_strings[k] = string(c)
             }
         } else if strings.HasSuffix(key, "_children") {
@@ -50,21 +63,25 @@ func (self *ContrailConfigObject) ToJson (b []byte) map[string]string {
             children := v[key].([]interface{})
             for i := range children {
                 child := children[i].(map[string]interface{})
-                k := "children:" + child["type"].(string) + ":" +
-                     child["uuid"].(string)
+                k := fmt.Sprintf("children:%s:%s", child["type"].(string), child["uuid"].(string))
                 json_strings[k] = "null"
             }
         } else {
-            b, _ = json.Marshal(v[key])
+            b, err := json.Marshal(v[key])
+            if err != nil {
+                return nil, err
+            }
             json_strings[key] = string(b)
         }
     }
-    return json_strings
+    return json_strings, nil
 }
 
-func createContrailConfigObject (tp, name, parent_type string,
-                                 fq_name []string) ContrailConfigObject {
-    u, _ := uuid.NewUUID()
+func createContrailConfigObject (tp, name, parent_type string, fq_name []string) (*ContrailConfigObject, error) {
+    u, err := uuid.NewUUID()
+    if err != nil {
+        return nil, err
+    }
     us := u.String()
     if FQNameTable[tp] == nil {
         FQNameTable[tp] = make(map[string]string)
@@ -90,19 +107,8 @@ func createContrailConfigObject (tp, name, parent_type string,
         },
         FqName: fq_name,
     }
-    FQNameTable[tp][strings.Join(fq_name, ":") + ":" + us] = "null"
-    return c
-}
-
-type Ref struct {
-    Uuid string `json:"uuid"`
-    Type string `json:"type"`
-    Attr map[string]interface{} `json:"attr"`
-}
-
-type Child struct {
-    Uuid string `json:"uuid"`
-    Type string `json:"type"`
+    FQNameTable[tp][fmt.Sprintf("%s:%s", strings.Join(fq_name, ":"), us)] = "null"
+    return &c, nil
 }
 
 func GenerateDB(confFile string) error {
@@ -111,22 +117,38 @@ func GenerateDB(confFile string) error {
         return err
     }
     defer file.Close()
-    b1, _ := json.Marshal(UUIDTable)
+    b1, err := json.Marshal(UUIDTable)
+    if err != nil {
+        return nil
+    }
     b2, _ := json.Marshal(FQNameTable)
-    conf := fmt.Sprintf("[{ \"operation\": \"db_sync\", \"db\": " + string(b1) +
-                        ", \"OBJ_FQ_NAME_TABLE\": " + string(b2) + "}]\n")
+    if err != nil {
+        return nil
+    }
+    conf := fmt.Sprintf("[{ \"operation\": \"db_sync\", \"db\": %s, \"OBJ_FQ_NAME_TABLE\": %s}]\n", string(b1), string(b2))
     _, err = io.WriteString(file, conf)
     return file.Sync()
 }
 
-func NewConfigObject (tp, name, parent string,
-                      fqname []string) *ContrailConfigObject {
-    obj := createContrailConfigObject(tp, name, parent, fqname)
+func NewConfigObject (tp, name, parent string, fqname []string) (*ContrailConfigObject, error) {
+    obj, err := createContrailConfigObject(tp, name, parent, fqname)
+    if err != nil {
+        return nil, err
+    }
     obj.UpdateDB()
-    return &obj
+    return obj, nil
 }
 
-func (c *ContrailConfigObject) UpdateDB() {
-    b, _ := json.Marshal(c)
-    UUIDTable[c.Uuid] = c.ToJson(b)
+func (c *ContrailConfigObject) UpdateDB() error {
+    b, err := json.Marshal(c)
+    if err != nil {
+        return nil
+    }
+
+    j, err := c.ToJson(b)
+    if err != nil {
+        return err
+    }
+    UUIDTable[c.Uuid] = j
+    return nil
 }

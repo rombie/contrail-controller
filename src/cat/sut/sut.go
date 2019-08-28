@@ -1,8 +1,9 @@
 package sut
 
 import (
+    "fmt"
     "os"
-    "strconv"
+    "os/exec"
     "syscall"
 )
 
@@ -23,17 +24,29 @@ type Component struct {
     PortsFile string
     Verbose   bool
     Config    Config
+    Cmd      *exec.Cmd
 }
 
 type Config struct {
-    Pid      int `json:Pid`
     BGPPort  int `json:BGPPort`
     XMPPPort int `json:XMPPPort`
     HTTPPort int `json:HTTPPort`
 }
 
-// Stop will stop the component sending a signal to the process.
-func (c *Component) Stop(signal syscall.Signal) {
-    syscall.Kill(c.Config.Pid, signal) // syscall.SIGHUP
-    os.Remove(strconv.Itoa(c.Config.Pid) + ".json")
+func (c *Component) Stop(signal syscall.Signal) error {
+    if err := c.Cmd.Process.Signal(signal); err != nil {
+        return fmt.Errorf("Could not send signal %d to process %d", signal, c.Cmd.Process.Pid)
+    }
+    os.Remove(fmt.Sprintf("%d.json", c.Cmd.Process.Pid))
+    return nil
+}
+
+type EnvMap map[string]string
+
+func (a *Component) Env(e EnvMap) []string {
+    var envs []string
+    for k, v := range e {
+        envs = append(envs, k + "=" + v)
+    }
+    return envs
 }

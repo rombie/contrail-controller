@@ -7,7 +7,7 @@ import (
 )
 
 type VirtualNetwork struct {
-    ContrailConfigObject
+    *ContrailConfigObject
     NetworkIpamRefs []Ref `json:"network_ipam_refs"`
     RoutingInstanceChildren []Child `json:"routing_instance_children"`
 }
@@ -47,16 +47,27 @@ func (o *VirtualNetwork) AddRef(obj *ContrailConfigObject) {
     o.UpdateDB()
 }
 
-func NewVirtualNetwork(name string) *VirtualNetwork {
-    o := &VirtualNetwork{
-        ContrailConfigObject: createContrailConfigObject("virtual_network",
-         name, "project", []string{"default-domain", "default-project", name}),
+func NewVirtualNetwork(name string) (*VirtualNetwork, error) {
+    co, err := createContrailConfigObject("virtual_network", name, "project", []string{"default-domain", "default-project", name})
+    if err != nil {
+        return nil, err
     }
-    o.UpdateDB()
-    return o
+    o := &VirtualNetwork{
+        ContrailConfigObject: co,
+    }
+
+    err = o.UpdateDB()
+    if err != nil {
+        return nil, err
+    }
+    return o, nil
 }
 
-func (o *VirtualNetwork) UpdateDB() {
-    b, _ := json.Marshal(o)
-    UUIDTable[o.Uuid] = o.ToJson(b)
+func (o *VirtualNetwork) UpdateDB() error {
+    b, err := json.Marshal(o)
+    if err != nil {
+        return err
+    }
+    UUIDTable[o.Uuid], err = o.ToJson(b)
+    return err
 }
