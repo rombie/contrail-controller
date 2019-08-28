@@ -33,7 +33,7 @@ func New(m sut.Manager, name, conf_file, test string,
             ConfDir: filepath.Join(m.RootDir,test,controlNodeName,name,"conf"),
             Config: sut.Config{
                 Pid:      0,
-                HTTPPort: 10000, // http_port,
+                HTTPPort: http_port,
                 XMPPPort: 0,
             },
             ConfFile: conf_file,
@@ -119,6 +119,27 @@ func (c *ControlNode) CheckXmppConnection(agent *agent.Agent) bool {
         " | xmllint --format  - | grep -i state | grep -i Established"
     _, err := exec.Command("/bin/bash", "-c", url).Output()
     return err == nil
+}
+
+func (c *ControlNode) checkConfiguration(tp string, count int) bool {
+    url := "/usr/bin/curl -s http://127.0.0.1:" +
+        strconv.Itoa(c.Config.HTTPPort) + "/Snh_IFMapNodeTableListShowReq?" +
+        " | xmllint format - " +
+        " | grep -iw -A1 '>" + tp + "</table_name>' | grep -w '>'" +
+        strconv.Itoa(count) + "'</size>'"
+    _, err := exec.Command("/bin/bash", "-c", url).Output()
+    return err == nil
+}
+
+func (c *ControlNode) CheckConfiguration(tp string, count int, retry int,
+                                         wait time.Duration) bool {
+    for r := 0; r < retry; r++ {
+        if c.checkConfiguration(tp, count) {
+            return true
+        }
+        time.Sleep(wait * time.Second)
+    }
+    return false
 }
 
 func (c *ControlNode) CheckXmppConnectionsOnce(agents []*agent.Agent) bool {
