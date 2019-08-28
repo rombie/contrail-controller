@@ -17,6 +17,9 @@ class BgpCatTest : public ::testing::Test {
 };
 
 TEST_F(BgpCatTest, BasicGoLang) {
+    system("./src/contrail-api-client/generateds/generateDS.py -f -o "
+           "controller/src/cat/types -g golang-api "
+           "src/contrail-api-client/schema/vnc_cfg.xsd");
     pid_t child = 0;
     char *const argv[3] = {
         (char *) "go",
@@ -34,6 +37,7 @@ TEST_F(BgpCatTest, BasicGoLang) {
     if (WEXITSTATUS(status))
         cout << "CAT GOLANG TESTS FAILED" << endl;
     EXPECT_EQ(0, WEXITSTATUS(status));
+    system("rm -rf controller/src/cat/types");
 }
 
 int main(int argc, char **argv) {

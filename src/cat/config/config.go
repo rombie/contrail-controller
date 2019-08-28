@@ -6,7 +6,6 @@ import (
     "fmt"
     "io"
     "os"
-    // "github.com/Juniper/contrail-go-api/types"
     "github.com/google/uuid"
     "strings"
 )
