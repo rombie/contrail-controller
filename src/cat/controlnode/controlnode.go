@@ -28,10 +28,11 @@ type ControlNode struct {
 const controlNodeName = "control-node"
 const controlNodeBinary = "../../../../build/debug/bgp/test/bgp_ifmap_xmpp_integration_test"
 
-func New(m sut.Manager, name, conf_file, test string, http_port int) (*ControlNode, error) {
+func New(m sut.Manager, name, ip_address, conf_file, test string, http_port int) (*ControlNode, error) {
     c := &ControlNode{
         Component: sut.Component{
             Name:    name,
+            IPAddress: ip_address,
             Manager: m,
             LogDir: filepath.Join(m.RootDir,test,controlNodeName, name, "log"),
             ConfDir: filepath.Join(m.RootDir,test,controlNodeName, name, "conf"),
@@ -70,12 +71,13 @@ func (c *ControlNode) start() error {
     c.Cmd = exec.Command(controlNodeBinary, "--config_file=" + c.Component.ConfFile)
     env := sut.EnvMap{
         "USER": os.Getenv("USER"),
-        "BGP_IFMAP_XMPP_INTEGRATION_TEST_SELF_NAME": "overcloud-contrailcontroller-1",
+        "BGP_IFMAP_XMPP_INTEGRATION_TEST_SELF_NAME": c.Name,
+        "CAT_BGP_IP_ADDRESS": c.IPAddress,
         "CAT_BGP_PORT": strconv.Itoa(c.Config.BGPPort),
         "CAT_XMPP_PORT": strconv.Itoa(c.Config.XMPPPort),
         "BGP_IFMAP_XMPP_INTEGRATION_TEST_INTROSPECT": strconv.Itoa(c.Config.HTTPPort),
         "BGP_IFMAP_XMPP_INTEGRATION_TEST_PAUSE": "1",
-        "LOG_DISABLE" : strconv.FormatBool(c.Verbose),
+//      "LOG_DISABLE" : strconv.FormatBool(c.Verbose),
         "BGP_IFMAP_XMPP_INTEGRATION_TEST_DATA_FILE": c.ConfFile,
         "LD_LIBRARY_PATH": "../../../../build/lib",
         "CONTRAIL_CAT_FRAMEWORK": "1",
@@ -122,23 +124,6 @@ func (c *ControlNode) CheckXmppConnection(agent *agent.Agent) error {
     return err
 }
 
-// TODO: Parse xml to do specific checks in the data received from curl.
-func (c *ControlNode) checkConfiguration(tp string, count int) error {
-    url := fmt.Sprintf("/usr/bin/curl -s http://127.0.0.1:%d/Snh_IFMapNodeTableListShowReq? | xmllint format -  | grep -iw -A1 '>%s</table_name>' | grep -w '>'%d'</size>'", c.Config.HTTPPort, tp, count)
-    _, err := exec.Command("/bin/bash", "-c", url).Output()
-    return err
-}
-
-func (c *ControlNode) CheckConfiguration(tp string, count int, retry int, wait time.Duration) error {
-    for r := 0; r < retry; r++ {
-        if err := c.checkConfiguration(tp, count); err == nil {
-            return nil
-        }
-        time.Sleep(wait * time.Second)
-    }
-    return fmt.Errorf("CheckConfiguration failed")
-}
-
 func (c *ControlNode) CheckXmppConnectionsOnce(agents []*agent.Agent) error {
     for i := 0; i < len(agents); i++ {
         if err := c.CheckXmppConnection(agents[i]); err != nil {
@@ -156,4 +141,49 @@ func (c *ControlNode) CheckXmppConnections(agents []*agent.Agent, retry int, wai
         time.Sleep(wait * time.Second)
     }
     return fmt.Errorf("CheckXmppConnections failed")
+}
+
+func (c *ControlNode) CheckBgpConnection(control_node *ControlNode) error {
+    url := fmt.Sprintf("/usr/bin/curl -s http://127.0.0.1:%d/Snh_BgpNeighborReq?x=%s | xmllint --format  - | grep -i state | grep -i Established", c.Config.HTTPPort,  control_node.Component.Name)
+    _, err := exec.Command("/bin/bash", "-c", url).Output()
+    return err
+}
+
+func (c *ControlNode) CheckBgpConnectionsOnce(control_nodes []*ControlNode) error {
+    for i := 0; i < len(control_nodes); i++ {
+        if c == control_nodes[i] {
+            continue
+        }
+        if err := c.CheckBgpConnection(control_nodes[i]); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (c *ControlNode) CheckBgpConnections(control_nodes []*ControlNode, retry int, wait time.Duration) error {
+    for r := 0; r < retry; r++ {
+        if err := c.CheckBgpConnectionsOnce(control_nodes); err == nil {
+            return nil
+        }
+        time.Sleep(wait * time.Second)
+    }
+    return fmt.Errorf("CheckXmppConnections failed")
+}
+
+// TODO: Parse xml to do specific checks in the data received from curl.
+func (c *ControlNode) checkConfiguration(tp string, count int) error {
+    url := fmt.Sprintf("/usr/bin/curl -s http://127.0.0.1:%d/Snh_IFMapNodeTableListShowReq? | xmllint format -  | grep -iw -A1 '>%s</table_name>' | grep -w '>'%d'</size>'", c.Config.HTTPPort, tp, count)
+    _, err := exec.Command("/bin/bash", "-c", url).Output()
+    return err
+}
+
+func (c *ControlNode) CheckConfiguration(tp string, count int, retry int, wait time.Duration) error {
+    for r := 0; r < retry; r++ {
+        if err := c.checkConfiguration(tp, count); err == nil {
+            return nil
+        }
+        time.Sleep(wait * time.Second)
+    }
+    return fmt.Errorf("CheckConfiguration failed")
 }

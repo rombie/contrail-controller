@@ -19,6 +19,12 @@ class BgpCatTest : public ::testing::Test {
 TEST_F(BgpCatTest, BasicGoLang) {
     system("./src/contrail-api-client/generateds/generateDS.py -f -o "
            "controller/src/cat/types -g golang-api "
+           "src/contrail-api-client/schema/ietf-l3vpn-schema.xsd");
+    system("./src/contrail-api-client/generateds/generateDS.py -f -o "
+           "controller/src/cat/types -g golang-api "
+           "src/contrail-api-client/schema/bgp_schema.xsd");
+    system("./src/contrail-api-client/generateds/generateDS.py -f -o "
+           "controller/src/cat/types -g golang-api "
            "src/contrail-api-client/schema/vnc_cfg.xsd");
     pid_t child = 0;
     char *const argv[3] = {

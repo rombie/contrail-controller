@@ -12,6 +12,7 @@
 #include <boost/assign/list_of.hpp>
 #include <boost/foreach.hpp>
 
+#include "base/address_util.h"
 #include "base/logging.h"
 #include "base/task_annotations.h"
 #include "base/test/task_test_util.h"
@@ -205,6 +206,7 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
             self = getenv("BGP_IFMAP_XMPP_INTEGRATION_TEST_SELF_NAME");
         server_.reset(new BgpServerTest(&evm_, self, config_db_,
                                         config_graph_));
+        server_->set_peer_lookup_disable(true);
         xmpp_server_test_ = new XmppServerTest(&evm_, "bgp.contrail.com");
         ifmap_channel_mgr_.reset(new IFMapChannelManager(xmpp_server_test_,
                                     ifmap_server_.get()));
@@ -221,10 +223,14 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
         string ufile = dir + "/conf/" + boost::lexical_cast<string>(pid) +
             ".json";
 
-        int xmpp = 0, bgp = 0;
+        int xmpp = 0, bgp_port = 0;
         xmpp = strtoul(getenv("CAT_XMPP_PORT") ?: "0", NULL, 0);
-        bgp = strtoul(getenv("CAT_BGP_PORT") ?: "0", NULL, 0);
-        server_->session_manager()->Initialize(bgp);
+        bgp_port = strtoul(getenv("CAT_BGP_PORT") ?: "0", NULL, 0);
+        boost::system::error_code ec;
+        IpAddress addr = AddressFromString(
+            getenv("CAT_BGP_IP_ADDRESS") ?: "0.0.0.0", &ec);
+        server_->session_manager()->Initialize(bgp_port, addr);
+        server_->session_manager()->Initialize(bgp_port);
         xmpp_server_test_->Initialize(xmpp, false);
 
         string b = boost::lexical_cast<string>(
@@ -429,6 +435,11 @@ class BgpIfmapXmppIntegrationTest : public ::testing::Test {
 TEST_F(BgpIfmapXmppIntegrationTest, BulkSync) {
     bool default_config_file = true;
     string df = getenv("BGP_IFMAP_XMPP_INTEGRATION_TEST_DATA_FILE") ?: "";
+    if (getenv("CONTRAIL_CAT_FRAMEWORK")) {
+        while (access(df.c_str(), F_OK)) {
+            sleep(3);
+        }
+    }
     if (!df.empty() && !access(df.c_str(), F_OK)) {
         ConfigCass2JsonAdapter::set_assert_on_parse_error(false);
         ParseEventsJson(df.c_str());

@@ -115,8 +115,8 @@ func (c *CAT) AddAgent(test string, name string, control_nodes []*controlnode.Co
     return agent, nil
 }
 
-func (c *CAT) AddControlNode(test string, name, conf_file string, http_port int) (*controlnode.ControlNode, error) {
-    cn, err := controlnode.New(c.sut.Manager, name, conf_file, test, http_port)
+func (c *CAT) AddControlNode(test, name, ip_address, conf_file string, http_port int) (*controlnode.ControlNode, error) {
+    cn, err := controlnode.New(c.sut.Manager, name, ip_address, conf_file, test, http_port)
     if err != nil {
         return nil, fmt.Errorf("failed to create control-node: %v", err)
     }

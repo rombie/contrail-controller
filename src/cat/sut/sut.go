@@ -21,6 +21,7 @@ type Manager struct {
 // Component is the base CAT component used for testing.
 type Component struct {
     Name      string
+    IPAddress string
     Manager   Manager
     LogDir    string
     ConfDir   string
