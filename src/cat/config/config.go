@@ -16,8 +16,8 @@ import (
 
 // ./src/contrail-api-client/generateds/generateDS.py -f -o ~/go/src/github.com/Juniper/contrail-go-api/types -g golang-api src/contrail-api-client/schema/vnc_cfg.xsd
 
-var FQNameTable map[string]map[string]string= make(map[string]map[string]string)
-var UUIDTable map[string]map[string]string= make(map[string]map[string]string)
+var FQNameTable map[string]map[string]string
+var UUIDTable map[string]map[string]string
 
 type Ref struct {
     Uuid string `json:"uuid"`
@@ -39,6 +39,11 @@ type ContrailConfigObject struct {
     Perms2 types.PermType `json:"prop:perms2"`
     IdPerms types.IdPermsType `json:"prop:id_perms"`
     DisplayName string `json:"prop:display_name"`
+}
+
+func Initialize() {
+    FQNameTable = make(map[string]map[string]string)
+    UUIDTable = make(map[string]map[string]string)
 }
 
 func (self *ContrailConfigObject) ToJson (b []byte) (map[string]string, error) {

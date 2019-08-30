@@ -91,6 +91,7 @@ func (c *ControlNode) start() error {
 }
 
 func (c *ControlNode) Restart() error {
+    log.Printf("Restarted %s\n", c.Name)
     if err := c.Stop(syscall.SIGKILL); err != nil {
         return err
     }
@@ -111,9 +112,10 @@ func (c *ControlNode) readPortNumbers() error {
         }
         bytes, err := ioutil.ReadAll(jsonFile)
         if err != nil {
-            return err
+            break
         }
-        return json.Unmarshal(bytes, &c.Config)
+        err = json.Unmarshal(bytes, &c.Config)
+        break
     }
     return err
 }

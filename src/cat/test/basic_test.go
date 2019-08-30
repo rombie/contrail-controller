@@ -16,8 +16,6 @@ import (
 
 type ConfigMap map[string]*config.ContrailConfigObject
 
-const confFile = "../../../../build/debug/bgp/test/cat_db.json"
-
 func TestConnectivityWithConfiguration(t *testing.T) {
     tests := []struct{
         desc string
@@ -63,6 +61,7 @@ func TestConnectivityWithConfiguration(t *testing.T) {
             if err != nil {
                 t.Fatalf("Failed to create control-nodes and agents: %v", err)
             }
+
             if err := verifyControlNodesAndAgents(control_nodes, agents); err != nil {
                 t.Fatalf("Failed to verify control-nodes and agents: %v", err)
             }
@@ -87,13 +86,13 @@ func setup(cat *cat.CAT, desc string, nc, na int) ([]*controlnode.ControlNode, [
     control_nodes := []*controlnode.ControlNode{}
 
     for i := 0; i < nc; i++ {
-        cn, err := cat.AddControlNode(desc, fmt.Sprintf("control-node%d", i+1), fmt.Sprintf("127.0.0.%d", i+1), confFile, 0)
+        cn, err := cat.AddControlNode(desc, fmt.Sprintf("control-node%d", i+1), fmt.Sprintf("127.0.0.%d", i+1), fmt.Sprintf("%s/db.json", cat.Sut.Manager.RootDir), 0)
         if err != nil {
             return nil, nil, err
         }
         control_nodes = append(control_nodes, cn)
     }
-    generateConfiguration(configMap, control_nodes)
+    generateConfiguration(cat, configMap, control_nodes)
 
     agents := []*agent.Agent{}
     for i := 0; i < na; i++ {
@@ -103,7 +102,6 @@ func setup(cat *cat.CAT, desc string, nc, na int) ([]*controlnode.ControlNode, [
         }
         agents = append(agents, ag)
     }
-
     if err := verifyControlNodesAndAgents(control_nodes, agents); err != nil {
         return nil, nil, err
     }
@@ -123,11 +121,9 @@ func verifyControlNodesAndAgents(control_nodes []*controlnode.ControlNode, agent
         if err := control_nodes[i].CheckXmppConnections(agents, 30, 1); err != nil {
             return fmt.Errorf("%s to agents xmpp connections are down: %v", control_nodes[i].Name, err)
         }
-        /*
         if err := control_nodes[i].CheckBgpConnections(control_nodes, 30, 5); err != nil {
             return fmt.Errorf("%s to control-nodes bgp connections are down: %v", control_nodes[i].Name, err)
         }
-        */
     }
     return nil
 }
@@ -157,7 +153,8 @@ func createVirtualNetwork(configMap ConfigMap, name, target string, network_ipam
     return vn, ri, err
 }
 
-func generateConfiguration(configMap ConfigMap, control_nodes []*controlnode.ControlNode) error {
+func generateConfiguration(cat *cat.CAT, configMap ConfigMap, control_nodes []*controlnode.ControlNode) error {
+    config.Initialize()
     config.NewGlobalSystemsConfig("64512")
     vm1, err := config.NewConfigObject("virtual_machine", "vm1", "", []string{"vm1"})
     if err != nil {
@@ -265,7 +262,7 @@ func generateConfiguration(configMap ConfigMap, control_nodes []*controlnode.Con
     instance_ip1.AddRef(vn1.ContrailConfigObject)
     instance_ip1.AddRef(vmi1.ContrailConfigObject)
 
-    return config.GenerateDB(confFile)
+    return config.GenerateDB(fmt.Sprintf("%s/db.json", cat.Sut.Manager.RootDir))
 }
 
 func verifyConfiguration(control_nodes []*controlnode.ControlNode) error {

@@ -22,7 +22,7 @@ import (
 
 // CAT is a contrail automated test.
 type CAT struct {
-    sut           sut.Component
+    Sut           sut.Component
     PauseAfterRun bool
 
     ControlNodes []*controlnode.ControlNode
@@ -41,17 +41,17 @@ func New() (*CAT, error) {
     if err != nil {
         return nil, fmt.Errorf("Cannot find present working directory: %v", err)
     }
-    c.sut.Manager.RootDir = filepath.Join(cwd + "../../../../build/debug/cat", now.Format(timestamp))
-    if err := os.MkdirAll(c.sut.Manager.RootDir, 0700); err != nil {
-        return nil, fmt.Errorf("failed to create rootdir %q :%v", c.sut.Manager.RootDir, err)
+    c.Sut.Manager.RootDir = filepath.Join(cwd + "../../../../build/debug/cat", now.Format(timestamp))
+    if err := os.MkdirAll(c.Sut.Manager.RootDir, 0700); err != nil {
+        return nil, fmt.Errorf("failed to create rootdir %q :%v", c.Sut.Manager.RootDir, err)
     }
-    c.sut.Manager.ReportDir = filepath.Join(c.sut.Manager.RootDir, "reports")
-    err = os.MkdirAll(c.sut.Manager.ReportDir, 0700)
+    c.Sut.Manager.ReportDir = filepath.Join(c.Sut.Manager.RootDir, "reports")
+    err = os.MkdirAll(c.Sut.Manager.ReportDir, 0700)
     if err != nil {
         return nil, fmt.Errorf("failed to make report directory: %v", err)
     }
     c.setHostIP()
-    log.Printf("Test data in %s", c.sut.Manager.RootDir)
+    log.Printf("Test data in %s", c.Sut.Manager.RootDir)
     return c, err
 }
 
@@ -77,11 +77,8 @@ func (c *CAT) Pause() {
     cmd.Stdin = os.Stdin
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
-    err := cmd.Run()
-    if err != nil {
-        log.Fatal(err)
-    }
-    time.Sleep(2600 * time.Second)
+    cmd.Run()
+    time.Sleep(3600 * time.Second)
 }
 
 func (c *CAT) setHostIP() error {
@@ -95,7 +92,7 @@ func (c *CAT) setHostIP() error {
     ips := strings.Split(string(out), " ")
     for _, ip := range ips {
         if !strings.HasPrefix(ip, "127.") {
-            c.sut.Manager.IP = strings.Trim(ip, "\n")
+            c.Sut.Manager.IP = strings.Trim(ip, "\n")
             return nil
         }
     }
@@ -107,7 +104,7 @@ func (c *CAT) AddAgent(test string, name string, control_nodes []*controlnode.Co
     for _, control_node := range control_nodes {
         xmpp_ports = append(xmpp_ports, control_node.Config.XMPPPort)
     }
-    agent, err := agent.New(c.sut.Manager, name, test, xmpp_ports)
+    agent, err := agent.New(c.Sut.Manager, name, test, xmpp_ports)
     if err != nil {
         return nil, fmt.Errorf("failed create agent: %v", err)
     }
@@ -116,11 +113,12 @@ func (c *CAT) AddAgent(test string, name string, control_nodes []*controlnode.Co
 }
 
 func (c *CAT) AddControlNode(test, name, ip_address, conf_file string, http_port int) (*controlnode.ControlNode, error) {
-    cn, err := controlnode.New(c.sut.Manager, name, ip_address, conf_file, test, http_port)
+    cn, err := controlnode.New(c.Sut.Manager, name, ip_address, conf_file, test, http_port)
     if err != nil {
         return nil, fmt.Errorf("failed to create control-node: %v", err)
     }
-    cn.Verbose = c.sut.Manager.Verbose
+    cn.Verbose = c.Sut.Manager.Verbose
     c.ControlNodes = append(c.ControlNodes, cn)
+    log.Printf("Started %s at http://%s:%d\n", cn.Name, c.Sut.Manager.IP, cn.Config.HTTPPort)
     return cn, nil
 }
